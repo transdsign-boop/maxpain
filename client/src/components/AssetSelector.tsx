@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Search, Plus, X, TrendingUp } from "lucide-react";
+import { Search, Plus, X, TrendingUp, RotateCcw } from "lucide-react";
 
 interface Asset {
   symbol: string;
@@ -60,11 +60,13 @@ const CATEGORY_COLORS = {
 
 export default function AssetSelector({ selectedAssets, onAssetsChange }: AssetSelectorProps) {
   const [searchTerm, setSearchTerm] = useState("");
+  const [activeSearchTerm, setActiveSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
 
   const filteredAssets = AVAILABLE_ASSETS.filter(asset => {
-    const matchesSearch = asset.symbol.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         asset.name.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = activeSearchTerm === "" || 
+                         asset.symbol.toLowerCase().includes(activeSearchTerm.toLowerCase()) ||
+                         asset.name.toLowerCase().includes(activeSearchTerm.toLowerCase());
     const matchesCategory = selectedCategory === "all" || asset.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
@@ -77,6 +79,22 @@ export default function AssetSelector({ selectedAssets, onAssetsChange }: AssetS
 
   const handleRemoveAsset = (symbol: string) => {
     onAssetsChange(selectedAssets.filter(s => s !== symbol));
+  };
+
+  const handleSearch = () => {
+    setActiveSearchTerm(searchTerm);
+  };
+
+  const handleClearSearch = () => {
+    setSearchTerm("");
+    setActiveSearchTerm("");
+    setSelectedCategory("all");
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSearch();
+    }
   };
 
   const categories = ["all", "major", "altcoin", "meme", "stock", "other"];
@@ -122,15 +140,52 @@ export default function AssetSelector({ selectedAssets, onAssetsChange }: AssetS
         )}
 
         {/* Search */}
-        <div className="relative">
-          <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search assets (e.g., BTC, Apple, Pepe)"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
-            data-testid="input-asset-search"
-          />
+        <div className="space-y-2">
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search assets (e.g., BTC, Apple, Pepe)"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                onKeyPress={handleKeyPress}
+                className="pl-10"
+                data-testid="input-asset-search"
+              />
+            </div>
+            <Button
+              onClick={handleSearch}
+              disabled={!searchTerm.trim()}
+              data-testid="button-search"
+            >
+              <Search className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleClearSearch}
+              disabled={!activeSearchTerm && selectedCategory === "all"}
+              data-testid="button-show-all"
+            >
+              <RotateCcw className="h-4 w-4 mr-2" />
+              Show All
+            </Button>
+          </div>
+          {activeSearchTerm && (
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary" data-testid="badge-active-search">
+                Searching: "{activeSearchTerm}"
+              </Badge>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setActiveSearchTerm("")}
+                className="h-6 w-6 p-0"
+                data-testid="button-clear-search-term"
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Category Filter */}
