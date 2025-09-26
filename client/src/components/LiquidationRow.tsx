@@ -22,7 +22,8 @@ export default function LiquidationRow({
   timestamp,
   isHighlighted = false
 }: LiquidationRowProps) {
-  const sideColor = side === "long" ? "text-chart-1" : "text-chart-2";
+  // BUY should be green (success), SELL should be red (destructive)
+  const sideColor = side === "long" ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400";
   const sideIcon = side === "long" ? TrendingUp : TrendingDown;
   const SideIcon = sideIcon;
 
@@ -51,8 +52,7 @@ export default function LiquidationRow({
       </td>
       <td className="p-2" data-testid={`badge-side-${id}`}>
         <Badge
-          variant={side === "long" ? "default" : "destructive"}
-          className="flex items-center gap-1 w-fit"
+          className={`flex items-center gap-1 w-fit !text-white ${side === "long" ? "!bg-green-600 hover:!bg-green-700 dark:!bg-green-500 dark:hover:!bg-green-600" : "!bg-red-600 hover:!bg-red-700 dark:!bg-red-500 dark:hover:!bg-red-600"}`}
         >
           <SideIcon className="h-3 w-3" />
           {side.toUpperCase()}
