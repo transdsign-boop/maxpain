@@ -112,7 +112,7 @@ export class DatabaseStorage implements IStorage {
     return await db.select()
       .from(liquidations)
       .where(sql`${liquidations.symbol} = ${symbol} AND ${liquidations.timestamp} >= ${sinceTimestamp}`)
-      .orderBy(desc(liquidations.value));
+      .orderBy(desc(liquidations.timestamp));
   }
 
   async saveUserSettings(settings: InsertUserSettings): Promise<UserSettings> {

@@ -138,11 +138,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // Calculate percentiles based on liquidation values
+      // Calculate percentiles based on liquidation values with proper interpolation
       const values = liquidations.map(liq => parseFloat(liq.value)).sort((a, b) => a - b);
       const calculatePercentile = (percentile: number) => {
-        const index = Math.ceil(values.length * (percentile / 100)) - 1;
-        return values[Math.max(0, index)];
+        if (values.length === 0) return 0;
+        if (values.length === 1) return values[0];
+        
+        const index = (percentile / 100) * (values.length - 1);
+        const lower = Math.floor(index);
+        const upper = Math.ceil(index);
+        
+        if (lower === upper) {
+          return values[lower];
+        }
+        
+        // Linear interpolation between the two nearest values
+        const weight = index - lower;
+        return values[lower] * (1 - weight) + values[upper] * weight;
       };
       
       const longLiquidations = liquidations.filter(liq => liq.side === "long");

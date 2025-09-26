@@ -57,6 +57,14 @@ export default function LiquidationAnalytics() {
   // Fetch percentile data
   const { data: percentileData, isLoading: percentileLoading, error: percentileError } = useQuery<PercentileData>({
     queryKey: ['/api/analytics/percentiles', selectedAsset, selectedHours],
+    queryFn: async () => {
+      if (!selectedAsset) return null;
+      const response = await fetch(`/api/analytics/percentiles?symbol=${selectedAsset}&hours=${selectedHours}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch percentile data');
+      }
+      return response.json();
+    },
     enabled: !!selectedAsset,
     refetchInterval: 10000, // Refresh every 10 seconds when asset is selected
   });
@@ -164,34 +172,8 @@ export default function LiquidationAnalytics() {
         {/* Results */}
         {percentileData && !percentileLoading && (
           <div className="space-y-6">
-            {/* Summary */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="text-center p-4 bg-card border rounded-lg" data-testid="stat-total-liquidations">
-                <div className="text-2xl font-bold">{percentileData.totalLiquidations}</div>
-                <div className="text-sm text-muted-foreground">Total Liquidations</div>
-              </div>
-              <div className="text-center p-4 bg-card border rounded-lg" data-testid="stat-average-value">
-                <div className="text-2xl font-bold">
-                  {formatCurrency(percentileData.breakdown?.averageValue || 0)}
-                </div>
-                <div className="text-sm text-muted-foreground">Average Value</div>
-              </div>
-              <div className="text-center p-4 bg-card border rounded-lg" data-testid="stat-long-count">
-                <div className="text-2xl font-bold text-destructive">
-                  {percentileData.breakdown?.longCount || 0}
-                </div>
-                <div className="text-sm text-muted-foreground">Long Liquidations</div>
-              </div>
-              <div className="text-center p-4 bg-card border rounded-lg" data-testid="stat-short-count">
-                <div className="text-2xl font-bold text-green-500">
-                  {percentileData.breakdown?.shortCount || 0}
-                </div>
-                <div className="text-sm text-muted-foreground">Short Liquidations</div>
-              </div>
-            </div>
-
             {/* No Data Message */}
-            {percentileData.totalLiquidations === 0 && (
+            {percentileData.totalLiquidations === 0 ? (
               <div className="text-center p-6 bg-muted/50 border rounded-lg" data-testid="message-no-data">
                 <Clock className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
                 <h3 className="text-lg font-medium mb-2">No Liquidation Data</h3>
@@ -199,6 +181,34 @@ export default function LiquidationAnalytics() {
                   No liquidations found for {selectedAsset} in the last {timeRangeOptions.find(o => o.value === selectedHours)?.label.toLowerCase()}
                 </p>
               </div>
+            ) : (
+              <>
+                {/* Summary - Only show when we have real data */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="text-center p-4 bg-card border rounded-lg" data-testid="stat-total-liquidations">
+                    <div className="text-2xl font-bold">{percentileData.totalLiquidations}</div>
+                    <div className="text-sm text-muted-foreground">Total Liquidations</div>
+                  </div>
+                  <div className="text-center p-4 bg-card border rounded-lg" data-testid="stat-average-value">
+                    <div className="text-2xl font-bold">
+                      {formatCurrency(percentileData.breakdown?.averageValue || 0)}
+                    </div>
+                    <div className="text-sm text-muted-foreground">Average Value</div>
+                  </div>
+                  <div className="text-center p-4 bg-card border rounded-lg" data-testid="stat-long-count">
+                    <div className="text-2xl font-bold text-destructive">
+                      {percentileData.breakdown?.longCount || 0}
+                    </div>
+                    <div className="text-sm text-muted-foreground">Long Liquidations</div>
+                  </div>
+                  <div className="text-center p-4 bg-card border rounded-lg" data-testid="stat-short-count">
+                    <div className="text-2xl font-bold text-green-500">
+                      {percentileData.breakdown?.shortCount || 0}
+                    </div>
+                    <div className="text-sm text-muted-foreground">Short Liquidations</div>
+                  </div>
+                </div>
+              </>
             )}
 
             {/* Percentiles */}
