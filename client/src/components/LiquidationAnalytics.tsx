@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BarChart3, TrendingUp, AlertCircle, Clock, DollarSign } from "lucide-react";
+import { BarChart3, TrendingUp, TrendingDown, Activity, AlertCircle, Clock, DollarSign } from "lucide-react";
 import { format } from "date-fns";
 
 interface AvailableAsset {
@@ -34,6 +34,23 @@ interface PercentileData {
   };
   latestLiquidation: any;
   message?: string;
+}
+
+interface DominantDirectionData {
+  symbol: string;
+  direction: 'bullish' | 'bearish' | 'neutral';
+  confidence: number;
+  analysis: {
+    orderBook: {
+      bidRatio: string;
+      pressure: 'bullish' | 'bearish' | 'neutral';
+    };
+    funding: {
+      currentRate: string;
+      sentiment: 'bullish' | 'bearish' | 'neutral';
+    };
+  };
+  timestamp: string;
 }
 
 const timeRangeOptions = [
@@ -71,6 +88,21 @@ export default function LiquidationAnalytics({ selectedAssets }: LiquidationAnal
     },
     enabled: !!selectedAsset,
     refetchInterval: 10000, // Refresh every 10 seconds when asset is selected
+  });
+
+  // Fetch dominant direction data
+  const { data: dominantDirection, isLoading: directionLoading, error: directionError } = useQuery<DominantDirectionData>({
+    queryKey: ['/api/analytics/dominant-direction', selectedAsset],
+    queryFn: async () => {
+      if (!selectedAsset) return null;
+      const response = await fetch(`/api/analytics/dominant-direction?symbol=${selectedAsset}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch dominant direction data');
+      }
+      return response.json();
+    },
+    enabled: !!selectedAsset,
+    refetchInterval: 15000, // Refresh every 15 seconds
   });
 
   // Filter available assets to only show those being tracked
@@ -179,6 +211,109 @@ export default function LiquidationAnalytics({ selectedAssets }: LiquidationAnal
           <div className="flex items-center gap-2 p-4 bg-destructive/10 border border-destructive/20 rounded-md" data-testid="error-percentiles">
             <AlertCircle className="h-5 w-5 text-destructive" />
             <span className="text-sm text-destructive">Failed to load analytics data</span>
+          </div>
+        )}
+
+        {/* Dominant Direction Analysis */}
+        {selectedAsset && dominantDirection && (
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Activity className="h-5 w-5 text-primary" />
+              <h3 className="text-lg font-semibold" data-testid="title-dominant-direction">
+                Market Direction - {selectedAsset}
+              </h3>
+              <Badge 
+                variant={dominantDirection.direction === 'bullish' ? 'default' : dominantDirection.direction === 'bearish' ? 'destructive' : 'secondary'}
+                data-testid={`badge-direction-${dominantDirection.direction}`}
+              >
+                {dominantDirection.direction.toUpperCase()}
+              </Badge>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Overall Direction */}
+              <div className="flex items-center gap-3 p-4 bg-muted/50 rounded-lg" data-testid="card-overall-direction">
+                {dominantDirection.direction === 'bullish' ? (
+                  <TrendingUp className="h-8 w-8 text-green-500" />
+                ) : dominantDirection.direction === 'bearish' ? (
+                  <TrendingDown className="h-8 w-8 text-red-500" />
+                ) : (
+                  <Activity className="h-8 w-8 text-muted-foreground" />
+                )}
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Overall Direction</p>
+                  <p className="text-lg font-bold" data-testid="text-direction">
+                    {dominantDirection.direction.charAt(0).toUpperCase() + dominantDirection.direction.slice(1)}
+                  </p>
+                  <p className="text-xs text-muted-foreground" data-testid="text-confidence">
+                    {dominantDirection.confidence}% confidence
+                  </p>
+                </div>
+              </div>
+
+              {/* Order Book Pressure */}
+              <div className="p-4 bg-muted/50 rounded-lg" data-testid="card-orderbook-pressure">
+                <p className="text-sm font-medium text-muted-foreground mb-2">Order Book Pressure</p>
+                <div className="space-y-1">
+                  <p className="text-sm" data-testid="text-bid-ratio">
+                    Bid Ratio: <span className="font-mono">{(parseFloat(dominantDirection.analysis.orderBook.bidRatio) * 100).toFixed(1)}%</span>
+                  </p>
+                  <Badge 
+                    variant={dominantDirection.analysis.orderBook.pressure === 'bullish' ? 'default' : dominantDirection.analysis.orderBook.pressure === 'bearish' ? 'destructive' : 'secondary'}
+                    className="text-xs"
+                    data-testid={`badge-orderbook-${dominantDirection.analysis.orderBook.pressure}`}
+                  >
+                    {dominantDirection.analysis.orderBook.pressure}
+                  </Badge>
+                </div>
+              </div>
+
+              {/* Funding Rate */}
+              <div className="p-4 bg-muted/50 rounded-lg" data-testid="card-funding-rate">
+                <p className="text-sm font-medium text-muted-foreground mb-2">Funding Rate</p>
+                <div className="space-y-1">
+                  <p className="text-sm" data-testid="text-funding-rate">
+                    Current: <span className="font-mono">{dominantDirection.analysis.funding.currentRate}%</span>
+                  </p>
+                  <Badge 
+                    variant={dominantDirection.analysis.funding.sentiment === 'bullish' ? 'default' : dominantDirection.analysis.funding.sentiment === 'bearish' ? 'destructive' : 'secondary'}
+                    className="text-xs"
+                    data-testid={`badge-funding-${dominantDirection.analysis.funding.sentiment}`}
+                  >
+                    {dominantDirection.analysis.funding.sentiment}
+                  </Badge>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Loading state for dominant direction */}
+        {selectedAsset && directionLoading && (
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Activity className="h-5 w-5 text-primary" />
+              <h3 className="text-lg font-semibold">Market Direction - {selectedAsset}</h3>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {[1, 2, 3].map(i => (
+                <Skeleton key={i} className="h-20" data-testid={`skeleton-direction-${i}`} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Error state for dominant direction */}
+        {selectedAsset && directionError && (
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Activity className="h-5 w-5 text-primary" />
+              <h3 className="text-lg font-semibold">Market Direction - {selectedAsset}</h3>
+            </div>
+            <div className="flex items-center gap-2 p-4 bg-destructive/10 border border-destructive/20 rounded-lg" data-testid="error-dominant-direction">
+              <AlertCircle className="h-5 w-5 text-destructive" />
+              <p className="text-sm text-destructive">Failed to load market direction data</p>
+            </div>
           </div>
         )}
 
