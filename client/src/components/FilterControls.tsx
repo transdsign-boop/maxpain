@@ -134,12 +134,12 @@ export default function FilterControls({
         </div>
 
         <div className="flex flex-wrap gap-2">
-          {sideFilter !== "all" && (
+          {sideFilter && sideFilter !== "all" && (
             <Badge variant="secondary" data-testid="badge-active-side-filter">
               Side: {sideFilter.toUpperCase()}
             </Badge>
           )}
-          {minValue !== "0" && (
+          {minValue && minValue !== "0" && (
             <Badge variant="secondary" data-testid="badge-active-value-filter">
               Min Value: ${parseInt(minValue).toLocaleString()}
             </Badge>

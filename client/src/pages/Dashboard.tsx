@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import ConnectionStatus from "@/components/ConnectionStatus";
 import StatsCards from "@/components/StatsCards";
-import FilterControls from "@/components/FilterControls";
 import LiquidationTable from "@/components/LiquidationTable";
 import AssetSelector from "@/components/AssetSelector";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -184,9 +183,10 @@ export default function Dashboard() {
             />
           </div>
 
-          {/* Filters */}
+          {/* Live Liquidations with Integrated Filters */}
           <div className="lg:col-span-2">
-            <FilterControls
+            <LiquidationTable 
+              liquidations={filteredLiquidations}
               timeRange={timeRange}
               sideFilter={sideFilter}
               minValue={minValue}
@@ -198,9 +198,6 @@ export default function Dashboard() {
             />
           </div>
         </div>
-
-        {/* Liquidations Table */}
-        <LiquidationTable liquidations={filteredLiquidations} />
       </main>
 
       {/* Debug Controls */}
