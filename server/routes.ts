@@ -185,6 +185,209 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Order book and funding rate API routes for dominant direction analysis
+  app.get("/api/analytics/orderbook", async (req, res) => {
+    try {
+      const symbol = req.query.symbol as string;
+      
+      if (!symbol) {
+        return res.status(400).json({ error: "symbol parameter required" });
+      }
+      
+      // Fetch order book data from Aster DEX
+      const orderBookResponse = await fetch(`https://fapi.asterdex.com/fapi/v1/depth?symbol=${symbol}&limit=100`, {
+        headers: {
+          'X-MBX-APIKEY': process.env.ASTER_API_KEY || ''
+        }
+      });
+      
+      if (!orderBookResponse.ok) {
+        throw new Error(`Failed to fetch order book: ${orderBookResponse.status}`);
+      }
+      
+      const orderBook = await orderBookResponse.json();
+      
+      // Calculate order book pressure (bid vs ask depth)
+      const bids = orderBook.bids || [];
+      const asks = orderBook.asks || [];
+      
+      const bidDepth = bids.reduce((sum: number, [price, quantity]: [string, string]) => 
+        sum + parseFloat(price) * parseFloat(quantity), 0);
+      const askDepth = asks.reduce((sum: number, [price, quantity]: [string, string]) => 
+        sum + parseFloat(price) * parseFloat(quantity), 0);
+      
+      const totalDepth = bidDepth + askDepth;
+      const bidRatio = totalDepth > 0 ? bidDepth / totalDepth : 0.5;
+      const askRatio = totalDepth > 0 ? askDepth / totalDepth : 0.5;
+      
+      res.json({
+        symbol,
+        bidDepth: bidDepth.toFixed(2),
+        askDepth: askDepth.toFixed(2),
+        bidRatio: bidRatio.toFixed(4),
+        askRatio: askRatio.toFixed(4),
+        pressure: bidRatio > 0.55 ? 'bullish' : askRatio > 0.55 ? 'bearish' : 'neutral',
+        lastUpdateId: orderBook.lastUpdateId,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('Order book fetch error:', error);
+      res.status(500).json({ error: "Failed to fetch order book data" });
+    }
+  });
+
+  app.get("/api/analytics/funding", async (req, res) => {
+    try {
+      const symbol = req.query.symbol as string;
+      
+      if (!symbol) {
+        return res.status(400).json({ error: "symbol parameter required" });
+      }
+      
+      // Fetch funding rate data from Aster DEX
+      const fundingResponse = await fetch(`https://fapi.asterdex.com/fapi/v1/fundingRate?symbol=${symbol}&limit=24`, {
+        headers: {
+          'X-MBX-APIKEY': process.env.ASTER_API_KEY || ''
+        }
+      });
+      
+      if (!fundingResponse.ok) {
+        throw new Error(`Failed to fetch funding rate: ${fundingResponse.status}`);
+      }
+      
+      const fundingData = await fundingResponse.json();
+      
+      if (!Array.isArray(fundingData) || fundingData.length === 0) {
+        return res.json({
+          symbol,
+          currentRate: 0,
+          averageRate: 0,
+          sentiment: 'neutral',
+          message: 'No funding rate data available'
+        });
+      }
+      
+      // Get current (latest) funding rate
+      const currentRate = parseFloat(fundingData[fundingData.length - 1]?.fundingRate || '0');
+      
+      // Calculate average funding rate over the period
+      const rates = fundingData.map((item: any) => parseFloat(item.fundingRate || '0'));
+      const averageRate = rates.reduce((sum, rate) => sum + rate, 0) / rates.length;
+      
+      // Determine funding sentiment
+      let sentiment = 'neutral';
+      if (currentRate > 0.0001) sentiment = 'bullish'; // Positive funding = longs pay shorts = bullish sentiment
+      else if (currentRate < -0.0001) sentiment = 'bearish'; // Negative funding = shorts pay longs = bearish sentiment
+      
+      res.json({
+        symbol,
+        currentRate: (currentRate * 100).toFixed(6), // Convert to percentage
+        averageRate: (averageRate * 100).toFixed(6), // Convert to percentage  
+        sentiment,
+        dataPoints: fundingData.length,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('Funding rate fetch error:', error);
+      res.status(500).json({ error: "Failed to fetch funding rate data" });
+    }
+  });
+
+  app.get("/api/analytics/dominant-direction", async (req, res) => {
+    try {
+      const symbol = req.query.symbol as string;
+      
+      if (!symbol) {
+        return res.status(400).json({ error: "symbol parameter required" });
+      }
+      
+      // Fetch both order book and funding data in parallel
+      const [orderBookResponse, fundingResponse] = await Promise.all([
+        fetch(`https://fapi.asterdex.com/fapi/v1/depth?symbol=${symbol}&limit=100`, {
+          headers: { 'X-MBX-APIKEY': process.env.ASTER_API_KEY || '' }
+        }),
+        fetch(`https://fapi.asterdex.com/fapi/v1/fundingRate?symbol=${symbol}&limit=8`, {
+          headers: { 'X-MBX-APIKEY': process.env.ASTER_API_KEY || '' }
+        })
+      ]);
+      
+      if (!orderBookResponse.ok || !fundingResponse.ok) {
+        throw new Error('Failed to fetch market data');
+      }
+      
+      const [orderBook, fundingData] = await Promise.all([
+        orderBookResponse.json(),
+        fundingResponse.json()
+      ]);
+      
+      // Calculate order book pressure
+      const bids = orderBook.bids || [];
+      const asks = orderBook.asks || [];
+      
+      const bidDepth = bids.reduce((sum: number, [price, quantity]: [string, string]) => 
+        sum + parseFloat(price) * parseFloat(quantity), 0);
+      const askDepth = asks.reduce((sum: number, [price, quantity]: [string, string]) => 
+        sum + parseFloat(price) * parseFloat(quantity), 0);
+      
+      const totalDepth = bidDepth + askDepth;
+      const bidRatio = totalDepth > 0 ? bidDepth / totalDepth : 0.5;
+      
+      // Calculate funding sentiment
+      const currentRate = Array.isArray(fundingData) && fundingData.length > 0 
+        ? parseFloat(fundingData[fundingData.length - 1]?.fundingRate || '0') 
+        : 0;
+      
+      // Combine signals for dominant direction
+      let direction = 'neutral';
+      let confidence = 0;
+      
+      // Order book weight (60%) + Funding weight (40%)
+      const bookWeight = 0.6;
+      const fundingWeight = 0.4;
+      
+      let bookScore = 0;
+      if (bidRatio > 0.55) bookScore = 1; // Bullish
+      else if (bidRatio < 0.45) bookScore = -1; // Bearish
+      
+      let fundingScore = 0;
+      if (currentRate > 0.0001) fundingScore = 1; // Bullish (longs pay shorts)
+      else if (currentRate < -0.0001) fundingScore = -1; // Bearish (shorts pay longs)
+      
+      const combinedScore = (bookScore * bookWeight) + (fundingScore * fundingWeight);
+      
+      if (combinedScore > 0.3) {
+        direction = 'bullish';
+        confidence = Math.min(100, Math.abs(combinedScore) * 100);
+      } else if (combinedScore < -0.3) {
+        direction = 'bearish';
+        confidence = Math.min(100, Math.abs(combinedScore) * 100);
+      } else {
+        direction = 'neutral';
+        confidence = Math.abs(combinedScore) * 100;
+      }
+      
+      res.json({
+        symbol,
+        direction,
+        confidence: Math.round(confidence),
+        analysis: {
+          orderBook: {
+            bidRatio: bidRatio.toFixed(4),
+            pressure: bidRatio > 0.55 ? 'bullish' : bidRatio < 0.45 ? 'bearish' : 'neutral'
+          },
+          funding: {
+            currentRate: (currentRate * 100).toFixed(6), // As percentage
+            sentiment: currentRate > 0.0001 ? 'bullish' : currentRate < -0.0001 ? 'bearish' : 'neutral'
+          }
+        },
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('Dominant direction analysis error:', error);
+      res.status(500).json({ error: "Failed to analyze dominant direction" });
+    }
+  });
+
   // Aster DEX symbols API
   app.get("/api/symbols", async (req, res) => {
     try {
