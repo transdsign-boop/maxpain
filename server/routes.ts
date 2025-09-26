@@ -106,6 +106,73 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Analytics API routes
+  app.get("/api/analytics/assets", async (req, res) => {
+    try {
+      const assets = await storage.getAvailableAssets();
+      res.json(assets);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch available assets for analytics" });
+    }
+  });
+
+  app.get("/api/analytics/percentiles", async (req, res) => {
+    try {
+      const symbol = req.query.symbol as string;
+      const hours = parseInt(req.query.hours as string) || 24;
+      
+      if (!symbol) {
+        return res.status(400).json({ error: "symbol parameter required" });
+      }
+      
+      const sinceTimestamp = new Date(Date.now() - hours * 60 * 60 * 1000);
+      const liquidations = await storage.getLiquidationAnalytics(symbol, sinceTimestamp);
+      
+      if (liquidations.length === 0) {
+        return res.json({
+          symbol,
+          hours,
+          totalLiquidations: 0,
+          percentiles: null,
+          message: "No liquidation data found for this asset and time period"
+        });
+      }
+      
+      // Calculate percentiles based on liquidation values
+      const values = liquidations.map(liq => parseFloat(liq.value)).sort((a, b) => a - b);
+      const calculatePercentile = (percentile: number) => {
+        const index = Math.ceil(values.length * (percentile / 100)) - 1;
+        return values[Math.max(0, index)];
+      };
+      
+      const longLiquidations = liquidations.filter(liq => liq.side === "long");
+      const shortLiquidations = liquidations.filter(liq => liq.side === "short");
+      
+      res.json({
+        symbol,
+        hours,
+        totalLiquidations: liquidations.length,
+        percentiles: {
+          p50: calculatePercentile(50),
+          p75: calculatePercentile(75),
+          p90: calculatePercentile(90),
+          p95: calculatePercentile(95),
+          p99: calculatePercentile(99)
+        },
+        breakdown: {
+          longCount: longLiquidations.length,
+          shortCount: shortLiquidations.length,
+          averageValue: values.reduce((sum, val) => sum + val, 0) / values.length,
+          maxValue: Math.max(...values),
+          minValue: Math.min(...values)
+        },
+        latestLiquidation: liquidations[0] // Most recent (highest value due to sorting)
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to calculate liquidation percentiles" });
+    }
+  });
+
   // Aster DEX symbols API
   app.get("/api/symbols", async (req, res) => {
     try {
