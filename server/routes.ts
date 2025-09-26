@@ -106,6 +106,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Aster DEX symbols API
+  app.get("/api/symbols", async (req, res) => {
+    try {
+      const response = await fetch('https://fapi.asterdex.com/fapi/v1/exchangeInfo');
+      if (!response.ok) {
+        throw new Error(`Failed to fetch from Aster DEX: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      // Extract and format symbol information
+      const symbols = data.symbols?.map((symbol: any) => ({
+        symbol: symbol.symbol,
+        baseAsset: symbol.baseAsset,
+        quoteAsset: symbol.quoteAsset,
+        status: symbol.status,
+        contractType: symbol.contractType || 'PERPETUAL',
+        marginAsset: symbol.marginAsset || symbol.quoteAsset,
+        pricePrecision: symbol.pricePrecision,
+        quantityPrecision: symbol.quantityPrecision,
+        // Extract filters for additional info
+        filters: symbol.filters || []
+      })) || [];
+      
+      res.json({
+        symbols,
+        exchangeInfo: {
+          timezone: data.timezone,
+          serverTime: data.serverTime
+        }
+      });
+    } catch (error) {
+      console.error('Failed to fetch Aster DEX symbols:', error);
+      res.status(500).json({ error: "Failed to fetch symbols from Aster DEX" });
+    }
+  });
+
   const httpServer = createServer(app);
 
   // WebSocket server for real-time liquidation updates

@@ -1,16 +1,19 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Search, Plus, X, TrendingUp, RotateCcw } from "lucide-react";
+import { Search, Plus, X, TrendingUp, RotateCcw, Loader2 } from "lucide-react";
 
 interface Asset {
   symbol: string;
   name: string;
   category: "major" | "altcoin" | "meme" | "stock" | "other";
-  leverage?: string;
+  baseAsset: string;
+  quoteAsset: string;
+  status: string;
+  contractType?: string;
 }
 
 interface AssetSelectorProps {
@@ -18,37 +21,43 @@ interface AssetSelectorProps {
   onAssetsChange: (assets: string[]) => void;
 }
 
-// Available assets on Aster DEX based on research
-const AVAILABLE_ASSETS: Asset[] = [
-  // Major cryptocurrencies
-  { symbol: "BTC/USDT", name: "Bitcoin", category: "major", leverage: "1001x" },
-  { symbol: "ETH/USDT", name: "Ethereum", category: "major", leverage: "1001x" },
-  { symbol: "SOL/USDT", name: "Solana", category: "major", leverage: "100x" },
-  { symbol: "BNB/USDT", name: "BNB", category: "major", leverage: "100x" },
-  { symbol: "XRP/USDT", name: "Ripple", category: "major", leverage: "100x" },
-  { symbol: "LTC/USDT", name: "Litecoin", category: "major", leverage: "50x" },
-  { symbol: "DOGE/USDT", name: "Dogecoin", category: "altcoin", leverage: "50x" },
+// Categorize assets based on their base asset
+const categorizeAsset = (baseAsset: string, symbol: string): "major" | "altcoin" | "meme" | "stock" | "other" => {
+  const major = ["BTC", "ETH", "SOL", "BNB", "XRP", "LTC", "ADA", "MATIC", "DOT", "AVAX"];
+  const meme = ["DOGE", "SHIB", "PEPE", "FLOKI", "FART", "FARTCOIN", "MEME", "WIF", "BONK"];
+  const stocks = ["AAPL", "MSFT", "NVDA", "TSLA", "META", "AMZN", "GOOGL", "NFLX", "GOOG", "BABA"];
   
-  // Native and other tokens
-  { symbol: "ASTER/USDT", name: "Aster", category: "other", leverage: "100x" },
-  { symbol: "FORM/USDT", name: "Four", category: "other", leverage: "50x" },
-  { symbol: "CDL/USDT", name: "Creditlink", category: "other", leverage: "50x" },
-  { symbol: "USD1/USDT", name: "World Liberty Financial USD", category: "other", leverage: "50x" },
+  if (major.includes(baseAsset)) return "major";
+  if (meme.some(m => baseAsset.includes(m))) return "meme";
+  if (stocks.includes(baseAsset)) return "stock";
+  if (baseAsset === "ASTER" || baseAsset === "FORM" || baseAsset === "CDL") return "other";
   
-  // Meme coins
-  { symbol: "SHIB/USDT", name: "Shiba Inu", category: "meme", leverage: "50x" },
-  { symbol: "PEPE/USDT", name: "Pepe", category: "meme", leverage: "50x" },
-  { symbol: "FLOKI/USDT", name: "Floki", category: "meme", leverage: "50x" },
-  { symbol: "FARTCOIN/USDT", name: "Fartcoin", category: "meme", leverage: "50x" },
+  return "altcoin";
+};
+
+// Get friendly name for assets
+const getAssetName = (baseAsset: string): string => {
+  const names: Record<string, string> = {
+    "BTC": "Bitcoin",
+    "ETH": "Ethereum", 
+    "SOL": "Solana",
+    "BNB": "BNB",
+    "XRP": "Ripple",
+    "LTC": "Litecoin",
+    "DOGE": "Dogecoin",
+    "ASTER": "Aster",
+    "SHIB": "Shiba Inu",
+    "PEPE": "Pepe",
+    "AAPL": "Apple Inc.",
+    "MSFT": "Microsoft",
+    "NVDA": "NVIDIA",
+    "TSLA": "Tesla",
+    "META": "Meta Platforms",
+    "AMZN": "Amazon"
+  };
   
-  // Tokenized stocks
-  { symbol: "AAPL/USDT", name: "Apple Inc.", category: "stock", leverage: "50x" },
-  { symbol: "MSFT/USDT", name: "Microsoft", category: "stock", leverage: "50x" },
-  { symbol: "AMZN/USDT", name: "Amazon", category: "stock", leverage: "50x" },
-  { symbol: "NVDA/USDT", name: "NVIDIA", category: "stock", leverage: "50x" },
-  { symbol: "META/USDT", name: "Meta Platforms", category: "stock", leverage: "50x" },
-  { symbol: "TSLA/USDT", name: "Tesla", category: "stock", leverage: "50x" },
-];
+  return names[baseAsset] || baseAsset;
+};
 
 const CATEGORY_COLORS = {
   major: "bg-chart-1 text-chart-1-foreground",
@@ -62,11 +71,61 @@ export default function AssetSelector({ selectedAssets, onAssetsChange }: AssetS
   const [searchTerm, setSearchTerm] = useState("");
   const [activeSearchTerm, setActiveSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [availableAssets, setAvailableAssets] = useState<Asset[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const filteredAssets = AVAILABLE_ASSETS.filter(asset => {
+  // Fetch available assets from Aster DEX
+  useEffect(() => {
+    const fetchAssets = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        const response = await fetch('/api/symbols');
+        if (!response.ok) {
+          throw new Error('Failed to fetch symbols');
+        }
+        
+        const data = await response.json();
+        
+        // Convert Aster DEX symbols to our Asset format
+        const assets: Asset[] = data.symbols
+          .filter((symbol: any) => symbol.status === 'TRADING')
+          .map((symbol: any) => ({
+            symbol: symbol.symbol,
+            name: getAssetName(symbol.baseAsset),
+            category: categorizeAsset(symbol.baseAsset, symbol.symbol),
+            baseAsset: symbol.baseAsset,
+            quoteAsset: symbol.quoteAsset,
+            status: symbol.status,
+            contractType: symbol.contractType
+          }))
+          .sort((a: Asset, b: Asset) => {
+            // Sort by category priority, then alphabetically
+            const categoryOrder = { major: 0, stock: 1, altcoin: 2, other: 3, meme: 4 };
+            const categoryDiff = categoryOrder[a.category] - categoryOrder[b.category];
+            if (categoryDiff !== 0) return categoryDiff;
+            return a.symbol.localeCompare(b.symbol);
+          });
+        
+        setAvailableAssets(assets);
+      } catch (error) {
+        console.error('Failed to fetch assets:', error);
+        setError('Failed to load trading pairs');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchAssets();
+  }, []);
+
+  const filteredAssets = availableAssets.filter(asset => {
     const matchesSearch = activeSearchTerm === "" || 
                          asset.symbol.toLowerCase().includes(activeSearchTerm.toLowerCase()) ||
-                         asset.name.toLowerCase().includes(activeSearchTerm.toLowerCase());
+                         asset.name.toLowerCase().includes(activeSearchTerm.toLowerCase()) ||
+                         asset.baseAsset.toLowerCase().includes(activeSearchTerm.toLowerCase());
     const matchesCategory = selectedCategory === "all" || asset.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
@@ -205,10 +264,33 @@ export default function AssetSelector({ selectedAssets, onAssetsChange }: AssetS
 
         {/* Available Assets */}
         <div className="space-y-2">
-          <h4 className="text-sm font-medium">Available Assets</h4>
+          <h4 className="text-sm font-medium">
+            Available Assets {!loading && `(${availableAssets.length})`}
+          </h4>
           <ScrollArea className="h-64 border rounded-md">
             <div className="p-2 space-y-1">
-              {filteredAssets.map(asset => {
+              {loading && (
+                <div className="flex items-center justify-center py-8" data-testid="loading-assets">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  <span className="ml-2 text-muted-foreground">Loading trading pairs...</span>
+                </div>
+              )}
+              
+              {error && (
+                <div className="text-center py-8 text-destructive" data-testid="error-assets">
+                  <p>{error}</p>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="mt-2"
+                    onClick={() => window.location.reload()}
+                  >
+                    Retry
+                  </Button>
+                </div>
+              )}
+              
+              {!loading && !error && filteredAssets.map(asset => {
                 const isSelected = selectedAssets.includes(asset.symbol);
                 return (
                   <div
@@ -229,9 +311,7 @@ export default function AssetSelector({ selectedAssets, onAssetsChange }: AssetS
                         </div>
                         <div className="text-xs text-muted-foreground flex items-center gap-2">
                           <span>{asset.name}</span>
-                          {asset.leverage && (
-                            <span className="text-chart-1">Max: {asset.leverage}</span>
-                          )}
+                          <span className="text-chart-1">{asset.contractType || 'PERPETUAL'}</span>
                         </div>
                       </div>
                     </div>
@@ -250,7 +330,8 @@ export default function AssetSelector({ selectedAssets, onAssetsChange }: AssetS
                   </div>
                 );
               })}
-              {filteredAssets.length === 0 && (
+              
+              {!loading && !error && filteredAssets.length === 0 && (
                 <div className="text-center py-8 text-muted-foreground" data-testid="text-no-assets">
                   No assets found matching your search
                 </div>
@@ -264,7 +345,8 @@ export default function AssetSelector({ selectedAssets, onAssetsChange }: AssetS
           <Button
             variant="outline"
             size="sm"
-            onClick={() => onAssetsChange(AVAILABLE_ASSETS.filter(a => a.category === "major").map(a => a.symbol))}
+            onClick={() => onAssetsChange(availableAssets.filter(a => a.category === "major").map(a => a.symbol))}
+            disabled={loading || availableAssets.length === 0}
             data-testid="button-select-major"
           >
             Select Major Crypto
