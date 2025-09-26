@@ -191,9 +191,14 @@ async function connectToAsterDEX(clients: Set<WebSocket>) {
         
         // Handle liquidation order events
         if (message.e === 'forceOrder') {
+          // Map BUY/SELL from Aster DEX to our side representation
+          // BUY liquidations = long positions being liquidated
+          // SELL liquidations = short positions being liquidated  
+          const side = message.o.S.toLowerCase() === 'buy' ? 'long' : 'short';
+          
           const liquidationData = {
             symbol: message.o.s,
-            side: message.o.S.toLowerCase(),
+            side: side,
             size: message.o.q,
             price: message.o.p,
             value: (parseFloat(message.o.q) * parseFloat(message.o.p)).toFixed(8),

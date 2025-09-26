@@ -195,6 +195,27 @@ export default function Dashboard() {
     if (!selectedAssets.includes(liq.symbol)) return false;
     if (sideFilter !== "all" && liq.side !== sideFilter) return false;
     if (parseFloat(liq.value) < parseFloat(minValue)) return false;
+    
+    // Apply time range filter
+    if (timeRange) {
+      const now = new Date();
+      const liquidationTime = new Date(liq.timestamp);
+      const timeDiffMs = now.getTime() - liquidationTime.getTime();
+      
+      let maxTimeMs: number;
+      switch (timeRange) {
+        case "1m": maxTimeMs = 1 * 60 * 1000; break;
+        case "5m": maxTimeMs = 5 * 60 * 1000; break;
+        case "15m": maxTimeMs = 15 * 60 * 1000; break;
+        case "1h": maxTimeMs = 60 * 60 * 1000; break;
+        case "4h": maxTimeMs = 4 * 60 * 60 * 1000; break;
+        case "1d": maxTimeMs = 24 * 60 * 60 * 1000; break;
+        default: maxTimeMs = 60 * 60 * 1000; // default 1 hour
+      }
+      
+      if (timeDiffMs > maxTimeMs) return false;
+    }
+    
     return true;
   });
 
