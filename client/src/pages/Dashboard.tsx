@@ -134,9 +134,10 @@ export default function Dashboard() {
 
   // Filter liquidations based on current filters
   const filteredLiquidations = liquidations.filter(liq => {
+    // Only show liquidations for assets that are specifically selected to be watched
+    if (!selectedAssets.includes(liq.symbol)) return false;
     if (sideFilter !== "all" && liq.side !== sideFilter) return false;
     if (parseFloat(liq.value) < parseFloat(minValue)) return false;
-    if (selectedAssets.length > 0 && !selectedAssets.includes(liq.symbol)) return false;
     return true;
   });
 
