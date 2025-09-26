@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import ConnectionStatus from "@/components/ConnectionStatus";
-import StatsCards from "@/components/StatsCards";
 import LiquidationTable from "@/components/LiquidationTable";
 import AssetSelector from "@/components/AssetSelector";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -281,19 +280,6 @@ export default function Dashboard() {
 
       {/* Main Content */}
       <main className="p-6 space-y-6">
-        {/* Stats Overview */}
-        <StatsCards
-          totalLiquidations={filteredLiquidations.length}
-          totalVolume={totalVolume}
-          longLiquidations={longLiquidations}
-          shortLiquidations={shortLiquidations}
-          largestLiquidation={largestLiquidation ? {
-            value: largestLiquidation.value,
-            timestamp: largestLiquidation.timestamp,
-            symbol: largestLiquidation.symbol
-          } : undefined}
-        />
-
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Asset Selection */}
           <div className="lg:col-span-1">
@@ -303,10 +289,21 @@ export default function Dashboard() {
             />
           </div>
 
-          {/* Live Liquidations with Integrated Filters */}
+          {/* Live Liquidations with Integrated Stats and Filters */}
           <div className="lg:col-span-2">
             <LiquidationTable 
               liquidations={filteredLiquidations}
+              stats={{
+                totalLiquidations: filteredLiquidations.length,
+                totalVolume: totalVolume,
+                longLiquidations: longLiquidations,
+                shortLiquidations: shortLiquidations,
+                largestLiquidation: largestLiquidation ? {
+                  value: largestLiquidation.value,
+                  timestamp: largestLiquidation.timestamp,
+                  symbol: largestLiquidation.symbol
+                } : undefined
+              }}
               timeRange={timeRange}
               sideFilter={sideFilter}
               minValue={minValue}
