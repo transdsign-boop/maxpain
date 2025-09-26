@@ -3,6 +3,7 @@ import ConnectionStatus from "@/components/ConnectionStatus";
 import StatsCards from "@/components/StatsCards";
 import FilterControls from "@/components/FilterControls";
 import LiquidationTable from "@/components/LiquidationTable";
+import AssetSelector from "@/components/AssetSelector";
 import ThemeToggle from "@/components/ThemeToggle";
 
 interface Liquidation {
@@ -20,6 +21,7 @@ export default function Dashboard() {
   const [timeRange, setTimeRange] = useState("1h");
   const [sideFilter, setSideFilter] = useState<"all" | "long" | "short">("all");
   const [minValue, setMinValue] = useState("0");
+  const [selectedAssets, setSelectedAssets] = useState<string[]>(["BTC/USDT", "ETH/USDT", "SOL/USDT"]);
   
   // Mock data for prototype - TODO: replace with real WebSocket data
   const [liquidations, setLiquidations] = useState<Liquidation[]>([
@@ -73,14 +75,38 @@ export default function Dashboard() {
   // Simulate real-time data updates
   useEffect(() => {
     const interval = setInterval(() => {
-      if (isConnected && Math.random() > 0.7) {
+      if (isConnected && Math.random() > 0.7 && selectedAssets.length > 0) {
+        // Generate liquidation for one of the selected assets
+        const randomAsset = selectedAssets[Math.floor(Math.random() * selectedAssets.length)];
+        
+        // Asset-specific price ranges for realistic mock data
+        const getPriceRange = (symbol: string) => {
+          switch (symbol) {
+            case "BTC/USDT": return { min: 40000, max: 70000 };
+            case "ETH/USDT": return { min: 2000, max: 4000 };
+            case "SOL/USDT": return { min: 80, max: 200 };
+            case "BNB/USDT": return { min: 300, max: 600 };
+            case "ASTER/USDT": return { min: 0.1, max: 2 };
+            case "AAPL/USDT": return { min: 150, max: 250 };
+            case "TSLA/USDT": return { min: 200, max: 400 };
+            case "SHIB/USDT": return { min: 0.00001, max: 0.0001 };
+            case "PEPE/USDT": return { min: 0.000001, max: 0.00005 };
+            default: return { min: 1, max: 1000 };
+          }
+        };
+
+        const priceRange = getPriceRange(randomAsset);
+        const price = (Math.random() * (priceRange.max - priceRange.min) + priceRange.min);
+        const size = Math.random() * 10 + 0.1;
+        const value = price * size;
+
         const newLiquidation: Liquidation = {
           id: Date.now().toString(),
-          symbol: ["BTC/USDT", "ETH/USDT", "SOL/USDT", "AVAX/USDT"][Math.floor(Math.random() * 4)],
+          symbol: randomAsset,
           side: Math.random() > 0.5 ? "long" : "short",
-          size: (Math.random() * 10 + 0.1).toFixed(2),
-          price: (Math.random() * 50000 + 1000).toFixed(2),
-          value: (Math.random() * 100000 + 1000).toFixed(2),
+          size: size.toFixed(4),
+          price: price.toFixed(4),
+          value: value.toFixed(2),
           timestamp: new Date()
         };
         
@@ -89,12 +115,13 @@ export default function Dashboard() {
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [isConnected]);
+  }, [isConnected, selectedAssets]);
 
   // Filter liquidations based on current filters
   const filteredLiquidations = liquidations.filter(liq => {
     if (sideFilter !== "all" && liq.side !== sideFilter) return false;
     if (parseFloat(liq.value) < parseFloat(minValue)) return false;
+    if (selectedAssets.length > 0 && !selectedAssets.includes(liq.symbol)) return false;
     return true;
   });
 
@@ -148,17 +175,29 @@ export default function Dashboard() {
           } : undefined}
         />
 
-        {/* Filters */}
-        <FilterControls
-          timeRange={timeRange}
-          sideFilter={sideFilter}
-          minValue={minValue}
-          onTimeRangeChange={setTimeRange}
-          onSideFilterChange={setSideFilter}
-          onMinValueChange={setMinValue}
-          onRefresh={handleRefresh}
-          isConnected={isConnected}
-        />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Asset Selection */}
+          <div className="lg:col-span-1">
+            <AssetSelector
+              selectedAssets={selectedAssets}
+              onAssetsChange={setSelectedAssets}
+            />
+          </div>
+
+          {/* Filters */}
+          <div className="lg:col-span-2">
+            <FilterControls
+              timeRange={timeRange}
+              sideFilter={sideFilter}
+              minValue={minValue}
+              onTimeRangeChange={setTimeRange}
+              onSideFilterChange={setSideFilter}
+              onMinValueChange={setMinValue}
+              onRefresh={handleRefresh}
+              isConnected={isConnected}
+            />
+          </div>
+        </div>
 
         {/* Liquidations Table */}
         <LiquidationTable liquidations={filteredLiquidations} />
