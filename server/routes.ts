@@ -388,6 +388,129 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Price data endpoint for liquidation charts
+  app.get("/api/analytics/klines", async (req, res) => {
+    try {
+      const symbol = req.query.symbol as string;
+      const interval = req.query.interval as string || '15m'; // Default to 15 minute intervals
+      const hours = parseInt(req.query.hours as string) || 24;
+      
+      if (!symbol) {
+        return res.status(400).json({ error: "symbol parameter required" });
+      }
+      
+      // Calculate time range
+      const endTime = Date.now();
+      const startTime = endTime - (hours * 60 * 60 * 1000);
+      
+      // Fetch klines data from Aster DEX
+      const klinesResponse = await fetch(`https://fapi.asterdex.com/fapi/v1/klines?symbol=${symbol}&interval=${interval}&startTime=${startTime}&endTime=${endTime}&limit=1000`, {
+        headers: {
+          'X-MBX-APIKEY': process.env.ASTER_API_KEY || ''
+        }
+      });
+      
+      if (!klinesResponse.ok) {
+        throw new Error(`Failed to fetch klines: ${klinesResponse.status}`);
+      }
+      
+      const klinesData = await klinesResponse.json();
+      
+      // Transform klines data to readable format
+      const formattedKlines = klinesData.map((kline: any[]) => ({
+        timestamp: kline[0], // Open time
+        open: parseFloat(kline[1]),
+        high: parseFloat(kline[2]),
+        low: parseFloat(kline[3]),
+        close: parseFloat(kline[4]),
+        volume: parseFloat(kline[5]),
+        closeTime: kline[6],
+        date: new Date(kline[0]).toISOString()
+      }));
+      
+      res.json({
+        symbol,
+        interval,
+        hours,
+        data: formattedKlines,
+        count: formattedKlines.length,
+        startTime: new Date(startTime).toISOString(),
+        endTime: new Date(endTime).toISOString()
+      });
+    } catch (error) {
+      console.error('Klines fetch error:', error);
+      res.status(500).json({ error: "Failed to fetch price data" });
+    }
+  });
+
+  // Combined analytics endpoint with liquidations and price data for charting
+  app.get("/api/analytics/liquidation-chart", async (req, res) => {
+    try {
+      const symbol = req.query.symbol as string;
+      const hours = parseInt(req.query.hours as string) || 24;
+      const interval = req.query.interval as string || '15m';
+      
+      if (!symbol) {
+        return res.status(400).json({ error: "symbol parameter required" });
+      }
+      
+      const sinceTimestamp = new Date(Date.now() - hours * 60 * 60 * 1000);
+      
+      // Fetch liquidations and price data in parallel
+      const [liquidations, klinesResponse] = await Promise.all([
+        storage.getLiquidationAnalytics(symbol, sinceTimestamp),
+        fetch(`https://fapi.asterdex.com/fapi/v1/klines?symbol=${symbol}&interval=${interval}&startTime=${sinceTimestamp.getTime()}&endTime=${Date.now()}&limit=1000`, {
+          headers: { 'X-MBX-APIKEY': process.env.ASTER_API_KEY || '' }
+        })
+      ]);
+      
+      if (!klinesResponse.ok) {
+        throw new Error(`Failed to fetch price data: ${klinesResponse.status}`);
+      }
+      
+      const klinesData = await klinesResponse.json();
+      
+      // Transform klines data
+      const priceData = klinesData.map((kline: any[]) => ({
+        timestamp: kline[0],
+        open: parseFloat(kline[1]),
+        high: parseFloat(kline[2]),
+        low: parseFloat(kline[3]),
+        close: parseFloat(kline[4]),
+        volume: parseFloat(kline[5]),
+        date: new Date(kline[0]).toISOString()
+      }));
+      
+      // Transform liquidations for charting
+      const liquidationPoints = liquidations.map(liq => ({
+        timestamp: new Date(liq.timestamp).getTime(),
+        price: parseFloat(liq.price),
+        value: parseFloat(liq.value),
+        size: parseFloat(liq.size),
+        side: liq.side,
+        date: liq.timestamp,
+        id: liq.id
+      }));
+      
+      res.json({
+        symbol,
+        hours,
+        interval,
+        priceData,
+        liquidations: liquidationPoints,
+        priceDataCount: priceData.length,
+        liquidationCount: liquidationPoints.length,
+        timeRange: {
+          start: sinceTimestamp.toISOString(),
+          end: new Date().toISOString()
+        }
+      });
+    } catch (error) {
+      console.error('Liquidation chart data error:', error);
+      res.status(500).json({ error: "Failed to fetch chart data" });
+    }
+  });
+
   // Aster DEX symbols API
   app.get("/api/symbols", async (req, res) => {
     try {
