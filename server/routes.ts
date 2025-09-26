@@ -166,9 +166,7 @@ async function connectToAsterDEX(clients: Set<WebSocket>) {
     
     asterWs.on('error', (error) => {
       console.error('❌ Aster DEX WebSocket error:', error);
-      console.log('🔄 Falling back to simulation data...');
-      // Fallback to simulation if connection fails
-      simulateAsterDEXData(clients);
+      console.log('❌ Real-time liquidation data unavailable');
     });
     
     asterWs.on('close', (code, reason) => {
@@ -180,77 +178,14 @@ async function connectToAsterDEX(clients: Set<WebSocket>) {
     // Add connection timeout
     setTimeout(() => {
       if (asterWs.readyState === WebSocket.CONNECTING) {
-        console.log('⏰ Connection timeout - falling back to simulation');
+        console.log('⏰ Connection timeout - no liquidation data available');
         asterWs.terminate();
-        simulateAsterDEXData(clients);
       }
     }, 10000);
     
   } catch (error) {
     console.error('❌ Failed to connect to Aster DEX:', error);
-    console.log('🔄 Falling back to simulation data...');
-    // Fallback to simulation if real connection fails
-    simulateAsterDEXData(clients);
+    console.log('❌ Real-time liquidation data unavailable');
   }
 }
 
-function simulateAsterDEXData(clients: Set<WebSocket>) {
-  const assets = [
-    "BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", 
-    "ADA/USDT", "MATIC/USDT", "DOT/USDT", "AVAX/USDT", "LTC/USDT",
-    "ASTER/USDT", "SHIB/USDT", "PEPE/USDT", "DOGE/USDT"
-  ];
-
-  const getPriceRange = (symbol: string) => {
-    switch (symbol) {
-      case "BTC/USDT": return { min: 40000, max: 70000 };
-      case "ETH/USDT": return { min: 2000, max: 4000 };
-      case "SOL/USDT": return { min: 80, max: 200 };
-      case "BNB/USDT": return { min: 300, max: 600 };
-      case "ASTER/USDT": return { min: 0.1, max: 2 };
-      case "SHIB/USDT": return { min: 0.00001, max: 0.0001 };
-      case "PEPE/USDT": return { min: 0.000001, max: 0.00005 };
-      default: return { min: 1, max: 1000 };
-    }
-  };
-
-  setInterval(async () => {
-    if (Math.random() > 0.6) { // 40% chance of liquidation each interval
-      const randomAsset = assets[Math.floor(Math.random() * assets.length)];
-      const priceRange = getPriceRange(randomAsset);
-      const price = Math.random() * (priceRange.max - priceRange.min) + priceRange.min;
-      const size = Math.random() * 10 + 0.1;
-      const value = price * size;
-
-      const liquidationData = {
-        symbol: randomAsset,
-        side: Math.random() > 0.5 ? "long" : "short",
-        size: size.toFixed(8),
-        price: price.toFixed(8),
-        value: value.toFixed(8),
-      };
-
-      try {
-        // Validate and store in database
-        const validatedData = insertLiquidationSchema.parse(liquidationData);
-        const storedLiquidation = await storage.insertLiquidation(validatedData);
-        
-        // Broadcast to all connected clients
-        const message = JSON.stringify({
-          type: 'liquidation',
-          data: storedLiquidation
-        });
-
-        clients.forEach(client => {
-          if (client.readyState === WebSocket.OPEN) {
-            client.send(message);
-          }
-        });
-
-        console.log(`Liquidation: ${randomAsset} ${liquidationData.side} $${value.toFixed(2)}`);
-      } catch (error) {
-        console.error('Failed to process liquidation:', error);
-      }
-    }
-  }, 2000); // Generate liquidation every 2 seconds
-}
