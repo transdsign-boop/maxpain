@@ -8,8 +8,6 @@ import { Search, Plus, X, TrendingUp, RotateCcw, Loader2 } from "lucide-react";
 
 interface Asset {
   symbol: string;
-  name: string;
-  category: "major" | "altcoin" | "meme" | "stock" | "other";
   baseAsset: string;
   quoteAsset: string;
   status: string;
@@ -21,56 +19,11 @@ interface AssetSelectorProps {
   onAssetsChange: (assets: string[]) => void;
 }
 
-// Categorize assets based on their base asset
-const categorizeAsset = (baseAsset: string, symbol: string): "major" | "altcoin" | "meme" | "stock" | "other" => {
-  const major = ["BTC", "ETH", "SOL", "BNB", "XRP", "LTC", "ADA", "MATIC", "DOT", "AVAX"];
-  const meme = ["DOGE", "SHIB", "PEPE", "FLOKI", "FART", "FARTCOIN", "MEME", "WIF", "BONK"];
-  const stocks = ["AAPL", "MSFT", "NVDA", "TSLA", "META", "AMZN", "GOOGL", "NFLX", "GOOG", "BABA"];
-  
-  if (major.includes(baseAsset)) return "major";
-  if (meme.some(m => baseAsset.includes(m))) return "meme";
-  if (stocks.includes(baseAsset)) return "stock";
-  if (baseAsset === "ASTER" || baseAsset === "FORM" || baseAsset === "CDL") return "other";
-  
-  return "altcoin";
-};
-
-// Get friendly name for assets
-const getAssetName = (baseAsset: string): string => {
-  const names: Record<string, string> = {
-    "BTC": "Bitcoin",
-    "ETH": "Ethereum", 
-    "SOL": "Solana",
-    "BNB": "BNB",
-    "XRP": "Ripple",
-    "LTC": "Litecoin",
-    "DOGE": "Dogecoin",
-    "ASTER": "Aster",
-    "SHIB": "Shiba Inu",
-    "PEPE": "Pepe",
-    "AAPL": "Apple Inc.",
-    "MSFT": "Microsoft",
-    "NVDA": "NVIDIA",
-    "TSLA": "Tesla",
-    "META": "Meta Platforms",
-    "AMZN": "Amazon"
-  };
-  
-  return names[baseAsset] || baseAsset;
-};
-
-const CATEGORY_COLORS = {
-  major: "bg-chart-1 text-chart-1-foreground",
-  altcoin: "bg-chart-4 text-chart-4-foreground",
-  meme: "bg-chart-3 text-chart-3-foreground", 
-  stock: "bg-chart-5 text-chart-5-foreground",
-  other: "bg-chart-2 text-chart-2-foreground"
-};
+// Use only real data from Aster DEX - no hardcoded categorization or names
 
 export default function AssetSelector({ selectedAssets, onAssetsChange }: AssetSelectorProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [activeSearchTerm, setActiveSearchTerm] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [availableAssets, setAvailableAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -89,25 +42,17 @@ export default function AssetSelector({ selectedAssets, onAssetsChange }: AssetS
         
         const data = await response.json();
         
-        // Convert Aster DEX symbols to our Asset format
+        // Use only real data from Aster DEX symbols
         const assets: Asset[] = data.symbols
           .filter((symbol: any) => symbol.status === 'TRADING')
           .map((symbol: any) => ({
             symbol: symbol.symbol,
-            name: getAssetName(symbol.baseAsset),
-            category: categorizeAsset(symbol.baseAsset, symbol.symbol),
             baseAsset: symbol.baseAsset,
             quoteAsset: symbol.quoteAsset,
             status: symbol.status,
             contractType: symbol.contractType
           }))
-          .sort((a: Asset, b: Asset) => {
-            // Sort by category priority, then alphabetically
-            const categoryOrder = { major: 0, stock: 1, altcoin: 2, other: 3, meme: 4 };
-            const categoryDiff = categoryOrder[a.category] - categoryOrder[b.category];
-            if (categoryDiff !== 0) return categoryDiff;
-            return a.symbol.localeCompare(b.symbol);
-          });
+          .sort((a: Asset, b: Asset) => a.symbol.localeCompare(b.symbol));
         
         setAvailableAssets(assets);
       } catch (error) {
@@ -124,10 +69,8 @@ export default function AssetSelector({ selectedAssets, onAssetsChange }: AssetS
   const filteredAssets = availableAssets.filter(asset => {
     const matchesSearch = activeSearchTerm === "" || 
                          asset.symbol.toLowerCase().includes(activeSearchTerm.toLowerCase()) ||
-                         asset.name.toLowerCase().includes(activeSearchTerm.toLowerCase()) ||
                          asset.baseAsset.toLowerCase().includes(activeSearchTerm.toLowerCase());
-    const matchesCategory = selectedCategory === "all" || asset.category === selectedCategory;
-    return matchesSearch && matchesCategory;
+    return matchesSearch;
   });
 
   const handleAddAsset = (symbol: string) => {
@@ -147,7 +90,6 @@ export default function AssetSelector({ selectedAssets, onAssetsChange }: AssetS
   const handleClearSearch = () => {
     setSearchTerm("");
     setActiveSearchTerm("");
-    setSelectedCategory("all");
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -156,7 +98,6 @@ export default function AssetSelector({ selectedAssets, onAssetsChange }: AssetS
     }
   };
 
-  const categories = ["all", "major", "altcoin", "meme", "stock", "other"];
 
   return (
     <Card>
@@ -222,7 +163,7 @@ export default function AssetSelector({ selectedAssets, onAssetsChange }: AssetS
             <Button
               variant="outline"
               onClick={handleClearSearch}
-              disabled={!activeSearchTerm && selectedCategory === "all"}
+              disabled={!activeSearchTerm}
               data-testid="button-show-all"
             >
               <RotateCcw className="h-4 w-4 mr-2" />
@@ -247,20 +188,6 @@ export default function AssetSelector({ selectedAssets, onAssetsChange }: AssetS
           )}
         </div>
 
-        {/* Category Filter */}
-        <div className="flex flex-wrap gap-2">
-          {categories.map(category => (
-            <Button
-              key={category}
-              variant={selectedCategory === category ? "default" : "outline"}
-              size="sm"
-              onClick={() => setSelectedCategory(category)}
-              data-testid={`button-category-${category}`}
-            >
-              {category === "all" ? "All" : category.charAt(0).toUpperCase() + category.slice(1)}
-            </Button>
-          ))}
-        </div>
 
         {/* Available Assets */}
         <div className="space-y-2">
@@ -302,15 +229,9 @@ export default function AssetSelector({ selectedAssets, onAssetsChange }: AssetS
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="font-medium text-sm">{asset.symbol}</span>
-                          <Badge
-                            variant="secondary"
-                            className={`text-xs ${CATEGORY_COLORS[asset.category]}`}
-                          >
-                            {asset.category}
-                          </Badge>
                         </div>
                         <div className="text-xs text-muted-foreground flex items-center gap-2">
-                          <span>{asset.name}</span>
+                          <span>{asset.baseAsset}/{asset.quoteAsset}</span>
                           <span className="text-chart-1">{asset.contractType || 'PERPETUAL'}</span>
                         </div>
                       </div>
@@ -342,15 +263,6 @@ export default function AssetSelector({ selectedAssets, onAssetsChange }: AssetS
 
         {/* Quick Actions */}
         <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onAssetsChange(availableAssets.filter(a => a.category === "major").map(a => a.symbol))}
-            disabled={loading || availableAssets.length === 0}
-            data-testid="button-select-major"
-          >
-            Select Major Crypto
-          </Button>
           <Button
             variant="outline"
             size="sm"
