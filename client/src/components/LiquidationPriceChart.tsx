@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertCircle, TrendingUp } from "lucide-react";
-import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Scatter, ComposedChart, Area, Line } from "recharts";
+import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ComposedChart, Scatter } from "recharts";
 import { format } from "date-fns";
 
 interface PricePoint {
@@ -87,75 +87,105 @@ export default function LiquidationPriceChart({ symbol, hours }: LiquidationPric
     return `$${value.toFixed(4)}`;
   };
 
-  // Transform data for combined chart
-  const combineDataForChart = () => {
-    if (!chartData?.priceData || !chartData?.liquidations) return [];
+  // Custom candlestick component for Recharts
+  const CustomCandlestick = (props: any) => {
+    const { payload, x, y, width, height } = props;
+    if (!payload) return null;
 
-    // Calculate interval duration in milliseconds based on selected interval
-    const getIntervalMs = (interval: string) => {
-      const intervalMap: Record<string, number> = {
-        '1m': 60 * 1000,
-        '5m': 5 * 60 * 1000,
-        '15m': 15 * 60 * 1000,
-        '1h': 60 * 60 * 1000,
-        '4h': 4 * 60 * 60 * 1000,
-      };
-      return intervalMap[interval] || 15 * 60 * 1000; // Default to 15m
+    const { open, close, high, low } = payload;
+    const isUp = close > open;
+    const color = isUp ? '#22c55e' : '#ef4444';
+    
+    // Calculate positions
+    const bodyTop = isUp ? close : open;
+    const bodyBottom = isUp ? open : close;
+    const bodyHeight = Math.abs(close - open);
+    
+    // Wick positions
+    const wickTop = high;
+    const wickBottom = low;
+    
+    // Scale to chart coordinates
+    const candleWidth = Math.max(2, width * 0.8);
+    const centerX = x + width / 2;
+    
+    // Y scaling (simplified - would need proper scale in real implementation)
+    const priceRange = Math.max(high - low, 0.0001); // Avoid division by zero
+    const topY = y;
+    const bottomY = y + height;
+    
+    const getY = (price: number) => {
+      const ratio = (wickTop - price) / (wickTop - wickBottom);
+      return topY + ratio * height;
     };
-
-    const intervalMs = getIntervalMs(selectedInterval);
-
-    // Create a combined dataset with price data and liquidations
-    const combined = chartData.priceData.map(price => {
-      // Find liquidations that occurred during this price candle period
-      const liquidationsInPeriod = chartData.liquidations.filter(liq => {
-        const liquidationTime = liq.timestamp;
-        const candleStart = price.timestamp;
-        const candleEnd = price.timestamp + intervalMs;
-        return liquidationTime >= candleStart && liquidationTime < candleEnd;
-      });
-
-      return {
-        ...price,
-        liquidations: liquidationsInPeriod,
-        time: format(new Date(price.timestamp), 'HH:mm'),
-        fullDate: format(new Date(price.timestamp), 'MMM dd, HH:mm')
-      };
-    });
-
-    return combined;
+    
+    return (
+      <g>
+        {/* Upper wick */}
+        <line
+          x1={centerX}
+          y1={getY(wickTop)}
+          x2={centerX}
+          y2={getY(bodyTop)}
+          stroke={color}
+          strokeWidth={1}
+        />
+        {/* Lower wick */}
+        <line
+          x1={centerX}
+          y1={getY(bodyBottom)}
+          x2={centerX}
+          y2={getY(wickBottom)}
+          stroke={color}
+          strokeWidth={1}
+        />
+        {/* Body */}
+        <rect
+          x={centerX - candleWidth / 2}
+          y={getY(bodyTop)}
+          width={candleWidth}
+          height={Math.abs(getY(bodyBottom) - getY(bodyTop))}
+          fill={isUp ? color : color}
+          stroke={color}
+          strokeWidth={1}
+          fillOpacity={isUp ? 0.3 : 1}
+        />
+      </g>
+    );
   };
 
-  // Prepare scatter data for liquidations positioned at their exact time and price
+  // Transform data for chart
+  const transformChartData = () => {
+    if (!chartData?.priceData) return [];
+
+    return chartData.priceData.map(candle => ({
+      ...candle,
+      time: format(new Date(candle.timestamp), 'HH:mm'),
+      fullDate: format(new Date(candle.timestamp), 'MMM dd, HH:mm')
+    }));
+  };
+
+  // Transform liquidations for scatter overlay
   const getLiquidationScatterData = () => {
     if (!chartData?.liquidations) return [];
 
-    return chartData.liquidations.map((liq) => {
-      return {
-        // Use actual liquidation timestamp for X positioning
-        timestamp: liq.timestamp,
-        time: format(new Date(liq.timestamp), 'HH:mm:ss'),
-        fullDate: format(new Date(liq.timestamp), 'MMM dd, HH:mm:ss'),
-        
-        // Position liquidation at its actual price
-        liquidationPrice: liq.price,
-        liquidationValue: liq.value,
-        liquidationSize: liq.size,
-        liquidationSide: liq.side,
-        liquidationId: liq.id,
-        liquidationTime: format(new Date(liq.timestamp), 'HH:mm:ss'),
-        liquidationFullDate: format(new Date(liq.timestamp), 'MMM dd, HH:mm:ss'),
-        
-        // Calculate circle size based on liquidation value
-        scatterSize: Math.max(4, Math.min(15, Math.sqrt(liq.value / 1000) * 2))
-      };
-    });
+    return chartData.liquidations.map(liq => ({
+      timestamp: liq.timestamp,
+      liquidationPrice: liq.price,
+      liquidationValue: liq.value,
+      liquidationSize: liq.size,
+      liquidationSide: liq.side,
+      liquidationId: liq.id,
+      time: format(new Date(liq.timestamp), 'HH:mm:ss'),
+      fullDate: format(new Date(liq.timestamp), 'MMM dd, HH:mm:ss'),
+      scatterSize: Math.max(6, Math.min(20, Math.sqrt(liq.value / 1000) * 3))
+    }));
   };
 
-  const combinedData = combineDataForChart();
+  const chartDataFormatted = transformChartData();
   const liquidationScatter = getLiquidationScatterData();
 
-  // Custom tooltip for liquidation scatter points  
+  // Custom tooltip for liquidations
   const LiquidationTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       const data = payload[0]?.payload;
@@ -165,7 +195,7 @@ export default function LiquidationPriceChart({ symbol, hours }: LiquidationPric
         <div className="bg-card border rounded-lg p-3 shadow-lg">
           <div className="font-medium text-destructive">Liquidation Event</div>
           <div className="space-y-1 text-sm">
-            <div>Time: {data.liquidationFullDate}</div>
+            <div>Time: {data.fullDate}</div>
             <div>Side: <span className={`font-medium ${data.liquidationSide === 'long' ? 'text-red-500' : 'text-green-500'}`}>{data.liquidationSide}</span></div>
             <div>Price: <span className="font-mono">{formatPrice(data.liquidationPrice)}</span></div>
             <div>Value: <span className="font-mono">{formatCurrency(data.liquidationValue)}</span></div>
@@ -246,10 +276,10 @@ export default function LiquidationPriceChart({ symbol, hours }: LiquidationPric
               </div>
             </div>
 
-            {/* Price Chart with Liquidation Circles */}
+            {/* Recharts Candlestick Chart with Liquidation Markers */}
             <div className="h-96" data-testid="price-liquidation-chart">
               <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={combinedData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                <ComposedChart data={chartDataFormatted} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--muted-foreground))" opacity={0.3} />
                   <XAxis 
                     type="number"
@@ -261,41 +291,40 @@ export default function LiquidationPriceChart({ symbol, hours }: LiquidationPric
                     tickFormatter={(value) => format(new Date(value), 'HH:mm')}
                   />
                   <YAxis 
-                    domain={['dataMin - 10', 'dataMax + 10']}
+                    domain={[(dataMin: number) => dataMin * 0.998, (dataMax: number) => dataMax * 1.002]}
                     tick={{ fontSize: 12 }}
                     stroke="hsl(var(--muted-foreground))"
                     tickFormatter={formatPrice}
                   />
-                  <Tooltip />
+                  <Tooltip 
+                    content={({ active, payload, label }) => {
+                      if (active && payload && payload.length) {
+                        const data = payload[0]?.payload;
+                        if (!data) return null;
+                        
+                        return (
+                          <div className="bg-card border rounded-lg p-3 shadow-lg">
+                            <div className="font-medium">Price Data</div>
+                            <div className="space-y-1 text-sm">
+                              <div>Time: {data.fullDate}</div>
+                              <div>Open: <span className="font-mono">{formatPrice(data.open)}</span></div>
+                              <div>High: <span className="font-mono text-green-600">{formatPrice(data.high)}</span></div>
+                              <div>Low: <span className="font-mono text-red-600">{formatPrice(data.low)}</span></div>
+                              <div>Close: <span className="font-mono">{formatPrice(data.close)}</span></div>
+                              <div>Volume: <span className="font-mono">{data.volume}</span></div>
+                            </div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
                   
-                  {/* Close price line (main line) */}
-                  <Line
-                    type="monotone"
+                  {/* Custom Candlestick bars */}
+                  <Scatter
                     dataKey="close"
-                    stroke="hsl(var(--primary))"
-                    strokeWidth={3}
-                    dot={false}
-                    activeDot={{ r: 4, stroke: "hsl(var(--primary))", strokeWidth: 2 }}
-                  />
-                  
-                  {/* High price area */}
-                  <Area
-                    type="monotone"
-                    dataKey="high"
-                    stroke="#22c55e"
-                    fill="#22c55e"
-                    fillOpacity={0.1}
-                    strokeWidth={1}
-                  />
-                  
-                  {/* Low price area */}
-                  <Area
-                    type="monotone"
-                    dataKey="low"
-                    stroke="#ef4444"
-                    fill="#ef4444"
-                    fillOpacity={0.1}
-                    strokeWidth={1}
+                    shape={CustomCandlestick}
+                    fill="transparent"
                   />
                 </ComposedChart>
               </ResponsiveContainer>
@@ -316,8 +345,7 @@ export default function LiquidationPriceChart({ symbol, hours }: LiquidationPric
                       tickLine={false}
                     />
                     <YAxis 
-                      type="number"
-                      domain={['dataMin - 10', 'dataMax + 10']}
+                      domain={[(dataMin: number) => dataMin * 0.998, (dataMax: number) => dataMax * 1.002]}
                       dataKey="liquidationPrice"
                       tick={false}
                       axisLine={false}
@@ -332,12 +360,12 @@ export default function LiquidationPriceChart({ symbol, hours }: LiquidationPric
                       shape={(props: any) => {
                         const { cx, cy, payload } = props;
                         if (!payload || !payload.liquidationPrice) {
-                          return <g></g>; // Return empty group instead of null
+                          return <g></g>;
                         }
                         
                         const color = payload.liquidationSide === 'long' ? '#ef4444' : '#22c55e';
                         const strokeColor = payload.liquidationSide === 'long' ? '#dc2626' : '#16a34a';
-                        const radius = Math.max(4, Math.min(15, Math.sqrt(payload.liquidationValue / 1000) * 2));
+                        const radius = payload.scatterSize || 8;
                         
                         return (
                           <circle
