@@ -319,7 +319,7 @@ export default function Dashboard() {
 
         {/* Liquidation Analytics */}
         <div className="w-full">
-          <LiquidationAnalytics />
+          <LiquidationAnalytics selectedAssets={selectedAssets} />
         </div>
       </main>
 
