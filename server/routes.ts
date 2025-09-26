@@ -118,15 +118,79 @@ async function connectToAsterDEX(clients: Set<WebSocket>) {
   try {
     console.log('Connecting to Aster DEX WebSocket...');
     
-    // TODO: Replace with actual Aster DEX WebSocket URL when provided
-    // For now, simulate the connection with periodic data generation
-    simulateAsterDEXData(clients);
+    // Connect to real Aster DEX liquidation stream
+    const asterWs = new WebSocket('wss://fstream.asterdex.com/ws/!forceOrder@arr');
+    
+    asterWs.on('open', () => {
+      console.log('✅ Successfully connected to Aster DEX liquidation stream');
+      console.log('🔊 Listening for real liquidation events...');
+    });
+    
+    asterWs.on('message', async (data) => {
+      try {
+        const message = JSON.parse(data.toString());
+        console.log('📨 Received Aster DEX message:', JSON.stringify(message, null, 2));
+        
+        // Handle liquidation order events
+        if (message.e === 'forceOrder') {
+          const liquidationData = {
+            symbol: message.o.s,
+            side: message.o.S.toLowerCase(),
+            size: message.o.q,
+            price: message.o.p,
+            value: (parseFloat(message.o.q) * parseFloat(message.o.p)).toFixed(8),
+          };
+          
+          // Validate and store in database
+          const validatedData = insertLiquidationSchema.parse(liquidationData);
+          const storedLiquidation = await storage.insertLiquidation(validatedData);
+          
+          // Broadcast to all connected clients
+          const broadcastMessage = JSON.stringify({
+            type: 'liquidation',
+            data: storedLiquidation
+          });
+
+          clients.forEach(client => {
+            if (client.readyState === WebSocket.OPEN) {
+              client.send(broadcastMessage);
+            }
+          });
+
+          console.log(`🚨 REAL Liquidation: ${liquidationData.symbol} ${liquidationData.side} $${(parseFloat(liquidationData.value)).toFixed(2)}`);
+        }
+      } catch (error) {
+        console.error('Failed to process Aster DEX message:', error);
+      }
+    });
+    
+    asterWs.on('error', (error) => {
+      console.error('❌ Aster DEX WebSocket error:', error);
+      console.log('🔄 Falling back to simulation data...');
+      // Fallback to simulation if connection fails
+      simulateAsterDEXData(clients);
+    });
+    
+    asterWs.on('close', (code, reason) => {
+      console.log(`❌ Aster DEX WebSocket closed - Code: ${code}, Reason: ${reason}`);
+      console.log('🔄 Attempting to reconnect in 5 seconds...');
+      setTimeout(() => connectToAsterDEX(clients), 5000);
+    });
+    
+    // Add connection timeout
+    setTimeout(() => {
+      if (asterWs.readyState === WebSocket.CONNECTING) {
+        console.log('⏰ Connection timeout - falling back to simulation');
+        asterWs.terminate();
+        simulateAsterDEXData(clients);
+      }
+    }, 10000);
     
   } catch (error) {
-    console.error('Failed to connect to Aster DEX:', error);
-    
+    console.error('❌ Failed to connect to Aster DEX:', error);
+    console.log('🔄 Falling back to simulation data...');
     // Fallback to simulation if real connection fails
-    setTimeout(() => connectToAsterDEX(clients), 5000);
+    simulateAsterDEXData(clients);
   }
 }
 
