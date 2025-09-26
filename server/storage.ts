@@ -1,5 +1,8 @@
-import { type User, type InsertUser } from "@shared/schema";
+import { type User, type InsertUser, type Liquidation, type InsertLiquidation } from "@shared/schema";
 import { randomUUID } from "crypto";
+import { db } from "./db";
+import { liquidations, users } from "@shared/schema";
+import { desc, gte, eq, sql } from "drizzle-orm";
 
 // modify the interface with any CRUD methods
 // you might need
@@ -8,31 +11,76 @@ export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  
+  // Liquidation operations
+  insertLiquidation(liquidation: InsertLiquidation): Promise<Liquidation>;
+  getLiquidations(limit?: number): Promise<Liquidation[]>;
+  getLiquidationsBySymbol(symbols: string[], limit?: number): Promise<Liquidation[]>;
+  getLiquidationsSince(timestamp: Date, limit?: number): Promise<Liquidation[]>;
+  getLargestLiquidationSince(timestamp: Date): Promise<Liquidation | undefined>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<string, User>;
-
-  constructor() {
-    this.users = new Map();
-  }
-
+export class DatabaseStorage implements IStorage {
   async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
+    const result = await db.select().from(users).where(eq(users.id, id));
+    return result[0];
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+    const result = await db.select().from(users).where(eq(users.username, username));
+    return result[0];
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const id = randomUUID();
-    const user: User = { ...insertUser, id };
-    this.users.set(id, user);
-    return user;
+    const result = await db.insert(users).values(insertUser).returning();
+    return result[0];
+  }
+
+  async insertLiquidation(liquidation: InsertLiquidation): Promise<Liquidation> {
+    const result = await db.insert(liquidations).values(liquidation).returning();
+    return result[0];
+  }
+
+  async getLiquidations(limit: number = 100): Promise<Liquidation[]> {
+    return await db.select().from(liquidations).orderBy(desc(liquidations.timestamp)).limit(limit);
+  }
+
+  async getLiquidationsBySymbol(symbols: string[], limit: number = 100): Promise<Liquidation[]> {
+    if (symbols.length === 0) return [];
+    
+    // Use OR conditions for multiple symbols
+    if (symbols.length === 1) {
+      return await db.select()
+        .from(liquidations)
+        .where(eq(liquidations.symbol, symbols[0]))
+        .orderBy(desc(liquidations.timestamp))
+        .limit(limit);
+    }
+    
+    // For multiple symbols, use inArray
+    return await db.select()
+      .from(liquidations)
+      .where(sql`${liquidations.symbol} = ANY(${symbols})`)
+      .orderBy(desc(liquidations.timestamp))
+      .limit(limit);
+  }
+
+  async getLiquidationsSince(timestamp: Date, limit: number = 100): Promise<Liquidation[]> {
+    return await db.select()
+      .from(liquidations)
+      .where(gte(liquidations.timestamp, timestamp))
+      .orderBy(desc(liquidations.timestamp))
+      .limit(limit);
+  }
+
+  async getLargestLiquidationSince(timestamp: Date): Promise<Liquidation | undefined> {
+    const result = await db.select()
+      .from(liquidations)
+      .where(gte(liquidations.timestamp, timestamp))
+      .orderBy(desc(liquidations.value))
+      .limit(1);
+    return result[0];
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();

@@ -1,15 +1,144 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
+import { insertLiquidationSchema } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // put application routes here
-  // prefix all routes with /api
+  // Liquidation API routes
+  app.get("/api/liquidations", async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 100;
+      const liquidations = await storage.getLiquidations(limit);
+      res.json(liquidations);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch liquidations" });
+    }
+  });
 
-  // use storage to perform CRUD operations on the storage interface
-  // e.g. storage.insertUser(user) or storage.getUserByUsername(username)
+  app.get("/api/liquidations/since/:timestamp", async (req, res) => {
+    try {
+      const timestamp = new Date(req.params.timestamp);
+      const limit = parseInt(req.query.limit as string) || 100;
+      const liquidations = await storage.getLiquidationsSince(timestamp, limit);
+      res.json(liquidations);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch liquidations since timestamp" });
+    }
+  });
+
+  app.get("/api/liquidations/largest/:timestamp", async (req, res) => {
+    try {
+      const timestamp = new Date(req.params.timestamp);
+      const largest = await storage.getLargestLiquidationSince(timestamp);
+      res.json(largest || null);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch largest liquidation" });
+    }
+  });
 
   const httpServer = createServer(app);
 
+  // WebSocket server for real-time liquidation updates
+  const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+  
+  // Store connected clients
+  const clients = new Set<WebSocket>();
+
+  wss.on('connection', (ws) => {
+    console.log('Client connected to WebSocket');
+    clients.add(ws);
+    
+    ws.on('close', () => {
+      console.log('Client disconnected from WebSocket');
+      clients.delete(ws);
+    });
+    
+    ws.on('error', (error) => {
+      console.error('WebSocket error:', error);
+      clients.delete(ws);
+    });
+  });
+
+  // Connect to Aster DEX WebSocket and relay data
+  connectToAsterDEX(clients);
+
   return httpServer;
+}
+
+async function connectToAsterDEX(clients: Set<WebSocket>) {
+  try {
+    console.log('Connecting to Aster DEX WebSocket...');
+    
+    // TODO: Replace with actual Aster DEX WebSocket URL when provided
+    // For now, simulate the connection with periodic data generation
+    simulateAsterDEXData(clients);
+    
+  } catch (error) {
+    console.error('Failed to connect to Aster DEX:', error);
+    
+    // Fallback to simulation if real connection fails
+    setTimeout(() => connectToAsterDEX(clients), 5000);
+  }
+}
+
+function simulateAsterDEXData(clients: Set<WebSocket>) {
+  const assets = [
+    "BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", 
+    "ADA/USDT", "MATIC/USDT", "DOT/USDT", "AVAX/USDT", "LTC/USDT",
+    "ASTER/USDT", "SHIB/USDT", "PEPE/USDT", "DOGE/USDT"
+  ];
+
+  const getPriceRange = (symbol: string) => {
+    switch (symbol) {
+      case "BTC/USDT": return { min: 40000, max: 70000 };
+      case "ETH/USDT": return { min: 2000, max: 4000 };
+      case "SOL/USDT": return { min: 80, max: 200 };
+      case "BNB/USDT": return { min: 300, max: 600 };
+      case "ASTER/USDT": return { min: 0.1, max: 2 };
+      case "SHIB/USDT": return { min: 0.00001, max: 0.0001 };
+      case "PEPE/USDT": return { min: 0.000001, max: 0.00005 };
+      default: return { min: 1, max: 1000 };
+    }
+  };
+
+  setInterval(async () => {
+    if (Math.random() > 0.6) { // 40% chance of liquidation each interval
+      const randomAsset = assets[Math.floor(Math.random() * assets.length)];
+      const priceRange = getPriceRange(randomAsset);
+      const price = Math.random() * (priceRange.max - priceRange.min) + priceRange.min;
+      const size = Math.random() * 10 + 0.1;
+      const value = price * size;
+
+      const liquidationData = {
+        symbol: randomAsset,
+        side: Math.random() > 0.5 ? "long" : "short",
+        size: size.toFixed(8),
+        price: price.toFixed(8),
+        value: value.toFixed(8),
+      };
+
+      try {
+        // Validate and store in database
+        const validatedData = insertLiquidationSchema.parse(liquidationData);
+        const storedLiquidation = await storage.insertLiquidation(validatedData);
+        
+        // Broadcast to all connected clients
+        const message = JSON.stringify({
+          type: 'liquidation',
+          data: storedLiquidation
+        });
+
+        clients.forEach(client => {
+          if (client.readyState === WebSocket.OPEN) {
+            client.send(message);
+          }
+        });
+
+        console.log(`Liquidation: ${randomAsset} ${liquidationData.side} $${value.toFixed(2)}`);
+      } catch (error) {
+        console.error('Failed to process liquidation:', error);
+      }
+    }
+  }, 2000); // Generate liquidation every 2 seconds
 }
