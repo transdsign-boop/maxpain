@@ -37,6 +37,54 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/liquidations/by-symbol", async (req, res) => {
+    try {
+      const symbols = req.query.symbols as string;
+      const limit = parseInt(req.query.limit as string) || 100;
+      
+      if (!symbols) {
+        return res.status(400).json({ error: "symbols parameter required" });
+      }
+      
+      const symbolArray = symbols.split(',').map(s => s.trim());
+      const liquidations = await storage.getLiquidationsBySymbol(symbolArray, limit);
+      res.json(liquidations);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch liquidations by symbol" });
+    }
+  });
+
+  app.get("/api/stats/summary", async (req, res) => {
+    try {
+      const hours = parseInt(req.query.hours as string) || 24;
+      const since = new Date(Date.now() - hours * 60 * 60 * 1000);
+      
+      const [recent, largest] = await Promise.all([
+        storage.getLiquidationsSince(since, 1000),
+        storage.getLargestLiquidationSince(since)
+      ]);
+
+      const totalVolume = recent.reduce((sum, liq) => sum + parseFloat(liq.value), 0);
+      const longCount = recent.filter(liq => liq.side === "long").length;
+      const shortCount = recent.filter(liq => liq.side === "short").length;
+
+      res.json({
+        totalLiquidations: recent.length,
+        totalVolume: totalVolume.toFixed(2),
+        longLiquidations: longCount,
+        shortLiquidations: shortCount,
+        largestLiquidation: largest ? {
+          value: largest.value,
+          symbol: largest.symbol,
+          timestamp: largest.timestamp
+        } : null,
+        timeRange: `${hours}h`
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch statistics summary" });
+    }
+  });
+
   const httpServer = createServer(app);
 
   // WebSocket server for real-time liquidation updates
