@@ -1,7 +1,7 @@
-import { type User, type InsertUser, type Liquidation, type InsertLiquidation } from "@shared/schema";
+import { type User, type InsertUser, type Liquidation, type InsertLiquidation, type UserSettings, type InsertUserSettings } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { db } from "./db";
-import { liquidations, users } from "@shared/schema";
+import { liquidations, users, userSettings } from "@shared/schema";
 import { desc, gte, eq, sql } from "drizzle-orm";
 
 // modify the interface with any CRUD methods
@@ -18,6 +18,10 @@ export interface IStorage {
   getLiquidationsBySymbol(symbols: string[], limit?: number): Promise<Liquidation[]>;
   getLiquidationsSince(timestamp: Date, limit?: number): Promise<Liquidation[]>;
   getLargestLiquidationSince(timestamp: Date): Promise<Liquidation | undefined>;
+  
+  // User settings operations
+  getUserSettings(sessionId: string): Promise<UserSettings | undefined>;
+  saveUserSettings(settings: InsertUserSettings): Promise<UserSettings>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -79,6 +83,29 @@ export class DatabaseStorage implements IStorage {
       .where(gte(liquidations.timestamp, timestamp))
       .orderBy(desc(liquidations.value))
       .limit(1);
+    return result[0];
+  }
+
+  async getUserSettings(sessionId: string): Promise<UserSettings | undefined> {
+    const result = await db.select().from(userSettings).where(eq(userSettings.sessionId, sessionId));
+    return result[0];
+  }
+
+  async saveUserSettings(settings: InsertUserSettings): Promise<UserSettings> {
+    // Use INSERT ... ON CONFLICT to upsert settings
+    const result = await db.insert(userSettings)
+      .values(settings)
+      .onConflictDoUpdate({
+        target: userSettings.sessionId,
+        set: {
+          selectedAssets: settings.selectedAssets,
+          sideFilter: settings.sideFilter,
+          minValue: settings.minValue,
+          timeRange: settings.timeRange,
+          lastUpdated: sql`now()`,
+        }
+      })
+      .returning();
     return result[0];
   }
 }

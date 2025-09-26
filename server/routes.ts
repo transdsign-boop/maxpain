@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
-import { insertLiquidationSchema } from "@shared/schema";
+import { insertLiquidationSchema, insertUserSettingsSchema } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Liquidation API routes
@@ -82,6 +82,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch statistics summary" });
+    }
+  });
+
+  // User settings API routes
+  app.get("/api/settings/:sessionId", async (req, res) => {
+    try {
+      const sessionId = req.params.sessionId;
+      const settings = await storage.getUserSettings(sessionId);
+      res.json(settings || null);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch user settings" });
+    }
+  });
+
+  app.post("/api/settings", async (req, res) => {
+    try {
+      const validatedSettings = insertUserSettingsSchema.parse(req.body);
+      const settings = await storage.saveUserSettings(validatedSettings);
+      res.json(settings);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to save user settings" });
     }
   });
 
