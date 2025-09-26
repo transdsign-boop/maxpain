@@ -8,6 +8,13 @@ A real-time liquidation monitoring dashboard for the Aster DEX exchange. This ap
 
 Preferred communication style: Simple, everyday language.
 
+## Recent Changes
+
+- **Added dominant direction analysis feature:** Integrates real-time Aster DEX order book and funding rate data to determine market sentiment (bullish/bearish/neutral) with confidence scoring algorithm that combines order book pressure (60%) and funding rates (40%)
+- **Database cleanup:** Removed 237 fake liquidation entries to ensure database contains only real Aster DEX data
+- **Enhanced analytics filtering:** Analytics section now only shows user-selected tracked assets instead of all available assets in database
+- **Real-time market data:** All liquidation, order book, and funding rate data now comes directly from Aster DEX WebSocket and API feeds
+
 ## System Architecture
 
 ### Frontend Architecture
