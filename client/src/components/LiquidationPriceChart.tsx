@@ -1,11 +1,27 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertCircle, TrendingUp } from "lucide-react";
-import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ComposedChart, Scatter, ReferenceArea } from "recharts";
+import { Chart as ChartJS, CategoryScale, LinearScale, TimeScale, PointElement, Title, Tooltip, Legend } from 'chart.js';
+import { Chart } from 'react-chartjs-2';
+import { CandlestickController, CandlestickElement } from 'chartjs-chart-financial';
+import 'chartjs-adapter-date-fns';
 import { format } from "date-fns";
+
+// Register Chart.js components including financial charts
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  TimeScale,
+  PointElement,
+  Title,
+  Tooltip,
+  Legend,
+  CandlestickController,
+  CandlestickElement
+);
 
 interface PricePoint {
   timestamp: number;
@@ -87,119 +103,130 @@ export default function LiquidationPriceChart({ symbol, hours }: LiquidationPric
     return `$${value.toFixed(4)}`;
   };
 
-  // Create combined data with both price and liquidations
-  const getCombinedChartData = () => {
-    if (!chartData?.priceData) return [];
+  // Prepare Chart.js data and options
+  const getChartData = () => {
+    if (!chartData?.priceData) return { datasets: [] };
 
-    const priceData = chartData.priceData.map(candle => ({
-      ...candle,
-      time: format(new Date(candle.timestamp), 'HH:mm'),
-      fullDate: format(new Date(candle.timestamp), 'MMM dd, HH:mm'),
-      // Add liquidations that occurred during this candle's timeframe
-      liquidations: chartData.liquidations?.filter(liq => {
-        const liqTime = new Date(liq.timestamp).getTime();
-        const candleTime = new Date(candle.timestamp).getTime();
-        // Group liquidations within the same interval as the candle
-        const intervalMs = getIntervalMs();
-        return liqTime >= candleTime && liqTime < candleTime + intervalMs;
-      }) || []
+    // Convert price data to Chart.js candlestick format
+    const candlestickData = chartData.priceData.map(candle => ({
+      x: new Date(candle.timestamp),
+      o: candle.open,
+      h: candle.high,
+      l: candle.low,
+      c: candle.close,
     }));
 
-    return priceData;
+    // Convert liquidations to scatter plot data
+    const liquidationData = chartData.liquidations?.map(liq => ({
+      x: new Date(liq.timestamp),
+      y: liq.price,
+      value: liq.value,
+      side: liq.side,
+      id: liq.id,
+    })) || [];
+
+    return {
+      datasets: [
+        {
+          type: 'candlestick' as const,
+          label: 'Price',
+          data: candlestickData,
+          backgroundColors: {
+            up: '#22c55e',
+            down: '#ef4444',
+            unchanged: '#64748b',
+          },
+          borderColors: {
+            up: '#16a34a',
+            down: '#dc2626',
+            unchanged: '#475569',
+          },
+        },
+        {
+          type: 'scatter' as const,
+          label: 'Liquidations',
+          data: liquidationData,
+          backgroundColor: (context: any) => {
+            const point = context.raw;
+            return point.side === 'long' ? '#ef4444cc' : '#22c55ecc';
+          },
+          borderColor: (context: any) => {
+            const point = context.raw;
+            return point.side === 'long' ? '#dc2626' : '#16a34a';
+          },
+          pointRadius: (context: any) => {
+            const point = context.raw;
+            return Math.max(4, Math.min(12, Math.sqrt(point.value / 1000) * 2));
+          },
+          borderWidth: 2,
+        },
+      ],
+    };
   };
 
-  const getIntervalMs = () => {
-    switch (selectedInterval) {
-      case '1m': return 60 * 1000;
-      case '5m': return 5 * 60 * 1000;
-      case '15m': return 15 * 60 * 1000;
-      case '1h': return 60 * 60 * 1000;
-      case '4h': return 4 * 60 * 60 * 1000;
-      default: return 15 * 60 * 1000;
-    }
-  };
-
-  // Custom candlestick bar renderer that works with proper scale
-  const CandlestickBar = (props: any) => {
-    const { x, y, width, height, payload } = props;
-    if (!payload || !payload.open) return null;
-
-    const { open, close, high, low } = payload;
-    const isUp = close > open;
-    const color = isUp ? '#22c55e' : '#ef4444';
-    
-    // Calculate candlestick dimensions
-    const candleWidth = Math.max(2, width * 0.8);
-    const centerX = x + width / 2;
-    
-    // Body height and position (scaled to chart coordinates)
-    const bodyTop = Math.min(open, close);
-    const bodyBottom = Math.max(open, close);
-    const bodyHeight = Math.abs(close - open);
-    
-    // Wick positions use actual price values
-    return (
-      <g>
-        {/* Upper wick: from high to max(open, close) */}
-        <line
-          x1={centerX}
-          y1={y} // Will be scaled by chart
-          x2={centerX}
-          y2={y} // Will be scaled by chart
-          stroke={color}
-          strokeWidth={1}
-          data-high={high}
-          data-body-top={Math.max(open, close)}
-        />
-        {/* Lower wick: from min(open, close) to low */}
-        <line
-          x1={centerX}
-          y1={y}
-          x2={centerX}
-          y2={y}
-          stroke={color}
-          strokeWidth={1}
-          data-body-bottom={Math.min(open, close)}
-          data-low={low}
-        />
-        {/* Candlestick body */}
-        <rect
-          x={centerX - candleWidth / 2}
-          y={y}
-          width={candleWidth}
-          height={height}
-          fill={isUp ? 'transparent' : color}
-          stroke={color}
-          strokeWidth={2}
-          data-open={open}
-          data-close={close}
-        />
-      </g>
-    );
-  };
-
-  const combinedData = getCombinedChartData();
-
-  // Custom tooltip for liquidations
-  const LiquidationTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-      const data = payload[0]?.payload;
-      if (!data || !data.liquidationPrice) return null;
-      
-      return (
-        <div className="bg-card border rounded-lg p-3 shadow-lg">
-          <div className="font-medium text-destructive">Liquidation Event</div>
-          <div className="space-y-1 text-sm">
-            <div>Time: {data.fullDate}</div>
-            <div>Side: <span className={`font-medium ${data.liquidationSide === 'long' ? 'text-red-500' : 'text-green-500'}`}>{data.liquidationSide}</span></div>
-            <div>Price: <span className="font-mono">{formatPrice(data.liquidationPrice)}</span></div>
-            <div>Value: <span className="font-mono">{formatCurrency(data.liquidationValue)}</span></div>
-            <div>Size: <span className="font-mono">{data.liquidationSize}</span></div>
-          </div>
-        </div>
-      );
-    }
-    return null;
+  const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: {
+      mode: 'nearest' as const,
+      intersect: false,
+    },
+    plugins: {
+      legend: {
+        position: 'top' as const,
+      },
+      tooltip: {
+        callbacks: {
+          title: (context: any) => {
+            return format(new Date(context[0].parsed.x), 'MMM dd, HH:mm');
+          },
+          label: (context: any) => {
+            if (context.dataset.type === 'candlestick') {
+              const data = context.raw;
+              return [
+                `Open: ${formatPrice(data.o)}`,
+                `High: ${formatPrice(data.h)}`,
+                `Low: ${formatPrice(data.l)}`,
+                `Close: ${formatPrice(data.c)}`,
+              ];
+            } else if (context.dataset.type === 'scatter') {
+              const data = context.raw;
+              return [
+                `${data.side.toUpperCase()} Liquidation`,
+                `Price: ${formatPrice(data.y)}`,
+                `Value: ${formatCurrency(data.value)}`,
+              ];
+            }
+            return '';
+          },
+        },
+      },
+    },
+    scales: {
+      x: {
+        type: 'time' as const,
+        time: {
+          unit: 'minute' as const,
+          displayFormats: {
+            minute: 'HH:mm',
+            hour: 'HH:mm',
+          },
+        },
+        grid: {
+          color: 'hsl(var(--border))',
+        },
+      },
+      y: {
+        type: 'linear' as const,
+        position: 'right' as const,
+        grid: {
+          color: 'hsl(var(--border))',
+        },
+        ticks: {
+          callback: (value: any) => formatPrice(value),
+        },
+      },
+    },
   };
 
   if (!symbol) {
@@ -271,141 +298,9 @@ export default function LiquidationPriceChart({ symbol, hours }: LiquidationPric
               </div>
             </div>
 
-            {/* Single Candlestick Chart with Liquidation Markers */}
-            <div className="h-96" data-testid="price-liquidation-chart">
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={combinedData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--muted-foreground))" opacity={0.3} />
-                  <XAxis 
-                    type="number"
-                    scale="time"
-                    domain={['dataMin', 'dataMax']}
-                    dataKey="timestamp"
-                    tick={{ fontSize: 12 }}
-                    stroke="hsl(var(--muted-foreground))"
-                    tickFormatter={(value) => {
-                      try {
-                        if (!value || isNaN(value)) return '';
-                        const date = new Date(value);
-                        if (isNaN(date.getTime())) return '';
-                        return format(date, 'HH:mm');
-                      } catch (error) {
-                        return '';
-                      }
-                    }}
-                  />
-                  <YAxis 
-                    domain={[(dataMin: number) => dataMin * 0.998, (dataMax: number) => dataMax * 1.002]}
-                    tick={{ fontSize: 12 }}
-                    stroke="hsl(var(--muted-foreground))"
-                    tickFormatter={formatPrice}
-                  />
-                  <Tooltip 
-                    content={({ active, payload, label }) => {
-                      if (active && payload && payload.length) {
-                        const data = payload[0]?.payload;
-                        if (!data) return null;
-                        
-                        // Check if this is a liquidation hover
-                        const hasLiquidations = data.liquidations && data.liquidations.length > 0;
-                        
-                        return (
-                          <div className="bg-card border rounded-lg p-3 shadow-lg">
-                            <div className="font-medium">
-                              {hasLiquidations ? `Price Data + ${data.liquidations.length} Liquidation${data.liquidations.length > 1 ? 's' : ''}` : 'Price Data'}
-                            </div>
-                            <div className="space-y-1 text-sm">
-                              <div>Time: {data.fullDate}</div>
-                              <div>Open: <span className="font-mono">{formatPrice(data.open)}</span></div>
-                              <div>High: <span className="font-mono text-green-600">{formatPrice(data.high)}</span></div>
-                              <div>Low: <span className="font-mono text-red-600">{formatPrice(data.low)}</span></div>
-                              <div>Close: <span className="font-mono">{formatPrice(data.close)}</span></div>
-                              <div>Volume: <span className="font-mono">{data.volume}</span></div>
-                              
-                              {hasLiquidations && (
-                                <div className="mt-2 pt-2 border-t">
-                                  <div className="font-medium text-destructive">Liquidations:</div>
-                                  {data.liquidations.slice(0, 3).map((liq: any, idx: number) => (
-                                    <div key={liq.id} className="text-xs">
-                                      <span className={`font-medium ${liq.side === 'long' ? 'text-red-500' : 'text-green-500'}`}>
-                                        {liq.side}
-                                      </span> {formatPrice(liq.price)} ({formatCurrency(liq.value)})
-                                    </div>
-                                  ))}
-                                  {data.liquidations.length > 3 && (
-                                    <div className="text-xs text-muted-foreground">
-                                      +{data.liquidations.length - 3} more...
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      }
-                      return null;
-                    }}
-                  />
-                  
-                  {/* Candlestick representation using ReferenceArea for proper scaling */}
-                  {combinedData.map((candle, index) => {
-                    const isUp = candle.close > candle.open;
-                    const color = isUp ? '#22c55e' : '#ef4444';
-                    
-                    return (
-                      <g key={`candle-${index}`}>
-                        {/* Draw candlestick using reference areas that respect the chart scale */}
-                        <ReferenceArea
-                          x1={candle.timestamp}
-                          x2={candle.timestamp + getIntervalMs() * 0.8}
-                          y1={Math.min(candle.open, candle.close)}
-                          y2={Math.max(candle.open, candle.close)}
-                          fill={isUp ? 'transparent' : color}
-                          stroke={color}
-                          strokeWidth={2}
-                          fillOpacity={isUp ? 0 : 0.8}
-                        />
-                      </g>
-                    );
-                  })}
-                  
-                  {/* Liquidation markers as scatter points on the same chart */}
-                  <Scatter
-                    data={chartData?.liquidations?.map(liq => ({
-                      x: liq.timestamp,  // Bind to X-axis (timestamp)
-                      y: liq.price,      // Bind to Y-axis (price)
-                      value: liq.value,
-                      side: liq.side,
-                      size: liq.size,
-                      id: liq.id
-                    })) || []}
-                    dataKey="y"
-                    fill="#ef4444"
-                    shape={(props: any) => {
-                      const { cx, cy, payload } = props;
-                      if (!payload || typeof payload.y === 'undefined') {
-                        return <g />;
-                      }
-                      
-                      const color = payload.side === 'long' ? '#ef4444' : '#22c55e';
-                      const strokeColor = payload.side === 'long' ? '#dc2626' : '#16a34a';
-                      const radius = Math.max(4, Math.min(12, Math.sqrt(payload.value / 1000) * 2));
-                      
-                      return (
-                        <circle
-                          cx={cx}
-                          cy={cy}
-                          r={radius}
-                          fill={color}
-                          stroke={strokeColor}
-                          strokeWidth={2}
-                          fillOpacity={0.8}
-                        />
-                      );
-                    }}
-                  />
-                </ComposedChart>
-              </ResponsiveContainer>
+            {/* Chart.js Financial Chart */}
+            <div className="h-96 w-full" data-testid="price-liquidation-chart">
+              <Chart type="candlestick" data={getChartData()} options={chartOptions} />
             </div>
           </div>
         )}
