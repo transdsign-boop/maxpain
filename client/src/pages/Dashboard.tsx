@@ -20,10 +20,61 @@ export default function Dashboard() {
   const [timeRange, setTimeRange] = useState("1h");
   const [sideFilter, setSideFilter] = useState<"all" | "long" | "short">("all");
   const [minValue, setMinValue] = useState("0");
-  const [selectedAssets, setSelectedAssets] = useState<string[]>(["BTC/USDT", "ETH/USDT", "SOL/USDT"]);
+  const [selectedAssets, setSelectedAssets] = useState<string[]>([]);
   
   // Real liquidation data from WebSocket and API
   const [liquidations, setLiquidations] = useState<Liquidation[]>([]);
+
+  // Generate or get persistent session ID
+  const getSessionId = () => {
+    let sessionId = localStorage.getItem('aster-session-id');
+    if (!sessionId) {
+      sessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      localStorage.setItem('aster-session-id', sessionId);
+    }
+    return sessionId;
+  };
+
+  // Save settings to database
+  const saveSettings = async () => {
+    try {
+      const sessionId = getSessionId();
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          sessionId,
+          selectedAssets,
+          sideFilter,
+          minValue,
+          timeRange,
+        }),
+      });
+    } catch (error) {
+      console.error('Failed to save settings:', error);
+    }
+  };
+
+  // Load settings from database
+  const loadSettings = async () => {
+    try {
+      const sessionId = getSessionId();
+      const response = await fetch(`/api/settings/${sessionId}`);
+      if (response.ok) {
+        const settings = await response.json();
+        if (settings) {
+          setSelectedAssets(settings.selectedAssets || []);
+          setSideFilter(settings.sideFilter || "all");
+          setMinValue(settings.minValue || "0");
+          setTimeRange(settings.timeRange || "1h");
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load settings:', error);
+    }
+  };
 
   // Real-time WebSocket connection
   useEffect(() => {
@@ -113,6 +164,7 @@ export default function Dashboard() {
       }
     };
 
+    loadSettings();
     loadInitialData();
     connectWebSocket();
 
@@ -131,6 +183,11 @@ export default function Dashboard() {
       }
     };
   }, []);
+
+  // Save settings when they change
+  useEffect(() => {
+    saveSettings();
+  }, [selectedAssets, sideFilter, minValue, timeRange]);
 
   // Filter liquidations based on current filters
   const filteredLiquidations = liquidations.filter(liq => {

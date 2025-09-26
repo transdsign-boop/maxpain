@@ -35,3 +35,22 @@ export const insertUserSchema = createInsertSchema(users).pick({
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
+
+// User settings table for persistent preferences
+export const userSettings = pgTable("user_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sessionId: text("session_id").notNull().unique(), // Browser session ID
+  selectedAssets: text("selected_assets").array().notNull().default(sql`'{}'::text[]`),
+  sideFilter: text("side_filter").notNull().default('all'),
+  minValue: text("min_value").notNull().default('0'),
+  timeRange: text("time_range").notNull().default('1h'),
+  lastUpdated: timestamp("last_updated").notNull().defaultNow(),
+});
+
+export const insertUserSettingsSchema = createInsertSchema(userSettings).omit({
+  id: true,
+  lastUpdated: true,
+});
+
+export type InsertUserSettings = z.infer<typeof insertUserSettingsSchema>;
+export type UserSettings = typeof userSettings.$inferSelect;
