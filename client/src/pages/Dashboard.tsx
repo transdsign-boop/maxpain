@@ -21,6 +21,7 @@ export default function Dashboard() {
   const [sideFilter, setSideFilter] = useState<"all" | "long" | "short">("all");
   const [minValue, setMinValue] = useState("0");
   const [selectedAssets, setSelectedAssets] = useState<string[]>([]);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
   
   // Real liquidation data from WebSocket and API
   const [liquidations, setLiquidations] = useState<Liquidation[]>([]);
@@ -73,6 +74,9 @@ export default function Dashboard() {
       }
     } catch (error) {
       console.error('Failed to load settings:', error);
+    } finally {
+      // Mark settings as loaded to enable saving
+      setSettingsLoaded(true);
     }
   };
 
@@ -184,10 +188,12 @@ export default function Dashboard() {
     };
   }, []);
 
-  // Save settings when they change
+  // Save settings when they change (only after initial load)
   useEffect(() => {
-    saveSettings();
-  }, [selectedAssets, sideFilter, minValue, timeRange]);
+    if (settingsLoaded) {
+      saveSettings();
+    }
+  }, [selectedAssets, sideFilter, minValue, timeRange, settingsLoaded]);
 
   // Filter liquidations based on current filters
   const filteredLiquidations = liquidations.filter(liq => {
