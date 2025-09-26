@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import ConnectionStatus from "@/components/ConnectionStatus";
 import LiquidationTable from "@/components/LiquidationTable";
 import AssetSelector from "@/components/AssetSelector";
+import LiquidationAnalytics from "@/components/LiquidationAnalytics";
 import ThemeToggle from "@/components/ThemeToggle";
 
 interface Liquidation {
@@ -314,6 +315,11 @@ export default function Dashboard() {
               isConnected={isConnected}
             />
           </div>
+        </div>
+
+        {/* Liquidation Analytics */}
+        <div className="w-full">
+          <LiquidationAnalytics />
         </div>
       </main>
 
