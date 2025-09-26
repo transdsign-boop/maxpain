@@ -19,6 +19,10 @@ export interface IStorage {
   getLiquidationsSince(timestamp: Date, limit?: number): Promise<Liquidation[]>;
   getLargestLiquidationSince(timestamp: Date): Promise<Liquidation | undefined>;
   
+  // Analytics operations
+  getAvailableAssets(): Promise<{ symbol: string; count: number; latestTimestamp: Date }[]>;
+  getLiquidationAnalytics(symbol: string, sinceTimestamp: Date): Promise<Liquidation[]>;
+  
   // User settings operations
   getUserSettings(sessionId: string): Promise<UserSettings | undefined>;
   saveUserSettings(settings: InsertUserSettings): Promise<UserSettings>;
@@ -89,6 +93,26 @@ export class DatabaseStorage implements IStorage {
   async getUserSettings(sessionId: string): Promise<UserSettings | undefined> {
     const result = await db.select().from(userSettings).where(eq(userSettings.sessionId, sessionId));
     return result[0];
+  }
+
+  async getAvailableAssets(): Promise<{ symbol: string; count: number; latestTimestamp: Date }[]> {
+    const result = await db.select({
+      symbol: liquidations.symbol,
+      count: sql<number>`COUNT(*)`,
+      latestTimestamp: sql<Date>`MAX(${liquidations.timestamp})`
+    })
+    .from(liquidations)
+    .groupBy(liquidations.symbol)
+    .orderBy(desc(sql`COUNT(*)`));
+    
+    return result;
+  }
+
+  async getLiquidationAnalytics(symbol: string, sinceTimestamp: Date): Promise<Liquidation[]> {
+    return await db.select()
+      .from(liquidations)
+      .where(sql`${liquidations.symbol} = ${symbol} AND ${liquidations.timestamp} >= ${sinceTimestamp}`)
+      .orderBy(desc(liquidations.value));
   }
 
   async saveUserSettings(settings: InsertUserSettings): Promise<UserSettings> {
