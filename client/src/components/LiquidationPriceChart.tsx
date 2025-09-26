@@ -4,24 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertCircle, TrendingUp } from "lucide-react";
-import { Chart as ChartJS, CategoryScale, LinearScale, TimeScale, PointElement, Title, Tooltip, Legend } from 'chart.js';
-import { Chart } from 'react-chartjs-2';
-import { CandlestickController, CandlestickElement } from 'chartjs-chart-financial';
-import 'chartjs-adapter-date-fns';
+import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ComposedChart, Scatter, ReferenceLine, Customized } from "recharts";
 import { format } from "date-fns";
-
-// Register Chart.js components including financial charts
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  TimeScale,
-  PointElement,
-  Title,
-  Tooltip,
-  Legend,
-  CandlestickController,
-  CandlestickElement
-);
 
 interface PricePoint {
   timestamp: number;
@@ -103,131 +87,97 @@ export default function LiquidationPriceChart({ symbol, hours }: LiquidationPric
     return `$${value.toFixed(4)}`;
   };
 
-  // Prepare Chart.js data and options
+  // Create chart data for Recharts with individual candlesticks
   const getChartData = () => {
-    if (!chartData?.priceData) return { datasets: [] };
+    if (!chartData?.priceData) return [];
 
-    // Convert price data to Chart.js candlestick format
-    const candlestickData = chartData.priceData.map(candle => ({
-      x: new Date(candle.timestamp),
-      o: candle.open,
-      h: candle.high,
-      l: candle.low,
-      c: candle.close,
+    return chartData.priceData.map(candle => ({
+      timestamp: candle.timestamp,
+      time: format(new Date(candle.timestamp), 'HH:mm'),
+      fullDate: format(new Date(candle.timestamp), 'MMM dd, HH:mm'),
+      open: candle.open,
+      high: candle.high,
+      low: candle.low,
+      close: candle.close,
+      volume: candle.volume,
+      date: candle.date,
     }));
-
-    // Convert liquidations to scatter plot data
-    const liquidationData = chartData.liquidations?.map(liq => ({
-      x: new Date(liq.timestamp),
-      y: liq.price,
-      value: liq.value,
-      side: liq.side,
-      id: liq.id,
-    })) || [];
-
-    return {
-      datasets: [
-        {
-          type: 'candlestick' as const,
-          label: 'Price',
-          data: candlestickData,
-          backgroundColors: {
-            up: '#22c55e',
-            down: '#ef4444',
-            unchanged: '#64748b',
-          },
-          borderColors: {
-            up: '#16a34a',
-            down: '#dc2626',
-            unchanged: '#475569',
-          },
-        },
-        {
-          type: 'scatter' as const,
-          label: 'Liquidations',
-          data: liquidationData,
-          backgroundColor: (context: any) => {
-            const point = context.raw;
-            return point.side === 'long' ? '#ef4444cc' : '#22c55ecc';
-          },
-          borderColor: (context: any) => {
-            const point = context.raw;
-            return point.side === 'long' ? '#dc2626' : '#16a34a';
-          },
-          pointRadius: (context: any) => {
-            const point = context.raw;
-            return Math.max(4, Math.min(12, Math.sqrt(point.value / 1000) * 2));
-          },
-          borderWidth: 2,
-        },
-      ],
-    };
   };
 
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    interaction: {
-      mode: 'nearest' as const,
-      intersect: false,
-    },
-    plugins: {
-      legend: {
-        position: 'top' as const,
-      },
-      tooltip: {
-        callbacks: {
-          title: (context: any) => {
-            return format(new Date(context[0].parsed.x), 'MMM dd, HH:mm');
-          },
-          label: (context: any) => {
-            if (context.dataset.type === 'candlestick') {
-              const data = context.raw;
-              return [
-                `Open: ${formatPrice(data.o)}`,
-                `High: ${formatPrice(data.h)}`,
-                `Low: ${formatPrice(data.l)}`,
-                `Close: ${formatPrice(data.c)}`,
-              ];
-            } else if (context.dataset.type === 'scatter') {
-              const data = context.raw;
-              return [
-                `${data.side.toUpperCase()} Liquidation`,
-                `Price: ${formatPrice(data.y)}`,
-                `Value: ${formatCurrency(data.value)}`,
-              ];
-            }
-            return '';
-          },
-        },
-      },
-    },
-    scales: {
-      x: {
-        type: 'time' as const,
-        time: {
-          unit: 'minute' as const,
-          displayFormats: {
-            minute: 'HH:mm',
-            hour: 'HH:mm',
-          },
-        },
-        grid: {
-          color: 'hsl(var(--border))',
-        },
-      },
-      y: {
-        type: 'linear' as const,
-        position: 'right' as const,
-        grid: {
-          color: 'hsl(var(--border))',
-        },
-        ticks: {
-          callback: (value: any) => formatPrice(value),
-        },
-      },
-    },
+  // Custom Candlestick Component using chart scales  
+  const CandlestickRenderer = (props: any) => {
+    const { xAxisMap, yAxisMap, chartWidth, chartHeight, data } = props;
+    
+    if (!data || data.length === 0) return null;
+    
+    const xScale = xAxisMap[Object.keys(xAxisMap)[0]]?.scale;
+    const yScale = yAxisMap[Object.keys(yAxisMap)[0]]?.scale;
+    
+    if (!xScale || !yScale) return null;
+    
+    return (
+      <g>
+        {data.map((candle: any, index: number) => {
+          if (!candle.open || !candle.close || !candle.high || !candle.low) return null;
+          
+          const { open, close, high, low, timestamp } = candle;
+          const isUp = close > open;
+          const color = isUp ? '#22c55e' : '#ef4444';
+          const borderColor = isUp ? '#16a34a' : '#dc2626';
+          
+          // Use chart scales to get pixel coordinates
+          const x = xScale(timestamp);
+          const yOpen = yScale(open);
+          const yClose = yScale(close);
+          const yHigh = yScale(high);
+          const yLow = yScale(low);
+          
+          // Calculate bar width based on data density
+          const barWidth = Math.max(2, Math.min(8, chartWidth / data.length * 0.7));
+          const centerX = x;
+          
+          const bodyTop = Math.min(yOpen, yClose);
+          const bodyBottom = Math.max(yOpen, yClose);
+          const bodyHeight = Math.max(1, bodyBottom - bodyTop);
+          
+          return (
+            <g key={`candlestick-${index}`}>
+              {/* Upper wick */}
+              <line
+                x1={centerX}
+                y1={yHigh}
+                x2={centerX}
+                y2={bodyTop}
+                stroke={borderColor}
+                strokeWidth={1}
+              />
+              {/* Lower wick */}
+              <line
+                x1={centerX}
+                y1={bodyBottom}
+                x2={centerX}
+                y2={yLow}
+                stroke={borderColor}
+                strokeWidth={1}
+              />
+              {/* Candlestick body */}
+              <rect
+                x={centerX - barWidth / 2}
+                y={bodyTop}
+                width={barWidth}
+                height={bodyHeight}
+                fill={isUp ? 'transparent' : color}
+                stroke={borderColor}
+                strokeWidth={2}
+              />
+            </g>
+          );
+        })}
+      </g>
+    );
   };
+
+  const combinedData = getChartData();
 
   if (!symbol) {
     return null;
@@ -298,9 +248,101 @@ export default function LiquidationPriceChart({ symbol, hours }: LiquidationPric
               </div>
             </div>
 
-            {/* Chart.js Financial Chart */}
+            {/* Recharts Candlestick Chart */}
             <div className="h-96 w-full" data-testid="price-liquidation-chart">
-              <Chart type="candlestick" data={getChartData()} options={chartOptions} />
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={combinedData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--muted-foreground))" opacity={0.3} />
+                  <XAxis 
+                    dataKey="timestamp"
+                    domain={['dataMin', 'dataMax']}
+                    scale="time"
+                    type="number"
+                    tick={{ fontSize: 12 }}
+                    stroke="hsl(var(--muted-foreground))"
+                    tickFormatter={(value) => {
+                      try {
+                        if (!value || isNaN(value)) return '';
+                        const date = new Date(value);
+                        if (isNaN(date.getTime())) return '';
+                        return format(date, 'HH:mm');
+                      } catch (error) {
+                        return '';
+                      }
+                    }}
+                  />
+                  <YAxis 
+                    domain={[(dataMin: number) => dataMin * 0.998, (dataMax: number) => dataMax * 1.002]}
+                    tick={{ fontSize: 12 }}
+                    stroke="hsl(var(--muted-foreground))"
+                    tickFormatter={formatPrice}
+                  />
+                  <Tooltip 
+                    content={({ active, payload, label }) => {
+                      if (active && payload && payload.length) {
+                        const data = payload[0]?.payload;
+                        if (!data) return null;
+                        
+                        return (
+                          <div className="bg-card border rounded-lg p-3 shadow-lg">
+                            <div className="font-medium">Candlestick Data</div>
+                            <div className="space-y-1 text-sm">
+                              <div>Time: {data.fullDate}</div>
+                              <div>Open: <span className="font-mono">{formatPrice(data.open)}</span></div>
+                              <div>High: <span className="font-mono text-green-600">{formatPrice(data.high)}</span></div>
+                              <div>Low: <span className="font-mono text-red-600">{formatPrice(data.low)}</span></div>
+                              <div>Close: <span className="font-mono">{formatPrice(data.close)}</span></div>
+                              <div>Volume: <span className="font-mono">{data.volume}</span></div>
+                            </div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  
+                  {/* Candlestick bars using proper chart scale mapping */}
+                  <Customized 
+                    component={CandlestickRenderer} 
+                    data={combinedData}
+                  />
+                  
+                  {/* Liquidation scatter points */}
+                  <Scatter
+                    data={chartData?.liquidations?.map(liq => ({
+                      x: liq.timestamp,
+                      y: liq.price,
+                      value: liq.value,
+                      side: liq.side,
+                      id: liq.id
+                    })) || []}
+                    dataKey="y"
+                    fill="#ef4444"
+                    shape={(props: any) => {
+                      const { cx, cy, payload } = props;
+                      if (!payload || typeof payload.y === 'undefined') {
+                        return <g />;
+                      }
+                      
+                      const color = payload.side === 'long' ? '#ef4444' : '#22c55e';
+                      const strokeColor = payload.side === 'long' ? '#dc2626' : '#16a34a';
+                      const radius = Math.max(4, Math.min(12, Math.sqrt(payload.value / 1000) * 2));
+                      
+                      return (
+                        <circle
+                          cx={cx}
+                          cy={cy}
+                          r={radius}
+                          fill={color}
+                          stroke={strokeColor}
+                          strokeWidth={2}
+                          fillOpacity={0.8}
+                        />
+                      );
+                    }}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
             </div>
           </div>
         )}
