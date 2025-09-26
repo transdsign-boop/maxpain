@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertCircle, TrendingUp } from "lucide-react";
-import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Scatter, ComposedChart, Line, LineChart, Area, Bar, BarChart } from "recharts";
+import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Scatter, ComposedChart, Area, Line } from "recharts";
 import { format } from "date-fns";
 
 interface PricePoint {
@@ -71,6 +71,7 @@ export default function LiquidationPriceChart({ symbol, hours }: LiquidationPric
     enabled: !!symbol,
     refetchInterval: 30000, // Refresh every 30 seconds
   });
+
 
   const formatCurrency = (value: number) => {
     if (value >= 1000) {
@@ -154,182 +155,6 @@ export default function LiquidationPriceChart({ symbol, hours }: LiquidationPric
   const combinedData = combineDataForChart();
   const liquidationScatter = getLiquidationScatterData();
 
-  // Calculate shared axis domains from price data (controls full chart scale)
-  const getSharedDomains = () => {
-    if (!chartData?.priceData) return {
-      xDomain: ['dataMin', 'dataMax'],
-      yDomain: ['dataMin - 10', 'dataMax + 10']
-    };
-    
-    // X-axis domain from price data timerange (this controls the full chart scale)
-    const minTimestamp = Math.min(...chartData.priceData.map(p => p.timestamp));
-    const maxTimestamp = Math.max(...chartData.priceData.map(p => p.timestamp));
-    
-    // Y-axis domain from both price and liquidation data
-    const priceMin = Math.min(...chartData.priceData.flatMap(p => [p.low, p.high, p.open, p.close]));
-    const priceMax = Math.max(...chartData.priceData.flatMap(p => [p.low, p.high, p.open, p.close]));
-    
-    let yMin = priceMin;
-    let yMax = priceMax;
-    
-    if (chartData.liquidations && chartData.liquidations.length > 0) {
-      const liquidationMin = Math.min(...chartData.liquidations.map(l => l.price));
-      const liquidationMax = Math.max(...chartData.liquidations.map(l => l.price));
-      yMin = Math.min(priceMin, liquidationMin);
-      yMax = Math.max(priceMax, liquidationMax);
-    }
-    
-    const yPadding = (yMax - yMin) * 0.05; // 5% padding
-    
-    return {
-      xDomain: [minTimestamp, maxTimestamp],
-      yDomain: [yMin - yPadding, yMax + yPadding]
-    };
-  };
-
-  const { xDomain, yDomain } = getSharedDomains();
-
-  // Custom tooltip for the chart
-  const CustomTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-      const data = payload[0].payload;
-      return (
-        <div className="bg-card border rounded-lg p-3 shadow-lg">
-          <p className="font-medium">{data.fullDate}</p>
-          <div className="space-y-1 text-sm">
-            <div className="flex justify-between gap-4">
-              <span>Open:</span>
-              <span className="font-mono">{formatPrice(data.open)}</span>
-            </div>
-            <div className="flex justify-between gap-4">
-              <span>High:</span>
-              <span className="font-mono text-green-600">{formatPrice(data.high)}</span>
-            </div>
-            <div className="flex justify-between gap-4">
-              <span>Low:</span>
-              <span className="font-mono text-red-600">{formatPrice(data.low)}</span>
-            </div>
-            <div className="flex justify-between gap-4">
-              <span>Close:</span>
-              <span className="font-mono">{formatPrice(data.close)}</span>
-            </div>
-            {data.liquidations && data.liquidations.length > 0 && (
-              <div className="border-t pt-1 mt-2">
-                <p className="font-medium text-destructive">Liquidations: {data.liquidations.length}</p>
-                {data.liquidations.slice(0, 3).map((liq: LiquidationPoint, idx: number) => (
-                  <div key={idx} className="text-xs">
-                    {liq.side} {formatCurrency(liq.value)} @ {formatPrice(liq.price)}
-                  </div>
-                ))}
-                {data.liquidations.length > 3 && (
-                  <div className="text-xs text-muted-foreground">
-                    +{data.liquidations.length - 3} more...
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      );
-    }
-    return null;
-  };
-
-  // Custom candlestick component
-  const Candlestick = (props: any) => {
-    const { payload, x, y, width, height } = props;
-    if (!payload || !payload.open || !payload.close || !payload.high || !payload.low) return null;
-
-    const { open, close, high, low } = payload;
-    const isPositive = close >= open;
-    const candleWidth = Math.max(1, width * 0.8);
-    const wickWidth = 1;
-    
-    const yScale = height / (payload.dataMax - payload.dataMin);
-    const yOffset = y;
-    
-    // Calculate positions based on price
-    const highY = yOffset - ((high - payload.dataMin) / (payload.dataMax - payload.dataMin)) * height;
-    const lowY = yOffset - ((low - payload.dataMin) / (payload.dataMax - payload.dataMin)) * height;
-    const openY = yOffset - ((open - payload.dataMin) / (payload.dataMax - payload.dataMin)) * height;
-    const closeY = yOffset - ((close - payload.dataMin) / (payload.dataMax - payload.dataMin)) * height;
-    
-    const candleHeight = Math.abs(closeY - openY);
-    const candleY = Math.min(openY, closeY);
-    
-    return (
-      <g>
-        {/* High-Low wick */}
-        <line
-          x1={x + candleWidth / 2}
-          y1={highY}
-          x2={x + candleWidth / 2}
-          y2={lowY}
-          stroke={isPositive ? "#22c55e" : "#ef4444"}
-          strokeWidth={wickWidth}
-        />
-        {/* Open-Close body */}
-        <rect
-          x={x + (width - candleWidth) / 2}
-          y={candleY}
-          width={candleWidth}
-          height={Math.max(1, candleHeight)}
-          fill={isPositive ? "#22c55e" : "#ef4444"}
-          stroke={isPositive ? "#16a34a" : "#dc2626"}
-          strokeWidth={1}
-        />
-      </g>
-    );
-  };
-
-  // Custom tooltip for price candlestick data
-  const CandleTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-      const data = payload[0]?.payload;
-      if (!data) return null;
-      
-      return (
-        <div className="bg-card border rounded-lg p-3 shadow-lg">
-          <p className="font-medium">{data.fullDate}</p>
-          <div className="space-y-1 text-sm">
-            <div className="flex justify-between gap-4">
-              <span>Open:</span>
-              <span className="font-mono">{formatPrice(data.open)}</span>
-            </div>
-            <div className="flex justify-between gap-4">
-              <span>High:</span>
-              <span className="font-mono text-green-600">{formatPrice(data.high)}</span>
-            </div>
-            <div className="flex justify-between gap-4">
-              <span>Low:</span>
-              <span className="font-mono text-red-600">{formatPrice(data.low)}</span>
-            </div>
-            <div className="flex justify-between gap-4">
-              <span>Close:</span>
-              <span className="font-mono">{formatPrice(data.close)}</span>
-            </div>
-            {data.liquidations && data.liquidations.length > 0 && (
-              <div className="border-t pt-1 mt-2">
-                <p className="font-medium text-destructive">Liquidations in this period: {data.liquidations.length}</p>
-                {data.liquidations.slice(0, 2).map((liq: any, idx: number) => (
-                  <div key={idx} className="text-xs">
-                    {liq.side} {formatCurrency(liq.value)} @ {formatPrice(liq.price)}
-                  </div>
-                ))}
-                {data.liquidations.length > 2 && (
-                  <div className="text-xs text-muted-foreground">
-                    +{data.liquidations.length - 2} more...
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      );
-    }
-    return null;
-  };
-
   // Custom tooltip for liquidation scatter points  
   const LiquidationTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
@@ -394,7 +219,7 @@ export default function LiquidationPriceChart({ symbol, hours }: LiquidationPric
             <AlertCircle className="h-5 w-5 text-destructive" />
             <span className="text-sm text-destructive">Failed to load chart data</span>
           </div>
-        ) : !chartData || combinedData.length === 0 ? (
+        ) : !chartData || !chartData.priceData || chartData.priceData.length === 0 ? (
           <div className="text-center p-8 text-muted-foreground" data-testid="no-chart-data">
             <TrendingUp className="h-12 w-12 mx-auto mb-3 opacity-50" />
             <p>No price data available for the selected time range</p>
@@ -421,7 +246,7 @@ export default function LiquidationPriceChart({ symbol, hours }: LiquidationPric
               </div>
             </div>
 
-            {/* OHLC Chart with Liquidation Circles */}
+            {/* Price Chart with Liquidation Circles */}
             <div className="h-96" data-testid="price-liquidation-chart">
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={combinedData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
@@ -429,41 +254,19 @@ export default function LiquidationPriceChart({ symbol, hours }: LiquidationPric
                   <XAxis 
                     type="number"
                     scale="time"
-                    domain={xDomain}
+                    domain={['dataMin', 'dataMax']}
                     dataKey="timestamp"
                     tick={{ fontSize: 12 }}
                     stroke="hsl(var(--muted-foreground))"
                     tickFormatter={(value) => format(new Date(value), 'HH:mm')}
                   />
                   <YAxis 
-                    domain={yDomain}
+                    domain={['dataMin - 10', 'dataMax + 10']}
                     tick={{ fontSize: 12 }}
                     stroke="hsl(var(--muted-foreground))"
                     tickFormatter={formatPrice}
                   />
-                  <Tooltip content={<CandleTooltip />} />
-                  
-                  {/* High price area (candlestick representation) */}
-                  <Area
-                    type="monotone"
-                    dataKey="high"
-                    stackId="1"
-                    stroke="#22c55e"
-                    fill="#22c55e"
-                    fillOpacity={0.1}
-                    strokeWidth={1}
-                  />
-                  
-                  {/* Low price area */}
-                  <Area
-                    type="monotone"
-                    dataKey="low"
-                    stackId="2"
-                    stroke="#ef4444"
-                    fill="#ef4444"
-                    fillOpacity={0.1}
-                    strokeWidth={1}
-                  />
+                  <Tooltip />
                   
                   {/* Close price line (main line) */}
                   <Line
@@ -475,14 +278,24 @@ export default function LiquidationPriceChart({ symbol, hours }: LiquidationPric
                     activeDot={{ r: 4, stroke: "hsl(var(--primary))", strokeWidth: 2 }}
                   />
                   
-                  {/* Open price line */}
-                  <Line
+                  {/* High price area */}
+                  <Area
                     type="monotone"
-                    dataKey="open"
-                    stroke="hsl(var(--muted-foreground))"
-                    strokeWidth={2}
-                    dot={false}
-                    strokeDasharray="5 5"
+                    dataKey="high"
+                    stroke="#22c55e"
+                    fill="#22c55e"
+                    fillOpacity={0.1}
+                    strokeWidth={1}
+                  />
+                  
+                  {/* Low price area */}
+                  <Area
+                    type="monotone"
+                    dataKey="low"
+                    stroke="#ef4444"
+                    fill="#ef4444"
+                    fillOpacity={0.1}
+                    strokeWidth={1}
                   />
                 </ComposedChart>
               </ResponsiveContainer>
@@ -496,7 +309,7 @@ export default function LiquidationPriceChart({ symbol, hours }: LiquidationPric
                     <XAxis 
                       type="number"
                       scale="time"
-                      domain={xDomain}
+                      domain={['dataMin', 'dataMax']}
                       dataKey="timestamp"
                       tick={false}
                       axisLine={false}
@@ -504,7 +317,7 @@ export default function LiquidationPriceChart({ symbol, hours }: LiquidationPric
                     />
                     <YAxis 
                       type="number"
-                      domain={yDomain}
+                      domain={['dataMin - 10', 'dataMax + 10']}
                       dataKey="liquidationPrice"
                       tick={false}
                       axisLine={false}
