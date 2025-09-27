@@ -1,5 +1,6 @@
 import { storage } from "./storage";
 import { riskManager } from "./riskManager";
+import { cascadeDetector } from "./cascadeDetector";
 import { type Liquidation, type TradingStrategy, type Position, type Portfolio } from "@shared/schema";
 
 export interface TradingSignal {
@@ -44,6 +45,24 @@ export class TradingEngine {
       if (this.isInCascadeCooldown(liquidation.symbol, strategy.cascadeCooldownMinutes)) {
         console.log(`⏰ Symbol ${liquidation.symbol} in cascade cooldown, skipping strategy ${strategy.name}`);
         continue;
+      }
+
+      // Enhanced cascade detection
+      if (strategy.cascadeDetectionEnabled) {
+        const cascadeRisk = await cascadeDetector.shouldPauseTrading(liquidation.symbol);
+        if (cascadeRisk.shouldPause) {
+          console.log(`🚨 Cascade risk detected for ${liquidation.symbol}: ${cascadeRisk.reason}`);
+          this.setCascadeCooldown(liquidation.symbol);
+          continue;
+        }
+
+        // Advanced cascade analysis
+        const cascadeAnalysis = await cascadeDetector.analyzeCascadeRisk(liquidation.symbol, 10);
+        if (cascadeAnalysis.riskLevel === 'high' || cascadeAnalysis.riskLevel === 'extreme') {
+          console.log(`📊 High cascade risk: ${cascadeAnalysis.cascadeProbability.toFixed(1)}% probability, ${cascadeAnalysis.liquidationVelocity.toFixed(1)} liq/min`);
+          this.setCascadeCooldown(liquidation.symbol);
+          continue;
+        }
       }
 
       // Calculate volatility
