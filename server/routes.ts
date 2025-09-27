@@ -736,7 +736,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "portfolioId parameter required" });
       }
       
-      const positions = await storage.getOpenPositions(portfolioId);
+      // Update unrealized PNL with current market prices before returning positions
+      const positions = await storage.updateUnrealizedPnl(portfolioId);
       res.json(positions);
     } catch (error) {
       console.error('Get positions error:', error);
