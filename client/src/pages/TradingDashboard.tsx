@@ -75,6 +75,7 @@ export default function TradingDashboard() {
     refetchInterval: 5000,
   });
 
+
   // Calculate portfolio metrics with error handling
   const activePositions = Array.isArray(positions) ? positions.filter((p: Position) => p?.status === 'open') : [];
   const totalExposure = activePositions.reduce((sum: number, pos: Position) => {
@@ -423,30 +424,35 @@ export default function TradingDashboard() {
                     </div>
                   </div>
                   
-                  <div className="grid grid-cols-2 gap-4 text-xs">
-                    <div>
-                      <p className="text-muted-foreground">Risk/Reward</p>
-                      <p className="font-mono font-medium">{strategy.riskRewardRatio}:1</p>
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <p className="text-muted-foreground text-xs">Risk/Reward Ratio</p>
+                        <p className="font-mono font-bold text-lg">{strategy.riskRewardRatio}:1</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground text-xs">Stop Loss</p>
+                        <p className="font-mono font-bold text-lg text-red-500">{strategy.stopLossPercent}%</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-muted-foreground">Stop Loss</p>
-                      <p className="font-mono font-medium">{strategy.stopLossPercent}%</p>
+                    
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <p className="text-muted-foreground text-xs">Take Profit</p>
+                        <p className="font-mono font-bold text-lg text-green-500">{strategy.takeProfitPercent}%</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground text-xs">Vol. Threshold</p>
+                        <p className="font-mono font-bold text-lg">{strategy.volatilityThreshold}%</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-muted-foreground">Take Profit</p>
-                      <p className="font-mono font-medium">{strategy.takeProfitPercent}%</p>
+                    
+                    <div className="flex items-center justify-between pt-2 border-t">
+                      <span className="text-sm text-muted-foreground">Cascade Detection:</span>
+                      <Badge variant={strategy.cascadeDetectionEnabled ? 'default' : 'secondary'}>
+                        {strategy.cascadeDetectionEnabled ? 'ENABLED' : 'DISABLED'}
+                      </Badge>
                     </div>
-                    <div>
-                      <p className="text-muted-foreground">Vol. Threshold</p>
-                      <p className="font-mono font-medium">{strategy.volatilityThreshold}%</p>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">Cascade Detection:</span>
-                    <Badge variant={strategy.cascadeDetectionEnabled ? 'default' : 'secondary'} className="text-xs">
-                      {strategy.cascadeDetectionEnabled ? 'ON' : 'OFF'}
-                    </Badge>
                   </div>
                   
                   <div className="flex gap-2">
