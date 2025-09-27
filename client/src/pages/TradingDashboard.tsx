@@ -300,14 +300,14 @@ export default function TradingDashboard() {
                   <div>
                     <p className="text-sm text-muted-foreground mb-2">Tracked Symbols</p>
                     <div className="flex flex-wrap gap-1">
-                      {strategy.symbolFilter.slice(0, 5).map((symbol: string) => (
+                      {(strategy.symbolFilter || []).slice(0, 5).map((symbol: string) => (
                         <Badge key={symbol} variant="outline" className="text-xs">
                           {symbol}
                         </Badge>
                       ))}
-                      {strategy.symbolFilter.length > 5 && (
+                      {(strategy.symbolFilter || []).length > 5 && (
                         <Badge variant="outline" className="text-xs">
-                          +{strategy.symbolFilter.length - 5} more
+                          +{(strategy.symbolFilter || []).length - 5} more
                         </Badge>
                       )}
                     </div>
