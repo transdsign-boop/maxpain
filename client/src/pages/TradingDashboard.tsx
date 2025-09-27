@@ -634,6 +634,19 @@ export default function TradingDashboard() {
                       </div>
                     </div>
                     
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <p className="text-muted-foreground text-xs">Liq. Threshold</p>
+                        <p className="font-mono font-bold text-lg text-blue-500">
+                          {(strategy as any).liquidationThresholdPercentile || '50'}th percentile
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground text-xs">Max Position Size</p>
+                        <p className="font-mono font-bold text-lg">${parseFloat((strategy as any).maxPositionSize || '0').toFixed(0)}</p>
+                      </div>
+                    </div>
+                    
                     <div className="flex items-center justify-between pt-2 border-t">
                       <span className="text-sm text-muted-foreground">Cascade Detection:</span>
                       <Badge variant={strategy.cascadeDetectionEnabled ? 'default' : 'secondary'}>
@@ -904,6 +917,21 @@ export default function TradingDashboard() {
                   onChange={(e) => setConfigFormData({...configFormData, volatilityThreshold: e.target.value})}
                   placeholder="e.g., 10"
                 />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="liquidationThresholdPercentile">Liquidation Threshold (percentile)</Label>
+                <Input
+                  id="liquidationThresholdPercentile"
+                  type="number"
+                  min="0"
+                  max="99"
+                  step="5"
+                  value={(configFormData as any).liquidationThresholdPercentile || ''}
+                  onChange={(e) => setConfigFormData({...configFormData, liquidationThresholdPercentile: e.target.value} as any)}
+                  placeholder="e.g., 75 (only trade liquidations above 75th percentile)"
+                />
+                <p className="text-xs text-muted-foreground">Only enter trades for liquidations above this percentile. Set to 0 to trade all liquidations.</p>
               </div>
               
               <div className="flex items-center space-x-2">
