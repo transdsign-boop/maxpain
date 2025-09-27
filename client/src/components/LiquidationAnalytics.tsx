@@ -7,7 +7,6 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BarChart3, TrendingUp, TrendingDown, Activity, AlertCircle, Clock, DollarSign } from "lucide-react";
 import { format } from "date-fns";
-import LiquidationPriceChart from "./LiquidationPriceChart";
 
 interface AvailableAsset {
   symbol: string;
@@ -318,12 +317,6 @@ export default function LiquidationAnalytics({ selectedAssets }: LiquidationAnal
           </div>
         )}
 
-        {/* Price Chart with Liquidations */}
-        {selectedAsset && (
-          <div className="mb-6">
-            <LiquidationPriceChart symbol={selectedAsset} hours={parseInt(selectedHours)} />
-          </div>
-        )}
 
         {/* Results */}
         {percentileData && !percentileLoading && (
