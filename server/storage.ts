@@ -314,6 +314,93 @@ export class DatabaseStorage implements IStorage {
     return tradeResult[0];
   }
 
+  async updateUnrealizedPnl(portfolioId: string): Promise<Position[]> {
+    try {
+      // Get all open positions for this portfolio
+      const openPositions = await this.getOpenPositions(portfolioId);
+      
+      if (openPositions.length === 0) {
+        return [];
+      }
+      
+      // Get unique symbols from open positions
+      const symbols = [...new Set(openPositions.map(pos => pos.symbol))];
+      
+      // Fetch current prices for all symbols
+      const pricePromises = symbols.map(async (symbol) => {
+        try {
+          const klinesResponse = await fetch(`https://fapi.asterdex.com/fapi/v1/klines?symbol=${symbol}&interval=1m&limit=1`, {
+            headers: {
+              'X-MBX-APIKEY': process.env.ASTER_API_KEY || ''
+            }
+          });
+          
+          if (klinesResponse.ok) {
+            const klinesData = await klinesResponse.json();
+            if (klinesData.length > 0) {
+              const latestKline = klinesData[0];
+              return {
+                symbol,
+                price: parseFloat(latestKline[4]) // Close price
+              };
+            }
+          }
+          return null;
+        } catch (error) {
+          console.error(`Error fetching price for ${symbol}:`, error);
+          return null;
+        }
+      });
+      
+      const priceResults = await Promise.all(pricePromises);
+      const priceMap = new Map<string, number>();
+      
+      priceResults.forEach(result => {
+        if (result) {
+          priceMap.set(result.symbol, result.price);
+        }
+      });
+      
+      // Update positions with current prices and calculated unrealized PNL
+      const updatePromises = openPositions.map(async (position) => {
+        const currentPrice = priceMap.get(position.symbol);
+        
+        if (!currentPrice) {
+          // If we can't get current price, return position unchanged
+          return position;
+        }
+        
+        const entryPrice = parseFloat(position.entryPrice);
+        const size = parseFloat(position.size);
+        
+        // Calculate unrealized PnL based on position side
+        let unrealizedPnl = 0;
+        if (position.side === 'long') {
+          unrealizedPnl = (currentPrice - entryPrice) * size;
+        } else {
+          unrealizedPnl = (entryPrice - currentPrice) * size;
+        }
+        
+        // Update the position in database
+        const updatedPosition = await this.updatePosition(position.id, {
+          currentPrice: currentPrice.toString(),
+          unrealizedPnl: unrealizedPnl.toString()
+        });
+        
+        return updatedPosition;
+      });
+      
+      const updatedPositions = await Promise.all(updatePromises);
+      console.log(`📊 Updated unrealized PNL for ${updatedPositions.length} positions`);
+      
+      return updatedPositions;
+    } catch (error) {
+      console.error('Error updating unrealized PNL:', error);
+      // Return original positions if update fails
+      return await this.getOpenPositions(portfolioId);
+    }
+  }
+
   // Trade operations
   async getTrades(portfolioId: string, limit: number = 100): Promise<Trade[]> {
     return await db.select().from(trades)
