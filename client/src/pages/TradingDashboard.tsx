@@ -8,6 +8,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -19,7 +21,8 @@ import {
   Play,
   Pause,
   StopCircle,
-  Settings
+  Settings,
+  Save
 } from "lucide-react";
 
 interface Position {
@@ -57,14 +60,49 @@ interface TradingStrategy {
   symbols: string[];
 }
 
+interface RiskSettings {
+  id: string;
+  sessionId: string;
+  maxPortfolioExposurePercent: string;
+  warningPortfolioExposurePercent: string;
+  maxSymbolConcentrationPercent: string;
+  maxPositionsPerSymbol: number;
+  maxPositionSizePercent: string;
+  minPositionSize: string;
+  maxRiskPerTradePercent: string;
+  highVolatilityThreshold: string;
+  extremeVolatilityThreshold: string;
+  cascadeDetectionEnabled: boolean;
+  cascadeCooldownMinutes: number;
+  lowLiquidationCount: number;
+  mediumLiquidationCount: number;
+  highLiquidationCount: number;
+  extremeLiquidationCount: number;
+  lowVelocityPerMinute: string;
+  mediumVelocityPerMinute: string;
+  highVelocityPerMinute: string;
+  extremeVelocityPerMinute: string;
+  lowVolumeThreshold: string;
+  mediumVolumeThreshold: string;
+  highVolumeThreshold: string;
+  extremeVolumeThreshold: string;
+  cascadeAnalysisWindowMinutes: number;
+  systemWideCascadeWindowMinutes: number;
+}
+
 export default function TradingDashboard() {
   // CRITICAL FIX: Use the same session as trading engine 
   const [sessionId] = useState('demo-session');
+  const { toast } = useToast();
   
   // State for configuration dialog
   const [configDialogOpen, setConfigDialogOpen] = useState(false);
   const [selectedStrategy, setSelectedStrategy] = useState<TradingStrategy | null>(null);
   const [configFormData, setConfigFormData] = useState<Partial<TradingStrategy>>({});
+  
+  // State for risk settings
+  const [riskSettingsFormData, setRiskSettingsFormData] = useState<Partial<RiskSettings>>({});
+  const [isUpdatingRiskSettings, setIsUpdatingRiskSettings] = useState(false);
 
   // Fetch portfolio first to get the portfolio ID
   const { data: portfolio } = useQuery<Portfolio>({
@@ -84,7 +122,12 @@ export default function TradingDashboard() {
     queryKey: [`/api/trading/strategies?sessionId=${sessionId}`],
     refetchInterval: 5000,
   });
-
+  
+  // Fetch risk settings
+  const { data: riskSettings } = useQuery<RiskSettings | null>({
+    queryKey: [`/api/risk-settings/${sessionId}`],
+    select: (data) => data || null,
+  });
 
   // Calculate portfolio metrics with error handling
   const activePositions = Array.isArray(positions) ? positions.filter((p: Position) => p?.status === 'open') : [];
@@ -98,6 +141,13 @@ export default function TradingDashboard() {
     const pnl = pos?.unrealizedPnl ? parseFloat(pos.unrealizedPnl) : 0;
     return sum + pnl;
   }, 0);
+
+  // Initialize risk settings form when data loads
+  useEffect(() => {
+    if (riskSettings) {
+      setRiskSettingsFormData(riskSettings);
+    }
+  }, [riskSettings]);
 
   // Debug logging
   console.log('TradingDashboard Debug:', {
@@ -293,6 +343,39 @@ export default function TradingDashboard() {
     } catch (error) {
       console.error('Error closing position:', error);
       alert('Failed to close position. Please try again.');
+    }
+  };
+
+  // Risk settings handlers
+  const handleSaveRiskSettings = async () => {
+    if (!riskSettingsFormData.sessionId) {
+      riskSettingsFormData.sessionId = sessionId;
+    }
+    
+    setIsUpdatingRiskSettings(true);
+    try {
+      await apiRequest(`/api/risk-settings`, {
+        method: 'PUT',
+        body: riskSettingsFormData
+      });
+      
+      // Invalidate and refetch risk settings
+      await queryClient.invalidateQueries({ queryKey: [`/api/risk-settings/${sessionId}`] });
+      
+      toast({
+        title: "Risk settings updated",
+        description: "Your position limits and cascade protection settings have been saved.",
+      });
+      
+    } catch (error) {
+      console.error('Error saving risk settings:', error);
+      toast({
+        title: "Error",
+        description: "Failed to save risk settings. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUpdatingRiskSettings(false);
     }
   };
 
@@ -607,18 +690,56 @@ export default function TradingDashboard() {
                   Position Limits
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-sm">Max positions per symbol:</span>
-                  <span className="font-medium">1</span>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="maxPositionsPerSymbol" className="text-sm font-medium">Max positions per symbol:</Label>
+                  <Input
+                    id="maxPositionsPerSymbol"
+                    type="number"
+                    min="1"
+                    max="10"
+                    value={riskSettingsFormData.maxPositionsPerSymbol || ''}
+                    onChange={(e) => setRiskSettingsFormData({
+                      ...riskSettingsFormData, 
+                      maxPositionsPerSymbol: parseInt(e.target.value) || 0
+                    })}
+                    className="h-8"
+                    data-testid="input-max-positions-per-symbol"
+                  />
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-sm">Risk per trade:</span>
-                  <span className="font-medium">2%</span>
+                <div className="space-y-2">
+                  <Label htmlFor="maxRiskPerTrade" className="text-sm font-medium">Risk per trade (%):</Label>
+                  <Input
+                    id="maxRiskPerTrade"
+                    type="number"
+                    min="0.1"
+                    max="10"
+                    step="0.1"
+                    value={riskSettingsFormData.maxRiskPerTradePercent || ''}
+                    onChange={(e) => setRiskSettingsFormData({
+                      ...riskSettingsFormData, 
+                      maxRiskPerTradePercent: e.target.value
+                    })}
+                    className="h-8"
+                    data-testid="input-max-risk-per-trade"
+                  />
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-sm">Max portfolio exposure:</span>
-                  <span className="font-medium">80%</span>
+                <div className="space-y-2">
+                  <Label htmlFor="maxPortfolioExposure" className="text-sm font-medium">Max portfolio exposure (%):</Label>
+                  <Input
+                    id="maxPortfolioExposure"
+                    type="number"
+                    min="10"
+                    max="100"
+                    step="5"
+                    value={riskSettingsFormData.maxPortfolioExposurePercent || ''}
+                    onChange={(e) => setRiskSettingsFormData({
+                      ...riskSettingsFormData, 
+                      maxPortfolioExposurePercent: e.target.value
+                    })}
+                    className="h-8"
+                    data-testid="input-max-portfolio-exposure"
+                  />
                 </div>
               </CardContent>
             </Card>
@@ -630,18 +751,51 @@ export default function TradingDashboard() {
                   Cascade Detection
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-sm">Status:</span>
-                  <Badge variant="default" className="bg-green-500">ACTIVE</Badge>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="cascadeDetectionEnabled" className="text-sm font-medium">Enable cascade detection:</Label>
+                  <Switch
+                    id="cascadeDetectionEnabled"
+                    checked={riskSettingsFormData.cascadeDetectionEnabled || false}
+                    onCheckedChange={(checked) => setRiskSettingsFormData({
+                      ...riskSettingsFormData, 
+                      cascadeDetectionEnabled: checked
+                    })}
+                    data-testid="switch-cascade-detection"
+                  />
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-sm">Risk threshold:</span>
-                  <span className="font-medium">High</span>
+                <div className="space-y-2">
+                  <Label htmlFor="cascadeCooldown" className="text-sm font-medium">Cooldown period (minutes):</Label>
+                  <Input
+                    id="cascadeCooldown"
+                    type="number"
+                    min="1"
+                    max="60"
+                    value={riskSettingsFormData.cascadeCooldownMinutes || ''}
+                    onChange={(e) => setRiskSettingsFormData({
+                      ...riskSettingsFormData, 
+                      cascadeCooldownMinutes: parseInt(e.target.value) || 0
+                    })}
+                    className="h-8"
+                    data-testid="input-cascade-cooldown"
+                  />
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-sm">Cooldown period:</span>
-                  <span className="font-medium">10 min</span>
+                <div className="space-y-2">
+                  <Label htmlFor="highVolatilityThreshold" className="text-sm font-medium">High volatility threshold (%):</Label>
+                  <Input
+                    id="highVolatilityThreshold"
+                    type="number"
+                    min="5"
+                    max="50"
+                    step="1"
+                    value={riskSettingsFormData.highVolatilityThreshold || ''}
+                    onChange={(e) => setRiskSettingsFormData({
+                      ...riskSettingsFormData, 
+                      highVolatilityThreshold: e.target.value
+                    })}
+                    className="h-8"
+                    data-testid="input-high-volatility-threshold"
+                  />
                 </div>
               </CardContent>
             </Card>
@@ -649,11 +803,21 @@ export default function TradingDashboard() {
             <Card className="hover-elevate">
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
-                  <Zap className="h-5 w-5" />
-                  Emergency Controls
+                  <Settings className="h-5 w-5" />
+                  Risk Settings & Controls
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
+                <Button 
+                  variant="default" 
+                  className="w-full" 
+                  onClick={handleSaveRiskSettings}
+                  disabled={isUpdatingRiskSettings}
+                  data-testid="save-risk-settings"
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  {isUpdatingRiskSettings ? 'Saving...' : 'Save Risk Settings'}
+                </Button>
                 <Button 
                   variant="destructive" 
                   className="w-full" 
