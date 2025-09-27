@@ -101,7 +101,7 @@ export class TradingEngine {
     const counterSide: 'long' | 'short' = liquidation.side === 'long' ? 'short' : 'long';
     
     const entryPrice = parseFloat(liquidation.price);
-    const portfolio = await storage.getOrCreatePortfolio('demo-session');
+    const portfolio = await storage.getOrCreatePortfolio('demo-session'); // TODO: Use dynamic portfolioId
     
     // CRITICAL FIX: Calculate position size in USD, not in units
     const availableBalance = parseFloat(portfolio.paperBalance);

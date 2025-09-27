@@ -1,80 +1,104 @@
-# Liquidation Stream Dashboard Design Guidelines
+# Aster DEX Liquidation Trading Dashboard Design Guidelines
 
 ## Design Approach
-**Utility-Focused Design System Approach** - This is a real-time financial data application where efficiency, clarity, and immediate data comprehension are paramount. Using a modified **Fluent Design** approach optimized for trading interfaces.
+**Professional Trading Terminal - Fluent Design System** - This sophisticated financial application prioritizes data density, real-time performance, and professional trading aesthetics. Every design element serves trading efficiency and risk management clarity.
 
 ## Core Design Principles
-- **Data-First Design**: All visual elements serve data clarity and quick decision-making
-- **Real-time Performance**: Minimal visual distractions that could impede data processing
-- **Professional Trading Aesthetic**: Clean, modern interface that conveys trust and precision
+- **Terminal-Grade Interface**: Dense, information-rich layouts optimized for professional traders
+- **Real-time Performance**: Minimal visual interference with live data processing
+- **Risk-First Design**: Critical risk indicators and controls prominently positioned
+- **Multi-Position Management**: Clear visual hierarchy for tracking multiple concurrent positions
 
 ## Color Palette
 
 ### Dark Mode (Primary)
-- **Background**: 220 15% 8% (deep charcoal)
-- **Surface**: 220 12% 12% (elevated panels)
-- **Border**: 220 8% 18% (subtle dividers)
-- **Text Primary**: 220 5% 95% (high contrast white)
-- **Text Secondary**: 220 5% 70% (muted text)
+- **Background**: 220 15% 6% (deep terminal black)
+- **Surface Primary**: 220 12% 10% (elevated panels)
+- **Surface Secondary**: 220 10% 14% (secondary panels)
+- **Border**: 220 8% 20% (panel dividers)
+- **Text Primary**: 220 5% 96% (high contrast)
+- **Text Secondary**: 220 5% 75% (labels)
+- **Text Muted**: 220 5% 55% (metadata)
 
-### Accent Colors
-- **Success/Long**: 142 76% 36% (forest green)
-- **Danger/Short**: 0 84% 60% (vibrant red)
-- **Warning**: 45 93% 47% (amber for alerts)
-- **Info**: 217 91% 60% (blue for neutral data)
+### Trading Status Colors
+- **Long/Profit**: 142 76% 42% (trading green)
+- **Short/Loss**: 0 84% 58% (trading red)
+- **Warning/Risk**: 38 92% 50% (amber alerts)
+- **Neutral/Info**: 217 91% 65% (data blue)
+- **Critical Alert**: 0 100% 67% (urgent red)
+- **Success Action**: 142 76% 48% (confirmation green)
 
-### Light Mode (Secondary)
-- **Background**: 220 15% 98%
-- **Surface**: 220 10% 100%
-- **Border**: 220 8% 88%
-- **Text Primary**: 220 15% 8%
-- **Text Secondary**: 220 5% 40%
+### Strategy & Risk Indicators
+- **Active Strategy**: 142 65% 45% (enabled green)
+- **Paused Strategy**: 38 85% 55% (paused amber)
+- **Risk Threshold**: 0 75% 60% (risk red)
+- **Safe Zone**: 142 45% 50% (safe green)
 
 ## Typography
-- **Primary Font**: Inter (Google Fonts) - excellent for data readability
-- **Monospace Font**: JetBrains Mono (Google Fonts) - for timestamps and numerical data
-- **Hierarchy**: text-sm for data tables, text-base for labels, text-lg for headers
+- **Primary Font**: Inter (Google Fonts) - optimal for dense financial data
+- **Monospace Font**: JetBrains Mono (Google Fonts) - prices, timestamps, addresses
+- **Hierarchy**: 
+  - text-xs for dense table data
+  - text-sm for labels and secondary info
+  - text-base for primary content
+  - text-lg for panel headers
+  - text-xl for critical metrics
 
 ## Layout System
-**Spacing Primitives**: Consistent use of Tailwind units 2, 4, 6, and 8
-- `p-4` for standard component padding
-- `gap-6` for section spacing
-- `m-2` for tight element margins
-- `h-8` for standard component heights
+**Spacing Primitives**: Tailwind units 1, 2, 3, 4, 6, 8
+- `p-3` for compact component padding
+- `p-4` for standard panel padding
+- `gap-4` for component spacing
+- `gap-6` for section separation
+- `h-8` for control heights
+- `h-12` for prominent buttons
 
 ## Component Library
 
-### Core Components
-- **Data Tables**: Dense, scannable rows with alternating backgrounds
-- **Real-time Cards**: Live updating panels with subtle pulse animations on data changes
-- **Filter Controls**: Clean dropdown selectors and toggle switches
-- **Timestamp Displays**: Monospace formatting with relative time indicators
+### Trading Terminal Components
+- **Position Cards**: Compact cards showing P&L, risk level, and quick actions
+- **Strategy Configuration Panels**: Expandable sections with parameter controls
+- **Risk Control Dashboard**: Prominent risk metrics with threshold indicators
+- **Liquidation Stream**: High-density scrolling feed with size-based visual weights
+- **Cascade Detection Alerts**: Prominent warning panels with risk escalation indicators
 
-### Navigation
-- **Sidebar Navigation**: Minimal, icon-based with tooltips
-- **Top Bar**: Application title, connection status indicator, and user preferences
+### Data Tables
+- **Dense Financial Tables**: Minimal row height with alternating subtle backgrounds
+- **Real-time Price Feeds**: Monospace numbers with directional color flashing
+- **Position Management Grid**: Sortable columns with inline editing capabilities
+- **Strategy Performance Tables**: Historical data with trend indicators
 
-### Data Visualization
-- **Volume Indicators**: Horizontal bar charts with directional color coding
-- **Liquidation Feed**: Vertical scrolling list with auto-scroll capability
-- **Statistics Panels**: Clean metric cards with large numbers and trend indicators
+### Navigation & Layout
+- **Sidebar Navigation**: Collapsible icon-based menu with trading sections
+- **Multi-Panel Layout**: Resizable panels for customizable workspace
+- **Quick Action Toolbar**: Prominent emergency controls (stop all, pause strategies)
+- **Status Bar**: Connection health, account balance, active positions count
 
-## Special Considerations
+### Controls & Inputs
+- **Strategy Toggles**: Large, clear on/off switches for strategy activation
+- **Risk Sliders**: Visual range controls with color-coded safe/warning zones
+- **Parameter Inputs**: Validated numerical inputs with unit indicators
+- **Time Range Selectors**: Button groups for timeframe selection (1m, 5m, 15m, 1h, 4h, 1d)
 
-### Real-time Data Presentation
-- **Connection Status**: Prominent WebSocket connection indicator (green dot for connected)
-- **Data Freshness**: Subtle timestamp indicators showing last update times
-- **Loading States**: Skeleton screens for initial data load, subtle spinners for updates
+## Real-time Features
 
-### Trading Interface Elements
-- **Directional Indicators**: Clear long/short visual distinction using green/red color coding
-- **Volume Scaling**: Visual weight proportional to liquidation size
-- **Time-bound Filters**: Intuitive time range selectors (1m, 5m, 15m, 1h, 4h, 1d)
+### Live Data Presentation
+- **Connection Indicators**: Prominent WebSocket status with latency display
+- **Data Freshness**: Subtle pulse animations on updated values
+- **Price Movement**: Brief color flashes for price changes (green up, red down)
+- **Position Updates**: Smooth transitions for P&L changes
 
-### Performance Optimizations
-- **Minimal Animations**: Only essential feedback animations (connection status, new data arrival)
-- **Efficient Updates**: Smooth transitions for real-time data without visual disruption
-- **Responsive Design**: Optimized for both desktop trading setups and mobile monitoring
+### Alert System
+- **Risk Escalation**: Progressive color intensity for increasing risk levels
+- **Cascade Warnings**: Prominent modal overlays for cascade detection
+- **Strategy Notifications**: Subtle toast notifications for strategy events
+- **System Alerts**: Critical notifications for connection or system issues
+
+## Performance & Responsiveness
+- **Minimal Animation**: Only essential feedback (connection status, alerts)
+- **Efficient Updates**: Optimized for high-frequency data without visual disruption  
+- **Desktop-First**: Optimized for multi-monitor trading setups
+- **Responsive Breakpoints**: Tablet and mobile views for monitoring on-the-go
 
 ## Images
-No hero images or decorative graphics needed. This is a pure data application where any imagery would distract from the core functionality. Focus on clean iconography for navigation and status indicators only.
+No decorative images or hero graphics. This is a pure trading application where any non-functional imagery would distract from critical financial data. Use only essential iconography for navigation, status indicators, and trading actions (buy/sell/stop icons, connection status, alert symbols).

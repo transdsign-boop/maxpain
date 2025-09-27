@@ -31,10 +31,12 @@ export class RiskManager {
     portfolioId: string,
     strategy: TradingStrategy
   ): Promise<RiskAssessment> {
-    const portfolio = await storage.getOrCreatePortfolio('demo-session');
+    // CRITICAL FIX: Use the actual portfolioId parameter, not hardcoded 'demo-session'
+    const portfolio = await storage.getOrCreatePortfolio(portfolioId);
     const openPositions = await storage.getOpenPositions(portfolioId);
     
-    // Calculate portfolio exposure
+    // Calculate portfolio exposure - use paper balance for now
+    // TODO: Add real balance support when real trading is implemented
     const totalValue = parseFloat(portfolio.paperBalance);
     const currentExposure = this.calculatePortfolioExposure(openPositions);
     const portfolioExposurePercent = (currentExposure / totalValue) * 100;
