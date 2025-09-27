@@ -1,4 +1,5 @@
 import { storage } from "./storage";
+import { riskManager } from "./riskManager";
 import { type Liquidation, type TradingStrategy, type Position, type Portfolio } from "@shared/schema";
 
 export interface TradingSignal {
@@ -70,7 +71,7 @@ export class TradingEngine {
   }
 
   /**
-   * Generate counter-trading signal based on liquidation
+   * Generate counter-trading signal based on liquidation with proper risk management
    */
   private async generateCounterSignal(
     liquidation: Liquidation, 
@@ -81,50 +82,50 @@ export class TradingEngine {
     const counterSide: 'long' | 'short' = liquidation.side === 'long' ? 'short' : 'long';
     
     const entryPrice = parseFloat(liquidation.price);
-    const maxPositionSize = parseFloat(strategy.maxPositionSize);
-    const riskReward = parseFloat(strategy.riskRewardRatio);
+    const portfolio = await storage.getOrCreatePortfolio('demo-session');
     
-    // Adjust position size based on volatility
-    const volatilityAdjustment = Math.max(0.1, 1 - (volatility / 100));
-    const adjustedSize = maxPositionSize * volatilityAdjustment;
+    // CRITICAL FIX: Calculate position size in USD, not in units
+    const availableBalance = parseFloat(portfolio.paperBalance);
+    const maxRiskPerTrade = 0.02; // 2% risk per trade
+    const maxPositionValue = availableBalance * maxRiskPerTrade;
     
-    // Calculate stop loss and take profit with volatility adjustment
-    const baseStopLoss = parseFloat(strategy.stopLossPercent);
-    const baseTakeProfit = parseFloat(strategy.takeProfitPercent);
+    // Calculate position size in units based on USD value
+    const positionSizeInUnits = maxPositionValue / entryPrice;
     
-    // Increase stop loss and take profit based on volatility
-    const volatilityMultiplier = 1 + (volatility / 100);
-    const adjustedStopLoss = baseStopLoss * volatilityMultiplier;
-    const adjustedTakeProfit = baseTakeProfit * volatilityMultiplier;
+    // Apply volatility adjustment
+    const volatilityAdjustment = Math.max(0.1, 1 - (volatility / 50)); // More conservative
+    const adjustedSize = positionSizeInUnits * volatilityAdjustment;
     
-    // Ensure take profit meets risk-reward ratio
-    const minTakeProfit = adjustedStopLoss * riskReward;
-    const finalTakeProfit = Math.max(adjustedTakeProfit, minTakeProfit);
+    // Use risk manager for dynamic stop loss and take profit
+    const dynamicStopLoss = riskManager.calculateDynamicStopLoss(
+      entryPrice,
+      counterSide,
+      volatility,
+      parseFloat(strategy.stopLossPercent),
+      liquidation.symbol
+    );
     
-    // Calculate stop loss and take profit prices
-    let stopLossPrice: number;
-    let takeProfitPrice: number;
-    
-    if (counterSide === 'long') {
-      stopLossPrice = entryPrice * (1 - adjustedStopLoss / 100);
-      takeProfitPrice = entryPrice * (1 + finalTakeProfit / 100);
-    } else {
-      stopLossPrice = entryPrice * (1 + adjustedStopLoss / 100);
-      takeProfitPrice = entryPrice * (1 - finalTakeProfit / 100);
-    }
+    const dynamicTakeProfit = riskManager.calculateDynamicTakeProfit(
+      entryPrice,
+      dynamicStopLoss.stopLossPrice,
+      counterSide,
+      parseFloat(strategy.riskRewardRatio),
+      volatility
+    );
 
     const signal: TradingSignal = {
       symbol: liquidation.symbol,
       side: counterSide,
       size: adjustedSize,
       entryPrice,
-      stopLossPrice,
-      takeProfitPrice,
-      reason: `Counter-trade liquidation: ${liquidation.side} liquidated at $${liquidation.price}`,
+      stopLossPrice: dynamicStopLoss.stopLossPrice,
+      takeProfitPrice: dynamicTakeProfit.takeProfitPrice,
+      reason: `Counter-trade liquidation: ${liquidation.side} liquidated at $${liquidation.price} (2% risk)`,
       triggeredByLiquidation: liquidation.id
     };
 
-    console.log(`📊 Generated signal: ${signal.symbol} ${signal.side} size:${signal.size} entry:$${signal.entryPrice} SL:$${signal.stopLossPrice.toFixed(2)} TP:$${signal.takeProfitPrice.toFixed(2)}`);
+    const positionValue = signal.size * signal.entryPrice;
+    console.log(`📊 Generated signal: ${signal.symbol} ${signal.side} size:${signal.size.toFixed(6)} entry:$${signal.entryPrice} value:$${positionValue.toFixed(2)} SL:$${signal.stopLossPrice.toFixed(2)} TP:$${signal.takeProfitPrice.toFixed(2)}`);
     
     return signal;
   }
