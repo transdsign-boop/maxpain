@@ -552,6 +552,102 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Current price endpoint for real-time price data
+  app.get("/api/prices/:symbol", async (req, res) => {
+    try {
+      const { symbol } = req.params;
+      
+      if (!symbol) {
+        return res.status(400).json({ error: "symbol parameter required" });
+      }
+      
+      // Fetch latest price from 1-minute klines (most recent data)
+      const klinesResponse = await fetch(`https://fapi.asterdex.com/fapi/v1/klines?symbol=${symbol}&interval=1m&limit=1`, {
+        headers: {
+          'X-MBX-APIKEY': process.env.ASTER_API_KEY || ''
+        }
+      });
+      
+      if (!klinesResponse.ok) {
+        throw new Error(`Failed to fetch price: ${klinesResponse.status}`);
+      }
+      
+      const klinesData = await klinesResponse.json();
+      
+      if (klinesData.length === 0) {
+        return res.status(404).json({ error: "No price data available for symbol" });
+      }
+      
+      const latestKline = klinesData[0];
+      const currentPrice = parseFloat(latestKline[4]); // Close price
+      
+      res.json({
+        symbol,
+        price: currentPrice.toString(),
+        timestamp: latestKline[0],
+        date: new Date(latestKline[0]).toISOString()
+      });
+    } catch (error) {
+      console.error(`Failed to fetch price for ${req.params.symbol}:`, error);
+      res.status(500).json({ error: "Failed to fetch current price" });
+    }
+  });
+
+  // Bulk prices endpoint for multiple symbols
+  app.post("/api/prices/bulk", async (req, res) => {
+    try {
+      const { symbols } = req.body;
+      
+      if (!Array.isArray(symbols) || symbols.length === 0) {
+        return res.status(400).json({ error: "symbols array required" });
+      }
+      
+      const prices: Record<string, any> = {};
+      
+      // Fetch prices for all symbols in parallel
+      const pricePromises = symbols.map(async (symbol: string) => {
+        try {
+          const klinesResponse = await fetch(`https://fapi.asterdex.com/fapi/v1/klines?symbol=${symbol}&interval=1m&limit=1`, {
+            headers: {
+              'X-MBX-APIKEY': process.env.ASTER_API_KEY || ''
+            }
+          });
+          
+          if (klinesResponse.ok) {
+            const klinesData = await klinesResponse.json();
+            if (klinesData.length > 0) {
+              const latestKline = klinesData[0];
+              return {
+                symbol,
+                price: parseFloat(latestKline[4]).toString(),
+                timestamp: latestKline[0],
+                date: new Date(latestKline[0]).toISOString()
+              };
+            }
+          }
+          return null;
+        } catch (error) {
+          console.error(`Error fetching price for ${symbol}:`, error);
+          return null;
+        }
+      });
+      
+      const results = await Promise.all(pricePromises);
+      
+      // Build response object
+      results.forEach(result => {
+        if (result) {
+          prices[result.symbol] = result;
+        }
+      });
+      
+      res.json({ prices, count: Object.keys(prices).length });
+    } catch (error) {
+      console.error('Bulk prices fetch error:', error);
+      res.status(500).json({ error: "Failed to fetch bulk prices" });
+    }
+  });
+
   // ===== TRADING SYSTEM API ROUTES =====
 
   // Trading Strategy routes
