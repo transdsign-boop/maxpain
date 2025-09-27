@@ -34,6 +34,8 @@ interface Position {
 interface Portfolio {
   id: string;
   paperBalance: string;
+  realBalance?: string;
+  tradingMode?: string;
   totalPnl: string;
 }
 
@@ -134,20 +136,80 @@ export default function TradingDashboard() {
     }
   };
 
+  const toggleTradingMode = async () => {
+    try {
+      const newMode = portfolio?.tradingMode === 'paper' ? 'real' : 'paper';
+      const response = await fetch(`/api/trading/portfolio/${portfolio?.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tradingMode: newMode }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to update trading mode: ${response.statusText}`);
+      }
+      
+      window.location.reload(); // Refresh to show new mode
+      console.log(`Trading mode switched to: ${newMode}`);
+    } catch (error) {
+      console.error('Failed to toggle trading mode:', error);
+      alert('Failed to update trading mode. Please try again.');
+    }
+  };
+
   return (
     <div className="p-6 space-y-6 h-full overflow-auto" data-testid="trading-dashboard">
+      {/* Trading Mode Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Trading Dashboard</h1>
+          <p className="text-muted-foreground">Real-time portfolio management and position tracking</p>
+        </div>
+        <Card className="p-4">
+          <div className="flex items-center space-x-4">
+            <div className="text-right">
+              <div className="text-sm font-medium">Trading Mode</div>
+              <div className={`text-lg font-bold ${portfolio?.tradingMode === 'real' ? 'text-green-500' : 'text-blue-500'}`}>
+                {portfolio?.tradingMode === 'real' ? '🏦 REAL' : '📝 PAPER'}
+              </div>
+            </div>
+            <Button 
+              onClick={toggleTradingMode}
+              variant={portfolio?.tradingMode === 'real' ? 'destructive' : 'default'}
+              size="sm"
+              data-testid="toggle-trading-mode"
+            >
+              Switch to {portfolio?.tradingMode === 'paper' ? 'Real' : 'Paper'}
+            </Button>
+          </div>
+        </Card>
+      </div>
+
       {/* Portfolio Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <Card className="hover-elevate">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Paper Balance</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
+            <DollarSign className="h-4 w-4 text-blue-500" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
               {portfolio ? formatCurrency(portfolio.paperBalance) : '$0.00'}
             </div>
-            <p className="text-xs text-muted-foreground">Available for trading</p>
+            <p className="text-xs text-muted-foreground">Simulated trading funds</p>
+          </CardContent>
+        </Card>
+
+        <Card className="hover-elevate">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Real Balance</CardTitle>
+            <DollarSign className="h-4 w-4 text-green-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {portfolio ? formatCurrency(portfolio.realBalance || '0') : '$0.00'}
+            </div>
+            <p className="text-xs text-muted-foreground">Actual trading funds</p>
           </CardContent>
         </Card>
 
