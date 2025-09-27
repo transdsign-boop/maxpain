@@ -174,12 +174,80 @@ export default function TradingDashboard() {
         throw new Error(`Failed to update strategy: ${response.statusText}`);
       }
       
-      // Refetch strategies after successful update
-      window.location.reload(); // Simple refresh to update the UI
       console.log(`Strategy ${strategyId} ${!isActive ? 'activated' : 'paused'}`);
+      // The useQuery will automatically refetch the strategies
     } catch (error) {
       console.error('Failed to toggle strategy:', error);
       alert('Failed to update strategy. Please try again.');
+    }
+  };
+
+  // Position management handlers
+
+  // Emergency control handlers
+  const handleEmergencyStop = async () => {
+    if (!confirm('⚠️ This will STOP ALL TRADING immediately. Are you sure?')) return;
+    
+    try {
+      const response = await fetch('/api/trading/emergency-stop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to stop trading: ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      alert(`✅ ${result.message}`);
+    } catch (error) {
+      console.error('Error stopping trading:', error);
+      alert('Failed to stop trading. Please try again.');
+    }
+  };
+
+  const handleCloseAllPositions = async () => {
+    if (!confirm('⚠️ This will CLOSE ALL OPEN POSITIONS immediately. Are you sure?')) return;
+    
+    try {
+      const response = await fetch('/api/trading/close-all-positions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to close positions: ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      alert(`✅ ${result.message}`);
+    } catch (error) {
+      console.error('Error closing positions:', error);
+      alert('Failed to close positions. Please try again.');
+    }
+  };
+
+  const handlePauseAllStrategies = async () => {
+    if (!confirm('⚠️ This will PAUSE ALL TRADING STRATEGIES. Are you sure?')) return;
+    
+    try {
+      const response = await fetch('/api/trading/pause-all-strategies', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to pause strategies: ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      alert(`✅ ${result.message}`);
+    } catch (error) {
+      console.error('Error pausing strategies:', error);
+      alert('Failed to pause strategies. Please try again.');
     }
   };
 
@@ -211,7 +279,7 @@ export default function TradingDashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           exitPrice: currentPrice, 
-          exitReason: 'manual' 
+          exitReason: 'manual_close' 
         }),
       });
       
@@ -221,11 +289,9 @@ export default function TradingDashboard() {
       
       const trade = await response.json();
       console.log(`✅ Position closed: ${symbol} - P&L: $${trade.realizedPnl}`);
-      
-      // Refresh data
-      window.location.reload();
+      // The useQuery will automatically refetch positions
     } catch (error) {
-      console.error('Failed to close position:', error);
+      console.error('Error closing position:', error);
       alert('Failed to close position. Please try again.');
     }
   };
@@ -588,14 +654,29 @@ export default function TradingDashboard() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <Button variant="destructive" className="w-full" data-testid="emergency-stop-all">
+                <Button 
+                  variant="destructive" 
+                  className="w-full" 
+                  onClick={handleEmergencyStop}
+                  data-testid="emergency-stop-all"
+                >
                   <StopCircle className="h-4 w-4 mr-2" />
                   Stop All Trading
                 </Button>
-                <Button variant="outline" className="w-full" data-testid="close-all-positions">
+                <Button 
+                  variant="outline" 
+                  className="w-full" 
+                  onClick={handleCloseAllPositions}
+                  data-testid="close-all-positions"
+                >
                   Close All Positions
                 </Button>
-                <Button variant="outline" className="w-full" data-testid="pause-strategies">
+                <Button 
+                  variant="outline" 
+                  className="w-full" 
+                  onClick={handlePauseAllStrategies}
+                  data-testid="pause-strategies"
+                >
                   Pause All Strategies
                 </Button>
               </CardContent>
