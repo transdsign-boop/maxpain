@@ -55,6 +55,61 @@ export const insertUserSettingsSchema = createInsertSchema(userSettings).omit({
 export type InsertUserSettings = z.infer<typeof insertUserSettingsSchema>;
 export type UserSettings = typeof userSettings.$inferSelect;
 
+// Risk management settings table - configurable position limits and cascade protection
+export const riskSettings = pgTable("risk_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sessionId: text("session_id").notNull().unique(), // Per-session risk settings
+  
+  // Position Limits
+  maxPortfolioExposurePercent: decimal("max_portfolio_exposure_percent", { precision: 5, scale: 2 }).notNull().default('80.00'),
+  warningPortfolioExposurePercent: decimal("warning_portfolio_exposure_percent", { precision: 5, scale: 2 }).notNull().default('60.00'),
+  maxSymbolConcentrationPercent: decimal("max_symbol_concentration_percent", { precision: 5, scale: 2 }).notNull().default('20.00'),
+  maxPositionsPerSymbol: integer("max_positions_per_symbol").notNull().default(2),
+  maxPositionSizePercent: decimal("max_position_size_percent", { precision: 5, scale: 2 }).notNull().default('5.00'),
+  minPositionSize: decimal("min_position_size", { precision: 18, scale: 8 }).notNull().default('1.00'),
+  maxRiskPerTradePercent: decimal("max_risk_per_trade_percent", { precision: 5, scale: 2 }).notNull().default('2.00'),
+  
+  // Volatility Limits
+  highVolatilityThreshold: decimal("high_volatility_threshold", { precision: 5, scale: 2 }).notNull().default('15.00'),
+  extremeVolatilityThreshold: decimal("extreme_volatility_threshold", { precision: 5, scale: 2 }).notNull().default('20.00'),
+  
+  // Cascade Protection Settings  
+  cascadeDetectionEnabled: boolean("cascade_detection_enabled").notNull().default(true),
+  cascadeCooldownMinutes: integer("cascade_cooldown_minutes").notNull().default(10),
+  
+  // Cascade Detection Thresholds
+  lowLiquidationCount: integer("low_liquidation_count").notNull().default(3),
+  mediumLiquidationCount: integer("medium_liquidation_count").notNull().default(7),
+  highLiquidationCount: integer("high_liquidation_count").notNull().default(15),
+  extremeLiquidationCount: integer("extreme_liquidation_count").notNull().default(25),
+  
+  lowVelocityPerMinute: decimal("low_velocity_per_minute", { precision: 5, scale: 2 }).notNull().default('2.00'),
+  mediumVelocityPerMinute: decimal("medium_velocity_per_minute", { precision: 5, scale: 2 }).notNull().default('5.00'),
+  highVelocityPerMinute: decimal("high_velocity_per_minute", { precision: 5, scale: 2 }).notNull().default('10.00'),
+  extremeVelocityPerMinute: decimal("extreme_velocity_per_minute", { precision: 5, scale: 2 }).notNull().default('20.00'),
+  
+  lowVolumeThreshold: decimal("low_volume_threshold", { precision: 18, scale: 2 }).notNull().default('50000.00'),
+  mediumVolumeThreshold: decimal("medium_volume_threshold", { precision: 18, scale: 2 }).notNull().default('200000.00'),
+  highVolumeThreshold: decimal("high_volume_threshold", { precision: 18, scale: 2 }).notNull().default('500000.00'),
+  extremeVolumeThreshold: decimal("extreme_volume_threshold", { precision: 18, scale: 2 }).notNull().default('1000000.00'),
+  
+  // Analysis Window Settings
+  cascadeAnalysisWindowMinutes: integer("cascade_analysis_window_minutes").notNull().default(10),
+  systemWideCascadeWindowMinutes: integer("system_wide_cascade_window_minutes").notNull().default(15),
+  
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertRiskSettingsSchema = createInsertSchema(riskSettings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertRiskSettings = z.infer<typeof insertRiskSettingsSchema>;
+export type RiskSettings = typeof riskSettings.$inferSelect;
+
 // Trading strategies table
 export const tradingStrategies = pgTable("trading_strategies", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
