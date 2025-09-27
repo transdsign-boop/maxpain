@@ -193,8 +193,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateTradingStrategy(id: string, updates: Partial<InsertTradingStrategy>): Promise<TradingStrategy> {
+    // Remove any timestamp fields from updates to avoid conflicts
+    const cleanUpdates = { ...updates };
+    delete (cleanUpdates as any).createdAt;
+    delete (cleanUpdates as any).updatedAt;
+    
     const result = await db.update(tradingStrategies)
-      .set({ ...updates, updatedAt: sql`now()` })
+      .set({ ...cleanUpdates, updatedAt: sql`now()` })
       .where(eq(tradingStrategies.id, id))
       .returning();
     return result[0];

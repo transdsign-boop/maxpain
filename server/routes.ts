@@ -751,6 +751,83 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Emergency Controls API Endpoints
+  app.post("/api/trading/emergency-stop", async (req, res) => {
+    try {
+      const { sessionId } = req.body;
+      
+      if (!sessionId) {
+        return res.status(400).json({ error: "sessionId required" });
+      }
+      
+      // Pause all strategies for this session
+      const strategies = await storage.getTradingStrategies(sessionId);
+      await Promise.all(strategies.map(strategy => 
+        storage.updateTradingStrategy(strategy.id, { isActive: false })
+      ));
+      
+      res.json({ success: true, message: "All trading stopped" });
+    } catch (error) {
+      console.error('Emergency stop error:', error);
+      res.status(500).json({ error: "Failed to stop trading" });
+    }
+  });
+
+  app.post("/api/trading/close-all-positions", async (req, res) => {
+    try {
+      const { sessionId } = req.body;
+      
+      if (!sessionId) {
+        return res.status(400).json({ error: "sessionId required" });
+      }
+      
+      // Get portfolio to find positions
+      const portfolio = await storage.getOrCreatePortfolio(sessionId);
+      const positions = await storage.getOpenPositions(portfolio.id);
+      
+      // Close all open positions
+      const closedTrades = await Promise.all(
+        positions.map(position => 
+          storage.closePosition(position.id, position.currentPrice, "emergency_close")
+        )
+      );
+      
+      res.json({ 
+        success: true, 
+        message: `Closed ${closedTrades.length} positions`,
+        closedPositions: closedTrades.length 
+      });
+    } catch (error) {
+      console.error('Close all positions error:', error);
+      res.status(500).json({ error: "Failed to close positions" });
+    }
+  });
+
+  app.post("/api/trading/pause-all-strategies", async (req, res) => {
+    try {
+      const { sessionId } = req.body;
+      
+      if (!sessionId) {
+        return res.status(400).json({ error: "sessionId required" });
+      }
+      
+      // Pause all strategies for this session
+      const strategies = await storage.getTradingStrategies(sessionId);
+      const updatedStrategies = await Promise.all(strategies.map(strategy => 
+        storage.updateTradingStrategy(strategy.id, { isActive: false })
+      ));
+      
+      res.json({ 
+        success: true, 
+        message: `Paused ${updatedStrategies.length} strategies`,
+        pausedStrategies: updatedStrategies.length 
+      });
+    } catch (error) {
+      console.error('Pause all strategies error:', error);
+      res.status(500).json({ error: "Failed to pause strategies" });
+    }
+  });
+
   app.get("/api/trading/volatility/:symbol", async (req, res) => {
     try {
       const { symbol } = req.params;
