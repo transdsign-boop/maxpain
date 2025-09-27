@@ -210,13 +210,21 @@ export class TradingEngine {
         return null;
       }
 
-      // Check for existing positions in same symbol/side to avoid over-exposure
+      // Check for existing positions in same symbol/side
       const existingPositions = await storage.getOpenPositionsBySymbol(portfolio.id, signal.symbol);
       const sameDirectionPositions = existingPositions.filter(p => p.side === signal.side);
       
+      // Handle DCA (Dollar Cost Averaging) if enabled
       if (sameDirectionPositions.length > 0) {
-        console.log(`⚠️ Already have ${sameDirectionPositions.length} open ${signal.side} position(s) in ${signal.symbol}`);
-        return null;
+        if (strategy.dcaEnabled && sameDirectionPositions.length === 1) {
+          // DCA is enabled and we have exactly one existing position - add to it
+          console.log(`📈 DCA enabled: Adding to existing ${signal.side} position in ${signal.symbol}`);
+          return await this.addToPosition(sameDirectionPositions[0], signal, tradingMode);
+        } else {
+          // Either DCA is disabled or we already have multiple positions
+          console.log(`⚠️ Already have ${sameDirectionPositions.length} open ${signal.side} position(s) in ${signal.symbol}`);
+          return null;
+        }
       }
 
       // Calculate volatility at entry
@@ -305,6 +313,84 @@ export class TradingEngine {
       console.log(`🔒 Position closed: ${trade.symbol} ${trade.side} PnL: $${trade.realizedPnl} (${exitReason})`);
     } catch (error) {
       console.error('❌ Error closing position:', error);
+    }
+  }
+
+  /**
+   * Add to existing position (DCA - Dollar Cost Averaging)
+   */
+  private async addToPosition(
+    existingPosition: Position, 
+    signal: TradingSignal, 
+    tradingMode: 'paper' | 'real'
+  ): Promise<Position | null> {
+    try {
+      // Calculate new position values
+      const currentSize = parseFloat(existingPosition.size);
+      const currentEntryPrice = parseFloat(existingPosition.entryPrice);
+      const newSize = signal.size;
+      const newEntryPrice = signal.entryPrice;
+
+      // Calculate weighted average entry price
+      const totalValue = (currentSize * currentEntryPrice) + (newSize * newEntryPrice);
+      const totalSize = currentSize + newSize;
+      const avgEntryPrice = totalValue / totalSize;
+
+      // Get strategy for recalculating stop loss and take profit
+      const strategies = await this.getActiveStrategiesForSymbol(signal.symbol);
+      const strategy = strategies[0];
+
+      // Calculate volatility for dynamic stop loss/take profit
+      const volatility = await storage.calculateVolatility(signal.symbol, 1);
+
+      // Recalculate stop loss and take profit based on new average entry price
+      const dynamicStopLoss = riskManager.calculateDynamicStopLoss(
+        avgEntryPrice,
+        signal.side,
+        volatility,
+        parseFloat(strategy.stopLossPercent),
+        signal.symbol
+      );
+
+      const dynamicTakeProfit = riskManager.calculateDynamicTakeProfit(
+        avgEntryPrice,
+        dynamicStopLoss.stopLossPrice,
+        signal.side,
+        parseFloat(strategy.riskRewardRatio),
+        volatility
+      );
+
+      // Update the position
+      const updatedPosition = await storage.updatePosition(existingPosition.id, {
+        size: totalSize.toString(),
+        entryPrice: avgEntryPrice.toString(),
+        stopLossPrice: dynamicStopLoss.stopLossPrice.toString(),
+        takeProfitPrice: dynamicTakeProfit.takeProfitPrice.toString(),
+        triggeredByLiquidation: signal.triggeredByLiquidation || existingPosition.triggeredByLiquidation
+      });
+
+      // Update portfolio balance (subtract the cost of additional position)
+      const additionalCost = newSize * newEntryPrice;
+      const portfolio = await storage.getOrCreatePortfolio('demo-session'); // TODO: Use dynamic sessionId
+      const currentBalance = tradingMode === 'paper' 
+        ? parseFloat(portfolio.paperBalance)
+        : parseFloat(portfolio.realBalance);
+      
+      const newBalance = currentBalance - additionalCost;
+      if (tradingMode === 'paper') {
+        await storage.updatePortfolio(portfolio.id, { paperBalance: newBalance.toString() });
+      } else {
+        await storage.updatePortfolio(portfolio.id, { realBalance: newBalance.toString() });
+      }
+
+      const totalPositionValue = totalSize * avgEntryPrice;
+      console.log(`📈 DCA executed: ${signal.symbol} ${signal.side} added ${newSize.toFixed(6)} @ $${newEntryPrice.toFixed(2)}`);
+      console.log(`📊 New average: size:${totalSize.toFixed(6)} entry:$${avgEntryPrice.toFixed(4)} value:$${totalPositionValue.toFixed(2)} SL:$${dynamicStopLoss.stopLossPrice.toFixed(2)} TP:$${dynamicTakeProfit.takeProfitPrice.toFixed(2)}`);
+
+      return updatedPosition;
+    } catch (error) {
+      console.error('❌ Error adding to position (DCA):', error);
+      return null;
     }
   }
 
