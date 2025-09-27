@@ -1,6 +1,7 @@
 import { 
   type User, type InsertUser, type Liquidation, type InsertLiquidation, 
   type UserSettings, type InsertUserSettings,
+  type RiskSettings, type InsertRiskSettings,
   type TradingStrategy, type InsertTradingStrategy,
   type Portfolio, type InsertPortfolio,
   type Position, type InsertPosition,
@@ -10,7 +11,7 @@ import {
 import { randomUUID } from "crypto";
 import { db } from "./db";
 import { 
-  liquidations, users, userSettings, 
+  liquidations, users, userSettings, riskSettings,
   tradingStrategies, portfolios, positions, trades, marketData 
 } from "@shared/schema";
 import { desc, gte, eq, sql, and, or } from "drizzle-orm";
@@ -37,6 +38,10 @@ export interface IStorage {
   // User settings operations
   getUserSettings(sessionId: string): Promise<UserSettings | undefined>;
   saveUserSettings(settings: InsertUserSettings): Promise<UserSettings>;
+  
+  // Risk settings operations
+  getRiskSettings(sessionId: string): Promise<RiskSettings | undefined>;
+  saveRiskSettings(settings: InsertRiskSettings): Promise<RiskSettings>;
 
   // Trading strategy operations
   createTradingStrategy(strategy: InsertTradingStrategy): Promise<TradingStrategy>;
@@ -165,6 +170,51 @@ export class DatabaseStorage implements IStorage {
           minValue: settings.minValue,
           timeRange: settings.timeRange,
           lastUpdated: sql`now()`,
+        }
+      })
+      .returning();
+    return result[0];
+  }
+  
+  // Risk settings operations
+  async getRiskSettings(sessionId: string): Promise<RiskSettings | undefined> {
+    const result = await db.select().from(riskSettings).where(eq(riskSettings.sessionId, sessionId));
+    return result[0];
+  }
+  
+  async saveRiskSettings(settings: InsertRiskSettings): Promise<RiskSettings> {
+    // Use INSERT ... ON CONFLICT to upsert risk settings
+    const result = await db.insert(riskSettings)
+      .values(settings)
+      .onConflictDoUpdate({
+        target: riskSettings.sessionId,
+        set: {
+          maxPortfolioExposurePercent: settings.maxPortfolioExposurePercent,
+          warningPortfolioExposurePercent: settings.warningPortfolioExposurePercent,
+          maxSymbolConcentrationPercent: settings.maxSymbolConcentrationPercent,
+          maxPositionsPerSymbol: settings.maxPositionsPerSymbol,
+          maxPositionSizePercent: settings.maxPositionSizePercent,
+          minPositionSize: settings.minPositionSize,
+          maxRiskPerTradePercent: settings.maxRiskPerTradePercent,
+          highVolatilityThreshold: settings.highVolatilityThreshold,
+          extremeVolatilityThreshold: settings.extremeVolatilityThreshold,
+          cascadeDetectionEnabled: settings.cascadeDetectionEnabled,
+          cascadeCooldownMinutes: settings.cascadeCooldownMinutes,
+          lowLiquidationCount: settings.lowLiquidationCount,
+          mediumLiquidationCount: settings.mediumLiquidationCount,
+          highLiquidationCount: settings.highLiquidationCount,
+          extremeLiquidationCount: settings.extremeLiquidationCount,
+          lowVelocityPerMinute: settings.lowVelocityPerMinute,
+          mediumVelocityPerMinute: settings.mediumVelocityPerMinute,
+          highVelocityPerMinute: settings.highVelocityPerMinute,
+          extremeVelocityPerMinute: settings.extremeVelocityPerMinute,
+          lowVolumeThreshold: settings.lowVolumeThreshold,
+          mediumVolumeThreshold: settings.mediumVolumeThreshold,
+          highVolumeThreshold: settings.highVolumeThreshold,
+          extremeVolumeThreshold: settings.extremeVolumeThreshold,
+          cascadeAnalysisWindowMinutes: settings.cascadeAnalysisWindowMinutes,
+          systemWideCascadeWindowMinutes: settings.systemWideCascadeWindowMinutes,
+          updatedAt: sql`now()`,
         }
       })
       .returning();

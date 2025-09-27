@@ -4,7 +4,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { tradingEngine } from "./tradingEngine";
 import { 
-  insertLiquidationSchema, insertUserSettingsSchema,
+  insertLiquidationSchema, insertUserSettingsSchema, insertRiskSettingsSchema,
   insertTradingStrategySchema, insertPositionSchema 
 } from "@shared/schema";
 
@@ -107,6 +107,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(settings);
     } catch (error) {
       res.status(500).json({ error: "Failed to save user settings" });
+    }
+  });
+  
+  // Risk settings API routes
+  app.get("/api/risk-settings/:sessionId", async (req, res) => {
+    try {
+      const sessionId = req.params.sessionId;
+      const riskSettings = await storage.getRiskSettings(sessionId);
+      res.json(riskSettings || null);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch risk settings" });
+    }
+  });
+
+  app.put("/api/risk-settings", async (req, res) => {
+    try {
+      const validatedSettings = insertRiskSettingsSchema.parse(req.body);
+      const settings = await storage.saveRiskSettings(validatedSettings);
+      res.json(settings);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to save risk settings" });
     }
   });
 
