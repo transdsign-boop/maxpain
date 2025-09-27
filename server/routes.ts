@@ -2,7 +2,11 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
-import { insertLiquidationSchema, insertUserSettingsSchema } from "@shared/schema";
+import { tradingEngine } from "./tradingEngine";
+import { 
+  insertLiquidationSchema, insertUserSettingsSchema,
+  insertTradingStrategySchema, insertPositionSchema 
+} from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Liquidation API routes
@@ -548,6 +552,229 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ===== TRADING SYSTEM API ROUTES =====
+
+  // Trading Strategy routes
+  app.get("/api/trading/strategies", async (req, res) => {
+    try {
+      const sessionId = req.query.sessionId as string;
+      if (!sessionId) {
+        return res.status(400).json({ error: "sessionId parameter required" });
+      }
+      
+      const strategies = await storage.getTradingStrategies(sessionId);
+      res.json(strategies);
+    } catch (error) {
+      console.error('Get strategies error:', error);
+      res.status(500).json({ error: "Failed to fetch trading strategies" });
+    }
+  });
+
+  app.post("/api/trading/strategies", async (req, res) => {
+    try {
+      const validatedData = insertTradingStrategySchema.parse(req.body);
+      const strategy = await storage.createTradingStrategy(validatedData);
+      res.json(strategy);
+    } catch (error) {
+      console.error('Create strategy error:', error);
+      res.status(500).json({ error: "Failed to create trading strategy" });
+    }
+  });
+
+  app.put("/api/trading/strategies/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+      const strategy = await storage.updateTradingStrategy(id, updates);
+      res.json(strategy);
+    } catch (error) {
+      console.error('Update strategy error:', error);
+      res.status(500).json({ error: "Failed to update trading strategy" });
+    }
+  });
+
+  app.delete("/api/trading/strategies/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteTradingStrategy(id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Delete strategy error:', error);
+      res.status(500).json({ error: "Failed to delete trading strategy" });
+    }
+  });
+
+  // Portfolio routes
+  app.get("/api/trading/portfolio", async (req, res) => {
+    try {
+      const sessionId = req.query.sessionId as string;
+      if (!sessionId) {
+        return res.status(400).json({ error: "sessionId parameter required" });
+      }
+      
+      const portfolio = await storage.getOrCreatePortfolio(sessionId);
+      res.json(portfolio);
+    } catch (error) {
+      console.error('Get portfolio error:', error);
+      res.status(500).json({ error: "Failed to fetch portfolio" });
+    }
+  });
+
+  app.put("/api/trading/portfolio/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+      const portfolio = await storage.updatePortfolio(id, updates);
+      res.json(portfolio);
+    } catch (error) {
+      console.error('Update portfolio error:', error);
+      res.status(500).json({ error: "Failed to update portfolio" });
+    }
+  });
+
+  // Position routes
+  app.get("/api/trading/positions", async (req, res) => {
+    try {
+      const portfolioId = req.query.portfolioId as string;
+      if (!portfolioId) {
+        return res.status(400).json({ error: "portfolioId parameter required" });
+      }
+      
+      const positions = await storage.getOpenPositions(portfolioId);
+      res.json(positions);
+    } catch (error) {
+      console.error('Get positions error:', error);
+      res.status(500).json({ error: "Failed to fetch positions" });
+    }
+  });
+
+  app.post("/api/trading/positions", async (req, res) => {
+    try {
+      const validatedData = insertPositionSchema.parse(req.body);
+      const position = await storage.createPosition(validatedData);
+      res.json(position);
+    } catch (error) {
+      console.error('Create position error:', error);
+      res.status(500).json({ error: "Failed to create position" });
+    }
+  });
+
+  app.put("/api/trading/positions/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+      const position = await storage.updatePosition(id, updates);
+      res.json(position);
+    } catch (error) {
+      console.error('Update position error:', error);
+      res.status(500).json({ error: "Failed to update position" });
+    }
+  });
+
+  app.post("/api/trading/positions/:id/close", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { exitPrice, exitReason } = req.body;
+      
+      if (!exitPrice || !exitReason) {
+        return res.status(400).json({ error: "exitPrice and exitReason required" });
+      }
+      
+      const trade = await storage.closePosition(id, exitPrice, exitReason);
+      res.json(trade);
+    } catch (error) {
+      console.error('Close position error:', error);
+      res.status(500).json({ error: "Failed to close position" });
+    }
+  });
+
+  // Trade history routes
+  app.get("/api/trading/trades", async (req, res) => {
+    try {
+      const portfolioId = req.query.portfolioId as string;
+      const limit = parseInt(req.query.limit as string) || 100;
+      
+      if (!portfolioId) {
+        return res.status(400).json({ error: "portfolioId parameter required" });
+      }
+      
+      const trades = await storage.getTrades(portfolioId, limit);
+      res.json(trades);
+    } catch (error) {
+      console.error('Get trades error:', error);
+      res.status(500).json({ error: "Failed to fetch trades" });
+    }
+  });
+
+  app.get("/api/trading/trades/strategy/:strategyId", async (req, res) => {
+    try {
+      const { strategyId } = req.params;
+      const limit = parseInt(req.query.limit as string) || 100;
+      const trades = await storage.getTradesByStrategy(strategyId, limit);
+      res.json(trades);
+    } catch (error) {
+      console.error('Get trades by strategy error:', error);
+      res.status(500).json({ error: "Failed to fetch trades by strategy" });
+    }
+  });
+
+  // Trading Engine Control routes
+  app.post("/api/trading/execute-signal", async (req, res) => {
+    try {
+      const { signal, sessionId, tradingMode } = req.body;
+      
+      if (!signal || !sessionId || !tradingMode) {
+        return res.status(400).json({ error: "signal, sessionId, and tradingMode required" });
+      }
+      
+      const position = await tradingEngine.executeSignal(signal, sessionId, tradingMode);
+      res.json(position);
+    } catch (error) {
+      console.error('Execute signal error:', error);
+      res.status(500).json({ error: "Failed to execute trading signal" });
+    }
+  });
+
+  app.post("/api/trading/monitor-positions", async (req, res) => {
+    try {
+      const { sessionId } = req.body;
+      
+      if (!sessionId) {
+        return res.status(400).json({ error: "sessionId required" });
+      }
+      
+      await tradingEngine.monitorPositions(sessionId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Monitor positions error:', error);
+      res.status(500).json({ error: "Failed to monitor positions" });
+    }
+  });
+
+  app.get("/api/trading/volatility/:symbol", async (req, res) => {
+    try {
+      const { symbol } = req.params;
+      const hours = parseInt(req.query.hours as string) || 1;
+      
+      const volatility = await storage.calculateVolatility(symbol, hours);
+      res.json({ symbol, hours, volatility });
+    } catch (error) {
+      console.error('Calculate volatility error:', error);
+      res.status(500).json({ error: "Failed to calculate volatility" });
+    }
+  });
+
+  app.get("/api/trading/cascade-risk/:symbol", async (req, res) => {
+    try {
+      const { symbol } = req.params;
+      const risk = await tradingEngine.calculateCascadeRisk(symbol);
+      res.json({ symbol, cascadeRisk: risk });
+    } catch (error) {
+      console.error('Calculate cascade risk error:', error);
+      res.status(500).json({ error: "Failed to calculate cascade risk" });
+    }
+  });
+
   const httpServer = createServer(app);
 
   // WebSocket server for real-time liquidation updates
@@ -612,6 +839,22 @@ async function connectToAsterDEX(clients: Set<WebSocket>) {
           // Validate and store in database
           const validatedData = insertLiquidationSchema.parse(liquidationData);
           const storedLiquidation = await storage.insertLiquidation(validatedData);
+          
+          // Process liquidation through trading engine
+          try {
+            const signals = await tradingEngine.processLiquidation(storedLiquidation);
+            
+            if (signals.length > 0) {
+              console.log(`📊 Generated ${signals.length} trading signals for ${storedLiquidation.symbol}`);
+              
+              // Auto-execute signals for demo mode (paper trading)
+              for (const signal of signals) {
+                await tradingEngine.executeSignal(signal, 'demo-session', 'paper');
+              }
+            }
+          } catch (error) {
+            console.error('❌ Trading engine error:', error);
+          }
           
           // Broadcast to all connected clients
           const broadcastMessage = JSON.stringify({
