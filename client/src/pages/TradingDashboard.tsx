@@ -44,7 +44,12 @@ interface TradingStrategy {
   name: string;
   type: string;
   isActive: boolean;
-  symbolFilter: string[];
+  riskRewardRatio: string;
+  stopLossPercent: string;
+  takeProfitPercent: string;
+  volatilityThreshold: string;
+  cascadeDetectionEnabled: boolean;
+  symbols: string[];
 }
 
 export default function TradingDashboard() {
@@ -154,6 +159,32 @@ export default function TradingDashboard() {
     } catch (error) {
       console.error('Failed to toggle trading mode:', error);
       alert('Failed to update trading mode. Please try again.');
+    }
+  };
+
+  const closePosition = async (positionId: string, currentPrice: string, symbol: string) => {
+    try {
+      const response = await fetch(`/api/trading/positions/${positionId}/close`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          exitPrice: currentPrice, 
+          exitReason: 'manual' 
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to close position: ${response.statusText}`);
+      }
+      
+      const trade = await response.json();
+      console.log(`✅ Position closed: ${symbol} - P&L: $${trade.realizedPnl}`);
+      
+      // Refresh data
+      window.location.reload();
+    } catch (error) {
+      console.error('Failed to close position:', error);
+      alert('Failed to close position. Please try again.');
     }
   };
 
@@ -329,7 +360,12 @@ export default function TradingDashboard() {
                     <p className="text-xs text-muted-foreground">
                       Opened: {new Date(position.createdAt).toLocaleTimeString()}
                     </p>
-                    <Button size="sm" variant="outline" data-testid={`close-position-${position.symbol}`}>
+                    <Button 
+                      size="sm" 
+                      variant="outline" 
+                      data-testid={`close-position-${position.symbol}`}
+                      onClick={() => closePosition(position.id, position.currentPrice, position.symbol)}
+                    >
                       Close Position
                     </Button>
                   </div>
@@ -369,17 +405,48 @@ export default function TradingDashboard() {
                   <div>
                     <p className="text-sm text-muted-foreground mb-2">Tracked Symbols</p>
                     <div className="flex flex-wrap gap-1">
-                      {(strategy.symbolFilter || []).slice(0, 5).map((symbol: string) => (
+                      {(strategy.symbols || []).slice(0, 5).map((symbol: string) => (
                         <Badge key={symbol} variant="outline" className="text-xs">
                           {symbol}
                         </Badge>
                       ))}
-                      {(strategy.symbolFilter || []).length > 5 && (
+                      {(strategy.symbols || []).length === 0 && (
                         <Badge variant="outline" className="text-xs">
-                          +{(strategy.symbolFilter || []).length - 5} more
+                          All symbols
+                        </Badge>
+                      )}
+                      {(strategy.symbols || []).length > 5 && (
+                        <Badge variant="outline" className="text-xs">
+                          +{(strategy.symbols || []).length - 5} more
                         </Badge>
                       )}
                     </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4 text-xs">
+                    <div>
+                      <p className="text-muted-foreground">Risk/Reward</p>
+                      <p className="font-mono font-medium">{strategy.riskRewardRatio}:1</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Stop Loss</p>
+                      <p className="font-mono font-medium">{strategy.stopLossPercent}%</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Take Profit</p>
+                      <p className="font-mono font-medium">{strategy.takeProfitPercent}%</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Vol. Threshold</p>
+                      <p className="font-mono font-medium">{strategy.volatilityThreshold}%</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Cascade Detection:</span>
+                    <Badge variant={strategy.cascadeDetectionEnabled ? 'default' : 'secondary'} className="text-xs">
+                      {strategy.cascadeDetectionEnabled ? 'ON' : 'OFF'}
+                    </Badge>
                   </div>
                   
                   <div className="flex gap-2">
