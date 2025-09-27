@@ -65,6 +65,41 @@ export class TradingEngine {
         }
       }
 
+      // Check liquidation threshold percentile
+      const liquidationValue = parseFloat(liquidation.value);
+      const thresholdPercentile = parseFloat(strategy.liquidationThresholdPercentile);
+      
+      if (thresholdPercentile > 0) {
+        // Get recent liquidation percentiles (last 24 hours)
+        const sinceTimestamp = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const recentLiquidations = await storage.getLiquidationAnalytics(liquidation.symbol, sinceTimestamp);
+        
+        if (recentLiquidations.length > 0) {
+          // Calculate the specified percentile value
+          const values = recentLiquidations.map(liq => parseFloat(liq.value)).sort((a, b) => a - b);
+          const index = (thresholdPercentile / 100) * (values.length - 1);
+          const lower = Math.floor(index);
+          const upper = Math.ceil(index);
+          
+          let percentileValue: number;
+          if (lower === upper || values.length === 1) {
+            percentileValue = values[lower];
+          } else {
+            // Linear interpolation
+            const weight = index - lower;
+            percentileValue = values[lower] * (1 - weight) + values[upper] * weight;
+          }
+          
+          // Only proceed if liquidation value is above the threshold percentile
+          if (liquidationValue < percentileValue) {
+            console.log(`📊 Liquidation $${liquidationValue.toFixed(2)} below ${thresholdPercentile}th percentile ($${percentileValue.toFixed(2)}), skipping`);
+            continue;
+          } else {
+            console.log(`✅ Liquidation $${liquidationValue.toFixed(2)} above ${thresholdPercentile}th percentile ($${percentileValue.toFixed(2)}), proceeding`);
+          }
+        }
+      }
+
       // Calculate volatility
       const volatility = await storage.calculateVolatility(liquidation.symbol, 1);
       
