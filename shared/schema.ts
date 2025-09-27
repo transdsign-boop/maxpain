@@ -122,6 +122,7 @@ export const tradingStrategies = pgTable("trading_strategies", {
   takeProfitPercent: decimal("take_profit_percent", { precision: 5, scale: 2 }).notNull(),
   volatilityThreshold: decimal("volatility_threshold", { precision: 5, scale: 2 }).notNull(),
   liquidationThresholdPercentile: decimal("liquidation_threshold_percentile", { precision: 5, scale: 2 }).notNull().default('50.00'),
+  dcaEnabled: boolean("dca_enabled").notNull().default(false),
   cascadeDetectionEnabled: boolean("cascade_detection_enabled").notNull().default(true),
   cascadeCooldownMinutes: integer("cascade_cooldown_minutes").notNull().default(10),
   symbols: text("symbols").array().notNull().default(sql`'{}'::text[]`),
