@@ -239,6 +239,7 @@ export type Portfolio = typeof portfolios.$inferSelect;
 
 export type InsertPosition = z.infer<typeof insertPositionSchema>;
 export type Position = typeof positions.$inferSelect;
+export type PositionWithLiquidation = Position & { triggeringLiquidation?: Liquidation };
 
 export type InsertTrade = z.infer<typeof insertTradeSchema>;
 export type Trade = typeof trades.$inferSelect;
