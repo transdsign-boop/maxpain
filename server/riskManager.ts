@@ -1,5 +1,5 @@
 import { storage } from "./storage";
-import { type Position, type TradingStrategy, type Portfolio } from "@shared/schema";
+import { type Position, type TradingStrategy, type Portfolio, type RiskSettings } from "@shared/schema";
 
 export interface RiskAssessment {
   canTrade: boolean;
@@ -22,6 +22,55 @@ export class RiskManager {
   constructor() {}
 
   /**
+   * Get risk settings from database with fallback defaults
+   */
+  private async getRiskSettings(sessionId: string): Promise<RiskSettings> {
+    try {
+      const settings = await storage.getRiskSettings(sessionId);
+      return settings || this.getDefaultRiskSettings();
+    } catch (error) {
+      console.error('Error fetching risk settings, using defaults:', error);
+      // Return safe defaults if database fails
+      return this.getDefaultRiskSettings();
+    }
+  }
+
+  private getDefaultRiskSettings(): RiskSettings {
+    const now = new Date();
+    return {
+      id: '',
+      sessionId: 'default',
+      maxPortfolioExposurePercent: '80.00',
+      warningPortfolioExposurePercent: '60.00',
+      maxSymbolConcentrationPercent: '20.00',
+      maxPositionsPerSymbol: 2,
+      maxPositionSizePercent: '5.00',
+      minPositionSize: '1.00',
+      maxRiskPerTradePercent: '2.00',
+      highVolatilityThreshold: '15.00',
+      extremeVolatilityThreshold: '20.00',
+      cascadeDetectionEnabled: true,
+      cascadeCooldownMinutes: 10,
+      lowLiquidationCount: 3,
+      mediumLiquidationCount: 7,
+      highLiquidationCount: 15,
+      extremeLiquidationCount: 25,
+      lowVelocityPerMinute: '2.00',
+      mediumVelocityPerMinute: '5.00',
+      highVelocityPerMinute: '10.00',
+      extremeVelocityPerMinute: '20.00',
+      lowVolumeThreshold: '50000.00',
+      mediumVolumeThreshold: '200000.00',
+      highVolumeThreshold: '500000.00',
+      extremeVolumeThreshold: '1000000.00',
+      cascadeAnalysisWindowMinutes: 10,
+      systemWideCascadeWindowMinutes: 15,
+      createdAt: now,
+      updatedAt: now
+    };
+  }
+
+  /**
    * Comprehensive risk assessment for a new trade
    */
   async assessTradeRisk(
@@ -35,6 +84,9 @@ export class RiskManager {
     const portfolio = await storage.getOrCreatePortfolio(portfolioId);
     const openPositions = await storage.getOpenPositions(portfolioId);
     
+    // Get configurable risk settings using sessionId from portfolio
+    const riskSettings = await this.getRiskSettings(portfolio.sessionId);
+    
     // Calculate portfolio exposure - use paper balance for now
     // TODO: Add real balance support when real trading is implemented
     const totalValue = parseFloat(portfolio.paperBalance);
@@ -46,61 +98,70 @@ export class RiskManager {
     let risk: 'low' | 'medium' | 'high' | 'extreme' = 'low';
     let canTrade = true;
     
-    // Check portfolio exposure
-    if (portfolioExposurePercent > 80) {
+    // Check portfolio exposure using configurable limits
+    const maxPortfolioExposure = parseFloat(riskSettings.maxPortfolioExposurePercent);
+    const warningPortfolioExposure = parseFloat(riskSettings.warningPortfolioExposurePercent);
+    
+    if (portfolioExposurePercent > maxPortfolioExposure) {
       risk = 'extreme';
       canTrade = false;
-      reasons.push('Portfolio exposure exceeds 80%');
-    } else if (portfolioExposurePercent > 60) {
+      reasons.push(`Portfolio exposure exceeds ${maxPortfolioExposure}%`);
+    } else if (portfolioExposurePercent > warningPortfolioExposure) {
       risk = 'high';
-      reasons.push('High portfolio exposure (>60%)');
-    } else if (portfolioExposurePercent > 40) {
+      reasons.push(`High portfolio exposure (>${warningPortfolioExposure}%)`);
+    } else if (portfolioExposurePercent > (warningPortfolioExposure * 0.75)) {
       risk = 'medium';
-      reasons.push('Medium portfolio exposure (>40%)');
+      reasons.push(`Medium portfolio exposure (>${(warningPortfolioExposure * 0.75).toFixed(0)}%)`);
     }
     
-    // Check symbol concentration
+    // Check symbol concentration using configurable limit
     const symbolPositions = openPositions.filter(p => p.symbol === symbol);
     const symbolExposure = this.calculatePositionExposure(symbolPositions);
     const symbolExposurePercent = (symbolExposure / totalValue) * 100;
+    const maxSymbolConcentration = parseFloat(riskSettings.maxSymbolConcentrationPercent);
     
-    if (symbolExposurePercent > 20) {
+    if (symbolExposurePercent > maxSymbolConcentration) {
       risk = 'high';
-      reasons.push(`High symbol concentration: ${symbolExposurePercent.toFixed(1)}% in ${symbol}`);
+      reasons.push(`High symbol concentration: ${symbolExposurePercent.toFixed(1)}% in ${symbol} (max: ${maxSymbolConcentration}%)`);
     }
     
-    // Check directional bias (same side positions)
+    // Check directional bias using configurable max positions per symbol
     const sameDirectionPositions = symbolPositions.filter(p => p.side === side);
-    if (sameDirectionPositions.length >= 2) {
+    if (sameDirectionPositions.length >= riskSettings.maxPositionsPerSymbol) {
       risk = 'high';
       canTrade = false;
-      reasons.push(`Too many ${side} positions in ${symbol}`);
+      reasons.push(`Too many ${side} positions in ${symbol} (max: ${riskSettings.maxPositionsPerSymbol})`);
     }
     
-    // Calculate volatility risk
+    // Calculate volatility risk using configurable thresholds
     const volatility = await storage.calculateVolatility(symbol, 1);
+    const highVolThreshold = parseFloat(riskSettings.highVolatilityThreshold);
+    const extremeVolThreshold = parseFloat(riskSettings.extremeVolatilityThreshold);
+    
     if (volatility > parseFloat(strategy.volatilityThreshold)) {
-      if (volatility > 20) {
+      if (volatility > extremeVolThreshold) {
         risk = 'extreme';
         canTrade = false;
-        reasons.push(`Extreme volatility: ${volatility.toFixed(1)}%`);
-      } else if (volatility > 15) {
+        reasons.push(`Extreme volatility: ${volatility.toFixed(1)}% (>${extremeVolThreshold}%)`);
+      } else if (volatility > highVolThreshold) {
         risk = 'high';
-        reasons.push(`High volatility: ${volatility.toFixed(1)}%`);
+        reasons.push(`High volatility: ${volatility.toFixed(1)}% (>${highVolThreshold}%)`);
       } else {
         risk = 'medium';
         reasons.push(`Elevated volatility: ${volatility.toFixed(1)}%`);
       }
     }
     
-    // Calculate recommended position size
+    // Calculate recommended position size using configurable limits
     const baseSize = parseFloat(strategy.maxPositionSize);
+    const maxPositionSizePercent = parseFloat(riskSettings.maxPositionSizePercent);
     const sizing = this.calculatePositionSize(
       baseSize, 
       risk, 
       volatility, 
       portfolioExposurePercent,
-      totalValue
+      totalValue,
+      maxPositionSizePercent
     );
     
     return {
@@ -108,7 +169,7 @@ export class RiskManager {
       risk,
       reasons,
       recommendedPositionSize: sizing.adjustedSize,
-      maxExposure: totalValue * 0.8, // 80% max exposure
+      maxExposure: totalValue * (maxPortfolioExposure / 100),
       portfolioExposure: currentExposure
     };
   }
@@ -121,7 +182,8 @@ export class RiskManager {
     risk: 'low' | 'medium' | 'high' | 'extreme',
     volatility: number,
     portfolioExposure: number,
-    totalValue: number
+    totalValue: number,
+    maxPositionSizePercent: number = 5.0
   ): PositionSizing {
     let riskAdjustment = 1.0;
     let volatilityAdjustment = 1.0;
@@ -161,8 +223,8 @@ export class RiskManager {
       portfolioAdjustment = 0.8;
     }
     
-    // Kelly Criterion inspired sizing (simplified)
-    const maxPositionPercent = 0.05; // Max 5% of portfolio per trade
+    // Kelly Criterion inspired sizing (simplified) - use configurable max
+    const maxPositionPercent = maxPositionSizePercent / 100; // Convert percentage to decimal
     const maxPositionValue = totalValue * maxPositionPercent;
     const kellySize = Math.min(baseSize, maxPositionValue);
     
