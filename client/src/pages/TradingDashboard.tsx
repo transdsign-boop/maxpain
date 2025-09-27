@@ -57,6 +57,7 @@ interface TradingStrategy {
   takeProfitPercent: string;
   volatilityThreshold: string;
   cascadeDetectionEnabled: boolean;
+  dcaEnabled: boolean;
   symbols: string[];
 }
 
@@ -942,6 +943,16 @@ export default function TradingDashboard() {
                 />
                 <Label htmlFor="cascadeDetection">Enable Cascade Detection</Label>
               </div>
+              
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="dcaEnabled"
+                  checked={configFormData.dcaEnabled || false}
+                  onCheckedChange={(checked) => setConfigFormData({...configFormData, dcaEnabled: checked})}
+                />
+                <Label htmlFor="dcaEnabled">Enable DCA (Dollar Cost Averaging)</Label>
+              </div>
+              <p className="text-xs text-muted-foreground">When enabled, adds to existing positions instead of skipping duplicate signals in the same direction.</p>
               
               <div className="flex gap-2 pt-4">
                 <Button onClick={saveStrategyConfig} className="flex-1">
