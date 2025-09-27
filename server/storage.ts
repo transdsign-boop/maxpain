@@ -52,6 +52,7 @@ export interface IStorage {
 
   // Portfolio operations
   getOrCreatePortfolio(sessionId: string): Promise<Portfolio>;
+  getPortfolioById(id: string): Promise<Portfolio | undefined>;
   updatePortfolio(id: string, updates: Partial<InsertPortfolio>): Promise<Portfolio>;
   
   // Position operations
@@ -271,6 +272,12 @@ export class DatabaseStorage implements IStorage {
     const result = await db.insert(portfolios)
       .values({ sessionId })
       .returning();
+    return result[0];
+  }
+
+  async getPortfolioById(id: string): Promise<Portfolio | undefined> {
+    const result = await db.select().from(portfolios)
+      .where(eq(portfolios.id, id));
     return result[0];
   }
 

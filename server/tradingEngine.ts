@@ -338,6 +338,10 @@ export class TradingEngine {
 
       // Get strategy for recalculating stop loss and take profit
       const strategies = await this.getActiveStrategiesForSymbol(signal.symbol);
+      if (strategies.length === 0) {
+        console.error('❌ No active strategy found for symbol:', signal.symbol);
+        return null;
+      }
       const strategy = strategies[0];
 
       // Calculate volatility for dynamic stop loss/take profit
@@ -369,9 +373,14 @@ export class TradingEngine {
         triggeredByLiquidation: signal.triggeredByLiquidation || existingPosition.triggeredByLiquidation
       });
 
-      // Update portfolio balance (subtract the cost of additional position)
+      // Update portfolio balance using the existing position's portfolio
       const additionalCost = newSize * newEntryPrice;
-      const portfolio = await storage.getOrCreatePortfolio('demo-session'); // TODO: Use dynamic sessionId
+      const portfolio = await storage.getPortfolioById(existingPosition.portfolioId);
+      if (!portfolio) {
+        console.error('❌ Portfolio not found for position:', existingPosition.portfolioId);
+        return null;
+      }
+      
       const currentBalance = tradingMode === 'paper' 
         ? parseFloat(portfolio.paperBalance)
         : parseFloat(portfolio.realBalance);
