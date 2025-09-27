@@ -3,10 +3,11 @@ import ConnectionStatus from "@/components/ConnectionStatus";
 import LiquidationTable from "@/components/LiquidationTable";
 import AssetSelector from "@/components/AssetSelector";
 import LiquidationAnalytics from "@/components/LiquidationAnalytics";
-import ThemeToggle from "@/components/ThemeToggle";
+import TradingDashboard from "@/pages/TradingDashboard";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Settings, Download, Upload } from "lucide-react";
+import { Settings, Download, Upload, TrendingUp, Activity } from "lucide-react";
 
 interface Liquidation {
   id: string;
@@ -313,86 +314,108 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b bg-card">
-        <div className="flex items-center justify-between px-6 py-4">
-          <div>
-            <h1 className="text-2xl font-bold" data-testid="text-app-title">
-              Aster DEX Liquidations
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Real-time liquidation monitoring and analysis
-            </p>
-          </div>
+      {/* Status Bar */}
+      <div className="border-b bg-muted/30 px-6 py-2">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <ConnectionStatus isConnected={isConnected} />
-            
-            {/* Settings Menu */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon" data-testid="button-settings">
-                  <Settings className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={exportSettings} data-testid="button-export-settings">
-                  <Download className="mr-2 h-4 w-4" />
-                  Export Settings
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => fileInputRef.current?.click()} data-testid="button-import-settings">
-                  <Upload className="mr-2 h-4 w-4" />
-                  Import Settings
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            
-            <ThemeToggle />
+            <div className="text-sm text-muted-foreground">
+              {selectedAssets.length > 0 ? (
+                `${selectedAssets.length} assets monitored`
+              ) : (
+                "No assets selected"
+              )}
+            </div>
           </div>
+          
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" data-testid="button-settings-menu">
+                <Settings className="h-4 w-4" />
+                Settings
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={saveSettings} data-testid="menuitem-save-settings">
+                Save Current Settings
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={exportSettings} data-testid="menuitem-export-settings">
+                <Download className="h-4 w-4 mr-2" />
+                Export Settings
+              </DropdownMenuItem>
+              <DropdownMenuItem 
+                onClick={() => fileInputRef.current?.click()} 
+                data-testid="menuitem-import-settings"
+              >
+                <Upload className="h-4 w-4 mr-2" />
+                Import Settings
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
-      </header>
+      </div>
 
       {/* Main Content */}
-      <main className="p-6 space-y-6">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Asset Selection */}
-          <div className="lg:col-span-1">
-            <AssetSelector
-              selectedAssets={selectedAssets}
-              onAssetsChange={setSelectedAssets}
-            />
-          </div>
+      <main className="p-6">
+        <Tabs defaultValue="monitoring" className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="monitoring" className="flex items-center gap-2" data-testid="tab-liquidation-monitoring">
+              <Activity className="h-4 w-4" />
+              Liquidation Monitoring
+            </TabsTrigger>
+            <TabsTrigger value="trading" className="flex items-center gap-2" data-testid="tab-trading-dashboard">
+              <TrendingUp className="h-4 w-4" />
+              Trading Dashboard
+            </TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="monitoring" className="space-y-6 mt-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Asset Selection */}
+              <div className="lg:col-span-1">
+                <AssetSelector
+                  selectedAssets={selectedAssets}
+                  onAssetsChange={setSelectedAssets}
+                />
+              </div>
 
-          {/* Live Liquidations with Integrated Stats and Filters */}
-          <div className="lg:col-span-2">
-            <LiquidationTable 
-              liquidations={filteredLiquidations}
-              stats={{
-                totalLiquidations: filteredLiquidations.length,
-                totalVolume: totalVolume,
-                longLiquidations: longLiquidations,
-                shortLiquidations: shortLiquidations,
-                largestLiquidation: largestLiquidation ? {
-                  value: largestLiquidation.value,
-                  timestamp: largestLiquidation.timestamp,
-                  symbol: largestLiquidation.symbol
-                } : undefined
-              }}
-              timeRange={timeRange}
-              sideFilter={sideFilter}
-              minValue={minValue}
-              onTimeRangeChange={setTimeRange}
-              onSideFilterChange={setSideFilter}
-              onMinValueChange={setMinValue}
-              onRefresh={handleRefresh}
-              isConnected={isConnected}
-            />
-          </div>
-        </div>
+              {/* Live Liquidations with Integrated Stats and Filters */}
+              <div className="lg:col-span-2">
+                <LiquidationTable 
+                  liquidations={filteredLiquidations}
+                  stats={{
+                    totalLiquidations: filteredLiquidations.length,
+                    totalVolume: totalVolume,
+                    longLiquidations: longLiquidations,
+                    shortLiquidations: shortLiquidations,
+                    largestLiquidation: largestLiquidation ? {
+                      value: largestLiquidation.value,
+                      timestamp: largestLiquidation.timestamp,
+                      symbol: largestLiquidation.symbol
+                    } : undefined
+                  }}
+                  timeRange={timeRange}
+                  sideFilter={sideFilter}
+                  minValue={minValue}
+                  onTimeRangeChange={setTimeRange}
+                  onSideFilterChange={setSideFilter}
+                  onMinValueChange={setMinValue}
+                  onRefresh={handleRefresh}
+                  isConnected={isConnected}
+                />
+              </div>
+            </div>
 
-        {/* Liquidation Analytics */}
-        <div className="w-full">
-          <LiquidationAnalytics selectedAssets={selectedAssets} />
-        </div>
+            {/* Liquidation Analytics */}
+            <div className="w-full">
+              <LiquidationAnalytics selectedAssets={selectedAssets} />
+            </div>
+          </TabsContent>
+          
+          <TabsContent value="trading" className="mt-6">
+            <TradingDashboard />
+          </TabsContent>
+        </Tabs>
       </main>
 
       {/* Hidden file input for settings import */}
