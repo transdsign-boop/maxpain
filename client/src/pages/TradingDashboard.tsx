@@ -115,15 +115,22 @@ export default function TradingDashboard() {
 
   const toggleStrategy = async (strategyId: string, isActive: boolean) => {
     try {
-      await fetch(`/api/strategies/${strategyId}`, {
-        method: 'PATCH',
+      const response = await fetch(`/api/trading/strategies/${strategyId}`, {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isActive: !isActive }),
       });
-      // Refetch strategies after update
-      // queryClient.invalidateQueries(['/api/strategies']);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to update strategy: ${response.statusText}`);
+      }
+      
+      // Refetch strategies after successful update
+      window.location.reload(); // Simple refresh to update the UI
+      console.log(`Strategy ${strategyId} ${!isActive ? 'activated' : 'paused'}`);
     } catch (error) {
       console.error('Failed to toggle strategy:', error);
+      alert('Failed to update strategy. Please try again.');
     }
   };
 
