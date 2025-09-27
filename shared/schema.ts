@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, decimal, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, decimal, timestamp, boolean, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -54,3 +54,137 @@ export const insertUserSettingsSchema = createInsertSchema(userSettings).omit({
 
 export type InsertUserSettings = z.infer<typeof insertUserSettingsSchema>;
 export type UserSettings = typeof userSettings.$inferSelect;
+
+// Trading strategies table
+export const tradingStrategies = pgTable("trading_strategies", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  type: text("type").notNull(), // "counter_liquidation", "volatility", "custom"
+  isActive: boolean("is_active").notNull().default(false),
+  riskRewardRatio: decimal("risk_reward_ratio", { precision: 10, scale: 2 }).notNull(),
+  maxPositionSize: decimal("max_position_size", { precision: 18, scale: 8 }).notNull(),
+  stopLossPercent: decimal("stop_loss_percent", { precision: 5, scale: 2 }).notNull(),
+  takeProfitPercent: decimal("take_profit_percent", { precision: 5, scale: 2 }).notNull(),
+  volatilityThreshold: decimal("volatility_threshold", { precision: 5, scale: 2 }).notNull(),
+  cascadeDetectionEnabled: boolean("cascade_detection_enabled").notNull().default(true),
+  cascadeCooldownMinutes: integer("cascade_cooldown_minutes").notNull().default(10),
+  symbols: text("symbols").array().notNull().default(sql`'{}'::text[]`),
+  sessionId: text("session_id").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Portfolio state table
+export const portfolios = pgTable("portfolios", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sessionId: text("session_id").notNull().unique(),
+  paperBalance: decimal("paper_balance", { precision: 18, scale: 8 }).notNull().default('10000.00'),
+  realBalance: decimal("real_balance", { precision: 18, scale: 8 }).notNull().default('0.00'),
+  totalPnl: decimal("total_pnl", { precision: 18, scale: 8 }).notNull().default('0.00'),
+  paperPnl: decimal("paper_pnl", { precision: 18, scale: 8 }).notNull().default('0.00'),
+  realPnl: decimal("real_pnl", { precision: 18, scale: 8 }).notNull().default('0.00'),
+  tradingMode: text("trading_mode").notNull().default('paper'), // "paper" or "real"
+  lastUpdated: timestamp("last_updated").notNull().defaultNow(),
+});
+
+// Positions table (open positions)
+export const positions = pgTable("positions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  strategyId: varchar("strategy_id").notNull(),
+  portfolioId: varchar("portfolio_id").notNull(),
+  symbol: text("symbol").notNull(),
+  side: text("side").notNull(), // "long" or "short"
+  size: decimal("size", { precision: 18, scale: 8 }).notNull(),
+  entryPrice: decimal("entry_price", { precision: 18, scale: 8 }).notNull(),
+  currentPrice: decimal("current_price", { precision: 18, scale: 8 }).notNull(),
+  stopLossPrice: decimal("stop_loss_price", { precision: 18, scale: 8 }),
+  takeProfitPrice: decimal("take_profit_price", { precision: 18, scale: 8 }),
+  unrealizedPnl: decimal("unrealized_pnl", { precision: 18, scale: 8 }).notNull().default('0.00'),
+  tradingMode: text("trading_mode").notNull(), // "paper" or "real"
+  status: text("status").notNull().default('open'), // "open", "closed", "liquidated"
+  triggeredByLiquidation: varchar("triggered_by_liquidation"), // liquidation ID that triggered this
+  volatilityAtEntry: decimal("volatility_at_entry", { precision: 5, scale: 2 }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Trades table (completed trades)
+export const trades = pgTable("trades", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  positionId: varchar("position_id").notNull(),
+  strategyId: varchar("strategy_id").notNull(),
+  portfolioId: varchar("portfolio_id").notNull(),
+  symbol: text("symbol").notNull(),
+  side: text("side").notNull(), // "long" or "short"
+  size: decimal("size", { precision: 18, scale: 8 }).notNull(),
+  entryPrice: decimal("entry_price", { precision: 18, scale: 8 }).notNull(),
+  exitPrice: decimal("exit_price", { precision: 18, scale: 8 }).notNull(),
+  realizedPnl: decimal("realized_pnl", { precision: 18, scale: 8 }).notNull(),
+  feesPaid: decimal("fees_paid", { precision: 18, scale: 8 }).notNull().default('0.00'),
+  tradingMode: text("trading_mode").notNull(), // "paper" or "real"
+  exitReason: text("exit_reason").notNull(), // "stop_loss", "take_profit", "manual", "liquidated"
+  triggeredByLiquidation: varchar("triggered_by_liquidation"), // liquidation ID that triggered this
+  duration: integer("duration_seconds"), // Trade duration in seconds
+  volatilityAtEntry: decimal("volatility_at_entry", { precision: 5, scale: 2 }),
+  volatilityAtExit: decimal("volatility_at_exit", { precision: 5, scale: 2 }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  closedAt: timestamp("closed_at").notNull().defaultNow(),
+});
+
+// Market data cache for volatility calculations
+export const marketData = pgTable("market_data", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  symbol: text("symbol").notNull(),
+  price: decimal("price", { precision: 18, scale: 8 }).notNull(),
+  volume: decimal("volume", { precision: 18, scale: 8 }).notNull(),
+  volatility24h: decimal("volatility_24h", { precision: 5, scale: 2 }),
+  volatility1h: decimal("volatility_1h", { precision: 5, scale: 2 }),
+  liquidationPressure: decimal("liquidation_pressure", { precision: 5, scale: 2 }),
+  cascadeRisk: text("cascade_risk").notNull().default('low'), // "low", "medium", "high"
+  timestamp: timestamp("timestamp").notNull().defaultNow(),
+});
+
+// Zod schemas for trading entities
+export const insertTradingStrategySchema = createInsertSchema(tradingStrategies).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertPortfolioSchema = createInsertSchema(portfolios).omit({
+  id: true,
+  lastUpdated: true,
+});
+
+export const insertPositionSchema = createInsertSchema(positions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertTradeSchema = createInsertSchema(trades).omit({
+  id: true,
+  createdAt: true,
+  closedAt: true,
+});
+
+export const insertMarketDataSchema = createInsertSchema(marketData).omit({
+  id: true,
+  timestamp: true,
+});
+
+// Type exports for trading entities
+export type InsertTradingStrategy = z.infer<typeof insertTradingStrategySchema>;
+export type TradingStrategy = typeof tradingStrategies.$inferSelect;
+
+export type InsertPortfolio = z.infer<typeof insertPortfolioSchema>;
+export type Portfolio = typeof portfolios.$inferSelect;
+
+export type InsertPosition = z.infer<typeof insertPositionSchema>;
+export type Position = typeof positions.$inferSelect;
+
+export type InsertTrade = z.infer<typeof insertTradeSchema>;
+export type Trade = typeof trades.$inferSelect;
+
+export type InsertMarketData = z.infer<typeof insertMarketDataSchema>;
+export type MarketData = typeof marketData.$inferSelect;
