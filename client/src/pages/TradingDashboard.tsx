@@ -4,6 +4,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -14,7 +18,8 @@ import {
   AlertTriangle,
   Play,
   Pause,
-  StopCircle
+  StopCircle,
+  Settings
 } from "lucide-react";
 
 interface Position {
@@ -55,6 +60,11 @@ interface TradingStrategy {
 export default function TradingDashboard() {
   // CRITICAL FIX: Use the same session as trading engine 
   const [sessionId] = useState('demo-session');
+  
+  // State for configuration dialog
+  const [configDialogOpen, setConfigDialogOpen] = useState(false);
+  const [selectedStrategy, setSelectedStrategy] = useState<TradingStrategy | null>(null);
+  const [configFormData, setConfigFormData] = useState<Partial<TradingStrategy>>({});
 
   // Fetch portfolio first to get the portfolio ID
   const { data: portfolio } = useQuery<Portfolio>({
@@ -119,6 +129,37 @@ export default function TradingDashboard() {
   const getPnlColor = (pnl: string | number) => {
     const num = typeof pnl === 'string' ? parseFloat(pnl) : pnl;
     return num >= 0 ? 'text-green-500' : 'text-red-500';
+  };
+
+  // Configuration dialog handlers
+  const openConfigDialog = (strategy: TradingStrategy) => {
+    setSelectedStrategy(strategy);
+    setConfigFormData({
+      ...strategy
+    });
+    setConfigDialogOpen(true);
+  };
+
+  const saveStrategyConfig = async () => {
+    if (!selectedStrategy || !configFormData) return;
+    
+    try {
+      const response = await fetch(`/api/trading/strategies/${selectedStrategy.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(configFormData)
+      });
+      
+      if (response.ok) {
+        setConfigDialogOpen(false);
+        // Refetch strategies to get updated data
+        // The useQuery will automatically refetch
+      }
+    } catch (error) {
+      console.error('Failed to update strategy:', error);
+    }
   };
 
   const toggleStrategy = async (strategyId: string, isActive: boolean) => {
@@ -474,7 +515,13 @@ export default function TradingDashboard() {
                         </>
                       )}
                     </Button>
-                    <Button size="sm" variant="outline" data-testid={`configure-strategy-${strategy.name.toLowerCase().replace(/\s+/g, '-')}`}>
+                    <Button 
+                      size="sm" 
+                      variant="outline" 
+                      onClick={() => openConfigDialog(strategy)}
+                      data-testid={`configure-strategy-${strategy.name.toLowerCase().replace(/\s+/g, '-')}`}
+                    >
+                      <Settings className="h-3 w-3 mr-1" />
                       Configure
                     </Button>
                   </div>
@@ -556,6 +603,92 @@ export default function TradingDashboard() {
           </div>
         </TabsContent>
       </Tabs>
+      
+      {/* Configuration Dialog */}
+      <Dialog open={configDialogOpen} onOpenChange={setConfigDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Settings className="h-5 w-5" />
+              Configure Strategy: {selectedStrategy?.name}
+            </DialogTitle>
+          </DialogHeader>
+          
+          {selectedStrategy && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="riskRewardRatio">Risk/Reward Ratio</Label>
+                <Input
+                  id="riskRewardRatio"
+                  type="number"
+                  step="0.1"
+                  value={configFormData.riskRewardRatio || ''}
+                  onChange={(e) => setConfigFormData({...configFormData, riskRewardRatio: e.target.value})}
+                  placeholder="e.g., 2"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="stopLossPercent">Stop Loss %</Label>
+                <Input
+                  id="stopLossPercent"
+                  type="number"
+                  step="0.1"
+                  value={configFormData.stopLossPercent || ''}
+                  onChange={(e) => setConfigFormData({...configFormData, stopLossPercent: e.target.value})}
+                  placeholder="e.g., 3"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="takeProfitPercent">Take Profit %</Label>
+                <Input
+                  id="takeProfitPercent"
+                  type="number"
+                  step="0.1"
+                  value={configFormData.takeProfitPercent || ''}
+                  onChange={(e) => setConfigFormData({...configFormData, takeProfitPercent: e.target.value})}
+                  placeholder="e.g., 6"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="volatilityThreshold">Volatility Threshold %</Label>
+                <Input
+                  id="volatilityThreshold"
+                  type="number"
+                  step="0.1"
+                  value={configFormData.volatilityThreshold || ''}
+                  onChange={(e) => setConfigFormData({...configFormData, volatilityThreshold: e.target.value})}
+                  placeholder="e.g., 10"
+                />
+              </div>
+              
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="cascadeDetection"
+                  checked={configFormData.cascadeDetectionEnabled || false}
+                  onCheckedChange={(checked) => setConfigFormData({...configFormData, cascadeDetectionEnabled: checked})}
+                />
+                <Label htmlFor="cascadeDetection">Enable Cascade Detection</Label>
+              </div>
+              
+              <div className="flex gap-2 pt-4">
+                <Button onClick={saveStrategyConfig} className="flex-1">
+                  Save Changes
+                </Button>
+                <Button 
+                  variant="outline" 
+                  onClick={() => setConfigDialogOpen(false)}
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
