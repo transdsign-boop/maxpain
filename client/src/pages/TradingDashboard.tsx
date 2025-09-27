@@ -22,7 +22,8 @@ import {
   Pause,
   StopCircle,
   Settings,
-  Save
+  Save,
+  RotateCcw
 } from "lucide-react";
 
 interface Position {
@@ -37,6 +38,15 @@ interface Position {
   stopLossPrice: string;
   takeProfitPrice: string;
   createdAt: string;
+  triggeringLiquidation?: {
+    id: string;
+    symbol: string;
+    side: string;
+    size: string;
+    price: string;
+    value: string;
+    timestamp: string;
+  };
 }
 
 interface Portfolio {
@@ -323,6 +333,35 @@ export default function TradingDashboard() {
     }
   };
 
+  const resetPaperBalance = async () => {
+    if (!confirm('Reset paper balance to $10,000? This will reset your paper trading balance.')) return;
+    
+    try {
+      const response = await fetch(`/api/trading/portfolio/${portfolio?.id}/reset-paper-balance`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to reset paper balance: ${response.statusText}`);
+      }
+      
+      // Refetch portfolio data
+      queryClient.invalidateQueries({ queryKey: [`/api/trading/portfolio?sessionId=${sessionId}`] });
+      toast({
+        title: "Paper Balance Reset",
+        description: "Paper balance has been reset to $10,000",
+      });
+    } catch (error) {
+      console.error('Reset paper balance error:', error);
+      toast({
+        title: "Error",
+        description: "Failed to reset paper balance",
+        variant: "destructive",
+      });
+    }
+  };
+
   const closePosition = async (positionId: string, currentPrice: string, symbol: string) => {
     try {
       const response = await fetch(`/api/trading/positions/${positionId}/close`, {
@@ -410,7 +449,18 @@ export default function TradingDashboard() {
         <Card className="hover-elevate">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Paper Balance</CardTitle>
-            <DollarSign className="h-4 w-4 text-blue-500" />
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={resetPaperBalance}
+                data-testid="reset-paper-balance"
+                title="Reset to $10,000"
+              >
+                <RotateCcw className="h-3 w-3" />
+              </Button>
+              <DollarSign className="h-4 w-4 text-blue-500" />
+            </div>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
@@ -544,6 +594,34 @@ export default function TradingDashboard() {
                       <p className="font-mono text-green-500">{formatCurrency(position.takeProfitPrice)}</p>
                     </div>
                   </div>
+
+                  {/* Liquidation Details */}
+                  {position.triggeringLiquidation && (
+                    <div className="bg-muted/50 rounded-md p-3 text-xs">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Zap className="h-3 w-3 text-orange-500" />
+                        <span className="font-medium text-muted-foreground">Triggered by Liquidation</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <span className="text-muted-foreground">Size:</span>
+                          <span className="font-mono ml-1">{formatNumber(position.triggeringLiquidation.size, 4)}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Price:</span>
+                          <span className="font-mono ml-1">{formatCurrency(position.triggeringLiquidation.price)}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Value:</span>
+                          <span className="font-mono ml-1">{formatCurrency(position.triggeringLiquidation.value)}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Time:</span>
+                          <span className="font-mono ml-1">{new Date(position.triggeringLiquidation.timestamp).toLocaleTimeString()}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="flex justify-between items-center pt-2 border-t">
                     <p className="text-xs text-muted-foreground">

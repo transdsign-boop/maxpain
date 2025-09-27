@@ -756,6 +756,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post("/api/trading/portfolio/:id/reset-paper-balance", async (req, res) => {
+    try {
+      const { id } = req.params;
+      // Reset paper balance to default $10,000
+      const portfolio = await storage.updatePortfolio(id, { 
+        paperBalance: '10000.00',
+        paperPnl: '0.00'
+      });
+      res.json(portfolio);
+    } catch (error) {
+      console.error('Reset paper balance error:', error);
+      res.status(500).json({ error: "Failed to reset paper balance" });
+    }
+  });
+
   // Position routes
   app.get("/api/trading/positions", async (req, res) => {
     try {
@@ -764,8 +779,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "portfolioId parameter required" });
       }
       
-      // Update unrealized PNL with current market prices before returning positions
-      const positions = await storage.updateUnrealizedPnl(portfolioId);
+      // Update unrealized PNL with current market prices first
+      await storage.updateUnrealizedPnl(portfolioId);
+      
+      // Then get positions with liquidation data
+      const positions = await storage.getOpenPositionsWithLiquidation(portfolioId);
       res.json(positions);
     } catch (error) {
       console.error('Get positions error:', error);

@@ -58,6 +58,7 @@ export interface IStorage {
   // Position operations
   createPosition(position: InsertPosition): Promise<Position>;
   getOpenPositions(portfolioId: string): Promise<Position[]>;
+  getOpenPositionsWithLiquidation(portfolioId: string): Promise<(Position & { triggeringLiquidation?: Liquidation })[]>;
   getOpenPositionsBySymbol(portfolioId: string, symbol: string): Promise<Position[]>;
   updatePosition(id: string, updates: Partial<InsertPosition>): Promise<Position>;
   closePosition(id: string, exitPrice: string, exitReason: string): Promise<Trade>;
@@ -302,6 +303,74 @@ export class DatabaseStorage implements IStorage {
         eq(positions.status, 'open')
       ))
       .orderBy(desc(positions.createdAt));
+  }
+
+  async getOpenPositionsWithLiquidation(portfolioId: string): Promise<(Position & { triggeringLiquidation?: Liquidation })[]> {
+    const result = await db
+      .select({
+        // Position fields
+        id: positions.id,
+        strategyId: positions.strategyId,
+        portfolioId: positions.portfolioId,
+        symbol: positions.symbol,
+        side: positions.side,
+        size: positions.size,
+        entryPrice: positions.entryPrice,
+        currentPrice: positions.currentPrice,
+        stopLossPrice: positions.stopLossPrice,
+        takeProfitPrice: positions.takeProfitPrice,
+        unrealizedPnl: positions.unrealizedPnl,
+        tradingMode: positions.tradingMode,
+        status: positions.status,
+        triggeredByLiquidation: positions.triggeredByLiquidation,
+        volatilityAtEntry: positions.volatilityAtEntry,
+        createdAt: positions.createdAt,
+        updatedAt: positions.updatedAt,
+        // Liquidation fields (nullable)
+        liquidationId: liquidations.id,
+        liquidationSymbol: liquidations.symbol,
+        liquidationSide: liquidations.side,
+        liquidationSize: liquidations.size,
+        liquidationPrice: liquidations.price,
+        liquidationValue: liquidations.value,
+        liquidationTimestamp: liquidations.timestamp,
+      })
+      .from(positions)
+      .leftJoin(liquidations, eq(positions.triggeredByLiquidation, liquidations.id))
+      .where(and(
+        eq(positions.portfolioId, portfolioId),
+        eq(positions.status, 'open')
+      ))
+      .orderBy(desc(positions.createdAt));
+
+    return result.map(row => ({
+      id: row.id,
+      strategyId: row.strategyId,
+      portfolioId: row.portfolioId,
+      symbol: row.symbol,
+      side: row.side,
+      size: row.size,
+      entryPrice: row.entryPrice,
+      currentPrice: row.currentPrice,
+      stopLossPrice: row.stopLossPrice,
+      takeProfitPrice: row.takeProfitPrice,
+      unrealizedPnl: row.unrealizedPnl,
+      tradingMode: row.tradingMode,
+      status: row.status,
+      triggeredByLiquidation: row.triggeredByLiquidation,
+      volatilityAtEntry: row.volatilityAtEntry,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      triggeringLiquidation: row.liquidationId ? {
+        id: row.liquidationId,
+        symbol: row.liquidationSymbol!,
+        side: row.liquidationSide!,
+        size: row.liquidationSize!,
+        price: row.liquidationPrice!,
+        value: row.liquidationValue!,
+        timestamp: row.liquidationTimestamp!,
+      } : undefined,
+    }));
   }
 
   async getOpenPositionsBySymbol(portfolioId: string, symbol: string): Promise<Position[]> {
