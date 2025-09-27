@@ -132,6 +132,11 @@ export default function LiquidationPriceChart({ symbol, hours }: LiquidationPric
           const yHigh = yScale(high);
           const yLow = yScale(low);
           
+          // Ensure all coordinates are valid numbers
+          if (isNaN(x) || isNaN(yOpen) || isNaN(yClose) || isNaN(yHigh) || isNaN(yLow)) {
+            return null;
+          }
+          
           // Calculate bar width based on data density
           const barWidth = Math.max(2, Math.min(8, chartWidth / data.length * 0.7));
           const centerX = x;
