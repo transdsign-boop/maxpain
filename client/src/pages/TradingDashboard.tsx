@@ -354,10 +354,7 @@ export default function TradingDashboard() {
     
     setIsUpdatingRiskSettings(true);
     try {
-      await apiRequest(`/api/risk-settings`, {
-        method: 'PUT',
-        body: riskSettingsFormData
-      });
+      await apiRequest('PUT', '/api/risk-settings', riskSettingsFormData);
       
       // Invalidate and refetch risk settings
       await queryClient.invalidateQueries({ queryKey: [`/api/risk-settings/${sessionId}`] });

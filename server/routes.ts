@@ -123,10 +123,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.put("/api/risk-settings", async (req, res) => {
     try {
+      console.log('📝 PUT /api/risk-settings request body:', JSON.stringify(req.body, null, 2));
       const validatedSettings = insertRiskSettingsSchema.parse(req.body);
+      console.log('✅ Validation passed, saving settings:', JSON.stringify(validatedSettings, null, 2));
       const settings = await storage.saveRiskSettings(validatedSettings);
       res.json(settings);
     } catch (error) {
+      console.error('❌ Risk settings save error:', error);
+      if (error instanceof Error) {
+        console.error('Error details:', error.message);
+        console.error('Error stack:', error.stack);
+      }
       res.status(500).json({ error: "Failed to save risk settings" });
     }
   });
