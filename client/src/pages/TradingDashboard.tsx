@@ -1572,6 +1572,75 @@ export default function TradingDashboard() {
             </Card>
           </div>
           
+          {/* Default Strategy Settings */}
+          <div className="grid grid-cols-1 gap-6">
+            <Card className="hover-elevate">
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Settings className="h-5 w-5" />
+                  Default Strategy Settings
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">Default SL/TP values applied to all new strategies</p>
+              </CardHeader>
+              <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="defaultStopLossPercent" className="text-sm font-medium">Default Stop Loss (%):</Label>
+                  <Input
+                    id="defaultStopLossPercent"
+                    type="number"
+                    min="0.1"
+                    max="20"
+                    step="0.1"
+                    value={unifiedSettingsFormData.defaultStopLossPercent || ''}
+                    onChange={(e) => setUnifiedSettingsFormData({
+                      ...unifiedSettingsFormData, 
+                      defaultStopLossPercent: e.target.value
+                    })}
+                    className="h-8"
+                    placeholder="3.0"
+                    data-testid="input-default-stop-loss"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="defaultTakeProfitPercent" className="text-sm font-medium">Default Take Profit (%):</Label>
+                  <Input
+                    id="defaultTakeProfitPercent"
+                    type="number"
+                    min="0.1"
+                    max="50"
+                    step="0.1"
+                    value={unifiedSettingsFormData.defaultTakeProfitPercent || ''}
+                    onChange={(e) => setUnifiedSettingsFormData({
+                      ...unifiedSettingsFormData, 
+                      defaultTakeProfitPercent: e.target.value
+                    })}
+                    className="h-8"
+                    placeholder="6.0"
+                    data-testid="input-default-take-profit"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="defaultRiskRewardRatio" className="text-sm font-medium">Default Risk/Reward Ratio:</Label>
+                  <Input
+                    id="defaultRiskRewardRatio"
+                    type="number"
+                    min="0.5"
+                    max="10"
+                    step="0.1"
+                    value={unifiedSettingsFormData.defaultRiskRewardRatio || ''}
+                    onChange={(e) => setUnifiedSettingsFormData({
+                      ...unifiedSettingsFormData, 
+                      defaultRiskRewardRatio: e.target.value
+                    })}
+                    className="h-8"
+                    placeholder="2.0"
+                    data-testid="input-default-risk-reward"
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+          
           {/* Order Management & Advanced Features */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Order Management Settings */}

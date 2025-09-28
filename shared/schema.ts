@@ -107,6 +107,11 @@ export const riskSettings = pgTable("risk_settings", {
   marginType: text("margin_type").notNull().default('cross'),
   leverage: decimal("leverage", { precision: 5, scale: 2 }).notNull().default('1.00'),
   
+  // Default Strategy Settings - applied to all new strategies
+  defaultStopLossPercent: decimal("default_stop_loss_percent", { precision: 5, scale: 2 }).notNull().default('3.00'),
+  defaultTakeProfitPercent: decimal("default_take_profit_percent", { precision: 5, scale: 2 }).notNull().default('6.00'),
+  defaultRiskRewardRatio: decimal("default_risk_reward_ratio", { precision: 5, scale: 2 }).notNull().default('2.00'),
+  
   // Order Management Settings
   maxOpenOrdersPerSymbol: integer("max_open_orders_per_symbol").notNull().default(20),
   batchOrders: boolean("batch_orders").notNull().default(true),

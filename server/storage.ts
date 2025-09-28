@@ -231,6 +231,10 @@ export class DatabaseStorage implements IStorage {
           timeInForce: settings.timeInForce,
           marginType: settings.marginType,
           leverage: settings.leverage,
+          // Default Strategy Settings
+          defaultStopLossPercent: settings.defaultStopLossPercent,
+          defaultTakeProfitPercent: settings.defaultTakeProfitPercent,
+          defaultRiskRewardRatio: settings.defaultRiskRewardRatio,
           // Order Management Settings
           maxOpenOrdersPerSymbol: settings.maxOpenOrdersPerSymbol,
           batchOrders: settings.batchOrders,
