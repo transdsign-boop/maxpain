@@ -222,6 +222,29 @@ export class DatabaseStorage implements IStorage {
           extremeVolumeThreshold: settings.extremeVolumeThreshold,
           cascadeAnalysisWindowMinutes: settings.cascadeAnalysisWindowMinutes,
           systemWideCascadeWindowMinutes: settings.systemWideCascadeWindowMinutes,
+          // Global Trading Settings - CRITICAL: Add missing leverage field!
+          simulateOnly: settings.simulateOnly,
+          maxTotalExposureUsd: settings.maxTotalExposureUsd,
+          volumeWindowSec: settings.volumeWindowSec,
+          orderTtlSec: settings.orderTtlSec,
+          rateLimitBufferPercent: settings.rateLimitBufferPercent,
+          timeInForce: settings.timeInForce,
+          marginType: settings.marginType,
+          leverage: settings.leverage,
+          // Order Management Settings
+          maxOpenOrdersPerSymbol: settings.maxOpenOrdersPerSymbol,
+          batchOrders: settings.batchOrders,
+          enableOrderConsolidation: settings.enableOrderConsolidation,
+          maxStopOrdersPerSymbol: settings.maxStopOrdersPerSymbol,
+          orderCleanupIntervalSec: settings.orderCleanupIntervalSec,
+          staleLimitOrderMin: settings.staleLimitOrderMin,
+          // Advanced Features
+          multiAssetsMode: settings.multiAssetsMode,
+          hedgeMode: settings.hedgeMode,
+          usePositionMonitor: settings.usePositionMonitor,
+          useUsdtVolume: settings.useUsdtVolume,
+          maxTranchesPerSymbolSide: settings.maxTranchesPerSymbolSide,
+          tranchePnlIncrementPercent: settings.tranchePnlIncrementPercent,
           updatedAt: sql`now()`,
         }
       })
