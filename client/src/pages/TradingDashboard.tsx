@@ -24,7 +24,11 @@ import {
   Settings,
   Save,
   RotateCcw,
-  Plus
+  Plus,
+  BarChart3,
+  History,
+  Percent,
+  Edit
 } from "lucide-react";
 
 interface Position {
@@ -102,6 +106,40 @@ interface RiskSettings {
   systemWideCascadeWindowMinutes: number;
 }
 
+interface Trade {
+  id: string;
+  positionId: string;
+  strategyId: string;
+  portfolioId: string;
+  symbol: string;
+  side: 'long' | 'short';
+  size: string;
+  entryPrice: string;
+  exitPrice: string;
+  realizedPnl: string;
+  feesPaid: string;
+  tradingMode: 'paper' | 'real';
+  exitReason: string;
+  triggeredByLiquidation?: string;
+  duration?: number;
+  volatilityAtEntry?: string;
+  volatilityAtExit?: string;
+  createdAt: string;
+  closedAt: string;
+}
+
+interface TradingFees {
+  id: string;
+  sessionId: string;
+  paperMarketOrderFeePercent: string;
+  paperLimitOrderFeePercent: string;
+  realMarketOrderFeePercent: string;
+  realLimitOrderFeePercent: string;
+  simulateRealisticFees: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export default function TradingDashboard() {
   // Generate or get persistent session ID that survives forever (same as Dashboard)
   const getSessionId = () => {
@@ -156,6 +194,12 @@ export default function TradingDashboard() {
   const [riskSettingsFormData, setRiskSettingsFormData] = useState<Partial<RiskSettings>>({});
   const [isUpdatingRiskSettings, setIsUpdatingRiskSettings] = useState(false);
 
+  // State for analytics features
+  const [paperBalanceDialogOpen, setPaperBalanceDialogOpen] = useState(false);
+  const [customPaperBalance, setCustomPaperBalance] = useState('');
+  const [tradingFeesFormData, setTradingFeesFormData] = useState<Partial<TradingFees>>({});
+  const [isUpdatingTradingFees, setIsUpdatingTradingFees] = useState(false);
+
   // Fetch portfolio first to get the portfolio ID
   const { data: portfolio } = useQuery<Portfolio>({
     queryKey: [`/api/trading/portfolio?sessionId=${sessionId}`],
@@ -178,6 +222,18 @@ export default function TradingDashboard() {
   // Fetch risk settings
   const { data: riskSettings } = useQuery<RiskSettings | null>({
     queryKey: [`/api/risk-settings/${sessionId}`],
+    select: (data) => data || null,
+  });
+
+  // Fetch completed trades
+  const { data: completedTrades = [] } = useQuery<Trade[]>({
+    queryKey: [`/api/trading/trades?portfolioId=${portfolio?.id || ''}&limit=50`],
+    enabled: !!portfolio?.id,
+  });
+
+  // Fetch trading fees
+  const { data: tradingFees } = useQuery<TradingFees | null>({
+    queryKey: [`/api/trading/fees/${sessionId}`],
     select: (data) => data || null,
   });
 
@@ -210,6 +266,23 @@ export default function TradingDashboard() {
       });
     }
   }, [riskSettings]);
+
+  // Initialize trading fees form when data loads
+  useEffect(() => {
+    if (tradingFees) {
+      setTradingFeesFormData(tradingFees);
+    } else {
+      // Set default values when no trading fees exist
+      setTradingFeesFormData({
+        sessionId,
+        paperMarketOrderFeePercent: '0.1000',
+        paperLimitOrderFeePercent: '0.0750',
+        realMarketOrderFeePercent: '0.1000',
+        realLimitOrderFeePercent: '0.0750',
+        simulateRealisticFees: true,
+      });
+    }
+  }, [tradingFees, sessionId]);
 
   // Debug logging
   console.log('TradingDashboard Debug:', {
@@ -516,6 +589,71 @@ export default function TradingDashboard() {
     }
   };
 
+  // Analytics handlers
+  const handleSetCustomPaperBalance = async () => {
+    if (!portfolio || !customPaperBalance || isNaN(parseFloat(customPaperBalance)) || parseFloat(customPaperBalance) < 0) {
+      toast({
+        title: "Error",
+        description: "Please enter a valid balance amount.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      await apiRequest('POST', `/api/trading/portfolio/${portfolio.id}/set-paper-balance`, {
+        amount: customPaperBalance
+      });
+      
+      // Refetch portfolio data
+      queryClient.invalidateQueries({ queryKey: [`/api/trading/portfolio?sessionId=${sessionId}`] });
+      
+      setPaperBalanceDialogOpen(false);
+      setCustomPaperBalance('');
+      
+      toast({
+        title: "Paper Balance Updated",
+        description: `Paper balance set to $${parseFloat(customPaperBalance).toLocaleString()}`,
+      });
+    } catch (error) {
+      console.error('Set custom paper balance error:', error);
+      toast({
+        title: "Error",
+        description: "Failed to set paper balance",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleSaveTradingFees = async () => {
+    if (!tradingFeesFormData.sessionId) {
+      tradingFeesFormData.sessionId = sessionId;
+    }
+    
+    setIsUpdatingTradingFees(true);
+    try {
+      await apiRequest('PUT', '/api/trading/fees', tradingFeesFormData);
+      
+      // Invalidate and refetch trading fees
+      await queryClient.invalidateQueries({ queryKey: [`/api/trading/fees/${sessionId}`] });
+      
+      toast({
+        title: "Trading fees updated",
+        description: "Your market and limit order fee settings have been saved.",
+      });
+      
+    } catch (error) {
+      console.error('Error saving trading fees:', error);
+      toast({
+        title: "Error",
+        description: "Failed to save trading fees. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUpdatingTradingFees(false);
+    }
+  };
+
   return (
     <div className="p-6 space-y-6 h-full overflow-auto" data-testid="trading-dashboard">
       {/* Trading Mode Header */}
@@ -627,7 +765,7 @@ export default function TradingDashboard() {
 
       {/* Main Content Tabs */}
       <Tabs defaultValue="positions" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="positions" data-testid="tab-positions">
             Active Positions ({activePositions.length})
           </TabsTrigger>
@@ -636,6 +774,9 @@ export default function TradingDashboard() {
           </TabsTrigger>
           <TabsTrigger value="risk" data-testid="tab-risk">
             Risk Management
+          </TabsTrigger>
+          <TabsTrigger value="analytics" data-testid="tab-analytics">
+            Trading Analytics
           </TabsTrigger>
         </TabsList>
 
@@ -1088,6 +1229,260 @@ export default function TradingDashboard() {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        {/* Trading Analytics Tab */}
+        <TabsContent value="analytics" className="space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            
+            {/* Paper Balance Configuration */}
+            <Card className="hover-elevate">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+                <div className="flex items-center gap-2">
+                  <DollarSign className="h-5 w-5 text-blue-500" />
+                  <CardTitle>Paper Balance Configuration</CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="bg-muted/50 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium">Current Paper Balance</span>
+                    <span className="text-lg font-bold text-blue-600">
+                      {portfolio ? formatCurrency(portfolio.paperBalance) : '$0.00'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Your simulated trading funds for paper trading mode
+                  </p>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={resetPaperBalance}
+                    data-testid="reset-paper-balance-analytics"
+                  >
+                    <RotateCcw className="h-4 w-4 mr-2" />
+                    Reset to $10k
+                  </Button>
+                  
+                  <Dialog open={paperBalanceDialogOpen} onOpenChange={setPaperBalanceDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button variant="default" data-testid="set-custom-balance">
+                        <Edit className="h-4 w-4 mr-2" />
+                        Set Custom
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-sm">
+                      <DialogHeader>
+                        <DialogTitle>Set Custom Paper Balance</DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="customBalance">Balance Amount ($)</Label>
+                          <Input
+                            id="customBalance"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={customPaperBalance}
+                            onChange={(e) => setCustomPaperBalance(e.target.value)}
+                            placeholder="e.g., 25000"
+                            data-testid="input-custom-balance"
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <Button 
+                            className="flex-1" 
+                            onClick={handleSetCustomPaperBalance}
+                            data-testid="button-save-custom-balance"
+                          >
+                            Set Balance
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            className="flex-1"
+                            onClick={() => setPaperBalanceDialogOpen(false)}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Trading Fees Configuration */}
+            <Card className="hover-elevate">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+                <div className="flex items-center gap-2">
+                  <Percent className="h-5 w-5 text-green-500" />
+                  <CardTitle>Trading Fees Configuration</CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium">Simulate Realistic Fees</Label>
+                    <Switch
+                      checked={tradingFeesFormData.simulateRealisticFees || false}
+                      onCheckedChange={(checked) => 
+                        setTradingFeesFormData({...tradingFeesFormData, simulateRealisticFees: checked})
+                      }
+                      data-testid="switch-simulate-fees"
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">Paper Market Orders (%)</Label>
+                      <Input
+                        type="number"
+                        step="0.0001"
+                        min="0"
+                        value={tradingFeesFormData.paperMarketOrderFeePercent || ''}
+                        onChange={(e) => setTradingFeesFormData({
+                          ...tradingFeesFormData, 
+                          paperMarketOrderFeePercent: e.target.value
+                        })}
+                        placeholder="0.1000"
+                        data-testid="input-paper-market-fee"
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">Paper Limit Orders (%)</Label>
+                      <Input
+                        type="number"
+                        step="0.0001"
+                        min="0"
+                        value={tradingFeesFormData.paperLimitOrderFeePercent || ''}
+                        onChange={(e) => setTradingFeesFormData({
+                          ...tradingFeesFormData, 
+                          paperLimitOrderFeePercent: e.target.value
+                        })}
+                        placeholder="0.0750"
+                        data-testid="input-paper-limit-fee"
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">Real Market Orders (%)</Label>
+                      <Input
+                        type="number"
+                        step="0.0001"
+                        min="0"
+                        value={tradingFeesFormData.realMarketOrderFeePercent || ''}
+                        onChange={(e) => setTradingFeesFormData({
+                          ...tradingFeesFormData, 
+                          realMarketOrderFeePercent: e.target.value
+                        })}
+                        placeholder="0.1000"
+                        data-testid="input-real-market-fee"
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">Real Limit Orders (%)</Label>
+                      <Input
+                        type="number"
+                        step="0.0001"
+                        min="0"
+                        value={tradingFeesFormData.realLimitOrderFeePercent || ''}
+                        onChange={(e) => setTradingFeesFormData({
+                          ...tradingFeesFormData, 
+                          realLimitOrderFeePercent: e.target.value
+                        })}
+                        placeholder="0.0750"
+                        data-testid="input-real-limit-fee"
+                      />
+                    </div>
+                  </div>
+                  
+                  <Button
+                    className="w-full"
+                    onClick={handleSaveTradingFees}
+                    disabled={isUpdatingTradingFees}
+                    data-testid="button-save-trading-fees"
+                  >
+                    <Save className="h-4 w-4 mr-2" />
+                    {isUpdatingTradingFees ? 'Saving...' : 'Save Fee Settings'}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Completed Trades Section */}
+          <Card className="hover-elevate">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+              <div className="flex items-center gap-2">
+                <History className="h-5 w-5 text-purple-500" />
+                <CardTitle>Completed Trades</CardTitle>
+                <Badge variant="outline" className="ml-2">
+                  {completedTrades.length} trades
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {completedTrades.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <BarChart3 className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>No completed trades yet</p>
+                  <p className="text-sm">Your trading history will appear here</p>
+                </div>
+              ) : (
+                <div className="space-y-3 max-h-96 overflow-auto">
+                  {completedTrades.map((trade: Trade) => (
+                    <div 
+                      key={trade.id} 
+                      className="flex items-center justify-between p-3 bg-muted/50 rounded-md hover:bg-muted/70 transition-colors"
+                      data-testid={`trade-${trade.symbol}-${trade.side}`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex flex-col">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{trade.symbol}</span>
+                            <Badge 
+                              variant={trade.side === 'long' ? 'default' : 'destructive'}
+                              className="text-xs"
+                            >
+                              {trade.side.toUpperCase()}
+                            </Badge>
+                            <Badge 
+                              variant={trade.tradingMode === 'paper' ? 'outline' : 'secondary'}
+                              className="text-xs"
+                            >
+                              {trade.tradingMode === 'paper' ? 'PAPER' : 'REAL'}
+                            </Badge>
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {formatNumber(trade.size, 4)} @ {formatCurrency(trade.entryPrice)} → {formatCurrency(trade.exitPrice)}
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center gap-4 text-right">
+                        <div className="flex flex-col">
+                          <span className={`font-medium ${getPnlColor(trade.realizedPnl)}`}>
+                            {formatCurrency(trade.realizedPnl)}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            Fee: {formatCurrency(trade.feesPaid)}
+                          </span>
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {new Date(trade.closedAt).toLocaleDateString()}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
       
