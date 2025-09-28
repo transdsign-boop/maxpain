@@ -23,7 +23,8 @@ import {
   StopCircle,
   Settings,
   Save,
-  RotateCcw
+  RotateCcw,
+  Plus
 } from "lucide-react";
 
 interface Position {
@@ -134,6 +135,23 @@ export default function TradingDashboard() {
   const [selectedStrategy, setSelectedStrategy] = useState<TradingStrategy | null>(null);
   const [configFormData, setConfigFormData] = useState<Partial<TradingStrategy>>({});
   
+  // State for create strategy dialog
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [createFormData, setCreateFormData] = useState({
+    name: '',
+    type: 'counter_liquidation',
+    riskRewardRatio: '2.0',
+    maxPositionSize: '1000.00',
+    stopLossPercent: '2.0',
+    takeProfitPercent: '4.0',
+    volatilityThreshold: '5.0',
+    liquidationThresholdPercentile: '50.0',
+    dcaEnabled: false,
+    cascadeDetectionEnabled: true,
+    cascadeCooldownMinutes: 10,
+    symbols: [] as string[]
+  });
+  
   // State for risk settings
   const [riskSettingsFormData, setRiskSettingsFormData] = useState<Partial<RiskSettings>>({});
   const [isUpdatingRiskSettings, setIsUpdatingRiskSettings] = useState(false);
@@ -243,6 +261,55 @@ export default function TradingDashboard() {
       }
     } catch (error) {
       console.error('Failed to update strategy:', error);
+    }
+  };
+
+  const createNewStrategy = async () => {
+    try {
+      const response = await fetch('/api/trading/strategies', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...createFormData,
+          sessionId,
+          isActive: false // Start as inactive
+        })
+      });
+      
+      if (response.ok) {
+        setCreateDialogOpen(false);
+        // Reset form
+        setCreateFormData({
+          name: '',
+          type: 'counter_liquidation',
+          riskRewardRatio: '2.0',
+          maxPositionSize: '1000.00',
+          stopLossPercent: '2.0',
+          takeProfitPercent: '4.0',
+          volatilityThreshold: '5.0',
+          liquidationThresholdPercentile: '50.0',
+          dcaEnabled: false,
+          cascadeDetectionEnabled: true,
+          cascadeCooldownMinutes: 10,
+          symbols: []
+        });
+        toast({
+          title: "Strategy Created",
+          description: "Your trading strategy has been created successfully.",
+        });
+        // The useQuery will automatically refetch strategies
+      } else {
+        throw new Error('Failed to create strategy');
+      }
+    } catch (error) {
+      console.error('Failed to create strategy:', error);
+      toast({
+        title: "Error",
+        description: "Failed to create trading strategy. Please try again.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -679,6 +746,43 @@ export default function TradingDashboard() {
 
         {/* Trading Strategies Tab */}
         <TabsContent value="strategies" className="space-y-4">
+          {/* Create Strategy Button - Only show if no strategies exist */}
+          {strategies.length === 0 && (
+            <Card className="hover-elevate">
+              <CardContent className="flex flex-col items-center justify-center py-8 space-y-4">
+                <div className="text-center space-y-2">
+                  <h3 className="text-lg font-semibold">No Trading Strategies</h3>
+                  <p className="text-muted-foreground text-sm">
+                    Create your first trading strategy to start automated counter-liquidation trading.
+                  </p>
+                </div>
+                <Button 
+                  onClick={() => setCreateDialogOpen(true)}
+                  className="mt-4"
+                  data-testid="create-first-strategy"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create Your First Strategy
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+          
+          {/* Add Strategy Button - Always show at top when strategies exist */}
+          {strategies.length > 0 && (
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-semibold">Your Trading Strategies ({strategies.length})</h3>
+              <Button 
+                onClick={() => setCreateDialogOpen(true)}
+                variant="outline"
+                data-testid="add-strategy"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Strategy
+              </Button>
+            </div>
+          )}
+          
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {strategies.map((strategy: TradingStrategy) => (
               <Card key={strategy.id} className="hover-elevate" data-testid={`strategy-${strategy.name.toLowerCase().replace(/\s+/g, '-')}`}>
@@ -1069,6 +1173,180 @@ export default function TradingDashboard() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+      
+      {/* Create Strategy Dialog */}
+      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="h-5 w-5" />
+              Create New Trading Strategy
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="strategyName">Strategy Name</Label>
+              <Input
+                id="strategyName"
+                value={createFormData.name}
+                onChange={(e) => setCreateFormData({...createFormData, name: e.target.value})}
+                placeholder="e.g., Counter Liquidation Strategy"
+                data-testid="input-strategy-name"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="strategyType">Strategy Type</Label>
+              <select
+                id="strategyType"
+                value={createFormData.type}
+                onChange={(e) => setCreateFormData({...createFormData, type: e.target.value})}
+                className="w-full h-9 px-3 rounded-md border border-input bg-background text-sm"
+                data-testid="select-strategy-type"
+              >
+                <option value="counter_liquidation">Counter Liquidation</option>
+                <option value="volatility">Volatility Based</option>
+                <option value="custom">Custom</option>
+              </select>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="riskReward">Risk/Reward Ratio</Label>
+                <Input
+                  id="riskReward"
+                  type="number"
+                  step="0.1"
+                  value={createFormData.riskRewardRatio}
+                  onChange={(e) => setCreateFormData({...createFormData, riskRewardRatio: e.target.value})}
+                  placeholder="2.0"
+                  data-testid="input-risk-reward"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="maxPosition">Max Position Size ($)</Label>
+                <Input
+                  id="maxPosition"
+                  type="number"
+                  step="100"
+                  value={createFormData.maxPositionSize}
+                  onChange={(e) => setCreateFormData({...createFormData, maxPositionSize: e.target.value})}
+                  placeholder="1000"
+                  data-testid="input-max-position"
+                />
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="stopLoss">Stop Loss %</Label>
+                <Input
+                  id="stopLoss"
+                  type="number"
+                  step="0.1"
+                  value={createFormData.stopLossPercent}
+                  onChange={(e) => setCreateFormData({...createFormData, stopLossPercent: e.target.value})}
+                  placeholder="2.0"
+                  data-testid="input-stop-loss"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="takeProfit">Take Profit %</Label>
+                <Input
+                  id="takeProfit"
+                  type="number"
+                  step="0.1"
+                  value={createFormData.takeProfitPercent}
+                  onChange={(e) => setCreateFormData({...createFormData, takeProfitPercent: e.target.value})}
+                  placeholder="4.0"
+                  data-testid="input-take-profit"
+                />
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="volatility">Volatility Threshold %</Label>
+                <Input
+                  id="volatility"
+                  type="number"
+                  step="0.1"
+                  value={createFormData.volatilityThreshold}
+                  onChange={(e) => setCreateFormData({...createFormData, volatilityThreshold: e.target.value})}
+                  placeholder="5.0"
+                  data-testid="input-volatility"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="liquidationThreshold">Liquidation Threshold</Label>
+                <Input
+                  id="liquidationThreshold"
+                  type="number"
+                  min="0"
+                  max="99"
+                  step="5"
+                  value={createFormData.liquidationThresholdPercentile}
+                  onChange={(e) => setCreateFormData({...createFormData, liquidationThresholdPercentile: e.target.value})}
+                  placeholder="50"
+                  data-testid="input-liquidation-threshold"
+                />
+              </div>
+            </div>
+            
+            <div className="space-y-3">
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="cascadeDetection"
+                  checked={createFormData.cascadeDetectionEnabled}
+                  onCheckedChange={(checked) => setCreateFormData({...createFormData, cascadeDetectionEnabled: checked})}
+                  data-testid="switch-cascade-detection"
+                />
+                <Label htmlFor="cascadeDetection">Enable Cascade Detection</Label>
+              </div>
+              
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="dcaEnabled"
+                  checked={createFormData.dcaEnabled}
+                  onCheckedChange={(checked) => setCreateFormData({...createFormData, dcaEnabled: checked})}
+                  data-testid="switch-dca"
+                />
+                <Label htmlFor="dcaEnabled">Enable DCA (Dollar Cost Averaging)</Label>
+              </div>
+            </div>
+            
+            <div className="bg-muted/50 rounded-md p-3 text-sm">
+              <p className="text-muted-foreground">
+                <strong>Note:</strong> The strategy will use your selected assets from the Dashboard. 
+                Make sure you have selected the assets you want to trade before activating the strategy.
+              </p>
+            </div>
+            
+            <div className="flex gap-2 pt-4">
+              <Button 
+                onClick={createNewStrategy} 
+                className="flex-1"
+                disabled={!createFormData.name.trim()}
+                data-testid="create-strategy-submit"
+              >
+                Create Strategy
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={() => setCreateDialogOpen(false)}
+                className="flex-1"
+                data-testid="create-strategy-cancel"
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
