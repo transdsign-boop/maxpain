@@ -1044,9 +1044,12 @@ export default function TradingDashboard() {
 
       {/* Main Content Tabs */}
       <Tabs defaultValue="positions" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="positions" data-testid="tab-positions">
             Active Positions ({filteredPositions.length})
+          </TabsTrigger>
+          <TabsTrigger value="strategies" data-testid="tab-strategies">
+            Trading Strategies ({strategies.length})
           </TabsTrigger>
           <TabsTrigger value="analytics" data-testid="tab-analytics">
             Trading Analytics
@@ -1417,6 +1420,110 @@ export default function TradingDashboard() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Trading Strategies Tab */}
+        <TabsContent value="strategies" className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold">Trading Strategies</h3>
+            <Button
+              onClick={() => setCreateDialogOpen(true)}
+              data-testid="button-create-strategy"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Create Strategy
+            </Button>
+          </div>
+
+          {strategies.length === 0 ? (
+            <Card className="text-center py-8">
+              <CardContent>
+                <div className="text-muted-foreground mb-4">
+                  <TrendingUp className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p className="text-lg font-medium">No Trading Strategies</p>
+                  <p className="text-sm">Create your first strategy to start automated trading</p>
+                </div>
+                <Button
+                  onClick={() => setCreateDialogOpen(true)}
+                  data-testid="button-create-first-strategy"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create Your First Strategy
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {strategies.map((strategy: TradingStrategy) => (
+                <Card key={strategy.id} className="hover-elevate" data-testid={`strategy-${strategy.id}`}>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+                    <div className="flex items-center gap-2">
+                      <CardTitle className="text-lg font-bold">{strategy.name}</CardTitle>
+                      <Badge variant={strategy.isActive ? 'default' : 'secondary'}>
+                        {strategy.isActive ? 'ACTIVE' : 'PAUSED'}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => toggleStrategy(strategy.id, !strategy.isActive)}
+                        data-testid={`toggle-strategy-${strategy.id}`}
+                      >
+                        {strategy.isActive ? 'Pause' : 'Activate'}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          setConfigFormData(strategy);
+                          setConfigDialogOpen(true);
+                        }}
+                        data-testid={`config-strategy-${strategy.id}`}
+                      >
+                        <Settings className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <span className="text-muted-foreground">Type:</span>
+                        <div className="font-medium capitalize">{strategy.type.replace('_', ' ')}</div>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Risk/Reward:</span>
+                        <div className="font-medium">{strategy.riskRewardRatio}:1</div>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Max Position:</span>
+                        <div className="font-medium">{formatCurrency(strategy.maxPositionSize)}</div>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Stop Loss:</span>
+                        <div className="font-medium">{strategy.stopLossPercent}%</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="text-muted-foreground">Symbols:</span>
+                      <div className="flex flex-wrap gap-1">
+                        {strategy.symbols?.slice(0, 3).map((symbol, idx) => (
+                          <Badge key={idx} variant="outline" className="text-xs">
+                            {symbol}
+                          </Badge>
+                        ))}
+                        {strategy.symbols?.length > 3 && (
+                          <Badge variant="outline" className="text-xs">
+                            +{strategy.symbols.length - 3} more
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
         </TabsContent>
 
         {/* Global Settings Tab */}

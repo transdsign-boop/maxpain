@@ -760,12 +760,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/trading/strategies", async (req, res) => {
     try {
-      const validatedData = insertTradingStrategySchema.parse(req.body);
+      // Provide sensible defaults for strategy creation
+      const defaultStrategy = {
+        name: req.body.name || 'New Strategy',
+        type: req.body.type || 'counter_liquidation',
+        riskRewardRatio: req.body.riskRewardRatio || '2.00',
+        maxPositionSize: req.body.maxPositionSize || '100.00',
+        stopLossPercent: req.body.stopLossPercent || '2.00',
+        takeProfitPercent: req.body.takeProfitPercent || '4.00',
+        volatilityThreshold: req.body.volatilityThreshold || '5.00',
+        liquidationThresholdPercentile: req.body.liquidationThresholdPercentile || '50.00',
+        dcaEnabled: req.body.dcaEnabled !== undefined ? req.body.dcaEnabled : false,
+        cascadeDetectionEnabled: req.body.cascadeDetectionEnabled !== undefined ? req.body.cascadeDetectionEnabled : true,
+        cascadeCooldownMinutes: req.body.cascadeCooldownMinutes || 10,
+        symbols: req.body.symbols || ['ASTERUSDT'], // Default to ASTER
+        sessionId: req.body.sessionId || (req.query.sessionId as string),
+        isActive: req.body.isActive !== undefined ? req.body.isActive : false,
+        ...req.body // Allow overrides
+      };
+
+      const validatedData = insertTradingStrategySchema.parse(defaultStrategy);
       const strategy = await storage.createTradingStrategy(validatedData);
-      res.json(strategy);
+      res.status(201).json(strategy);
     } catch (error) {
       console.error('Create strategy error:', error);
-      res.status(500).json({ error: "Failed to create trading strategy" });
+      if (error.name === 'ZodError') {
+        res.status(400).json({ 
+          error: "Invalid strategy data", 
+          details: error.errors 
+        });
+      } else {
+        res.status(500).json({ error: "Failed to create trading strategy" });
+      }
     }
   });
 
