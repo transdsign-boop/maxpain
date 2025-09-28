@@ -193,13 +193,9 @@ export default function TradingDashboard() {
     symbols: [] as string[]
   });
   
-  // State for risk settings
-  const [riskSettingsFormData, setRiskSettingsFormData] = useState<Partial<RiskSettings>>({});
-  const [isUpdatingRiskSettings, setIsUpdatingRiskSettings] = useState(false);
-  
-  // State for global settings form
-  const [globalSettingsFormData, setGlobalSettingsFormData] = useState<Partial<RiskSettings>>({});
-  const [isUpdatingGlobalSettings, setIsUpdatingGlobalSettings] = useState(false);
+  // Unified form state for all settings (risk + global)
+  const [unifiedSettingsFormData, setUnifiedSettingsFormData] = useState<Partial<RiskSettings>>({});
+  const [isUpdatingSettings, setIsUpdatingSettings] = useState(false);
 
   // State for analytics features
   const [paperBalanceDialogOpen, setPaperBalanceDialogOpen] = useState(false);
@@ -283,24 +279,19 @@ export default function TradingDashboard() {
     return acc;
   }, {} as Record<string, { trades: number; pnl: number; wins: number }>);
 
-  // Initialize risk settings form when data loads
+  // Initialize unified settings form when data loads
   useEffect(() => {
     if (riskSettings) {
-      setRiskSettingsFormData(riskSettings);
-      setGlobalSettingsFormData(riskSettings);
+      setUnifiedSettingsFormData(riskSettings);
     } else {
       // Set default values when no risk settings exist
-      setRiskSettingsFormData({
+      const defaultValues = {
         maxPositionsPerSymbol: 2,
         maxRiskPerTradePercent: '2.00',
         maxPortfolioExposurePercent: '80.00',
         maxSymbolConcentrationPercent: '20.00',
         warningPortfolioExposurePercent: '60.00',
         maxPositionSizePercent: '5.00',
-      });
-      
-      // Set default global settings values
-      setGlobalSettingsFormData({
         simulateOnly: false,
         maxTotalExposureUsd: '1400.00',
         volumeWindowSec: 60,
@@ -321,7 +312,9 @@ export default function TradingDashboard() {
         useUsdtVolume: true,
         maxTranchesPerSymbolSide: 5,
         tranchePnlIncrementPercent: '5.00',
-      });
+      };
+      
+      setUnifiedSettingsFormData(defaultValues);
     }
   }, [riskSettings]);
 
@@ -617,101 +610,36 @@ export default function TradingDashboard() {
     }
   };
 
-  // Risk settings handlers
-  const handleSaveRiskSettings = async () => {
-    if (!riskSettingsFormData.sessionId) {
-      riskSettingsFormData.sessionId = sessionId;
+  // Unified settings handler
+  const handleSaveAllSettings = async () => {
+    if (!unifiedSettingsFormData.sessionId) {
+      unifiedSettingsFormData.sessionId = sessionId;
     }
     
-    setIsUpdatingRiskSettings(true);
+    setIsUpdatingSettings(true);
     try {
-      await apiRequest('PUT', '/api/risk-settings', riskSettingsFormData);
+      await apiRequest('PUT', '/api/risk-settings', unifiedSettingsFormData);
       
       // Invalidate and refetch risk settings
       await queryClient.invalidateQueries({ queryKey: [`/api/risk-settings/${sessionId}`] });
       
       toast({
-        title: "Risk settings updated",
-        description: "Your position limits and cascade protection settings have been saved.",
+        title: "Settings updated",
+        description: "All your trading and risk settings have been saved successfully.",
       });
       
     } catch (error) {
-      console.error('Error saving risk settings:', error);
+      console.error('Error saving settings:', error);
       toast({
         title: "Error",
-        description: "Failed to save risk settings. Please try again.",
+        description: "Failed to save settings. Please try again.",
         variant: "destructive",
       });
     } finally {
-      setIsUpdatingRiskSettings(false);
+      setIsUpdatingSettings(false);
     }
   };
 
-  const handleSaveGlobalSettings = async () => {
-    setIsUpdatingGlobalSettings(true);
-    try {
-      // Create a complete risk settings object by merging global settings with existing risk settings
-      const mergedSettings = {
-        // Use existing risk settings if available, otherwise use default values
-        maxPositionsPerSymbol: riskSettingsFormData.maxPositionsPerSymbol || 2,
-        maxRiskPerTradePercent: riskSettingsFormData.maxRiskPerTradePercent || '2.00',
-        maxPortfolioExposurePercent: riskSettingsFormData.maxPortfolioExposurePercent || '80.00',
-        maxSymbolConcentrationPercent: riskSettingsFormData.maxSymbolConcentrationPercent || '20.00',
-        warningPortfolioExposurePercent: riskSettingsFormData.warningPortfolioExposurePercent || '60.00',
-        maxPositionSizePercent: riskSettingsFormData.maxPositionSizePercent || '5.00',
-        
-        // Include other required risk settings fields
-        minPositionSize: riskSettingsFormData.minPositionSize || '1.00',
-        highVolatilityThreshold: riskSettingsFormData.highVolatilityThreshold || '15.00',
-        extremeVolatilityThreshold: riskSettingsFormData.extremeVolatilityThreshold || '20.00',
-        cascadeDetectionEnabled: riskSettingsFormData.cascadeDetectionEnabled !== false,
-        cascadeCooldownMinutes: riskSettingsFormData.cascadeCooldownMinutes || 10,
-        
-        // Cascade detection thresholds
-        lowLiquidationCount: riskSettingsFormData.lowLiquidationCount || 3,
-        mediumLiquidationCount: riskSettingsFormData.mediumLiquidationCount || 7,
-        highLiquidationCount: riskSettingsFormData.highLiquidationCount || 15,
-        extremeLiquidationCount: riskSettingsFormData.extremeLiquidationCount || 25,
-        
-        lowVelocityPerMinute: riskSettingsFormData.lowVelocityPerMinute || '2.00',
-        mediumVelocityPerMinute: riskSettingsFormData.mediumVelocityPerMinute || '5.00',
-        highVelocityPerMinute: riskSettingsFormData.highVelocityPerMinute || '10.00',
-        extremeVelocityPerMinute: riskSettingsFormData.extremeVelocityPerMinute || '20.00',
-        
-        lowVolumeThreshold: riskSettingsFormData.lowVolumeThreshold || '50000.00',
-        mediumVolumeThreshold: riskSettingsFormData.mediumVolumeThreshold || '200000.00',
-        highVolumeThreshold: riskSettingsFormData.highVolumeThreshold || '500000.00',
-        extremeVolumeThreshold: riskSettingsFormData.extremeVolumeThreshold || '1000000.00',
-        
-        cascadeAnalysisWindowMinutes: riskSettingsFormData.cascadeAnalysisWindowMinutes || 10,
-        systemWideCascadeWindowMinutes: riskSettingsFormData.systemWideCascadeWindowMinutes || 15,
-        
-        // Merge global settings over the risk settings
-        ...globalSettingsFormData,
-        sessionId, // Always ensure sessionId is set
-      };
-      
-      await apiRequest('PUT', '/api/risk-settings', mergedSettings);
-      
-      // Invalidate and refetch risk settings
-      await queryClient.invalidateQueries({ queryKey: [`/api/risk-settings/${sessionId}`] });
-      
-      toast({
-        title: "Global settings updated",
-        description: "Your trading execution and order management settings have been saved.",
-      });
-      
-    } catch (error) {
-      console.error('Error saving global settings:', error);
-      toast({
-        title: "Error",
-        description: "Failed to save global settings. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsUpdatingGlobalSettings(false);
-    }
-  };
 
   // Analytics handlers
   const handleSetCustomPaperBalance = async () => {
@@ -939,15 +867,9 @@ export default function TradingDashboard() {
 
       {/* Main Content Tabs */}
       <Tabs defaultValue="positions" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="positions" data-testid="tab-positions">
             Active Positions ({filteredPositions.length})
-          </TabsTrigger>
-          <TabsTrigger value="strategies" data-testid="tab-strategies">
-            Trading Strategies ({strategies.length})
-          </TabsTrigger>
-          <TabsTrigger value="risk" data-testid="tab-risk">
-            Risk Management
           </TabsTrigger>
           <TabsTrigger value="analytics" data-testid="tab-analytics">
             Trading Analytics
@@ -1072,341 +994,6 @@ export default function TradingDashboard() {
           )}
         </TabsContent>
 
-        {/* Trading Strategies Tab */}
-        <TabsContent value="strategies" className="space-y-4">
-          {/* Create Strategy Button - Only show if no strategies exist */}
-          {strategies.length === 0 && (
-            <Card className="hover-elevate">
-              <CardContent className="flex flex-col items-center justify-center py-8 space-y-4">
-                <div className="text-center space-y-2">
-                  <h3 className="text-lg font-semibold">No Trading Strategies</h3>
-                  <p className="text-muted-foreground text-sm">
-                    Create your first trading strategy to start automated counter-liquidation trading.
-                  </p>
-                </div>
-                <Button 
-                  onClick={() => setCreateDialogOpen(true)}
-                  className="mt-4"
-                  data-testid="create-first-strategy"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create Your First Strategy
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-          
-          {/* Add Strategy Button - Always show at top when strategies exist */}
-          {strategies.length > 0 && (
-            <div className="flex justify-between items-center">
-              <h3 className="text-lg font-semibold">Your Trading Strategies ({strategies.length})</h3>
-              <Button 
-                onClick={() => setCreateDialogOpen(true)}
-                variant="outline"
-                data-testid="add-strategy"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add Strategy
-              </Button>
-            </div>
-          )}
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {strategies.map((strategy: TradingStrategy) => (
-              <Card key={strategy.id} className="hover-elevate" data-testid={`strategy-${strategy.name.toLowerCase().replace(/\s+/g, '-')}`}>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-                  <div>
-                    <CardTitle className="text-lg">{strategy.name}</CardTitle>
-                    <p className="text-sm text-muted-foreground">{strategy.type}</p>
-                  </div>
-                  <Badge variant={strategy.isActive ? 'default' : 'secondary'}>
-                    {strategy.isActive ? 'ACTIVE' : 'PAUSED'}
-                  </Badge>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-2">Tracked Symbols</p>
-                    <div className="flex flex-wrap gap-1">
-                      {(strategy.symbols || []).slice(0, 5).map((symbol: string) => (
-                        <Badge key={symbol} variant="outline" className="text-xs">
-                          {symbol}
-                        </Badge>
-                      ))}
-                      {(strategy.symbols || []).length === 0 && (
-                        <Badge variant="outline" className="text-xs">
-                          All symbols
-                        </Badge>
-                      )}
-                      {(strategy.symbols || []).length > 5 && (
-                        <Badge variant="outline" className="text-xs">
-                          +{(strategy.symbols || []).length - 5} more
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <p className="text-muted-foreground text-xs">Risk/Reward Ratio</p>
-                        <p className="font-mono font-bold text-lg">{strategy.riskRewardRatio}:1</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground text-xs">Stop Loss</p>
-                        <p className="font-mono font-bold text-lg text-red-500">{strategy.stopLossPercent}%</p>
-                      </div>
-                    </div>
-                    
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <p className="text-muted-foreground text-xs">Take Profit</p>
-                        <p className="font-mono font-bold text-lg text-green-500">{strategy.takeProfitPercent}%</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground text-xs">Vol. Threshold</p>
-                        <p className="font-mono font-bold text-lg">{strategy.volatilityThreshold}%</p>
-                      </div>
-                    </div>
-                    
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <p className="text-muted-foreground text-xs">Liq. Threshold</p>
-                        <p className="font-mono font-bold text-lg text-blue-500">
-                          {(strategy as any).liquidationThresholdPercentile || '50'}th percentile
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground text-xs">Max Position Size</p>
-                        <p className="font-mono font-bold text-lg">${parseFloat((strategy as any).maxPositionSize || '0').toFixed(0)}</p>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center justify-between pt-2 border-t">
-                      <span className="text-sm text-muted-foreground">Cascade Detection:</span>
-                      <Badge variant={strategy.cascadeDetectionEnabled ? 'default' : 'secondary'}>
-                        {strategy.cascadeDetectionEnabled ? 'ENABLED' : 'DISABLED'}
-                      </Badge>
-                    </div>
-                    
-                    <div className="flex items-center justify-between pt-2">
-                      <span className="text-sm text-muted-foreground">DCA (Dollar Cost Averaging):</span>
-                      <Badge variant={(strategy as any).dcaEnabled ? 'default' : 'secondary'} data-testid={`dca-status-${strategy.name.toLowerCase().replace(/\s+/g, '-')}`}>
-                        {(strategy as any).dcaEnabled ? 'ENABLED' : 'DISABLED'}
-                      </Badge>
-                    </div>
-                  </div>
-                  
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant={strategy.isActive ? "destructive" : "default"}
-                      onClick={() => toggleStrategy(strategy.id, strategy.isActive)}
-                      data-testid={`toggle-strategy-${strategy.name.toLowerCase().replace(/\s+/g, '-')}`}
-                    >
-                      {strategy.isActive ? (
-                        <>
-                          <Pause className="h-3 w-3 mr-1" />
-                          Pause
-                        </>
-                      ) : (
-                        <>
-                          <Play className="h-3 w-3 mr-1" />
-                          Start
-                        </>
-                      )}
-                    </Button>
-                    <Button 
-                      size="sm" 
-                      variant="outline" 
-                      onClick={() => openConfigDialog(strategy)}
-                      data-testid={`configure-strategy-${strategy.name.toLowerCase().replace(/\s+/g, '-')}`}
-                    >
-                      <Settings className="h-3 w-3 mr-1" />
-                      Configure
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </TabsContent>
-
-        {/* Risk Management Tab */}
-        <TabsContent value="risk" className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card className="hover-elevate">
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Shield className="h-5 w-5" />
-                  Position Limits
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="maxPositionsPerSymbol" className="text-sm font-medium">Max positions per symbol:</Label>
-                  <Input
-                    id="maxPositionsPerSymbol"
-                    type="number"
-                    min="1"
-                    max="10"
-                    value={riskSettingsFormData.maxPositionsPerSymbol || ''}
-                    onChange={(e) => setRiskSettingsFormData({
-                      ...riskSettingsFormData, 
-                      maxPositionsPerSymbol: parseInt(e.target.value) || 0
-                    })}
-                    className="h-8"
-                    data-testid="input-max-positions-per-symbol"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="maxRiskPerTrade" className="text-sm font-medium">Risk per trade (%):</Label>
-                  <Input
-                    id="maxRiskPerTrade"
-                    type="number"
-                    min="0.1"
-                    max="10"
-                    step="0.1"
-                    value={riskSettingsFormData.maxRiskPerTradePercent || ''}
-                    onChange={(e) => setRiskSettingsFormData({
-                      ...riskSettingsFormData, 
-                      maxRiskPerTradePercent: e.target.value
-                    })}
-                    className="h-8"
-                    data-testid="input-max-risk-per-trade"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="maxPortfolioExposure" className="text-sm font-medium">Max portfolio exposure (%):</Label>
-                  <Input
-                    id="maxPortfolioExposure"
-                    type="number"
-                    min="10"
-                    max="100"
-                    step="5"
-                    value={riskSettingsFormData.maxPortfolioExposurePercent || ''}
-                    onChange={(e) => setRiskSettingsFormData({
-                      ...riskSettingsFormData, 
-                      maxPortfolioExposurePercent: e.target.value
-                    })}
-                    className="h-8"
-                    data-testid="input-max-portfolio-exposure"
-                  />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="hover-elevate">
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <AlertTriangle className="h-5 w-5" />
-                  Global Settings
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="maxSymbolConcentration" className="text-sm font-medium">Max symbol concentration (%):</Label>
-                  <Input
-                    id="maxSymbolConcentration"
-                    type="number"
-                    min="10"
-                    max="50"
-                    step="5"
-                    value={riskSettingsFormData.maxSymbolConcentrationPercent || ''}
-                    onChange={(e) => setRiskSettingsFormData({
-                      ...riskSettingsFormData, 
-                      maxSymbolConcentrationPercent: e.target.value
-                    })}
-                    className="h-8"
-                    data-testid="input-max-symbol-concentration"
-                  />
-                  <p className="text-xs text-muted-foreground">Maximum percentage of portfolio allocated to any single asset</p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="warningExposure" className="text-sm font-medium">Warning portfolio exposure (%):</Label>
-                  <Input
-                    id="warningExposure"
-                    type="number"
-                    min="30"
-                    max="80"
-                    step="5"
-                    value={riskSettingsFormData.warningPortfolioExposurePercent || ''}
-                    onChange={(e) => setRiskSettingsFormData({
-                      ...riskSettingsFormData, 
-                      warningPortfolioExposurePercent: e.target.value
-                    })}
-                    className="h-8"
-                    data-testid="input-warning-exposure"
-                  />
-                  <p className="text-xs text-muted-foreground">Warning threshold before reaching max portfolio exposure</p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="maxPositionSize" className="text-sm font-medium">Max position size (%):</Label>
-                  <Input
-                    id="maxPositionSize"
-                    type="number"
-                    min="1"
-                    max="10"
-                    step="0.5"
-                    value={riskSettingsFormData.maxPositionSizePercent || ''}
-                    onChange={(e) => setRiskSettingsFormData({
-                      ...riskSettingsFormData, 
-                      maxPositionSizePercent: e.target.value
-                    })}
-                    className="h-8"
-                    data-testid="input-max-position-size"
-                  />
-                  <p className="text-xs text-muted-foreground">Maximum size of any single position as % of portfolio</p>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="hover-elevate">
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Settings className="h-5 w-5" />
-                  Risk Settings & Controls
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <Button 
-                  variant="default" 
-                  className="w-full" 
-                  onClick={handleSaveRiskSettings}
-                  disabled={isUpdatingRiskSettings}
-                  data-testid="save-risk-settings"
-                >
-                  <Save className="h-4 w-4 mr-2" />
-                  {isUpdatingRiskSettings ? 'Saving...' : 'Save Risk Settings'}
-                </Button>
-                <Button 
-                  variant="destructive" 
-                  className="w-full" 
-                  onClick={handleEmergencyStop}
-                  data-testid="emergency-stop-all"
-                >
-                  <StopCircle className="h-4 w-4 mr-2" />
-                  Stop All Trading
-                </Button>
-                <Button 
-                  variant="outline" 
-                  className="w-full" 
-                  onClick={handleCloseAllPositions}
-                  data-testid="close-all-positions"
-                >
-                  Close All Positions
-                </Button>
-                <Button 
-                  variant="outline" 
-                  className="w-full" 
-                  onClick={handlePauseAllStrategies}
-                  data-testid="pause-strategies"
-                >
-                  Pause All Strategies
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
 
         {/* Trading Analytics Tab */}
         <TabsContent value="analytics" className="space-y-4">
@@ -1645,14 +1232,277 @@ export default function TradingDashboard() {
         </TabsContent>
 
         {/* Global Settings Tab */}
-        <TabsContent value="global-settings" className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Global Trading Settings */}
+        <TabsContent value="global-settings" className="space-y-6">
+          
+          {/* Trading Strategies Section */}
+          <Card className="hover-elevate">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Target className="h-5 w-5" />
+                Trading Strategies
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">Automated counter-liquidation trading strategies</p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Create Strategy Button - Only show if no strategies exist */}
+              {strategies.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-8 space-y-4 border-2 border-dashed border-muted rounded-lg">
+                  <div className="text-center space-y-2">
+                    <h3 className="text-lg font-semibold">No Trading Strategies</h3>
+                    <p className="text-muted-foreground text-sm">
+                      Create your first trading strategy to start automated counter-liquidation trading.
+                    </p>
+                  </div>
+                  <Button 
+                    onClick={() => setCreateDialogOpen(true)}
+                    className="mt-4"
+                    data-testid="create-first-strategy"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create Your First Strategy
+                  </Button>
+                </div>
+              )}
+              
+              {/* Add Strategy Button - Always show at top when strategies exist */}
+              {strategies.length > 0 && (
+                <div className="flex justify-between items-center">
+                  <h3 className="text-lg font-semibold">Your Trading Strategies ({strategies.length})</h3>
+                  <Button 
+                    onClick={() => setCreateDialogOpen(true)}
+                    variant="outline"
+                    data-testid="add-strategy"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Strategy
+                  </Button>
+                </div>
+              )}
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {strategies.map((strategy: TradingStrategy) => (
+                  <Card key={strategy.id} className="hover-elevate" data-testid={`strategy-${strategy.name.toLowerCase().replace(/\s+/g, '-')}`}>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+                      <div>
+                        <CardTitle className="text-lg">{strategy.name}</CardTitle>
+                        <p className="text-sm text-muted-foreground">{strategy.type}</p>
+                      </div>
+                      <Badge variant={strategy.isActive ? 'default' : 'secondary'}>
+                        {strategy.isActive ? 'ACTIVE' : 'PAUSED'}
+                      </Badge>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div>
+                        <p className="text-sm text-muted-foreground mb-2">Tracked Symbols</p>
+                        <div className="flex flex-wrap gap-1">
+                          {(strategy.symbols || []).slice(0, 5).map((symbol: string) => (
+                            <Badge key={symbol} variant="outline" className="text-xs">
+                              {symbol}
+                            </Badge>
+                          ))}
+                          {(strategy.symbols || []).length === 0 && (
+                            <Badge variant="outline" className="text-xs">
+                              All symbols
+                            </Badge>
+                          )}
+                          {(strategy.symbols || []).length > 5 && (
+                            <Badge variant="outline" className="text-xs">
+                              +{(strategy.symbols || []).length - 5} more
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                          <div>
+                            <p className="text-muted-foreground text-xs">Risk/Reward Ratio</p>
+                            <p className="font-mono font-bold text-lg">{strategy.riskRewardRatio}:1</p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground text-xs">Stop Loss</p>
+                            <p className="font-mono font-bold text-lg text-red-500">{strategy.stopLossPercent}%</p>
+                          </div>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                          <div>
+                            <p className="text-muted-foreground text-xs">Take Profit</p>
+                            <p className="font-mono font-bold text-lg text-green-500">{strategy.takeProfitPercent}%</p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground text-xs">Vol. Threshold</p>
+                            <p className="font-mono font-bold text-lg">{strategy.volatilityThreshold}%</p>
+                          </div>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                          <div>
+                            <p className="text-muted-foreground text-xs">Liq. Threshold</p>
+                            <p className="font-mono font-bold text-lg text-blue-500">
+                              {(strategy as any).liquidationThresholdPercentile || '50'}th percentile
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground text-xs">Max Position Size</p>
+                            <p className="font-mono font-bold text-lg">${parseFloat((strategy as any).maxPositionSize || '0').toFixed(0)}</p>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center justify-between pt-2 border-t">
+                          <span className="text-sm text-muted-foreground">Cascade Detection:</span>
+                          <Badge variant={strategy.cascadeDetectionEnabled ? 'default' : 'secondary'}>
+                            {strategy.cascadeDetectionEnabled ? 'ENABLED' : 'DISABLED'}
+                          </Badge>
+                        </div>
+                        
+                        <div className="flex items-center justify-between pt-2">
+                          <span className="text-sm text-muted-foreground">DCA (Dollar Cost Averaging):</span>
+                          <Badge variant={(strategy as any).dcaEnabled ? 'default' : 'secondary'} data-testid={`dca-status-${strategy.name.toLowerCase().replace(/\s+/g, '-')}`}>
+                            {(strategy as any).dcaEnabled ? 'ENABLED' : 'DISABLED'}
+                          </Badge>
+                        </div>
+                      </div>
+                      
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant={strategy.isActive ? "destructive" : "default"}
+                          onClick={() => toggleStrategy(strategy.id, strategy.isActive)}
+                          data-testid={`toggle-strategy-${strategy.name.toLowerCase().replace(/\s+/g, '-')}`}
+                        >
+                          {strategy.isActive ? (
+                            <>
+                              <Pause className="h-3 w-3 mr-1" />
+                              Pause
+                            </>
+                          ) : (
+                            <>
+                              <Play className="h-3 w-3 mr-1" />
+                              Start
+                            </>
+                          )}
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          onClick={() => openConfigDialog(strategy)}
+                          data-testid={`configure-strategy-${strategy.name.toLowerCase().replace(/\s+/g, '-')}`}
+                        >
+                          <Settings className="h-3 w-3 mr-1" />
+                          Configure
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Position & Risk Limits Section */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card className="hover-elevate">
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Shield className="h-5 w-5" />
+                  Position & Risk Limits
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">Portfolio exposure and position sizing controls</p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="maxPositionsPerSymbol" className="text-sm font-medium">Max positions per symbol:</Label>
+                  <Input
+                    id="maxPositionsPerSymbol"
+                    type="number"
+                    min="1"
+                    max="10"
+                    value={unifiedSettingsFormData.maxPositionsPerSymbol || ''}
+                    onChange={(e) => setUnifiedSettingsFormData({
+                      ...unifiedSettingsFormData, 
+                      maxPositionsPerSymbol: parseInt(e.target.value) || 0
+                    })}
+                    className="h-8"
+                    data-testid="input-max-positions-per-symbol"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="maxRiskPerTrade" className="text-sm font-medium">Risk per trade (%):</Label>
+                  <Input
+                    id="maxRiskPerTrade"
+                    type="number"
+                    min="0.1"
+                    max="10"
+                    step="0.1"
+                    value={unifiedSettingsFormData.maxRiskPerTradePercent || ''}
+                    onChange={(e) => setUnifiedSettingsFormData({
+                      ...unifiedSettingsFormData, 
+                      maxRiskPerTradePercent: e.target.value
+                    })}
+                    className="h-8"
+                    data-testid="input-max-risk-per-trade"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="maxPortfolioExposure" className="text-sm font-medium">Max portfolio exposure (%):</Label>
+                  <Input
+                    id="maxPortfolioExposure"
+                    type="number"
+                    min="10"
+                    max="100"
+                    step="5"
+                    value={unifiedSettingsFormData.maxPortfolioExposurePercent || ''}
+                    onChange={(e) => setUnifiedSettingsFormData({
+                      ...unifiedSettingsFormData, 
+                      maxPortfolioExposurePercent: e.target.value
+                    })}
+                    className="h-8"
+                    data-testid="input-max-portfolio-exposure"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="maxSymbolConcentration" className="text-sm font-medium">Max symbol concentration (%):</Label>
+                  <Input
+                    id="maxSymbolConcentration"
+                    type="number"
+                    min="10"
+                    max="50"
+                    step="5"
+                    value={unifiedSettingsFormData.maxSymbolConcentrationPercent || ''}
+                    onChange={(e) => setUnifiedSettingsFormData({
+                      ...unifiedSettingsFormData, 
+                      maxSymbolConcentrationPercent: e.target.value
+                    })}
+                    className="h-8"
+                    data-testid="input-max-symbol-concentration"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="maxPositionSize" className="text-sm font-medium">Max position size (%):</Label>
+                  <Input
+                    id="maxPositionSize"
+                    type="number"
+                    min="1"
+                    max="10"
+                    step="0.5"
+                    value={unifiedSettingsFormData.maxPositionSizePercent || ''}
+                    onChange={(e) => setUnifiedSettingsFormData({
+                      ...unifiedSettingsFormData, 
+                      maxPositionSizePercent: e.target.value
+                    })}
+                    className="h-8"
+                    data-testid="input-max-position-size"
+                  />
+                </div>
+              </CardContent>
+            </Card>
+            
             <Card className="hover-elevate">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Settings className="h-5 w-5" />
-                  Global Trading Settings
+                  Trading Execution Settings
                 </CardTitle>
                 <p className="text-sm text-muted-foreground">Core trading execution parameters</p>
               </CardHeader>
@@ -1660,8 +1510,8 @@ export default function TradingDashboard() {
                 <div className="flex items-center space-x-2">
                   <Switch
                     id="simulateOnly"
-                    checked={globalSettingsFormData.simulateOnly || false}
-                    onCheckedChange={(checked) => setGlobalSettingsFormData({...globalSettingsFormData, simulateOnly: checked})}
+                    checked={unifiedSettingsFormData.simulateOnly || false}
+                    onCheckedChange={(checked) => setUnifiedSettingsFormData({...unifiedSettingsFormData, simulateOnly: checked})}
                     data-testid="switch-simulate-only"
                   />
                   <Label htmlFor="simulateOnly">Simulate Only</Label>
@@ -1673,23 +1523,10 @@ export default function TradingDashboard() {
                     id="maxTotalExposureUsd"
                     type="number"
                     step="100"
-                    value={globalSettingsFormData.maxTotalExposureUsd || ''}
-                    onChange={(e) => setGlobalSettingsFormData({...globalSettingsFormData, maxTotalExposureUsd: e.target.value})}
+                    value={unifiedSettingsFormData.maxTotalExposureUsd || ''}
+                    onChange={(e) => setUnifiedSettingsFormData({...unifiedSettingsFormData, maxTotalExposureUsd: e.target.value})}
                     placeholder="1400"
                     data-testid="input-max-exposure"
-                  />
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="volumeWindowSec">Volume Window (sec)</Label>
-                  <Input
-                    id="volumeWindowSec"
-                    type="number"
-                    min="1"
-                    value={globalSettingsFormData.volumeWindowSec || ''}
-                    onChange={(e) => setGlobalSettingsFormData({...globalSettingsFormData, volumeWindowSec: parseInt(e.target.value)})}
-                    placeholder="60"
-                    data-testid="input-volume-window"
                   />
                 </div>
                 
@@ -1699,33 +1536,18 @@ export default function TradingDashboard() {
                     id="orderTtlSec"
                     type="number"
                     min="1"
-                    value={globalSettingsFormData.orderTtlSec || ''}
-                    onChange={(e) => setGlobalSettingsFormData({...globalSettingsFormData, orderTtlSec: parseInt(e.target.value)})}
+                    value={unifiedSettingsFormData.orderTtlSec || ''}
+                    onChange={(e) => setUnifiedSettingsFormData({...unifiedSettingsFormData, orderTtlSec: parseInt(e.target.value)})}
                     placeholder="30"
                     data-testid="input-order-ttl"
                   />
                 </div>
                 
                 <div className="space-y-2">
-                  <Label htmlFor="rateLimitBuffer">Rate Limit Buffer (%)</Label>
-                  <Input
-                    id="rateLimitBuffer"
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    max="100"
-                    value={globalSettingsFormData.rateLimitBufferPercent || ''}
-                    onChange={(e) => setGlobalSettingsFormData({...globalSettingsFormData, rateLimitBufferPercent: e.target.value})}
-                    placeholder="10"
-                    data-testid="input-rate-limit-buffer"
-                  />
-                </div>
-                
-                <div className="space-y-2">
                   <Label htmlFor="timeInForce">Time in Force</Label>
                   <Select 
-                    value={globalSettingsFormData.timeInForce || 'GTC'} 
-                    onValueChange={(value) => setGlobalSettingsFormData({...globalSettingsFormData, timeInForce: value})}
+                    value={unifiedSettingsFormData.timeInForce || 'GTC'} 
+                    onValueChange={(value) => setUnifiedSettingsFormData({...unifiedSettingsFormData, timeInForce: value})}
                   >
                     <SelectTrigger data-testid="select-time-in-force">
                       <SelectValue placeholder="Select time in force" />
@@ -1741,8 +1563,8 @@ export default function TradingDashboard() {
                 <div className="space-y-2">
                   <Label htmlFor="marginType">Margin Type</Label>
                   <Select 
-                    value={globalSettingsFormData.marginType || 'cross'} 
-                    onValueChange={(value) => setGlobalSettingsFormData({...globalSettingsFormData, marginType: value})}
+                    value={unifiedSettingsFormData.marginType || 'cross'} 
+                    onValueChange={(value) => setUnifiedSettingsFormData({...unifiedSettingsFormData, marginType: value})}
                   >
                     <SelectTrigger data-testid="select-margin-type">
                       <SelectValue placeholder="Select margin type" />
@@ -1762,15 +1584,18 @@ export default function TradingDashboard() {
                     step="0.1"
                     min="1"
                     max="125"
-                    value={globalSettingsFormData.leverage || ''}
-                    onChange={(e) => setGlobalSettingsFormData({...globalSettingsFormData, leverage: e.target.value})}
+                    value={unifiedSettingsFormData.leverage || ''}
+                    onChange={(e) => setUnifiedSettingsFormData({...unifiedSettingsFormData, leverage: e.target.value})}
                     placeholder="1"
                     data-testid="input-leverage"
                   />
                 </div>
               </CardContent>
             </Card>
-            
+          </div>
+          
+          {/* Order Management & Advanced Features */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Order Management Settings */}
             <Card className="hover-elevate">
               <CardHeader>
@@ -1787,8 +1612,8 @@ export default function TradingDashboard() {
                     id="maxOpenOrdersPerSymbol"
                     type="number"
                     min="1"
-                    value={globalSettingsFormData.maxOpenOrdersPerSymbol || ''}
-                    onChange={(e) => setGlobalSettingsFormData({...globalSettingsFormData, maxOpenOrdersPerSymbol: parseInt(e.target.value)})}
+                    value={unifiedSettingsFormData.maxOpenOrdersPerSymbol || ''}
+                    onChange={(e) => setUnifiedSettingsFormData({...unifiedSettingsFormData, maxOpenOrdersPerSymbol: parseInt(e.target.value)})}
                     placeholder="20"
                     data-testid="input-max-open-orders"
                   />
@@ -1797,8 +1622,8 @@ export default function TradingDashboard() {
                 <div className="flex items-center space-x-2">
                   <Switch
                     id="batchOrders"
-                    checked={globalSettingsFormData.batchOrders !== false}
-                    onCheckedChange={(checked) => setGlobalSettingsFormData({...globalSettingsFormData, batchOrders: checked})}
+                    checked={unifiedSettingsFormData.batchOrders !== false}
+                    onCheckedChange={(checked) => setUnifiedSettingsFormData({...unifiedSettingsFormData, batchOrders: checked})}
                     data-testid="switch-batch-orders"
                   />
                   <Label htmlFor="batchOrders">Batch Orders</Label>
@@ -1807,24 +1632,11 @@ export default function TradingDashboard() {
                 <div className="flex items-center space-x-2">
                   <Switch
                     id="enableOrderConsolidation"
-                    checked={globalSettingsFormData.enableOrderConsolidation !== false}
-                    onCheckedChange={(checked) => setGlobalSettingsFormData({...globalSettingsFormData, enableOrderConsolidation: checked})}
+                    checked={unifiedSettingsFormData.enableOrderConsolidation !== false}
+                    onCheckedChange={(checked) => setUnifiedSettingsFormData({...unifiedSettingsFormData, enableOrderConsolidation: checked})}
                     data-testid="switch-order-consolidation"
                   />
                   <Label htmlFor="enableOrderConsolidation">Enable Order Consolidation</Label>
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="maxStopOrdersPerSymbol">Max Stop Orders Per Symbol</Label>
-                  <Input
-                    id="maxStopOrdersPerSymbol"
-                    type="number"
-                    min="1"
-                    value={globalSettingsFormData.maxStopOrdersPerSymbol || ''}
-                    onChange={(e) => setGlobalSettingsFormData({...globalSettingsFormData, maxStopOrdersPerSymbol: parseInt(e.target.value)})}
-                    placeholder="1"
-                    data-testid="input-max-stop-orders"
-                  />
                 </div>
                 
                 <div className="space-y-2">
@@ -1833,8 +1645,8 @@ export default function TradingDashboard() {
                     id="orderCleanupIntervalSec"
                     type="number"
                     min="1"
-                    value={globalSettingsFormData.orderCleanupIntervalSec || ''}
-                    onChange={(e) => setGlobalSettingsFormData({...globalSettingsFormData, orderCleanupIntervalSec: parseInt(e.target.value)})}
+                    value={unifiedSettingsFormData.orderCleanupIntervalSec || ''}
+                    onChange={(e) => setUnifiedSettingsFormData({...unifiedSettingsFormData, orderCleanupIntervalSec: parseInt(e.target.value)})}
                     placeholder="20"
                     data-testid="input-cleanup-interval"
                   />
@@ -1846,8 +1658,8 @@ export default function TradingDashboard() {
                     id="staleLimitOrderMin"
                     type="number"
                     min="1"
-                    value={globalSettingsFormData.staleLimitOrderMin || ''}
-                    onChange={(e) => setGlobalSettingsFormData({...globalSettingsFormData, staleLimitOrderMin: parseInt(e.target.value)})}
+                    value={unifiedSettingsFormData.staleLimitOrderMin || ''}
+                    onChange={(e) => setUnifiedSettingsFormData({...unifiedSettingsFormData, staleLimitOrderMin: parseInt(e.target.value)})}
                     placeholder="1"
                     data-testid="input-stale-limit-order"
                   />
@@ -1868,8 +1680,8 @@ export default function TradingDashboard() {
                 <div className="flex items-center space-x-2">
                   <Switch
                     id="multiAssetsMode"
-                    checked={globalSettingsFormData.multiAssetsMode !== false}
-                    onCheckedChange={(checked) => setGlobalSettingsFormData({...globalSettingsFormData, multiAssetsMode: checked})}
+                    checked={unifiedSettingsFormData.multiAssetsMode !== false}
+                    onCheckedChange={(checked) => setUnifiedSettingsFormData({...unifiedSettingsFormData, multiAssetsMode: checked})}
                     data-testid="switch-multi-assets"
                   />
                   <Label htmlFor="multiAssetsMode">Multi-Assets Mode</Label>
@@ -1878,8 +1690,8 @@ export default function TradingDashboard() {
                 <div className="flex items-center space-x-2">
                   <Switch
                     id="hedgeMode"
-                    checked={globalSettingsFormData.hedgeMode !== false}
-                    onCheckedChange={(checked) => setGlobalSettingsFormData({...globalSettingsFormData, hedgeMode: checked})}
+                    checked={unifiedSettingsFormData.hedgeMode !== false}
+                    onCheckedChange={(checked) => setUnifiedSettingsFormData({...unifiedSettingsFormData, hedgeMode: checked})}
                     data-testid="switch-hedge-mode"
                   />
                   <Label htmlFor="hedgeMode">Hedge Mode</Label>
@@ -1888,8 +1700,8 @@ export default function TradingDashboard() {
                 <div className="flex items-center space-x-2">
                   <Switch
                     id="usePositionMonitor"
-                    checked={globalSettingsFormData.usePositionMonitor !== false}
-                    onCheckedChange={(checked) => setGlobalSettingsFormData({...globalSettingsFormData, usePositionMonitor: checked})}
+                    checked={unifiedSettingsFormData.usePositionMonitor !== false}
+                    onCheckedChange={(checked) => setUnifiedSettingsFormData({...unifiedSettingsFormData, usePositionMonitor: checked})}
                     data-testid="switch-position-monitor"
                   />
                   <Label htmlFor="usePositionMonitor">Use Position Monitor</Label>
@@ -1898,8 +1710,8 @@ export default function TradingDashboard() {
                 <div className="flex items-center space-x-2">
                   <Switch
                     id="useUsdtVolume"
-                    checked={globalSettingsFormData.useUsdtVolume !== false}
-                    onCheckedChange={(checked) => setGlobalSettingsFormData({...globalSettingsFormData, useUsdtVolume: checked})}
+                    checked={unifiedSettingsFormData.useUsdtVolume !== false}
+                    onCheckedChange={(checked) => setUnifiedSettingsFormData({...unifiedSettingsFormData, useUsdtVolume: checked})}
                     data-testid="switch-usdt-volume"
                   />
                   <Label htmlFor="useUsdtVolume">Use USDT Volume</Label>
@@ -1911,8 +1723,8 @@ export default function TradingDashboard() {
                     id="maxTranchesPerSymbolSide"
                     type="number"
                     min="1"
-                    value={globalSettingsFormData.maxTranchesPerSymbolSide || ''}
-                    onChange={(e) => setGlobalSettingsFormData({...globalSettingsFormData, maxTranchesPerSymbolSide: parseInt(e.target.value)})}
+                    value={unifiedSettingsFormData.maxTranchesPerSymbolSide || ''}
+                    onChange={(e) => setUnifiedSettingsFormData({...unifiedSettingsFormData, maxTranchesPerSymbolSide: parseInt(e.target.value)})}
                     placeholder="5"
                     data-testid="input-max-tranches"
                   />
@@ -1925,8 +1737,8 @@ export default function TradingDashboard() {
                     type="number"
                     step="0.1"
                     min="0"
-                    value={globalSettingsFormData.tranchePnlIncrementPercent || ''}
-                    onChange={(e) => setGlobalSettingsFormData({...globalSettingsFormData, tranchePnlIncrementPercent: e.target.value})}
+                    value={unifiedSettingsFormData.tranchePnlIncrementPercent || ''}
+                    onChange={(e) => setUnifiedSettingsFormData({...unifiedSettingsFormData, tranchePnlIncrementPercent: e.target.value})}
                     placeholder="5"
                     data-testid="input-tranche-pnl"
                   />
@@ -1935,16 +1747,60 @@ export default function TradingDashboard() {
             </Card>
           </div>
           
-          {/* Save Button */}
-          <div className="flex justify-end">
-            <Button 
-              onClick={handleSaveGlobalSettings}
-              disabled={isUpdatingGlobalSettings}
-              data-testid="save-global-settings"
-            >
-              {isUpdatingGlobalSettings ? 'Saving...' : 'Save Global Settings'}
-            </Button>
-          </div>
+          {/* System Controls & Save */}
+          <Card className="hover-elevate">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5" />
+                System Controls & Settings
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">Emergency controls and settings management</p>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                <Button 
+                  variant="default" 
+                  onClick={handleSaveAllSettings}
+                  disabled={isUpdatingSettings}
+                  data-testid="save-global-settings"
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  {isUpdatingSettings ? 'Saving...' : 'Save All Settings'}
+                </Button>
+                <Button 
+                  variant="destructive" 
+                  onClick={handleEmergencyStop}
+                  data-testid="emergency-stop-all"
+                >
+                  <StopCircle className="h-4 w-4 mr-2" />
+                  Stop All Trading
+                </Button>
+                <Button 
+                  variant="outline" 
+                  onClick={handleCloseAllPositions}
+                  data-testid="close-all-positions"
+                >
+                  Close All Positions
+                </Button>
+                <Button 
+                  variant="outline" 
+                  onClick={handlePauseAllStrategies}
+                  data-testid="pause-strategies"
+                >
+                  Pause All Strategies
+                </Button>
+                <Button 
+                  variant="outline" 
+                  onClick={handleSaveAllSettings}
+                  disabled={isUpdatingSettings}
+                  data-testid="save-risk-settings"
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  {isUpdatingSettings ? 'Saving...' : 'Save All Settings'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
       
