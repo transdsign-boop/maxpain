@@ -5,8 +5,10 @@ import { storage } from "./storage";
 import { tradingEngine } from "./tradingEngine";
 import { 
   insertLiquidationSchema, insertUserSettingsSchema, insertRiskSettingsSchema,
-  insertTradingStrategySchema, insertPositionSchema 
+  insertTradingStrategySchema, insertPositionSchema, userSettings
 } from "@shared/schema";
+import { db } from "./db";
+import { sql, desc } from "drizzle-orm";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Liquidation API routes
@@ -107,6 +109,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(settings);
     } catch (error) {
       res.status(500).json({ error: "Failed to save user settings" });
+    }
+  });
+
+  // Migrate any previous session data to permanent session for forever persistence
+  app.post("/api/settings/migrate-demo-session", async (req, res) => {
+    try {
+      const { newSessionId } = req.body;
+      
+      if (!newSessionId) {
+        return res.status(400).json({ error: "newSessionId is required" });
+      }
+
+      // Check if the new session already has settings to avoid overwriting
+      const existingSettings = await storage.getUserSettings(newSessionId);
+      if (existingSettings && existingSettings.selectedAssets && existingSettings.selectedAssets.length > 0) {
+        console.log(`⏭️ Session ${newSessionId} already has asset selections, skipping migration`);
+        return res.json({ success: true, message: "Session already has settings" });
+      }
+
+      // First try demo-session
+      let sourceSettings = await storage.getUserSettings('demo-session');
+      let sourceSessionId = 'demo-session';
+      
+      // If demo-session doesn't have selections, find the most recent session with selections
+      if (!sourceSettings || !sourceSettings.selectedAssets || sourceSettings.selectedAssets.length === 0) {
+        // Get all user settings sorted by lastUpdated DESC to find most recent with selections
+        const allSettings = await db.select()
+          .from(userSettings)
+          .where(sql`array_length(selected_assets, 1) > 0`)
+          .orderBy(desc(userSettings.lastUpdated))
+          .limit(1);
+        
+        if (allSettings.length > 0) {
+          sourceSettings = allSettings[0];
+          sourceSessionId = allSettings[0].sessionId;
+        }
+      }
+      
+      if (sourceSettings && sourceSettings.selectedAssets && sourceSettings.selectedAssets.length > 0) {
+        // Copy source session settings to new permanent session
+        const migratedSettings = {
+          sessionId: newSessionId,
+          selectedAssets: sourceSettings.selectedAssets,
+          sideFilter: sourceSettings.sideFilter,
+          minValue: sourceSettings.minValue,
+          timeRange: sourceSettings.timeRange,
+        };
+        
+        await storage.saveUserSettings(migratedSettings);
+        console.log(`✅ Migrated settings from ${sourceSessionId} to permanent session: ${newSessionId}`);
+        console.log(`📊 Migrated assets: [${sourceSettings.selectedAssets.join(', ')}]`);
+        
+        res.json({ success: true, migratedSettings, sourceSessionId });
+      } else {
+        // No session data with asset selections found to migrate
+        console.log(`📭 No previous session found with asset selections for migration to ${newSessionId}`);
+        res.json({ success: true, message: "No previous session data found with asset selections" });
+      }
+    } catch (error) {
+      console.error('Failed to migrate session data:', error);
+      res.status(500).json({ error: "Failed to migrate settings" });
     }
   });
   
@@ -1062,14 +1125,20 @@ async function connectToAsterDEX(clients: Set<WebSocket>) {
           
           // Process liquidation through trading engine
           try {
+            // Get all user sessions for asset filtering
             const signals = await tradingEngine.processLiquidation(storedLiquidation);
             
             if (signals.length > 0) {
               console.log(`📊 Generated ${signals.length} trading signals for ${storedLiquidation.symbol}`);
               
-              // Auto-execute signals for demo mode (paper trading)
+              // Get all active portfolios to execute signals for all users
+              const allPortfolios = await storage.getAllPaperTradingPortfolios();
+              
+              // Auto-execute signals for all active paper trading sessions
               for (const signal of signals) {
-                await tradingEngine.executeSignal(signal, 'demo-session', 'paper');
+                for (const portfolio of allPortfolios) {
+                  await tradingEngine.executeSignal(signal, portfolio.sessionId, portfolio.tradingMode as 'paper' | 'real');
+                }
               }
             }
           } catch (error) {
