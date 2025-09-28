@@ -899,32 +899,39 @@ export default function TradingDashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
+              {portfolio ? formatCurrency(unifiedSettingsFormData.simulateOnly ? portfolio.paperBalance : (portfolio.realBalance || '0')) : '$0.00'}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {unifiedSettingsFormData.simulateOnly ? 'Simulated trading funds' : 'Actual trading funds'}
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* Available Trading Power Card - Shows leveraged capability */}
+        <Card className="hover-elevate">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Available Trading Power</CardTitle>
+            <Target className="h-4 w-4 text-purple-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-purple-600">
               {portfolio ? (() => {
-                const rawBalance = unifiedSettingsFormData.simulateOnly ? portfolio.paperBalance : (portfolio.realBalance || '0');
+                const rawBalance = parseFloat(unifiedSettingsFormData.simulateOnly ? portfolio.paperBalance : (portfolio.realBalance || '0'));
                 const leverage = parseFloat(unifiedSettingsFormData.leverage || '1.00');
-                const leveragedBalance = parseFloat(rawBalance) * leverage;
-                return formatCurrency(leveragedBalance.toString());
+                const maxRiskPerTrade = parseFloat(unifiedSettingsFormData.maxRiskPerTradePercent || '2.00') / 100;
+                const maxPositionSize = rawBalance * maxRiskPerTrade * leverage;
+                return formatCurrency(maxPositionSize.toString());
               })() : '$0.00'}
             </div>
-            {(() => {
-              const leverage = parseFloat(unifiedSettingsFormData.leverage || '1.00');
-              const isLeveraged = leverage > 1;
-              return (
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">
-                    {isLeveraged 
-                      ? `Available trading power (${leverage}x leverage)`
-                      : (unifiedSettingsFormData.simulateOnly ? 'Simulated trading funds' : 'Actual trading funds')
-                    }
-                  </p>
-                  {isLeveraged && portfolio && (
-                    <p className="text-xs text-muted-foreground opacity-75">
-                      Base balance: {formatCurrency(unifiedSettingsFormData.simulateOnly ? portfolio.paperBalance : (portfolio.realBalance || '0'))}
-                    </p>
-                  )}
-                </div>
-              );
-            })()}
+            <p className="text-xs text-muted-foreground">
+              {(() => {
+                const leverage = parseFloat(unifiedSettingsFormData.leverage || '1.00');
+                const riskPercent = unifiedSettingsFormData.maxRiskPerTradePercent || '2.00';
+                return leverage > 1 
+                  ? `Max position size (${leverage}x leverage, ${riskPercent}% risk)`
+                  : `Max position size (${riskPercent}% risk per trade)`;
+              })()}
+            </p>
           </CardContent>
         </Card>
 
