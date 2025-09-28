@@ -33,10 +33,29 @@ export default function Dashboard() {
   // File input ref for settings import
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Generate or get persistent session ID
+  // Generate or get persistent session ID that survives forever
   const getSessionId = () => {
-    // Use demo-session to match trading engine session
-    return 'demo-session';
+    // Try multiple storage locations for maximum persistence
+    let sessionId = localStorage.getItem('aster-permanent-session-id');
+    
+    if (!sessionId) {
+      sessionId = sessionStorage.getItem('aster-permanent-session-id');
+    }
+    
+    if (!sessionId) {
+      // Check if there's an existing demo-session in database (migration)
+      sessionId = 'aster-user-' + Date.now() + '-' + Math.random().toString(36).substr(2, 12);
+    }
+    
+    // Store in multiple locations for maximum persistence
+    try {
+      localStorage.setItem('aster-permanent-session-id', sessionId);
+      sessionStorage.setItem('aster-permanent-session-id', sessionId);
+    } catch (error) {
+      console.warn('Could not save session ID to storage:', error);
+    }
+    
+    return sessionId;
   };
 
   // Save settings to database
@@ -107,10 +126,30 @@ export default function Dashboard() {
     reader.readAsText(file);
   };
 
+  // Migrate demo-session data to permanent session
+  const migrateDemoSessionData = async (sessionId: string) => {
+    try {
+      const response = await fetch('/api/settings/migrate-demo-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newSessionId: sessionId }),
+      });
+      if (response.ok) {
+        console.log('Successfully migrated demo-session data to permanent session');
+      }
+    } catch (error) {
+      console.warn('Could not migrate demo-session data:', error);
+    }
+  };
+
   // Load settings from database
   const loadSettings = async () => {
     try {
       const sessionId = getSessionId();
+      
+      // First try to migrate any existing demo-session data
+      await migrateDemoSessionData(sessionId);
+      
       const response = await fetch(`/api/settings/${sessionId}`);
       if (response.ok) {
         const settings = await response.json();

@@ -102,8 +102,31 @@ interface RiskSettings {
 }
 
 export default function TradingDashboard() {
-  // Use demo-session to match trading engine and Dashboard
-  const [sessionId] = useState('demo-session');
+  // Generate or get persistent session ID that survives forever (same as Dashboard)
+  const getSessionId = () => {
+    // Try multiple storage locations for maximum persistence
+    let sessionId = localStorage.getItem('aster-permanent-session-id');
+    
+    if (!sessionId) {
+      sessionId = sessionStorage.getItem('aster-permanent-session-id');
+    }
+    
+    if (!sessionId) {
+      sessionId = 'aster-user-' + Date.now() + '-' + Math.random().toString(36).substr(2, 12);
+    }
+    
+    // Store in multiple locations for maximum persistence
+    try {
+      localStorage.setItem('aster-permanent-session-id', sessionId);
+      sessionStorage.setItem('aster-permanent-session-id', sessionId);
+    } catch (error) {
+      console.warn('Could not save session ID to storage:', error);
+    }
+    
+    return sessionId;
+  };
+
+  const [sessionId] = useState(getSessionId());
   const { toast } = useToast();
   
   // State for configuration dialog

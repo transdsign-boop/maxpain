@@ -32,23 +32,53 @@ export class TradingEngine {
   /**
    * Main method to process new liquidation and generate trading signals
    */
-  async processLiquidation(liquidation: Liquidation): Promise<TradingSignal[]> {
+  async processLiquidation(liquidation: Liquidation, sessionId?: string): Promise<TradingSignal[]> {
     console.log(`🔍 Processing liquidation: ${liquidation.symbol} ${liquidation.side} $${liquidation.value}`);
     
     const signals: TradingSignal[] = [];
     
     // Check if trading is restricted to selected assets (applies to all trading modes)
-    const userSettings = await storage.getUserSettings('demo-session');
-    // Only filter if user has explicitly selected specific assets
-    if (userSettings && userSettings.selectedAssets && userSettings.selectedAssets.length > 0) {
-      if (!userSettings.selectedAssets.includes(liquidation.symbol)) {
-        console.log(`🚫 Asset filter: ${liquidation.symbol} not in selected assets [${userSettings.selectedAssets.join(', ')}], skipping trade signals`);
-        return signals; // Skip generating trading signals but allow analytics to continue
+    // Use provided sessionId or fall back to checking all active sessions
+    if (sessionId) {
+      const userSettings = await storage.getUserSettings(sessionId);
+      // Only filter if user has explicitly selected specific assets
+      if (userSettings && userSettings.selectedAssets && userSettings.selectedAssets.length > 0) {
+        if (!userSettings.selectedAssets.includes(liquidation.symbol)) {
+          console.log(`🚫 Asset filter (${sessionId}): ${liquidation.symbol} not in selected assets [${userSettings.selectedAssets.join(', ')}], skipping trade signals`);
+          return signals; // Skip generating trading signals but allow analytics to continue
+        } else {
+          console.log(`✅ Asset filter (${sessionId}): ${liquidation.symbol} is in selected assets, proceeding`);
+        }
       } else {
-        console.log(`✅ Asset filter: ${liquidation.symbol} is in selected assets, proceeding`);
+        console.log(`📊 Asset filter (${sessionId}): No asset selection found, proceeding with all assets`);
       }
     } else {
-      console.log(`📊 Asset filter: No asset selection found, proceeding with all assets`);
+      // Check all active sessions for asset preferences (global approach)
+      const allPortfolios = await storage.getAllPaperTradingPortfolios();
+      let shouldSkip = false;
+      let hasAnySelections = false;
+      
+      for (const portfolio of allPortfolios) {
+        const userSettings = await storage.getUserSettings(portfolio.sessionId);
+        if (userSettings && userSettings.selectedAssets && userSettings.selectedAssets.length > 0) {
+          hasAnySelections = true;
+          if (!userSettings.selectedAssets.includes(liquidation.symbol)) {
+            shouldSkip = true;
+            console.log(`🚫 Asset filter (${portfolio.sessionId}): ${liquidation.symbol} not in selected assets [${userSettings.selectedAssets.join(', ')}]`);
+          } else {
+            console.log(`✅ Asset filter (${portfolio.sessionId}): ${liquidation.symbol} is in selected assets`);
+          }
+        }
+      }
+      
+      if (hasAnySelections && shouldSkip) {
+        console.log(`🚫 Global asset filter: ${liquidation.symbol} not allowed by any active session, skipping trade signals`);
+        return signals;
+      } else if (!hasAnySelections) {
+        console.log(`📊 Global asset filter: No asset selections found, proceeding with all assets`);
+      } else {
+        console.log(`✅ Global asset filter: ${liquidation.symbol} allowed by at least one session, proceeding`);
+      }
     }
     
     // Get all active strategies that include this symbol
