@@ -899,11 +899,32 @@ export default function TradingDashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {portfolio ? formatCurrency(unifiedSettingsFormData.simulateOnly ? portfolio.paperBalance : (portfolio.realBalance || '0')) : '$0.00'}
+              {portfolio ? (() => {
+                const rawBalance = unifiedSettingsFormData.simulateOnly ? portfolio.paperBalance : (portfolio.realBalance || '0');
+                const leverage = parseFloat(unifiedSettingsFormData.leverage || '1.00');
+                const leveragedBalance = parseFloat(rawBalance) * leverage;
+                return formatCurrency(leveragedBalance.toString());
+              })() : '$0.00'}
             </div>
-            <p className="text-xs text-muted-foreground">
-              {unifiedSettingsFormData.simulateOnly ? 'Simulated trading funds' : 'Actual trading funds'}
-            </p>
+            {(() => {
+              const leverage = parseFloat(unifiedSettingsFormData.leverage || '1.00');
+              const isLeveraged = leverage > 1;
+              return (
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">
+                    {isLeveraged 
+                      ? `Available trading power (${leverage}x leverage)`
+                      : (unifiedSettingsFormData.simulateOnly ? 'Simulated trading funds' : 'Actual trading funds')
+                    }
+                  </p>
+                  {isLeveraged && portfolio && (
+                    <p className="text-xs text-muted-foreground opacity-75">
+                      Base balance: {formatCurrency(unifiedSettingsFormData.simulateOnly ? portfolio.paperBalance : (portfolio.realBalance || '0'))}
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
           </CardContent>
         </Card>
 
