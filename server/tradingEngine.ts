@@ -159,7 +159,7 @@ export class TradingEngine {
       }
 
       // Generate counter-trading signal
-      const signal = await this.generateCounterSignal(liquidation, strategy, volatility);
+      // CRITICAL FIX: Ensure we always have a valid sessionId to prevent database null constraint errors\n      let targetSessionId = sessionId;\n      if (!targetSessionId) {\n        const portfolios = await storage.getAllPaperTradingPortfolios();\n        targetSessionId = portfolios.length > 0 ? portfolios[0].sessionId : 'demo-session';\n      }\n      const signal = await this.generateCounterSignal(liquidation, strategy, volatility, targetSessionId);
       if (signal) {
         signals.push(signal);
       }
