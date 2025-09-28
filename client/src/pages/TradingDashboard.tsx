@@ -650,7 +650,7 @@ export default function TradingDashboard() {
         fetch(`/api/risk-settings/${sessionId}`).then(res => res.ok ? res.json() : null),
         fetch(`/api/trading/fees/${sessionId}`).then(res => res.ok ? res.json() : null),
         fetch(`/api/trading/strategies?sessionId=${sessionId}`).then(res => res.ok ? res.json() : []),
-        fetch(`/api/trading/portfolio/${sessionId}`).then(res => res.ok ? res.json() : null),
+        fetch(`/api/trading/portfolio?sessionId=${sessionId}`).then(res => res.ok ? res.json() : null),
       ]);
       
       const allSettings = {
@@ -741,11 +741,17 @@ export default function TradingDashboard() {
           }
         }
         
-        // Import trading strategies
+        // Import trading strategies (clear existing first to avoid duplicates)
         if (importedData.strategies && Array.isArray(importedData.strategies)) {
           try {
+            // First, clear existing strategies for this session to avoid duplicates
+            const existingStrategies = await fetch(`/api/trading/strategies?sessionId=${sessionId}`).then(res => res.ok ? res.json() : []);
+            for (const existingStrategy of existingStrategies) {
+              await apiRequest('DELETE', `/api/trading/strategies/${existingStrategy.id}`);
+            }
+            
+            // Then create the imported strategies
             for (const strategy of importedData.strategies) {
-              // Create each strategy in the database
               await apiRequest('POST', '/api/trading/strategies', {
                 ...strategy,
                 sessionId: sessionId, // Use current session ID
@@ -753,8 +759,8 @@ export default function TradingDashboard() {
               });
             }
             
-            // Refresh strategies data
-            await queryClient.invalidateQueries({ queryKey: [`/api/trading/strategies`] });
+            // Refresh strategies data with correct query key
+            await queryClient.invalidateQueries({ queryKey: [`/api/trading/strategies?sessionId=${sessionId}`] });
           } catch (error) {
             console.error('Error importing strategies:', error);
             errors.push('trading strategies');
