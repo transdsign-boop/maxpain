@@ -31,7 +31,9 @@ import {
   Percent,
   Edit,
   Clock,
-  ListOrdered
+  ListOrdered,
+  Download,
+  Upload
 } from "lucide-react";
 
 interface Position {
@@ -638,6 +640,153 @@ export default function TradingDashboard() {
     } finally {
       setIsUpdatingSettings(false);
     }
+  };
+
+  // Export all Trading Dashboard settings
+  const handleExportSettings = async () => {
+    try {
+      // Fetch fresh data from server to ensure we export the latest saved settings
+      const [riskSettings, tradingFees, strategies, portfolio] = await Promise.all([
+        fetch(`/api/risk-settings/${sessionId}`).then(res => res.ok ? res.json() : null),
+        fetch(`/api/trading/fees/${sessionId}`).then(res => res.ok ? res.json() : null),
+        fetch(`/api/trading/strategies?sessionId=${sessionId}`).then(res => res.ok ? res.json() : []),
+        fetch(`/api/trading/portfolio/${sessionId}`).then(res => res.ok ? res.json() : null),
+      ]);
+      
+      const allSettings = {
+        unifiedSettings: riskSettings,
+        tradingFeesData: tradingFees,
+        strategies: strategies,
+        portfolio: portfolio,
+        exportedAt: new Date().toISOString(),
+        version: "1.0"
+      };
+      
+      const dataStr = JSON.stringify(allSettings, null, 2);
+      const dataBlob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(dataBlob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `aster-trading-settings-${new Date().toISOString().split('T')[0]}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+      
+      toast({
+        title: "Settings Exported",
+        description: "All your trading settings have been exported successfully.",
+      });
+    } catch (error) {
+      console.error('Export error:', error);
+      toast({
+        title: "Export Failed",
+        description: "Failed to export settings. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Import Trading Dashboard settings
+  const handleImportSettings = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const result = e.target?.result as string;
+        const importedData = JSON.parse(result);
+        const errors = [];
+        
+        // Import unified settings (risk settings)
+        if (importedData.unifiedSettings) {
+          try {
+            // Update the form data with imported settings
+            setUnifiedSettingsFormData({
+              ...importedData.unifiedSettings,
+              sessionId: sessionId // Use current session ID
+            });
+            
+            // Save the imported settings to the database
+            await apiRequest('PUT', '/api/risk-settings', {
+              ...importedData.unifiedSettings,
+              sessionId: sessionId
+            });
+            
+            // Invalidate queries to refresh data
+            await queryClient.invalidateQueries({ queryKey: [`/api/risk-settings/${sessionId}`] });
+          } catch (error) {
+            console.error('Error importing risk settings:', error);
+            errors.push('risk settings');
+          }
+        }
+        
+        // Import trading fees
+        if (importedData.tradingFeesData) {
+          try {
+            setTradingFeesFormData({
+              ...importedData.tradingFeesData,
+              sessionId: sessionId
+            });
+            
+            // Save trading fees using correct endpoint
+            await apiRequest('PUT', '/api/trading/fees', {
+              ...importedData.tradingFeesData,
+              sessionId: sessionId
+            });
+            
+            await queryClient.invalidateQueries({ queryKey: [`/api/trading/fees/${sessionId}`] });
+          } catch (error) {
+            console.error('Error importing trading fees:', error);
+            errors.push('trading fees');
+          }
+        }
+        
+        // Import trading strategies
+        if (importedData.strategies && Array.isArray(importedData.strategies)) {
+          try {
+            for (const strategy of importedData.strategies) {
+              // Create each strategy in the database
+              await apiRequest('POST', '/api/trading/strategies', {
+                ...strategy,
+                sessionId: sessionId, // Use current session ID
+                id: undefined // Let the database generate new IDs
+              });
+            }
+            
+            // Refresh strategies data
+            await queryClient.invalidateQueries({ queryKey: [`/api/trading/strategies`] });
+          } catch (error) {
+            console.error('Error importing strategies:', error);
+            errors.push('trading strategies');
+          }
+        }
+        
+        // Reset file input
+        event.target.value = '';
+        
+        if (errors.length === 0) {
+          toast({
+            title: "Settings Imported",
+            description: "All your trading settings have been imported and saved successfully.",
+          });
+        } else {
+          toast({
+            title: "Partial Import",
+            description: `Settings imported with some errors: ${errors.join(', ')}. Check console for details.`,
+            variant: "destructive",
+          });
+        }
+        
+      } catch (error) {
+        console.error('Import error:', error);
+        toast({
+          title: "Import Failed",
+          description: "Failed to import settings. Please check the file format.",
+          variant: "destructive",
+        });
+      }
+    };
+    reader.readAsText(file);
   };
 
 
@@ -1757,47 +1906,83 @@ export default function TradingDashboard() {
               <p className="text-sm text-muted-foreground">Emergency controls and settings management</p>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                <Button 
-                  variant="default" 
-                  onClick={handleSaveAllSettings}
-                  disabled={isUpdatingSettings}
-                  data-testid="save-global-settings"
-                >
-                  <Save className="h-4 w-4 mr-2" />
-                  {isUpdatingSettings ? 'Saving...' : 'Save All Settings'}
-                </Button>
-                <Button 
-                  variant="destructive" 
-                  onClick={handleEmergencyStop}
-                  data-testid="emergency-stop-all"
-                >
-                  <StopCircle className="h-4 w-4 mr-2" />
-                  Stop All Trading
-                </Button>
-                <Button 
-                  variant="outline" 
-                  onClick={handleCloseAllPositions}
-                  data-testid="close-all-positions"
-                >
-                  Close All Positions
-                </Button>
-                <Button 
-                  variant="outline" 
-                  onClick={handlePauseAllStrategies}
-                  data-testid="pause-strategies"
-                >
-                  Pause All Strategies
-                </Button>
-                <Button 
-                  variant="outline" 
-                  onClick={handleSaveAllSettings}
-                  disabled={isUpdatingSettings}
-                  data-testid="save-risk-settings"
-                >
-                  <Save className="h-4 w-4 mr-2" />
-                  {isUpdatingSettings ? 'Saving...' : 'Save All Settings'}
-                </Button>
+              <div className="space-y-4">
+                {/* Primary Controls */}
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  <Button 
+                    variant="default" 
+                    onClick={handleSaveAllSettings}
+                    disabled={isUpdatingSettings}
+                    data-testid="save-global-settings"
+                  >
+                    <Save className="h-4 w-4 mr-2" />
+                    {isUpdatingSettings ? 'Saving...' : 'Save All Settings'}
+                  </Button>
+                  <Button 
+                    variant="destructive" 
+                    onClick={handleEmergencyStop}
+                    data-testid="emergency-stop-all"
+                  >
+                    <StopCircle className="h-4 w-4 mr-2" />
+                    Stop All Trading
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={handleCloseAllPositions}
+                    data-testid="close-all-positions"
+                  >
+                    Close All Positions
+                  </Button>
+                </div>
+                
+                {/* Settings Management */}
+                <div className="border-t pt-3">
+                  <h4 className="text-sm font-medium mb-3 text-muted-foreground">Settings Transfer</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <Button 
+                      variant="outline" 
+                      onClick={handleExportSettings}
+                      data-testid="export-settings"
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Export Settings
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      onClick={() => document.getElementById('settings-import-input')?.click()}
+                      data-testid="import-settings"
+                    >
+                      <Upload className="h-4 w-4 mr-2" />
+                      Import Settings
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      onClick={handlePauseAllStrategies}
+                      data-testid="pause-strategies"
+                    >
+                      <Pause className="h-4 w-4 mr-2" />
+                      Pause All Strategies
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      onClick={handleSaveAllSettings}
+                      disabled={isUpdatingSettings}
+                      data-testid="save-risk-settings"
+                    >
+                      <Save className="h-4 w-4 mr-2" />
+                      {isUpdatingSettings ? 'Saving...' : 'Save All Settings'}
+                    </Button>
+                  </div>
+                </div>
+                
+                {/* Hidden file input for import */}
+                <input
+                  id="settings-import-input"
+                  type="file"
+                  accept=".json"
+                  style={{ display: 'none' }}
+                  onChange={handleImportSettings}
+                />
               </div>
             </CardContent>
           </Card>
