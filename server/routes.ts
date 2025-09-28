@@ -5,7 +5,7 @@ import { storage } from "./storage";
 import { tradingEngine } from "./tradingEngine";
 import { 
   insertLiquidationSchema, insertUserSettingsSchema, insertRiskSettingsSchema,
-  insertTradingStrategySchema, insertPositionSchema, userSettings
+  insertTradingStrategySchema, insertPositionSchema, insertTradingFeesSchema, userSettings
 } from "@shared/schema";
 import { db } from "./db";
 import { sql, desc } from "drizzle-orm";
@@ -831,6 +831,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Reset paper balance error:', error);
       res.status(500).json({ error: "Failed to reset paper balance" });
+    }
+  });
+
+  app.post("/api/trading/portfolio/:id/set-paper-balance", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { amount } = req.body;
+      
+      if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) < 0) {
+        return res.status(400).json({ error: "Valid amount is required" });
+      }
+      
+      // Set custom paper balance amount
+      const portfolio = await storage.updatePortfolio(id, { 
+        paperBalance: parseFloat(amount).toFixed(2),
+      });
+      res.json(portfolio);
+    } catch (error) {
+      console.error('Set paper balance error:', error);
+      res.status(500).json({ error: "Failed to set paper balance" });
+    }
+  });
+
+  // Trading fees routes
+  app.get("/api/trading/fees/:sessionId", async (req, res) => {
+    try {
+      const sessionId = req.params.sessionId;
+      const fees = await storage.getTradingFees(sessionId);
+      res.json(fees || null);
+    } catch (error) {
+      console.error('Get trading fees error:', error);
+      res.status(500).json({ error: "Failed to fetch trading fees" });
+    }
+  });
+
+  app.put("/api/trading/fees", async (req, res) => {
+    try {
+      const validatedFees = insertTradingFeesSchema.parse(req.body);
+      const fees = await storage.saveTradingFees(validatedFees);
+      res.json(fees);
+    } catch (error) {
+      console.error('Save trading fees error:', error);
+      res.status(500).json({ error: "Failed to save trading fees" });
     }
   });
 
