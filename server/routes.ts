@@ -9,6 +9,7 @@ import {
 } from "@shared/schema";
 import { db } from "./db";
 import { sql, desc } from "drizzle-orm";
+import { getRealTradingFeesDisplay } from "./tradingApiService";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Liquidation API routes
@@ -858,8 +859,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/trading/fees/:sessionId", async (req, res) => {
     try {
       const sessionId = req.params.sessionId;
-      const fees = await storage.getTradingFees(sessionId);
-      res.json(fees || null);
+      
+      // Get stored paper trading fees
+      const storedFees = await storage.getTradingFees(sessionId);
+      
+      // Get real trading fees from API
+      const realFeesDisplay = await getRealTradingFeesDisplay();
+      
+      // Combine stored paper fees with real fees from API
+      const combinedFees = {
+        id: storedFees?.id,
+        sessionId: sessionId,
+        paperMarketOrderFeePercent: storedFees?.paperMarketOrderFeePercent || '0.1000',
+        paperLimitOrderFeePercent: storedFees?.paperLimitOrderFeePercent || '0.0750',
+        realMarketOrderFeePercent: realFeesDisplay.marketOrderFee,
+        realLimitOrderFeePercent: realFeesDisplay.limitOrderFee,
+        simulateRealisticFees: storedFees?.simulateRealisticFees ?? true,
+        tradingApiStatus: realFeesDisplay.status,
+        createdAt: storedFees?.createdAt,
+        updatedAt: storedFees?.updatedAt,
+      };
+      
+      res.json(combinedFees);
     } catch (error) {
       console.error('Get trading fees error:', error);
       res.status(500).json({ error: "Failed to fetch trading fees" });
