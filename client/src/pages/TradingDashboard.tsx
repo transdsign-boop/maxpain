@@ -198,6 +198,16 @@ export default function TradingDashboard() {
   useEffect(() => {
     if (riskSettings) {
       setRiskSettingsFormData(riskSettings);
+    } else {
+      // Set default values when no risk settings exist
+      setRiskSettingsFormData({
+        maxPositionsPerSymbol: 2,
+        maxRiskPerTradePercent: '2.00',
+        maxPortfolioExposurePercent: '80.00',
+        maxSymbolConcentrationPercent: '20.00',
+        warningPortfolioExposurePercent: '60.00',
+        maxPositionSizePercent: '5.00',
+      });
     }
   }, [riskSettings]);
 
