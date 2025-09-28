@@ -201,8 +201,6 @@ export default function TradingDashboard() {
   const [tradingFeesFormData, setTradingFeesFormData] = useState<Partial<TradingFees>>({});
   const [isUpdatingTradingFees, setIsUpdatingTradingFees] = useState(false);
 
-  // State for view filtering
-  const [viewMode, setViewMode] = useState<'paper' | 'real'>('paper');
 
   // Fetch portfolio first to get the portfolio ID
   const { data: portfolio } = useQuery<Portfolio>({
@@ -244,8 +242,8 @@ export default function TradingDashboard() {
   // Calculate portfolio metrics with error handling
   const activePositions = Array.isArray(positions) ? positions.filter((p: Position) => p?.status === 'open') : [];
   
-  // Filter positions based on view mode
-  const filteredPositions = activePositions.filter((pos: Position) => pos?.tradingMode === viewMode);
+  // Filter positions based on trading mode
+  const filteredPositions = activePositions.filter((pos: Position) => pos?.tradingMode === portfolio?.tradingMode);
   
   const totalExposure = filteredPositions.reduce((sum: number, pos: Position) => {
     const size = pos?.size ? parseFloat(pos.size) : 0;
@@ -259,7 +257,7 @@ export default function TradingDashboard() {
   }, 0);
 
   // Trading analytics calculations
-  const filteredCompletedTrades = completedTrades.filter((trade: Trade) => trade?.tradingMode === viewMode);
+  const filteredCompletedTrades = completedTrades.filter((trade: Trade) => trade?.tradingMode === portfolio?.tradingMode);
   const winningTrades = filteredCompletedTrades.filter((trade: Trade) => parseFloat(trade.realizedPnl) > 0);
   const winRate = filteredCompletedTrades.length > 0 ? (winningTrades.length / filteredCompletedTrades.length) * 100 : 0;
   const avgTradeDuration = filteredCompletedTrades.length > 0 
@@ -699,59 +697,36 @@ export default function TradingDashboard() {
           <h1 className="text-3xl font-bold">Trading Dashboard</h1>
           <p className="text-muted-foreground">Real-time portfolio management and position tracking</p>
         </div>
-        <div className="flex items-center gap-4">
-          {/* View Mode Toggle */}
-          <Card className="p-3">
-            <div className="flex items-center space-x-3">
-              <div className="text-right">
-                <div className="text-sm font-medium">View Mode</div>
-                <div className={`text-sm font-bold ${viewMode === 'real' ? 'text-green-500' : 'text-blue-500'}`}>
-                  {viewMode === 'real' ? 'Real Trading Only' : 'Paper Trading Only'}
-                </div>
+        <Card className="p-4">
+          <div className="flex items-center space-x-4">
+            <div className="text-right">
+              <div className="text-sm font-medium">Trading Mode</div>
+              <div className={`text-lg font-bold ${portfolio?.tradingMode === 'real' ? 'text-green-500' : 'text-blue-500'}`}>
+                {portfolio?.tradingMode === 'real' ? '🏦 REAL' : '📝 PAPER'}
               </div>
-              <Button 
-                onClick={() => setViewMode(viewMode === 'paper' ? 'real' : 'paper')}
-                variant={viewMode === 'real' ? 'default' : 'outline'}
-                size="sm"
-                data-testid="toggle-view-mode"
-              >
-                {viewMode === 'paper' ? 'Show Real' : 'Show Paper'}
-              </Button>
             </div>
-          </Card>
-          
-          {/* Trading Mode Toggle */}
-          <Card className="p-4">
-            <div className="flex items-center space-x-4">
-              <div className="text-right">
-                <div className="text-sm font-medium">Trading Mode</div>
-                <div className={`text-lg font-bold ${portfolio?.tradingMode === 'real' ? 'text-green-500' : 'text-blue-500'}`}>
-                  {portfolio?.tradingMode === 'real' ? '🏦 REAL' : '📝 PAPER'}
-                </div>
-              </div>
-              <Button 
-                onClick={toggleTradingMode}
-                variant={portfolio?.tradingMode === 'real' ? 'destructive' : 'default'}
-                size="sm"
-                data-testid="toggle-trading-mode"
-              >
-                Switch to {portfolio?.tradingMode === 'paper' ? 'Real' : 'Paper'}
-              </Button>
-            </div>
-          </Card>
-        </div>
+            <Button 
+              onClick={toggleTradingMode}
+              variant={portfolio?.tradingMode === 'real' ? 'destructive' : 'default'}
+              size="sm"
+              data-testid="toggle-trading-mode"
+            >
+              Switch to {portfolio?.tradingMode === 'paper' ? 'Real' : 'Paper'}
+            </Button>
+          </div>
+        </Card>
       </div>
 
       {/* Portfolio Overview */}
       <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
-        {/* Balance Card - Shows only selected mode */}
+        {/* Balance Card - Shows current trading mode balance */}
         <Card className="hover-elevate">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              {viewMode === 'paper' ? 'Paper Balance' : 'Real Balance'}
+              {portfolio?.tradingMode === 'paper' ? 'Paper Balance' : 'Real Balance'}
             </CardTitle>
             <div className="flex items-center gap-2">
-              {viewMode === 'paper' && (
+              {portfolio?.tradingMode === 'paper' && (
                 <Button
                   size="sm"
                   variant="ghost"
@@ -762,15 +737,15 @@ export default function TradingDashboard() {
                   <RotateCcw className="h-3 w-3" />
                 </Button>
               )}
-              <DollarSign className={`h-4 w-4 ${viewMode === 'paper' ? 'text-blue-500' : 'text-green-500'}`} />
+              <DollarSign className={`h-4 w-4 ${portfolio?.tradingMode === 'paper' ? 'text-blue-500' : 'text-green-500'}`} />
             </div>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {portfolio ? formatCurrency(viewMode === 'paper' ? portfolio.paperBalance : (portfolio.realBalance || '0')) : '$0.00'}
+              {portfolio ? formatCurrency(portfolio?.tradingMode === 'paper' ? portfolio.paperBalance : (portfolio.realBalance || '0')) : '$0.00'}
             </div>
             <p className="text-xs text-muted-foreground">
-              {viewMode === 'paper' ? 'Simulated trading funds' : 'Actual trading funds'}
+              {portfolio?.tradingMode === 'paper' ? 'Simulated trading funds' : 'Actual trading funds'}
             </p>
           </CardContent>
         </Card>
@@ -858,7 +833,7 @@ export default function TradingDashboard() {
             <div className="text-2xl font-bold text-green-500">LOW</div>
             <p className="text-xs text-muted-foreground">
               {((totalExposure / parseFloat(
-                viewMode === 'paper' ? (portfolio?.paperBalance || '1') : (portfolio?.realBalance || '1')
+                portfolio?.tradingMode === 'paper' ? (portfolio?.paperBalance || '1') : (portfolio?.realBalance || '1')
               )) * 100).toFixed(1)}% portfolio exposure
             </p>
           </CardContent>
