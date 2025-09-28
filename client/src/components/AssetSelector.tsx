@@ -27,6 +27,7 @@ export default function AssetSelector({ selectedAssets, onAssetsChange }: AssetS
   const [availableAssets, setAvailableAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [autoSelectLoading, setAutoSelectLoading] = useState(false);
 
   // Fetch available assets from Aster DEX
   useEffect(() => {
@@ -95,6 +96,35 @@ export default function AssetSelector({ selectedAssets, onAssetsChange }: AssetS
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       handleSearch();
+    }
+  };
+
+  const handleAutoSelectTop10 = async () => {
+    try {
+      setAutoSelectLoading(true);
+      
+      // Fetch liquidation analytics data
+      const response = await fetch('/api/analytics/assets');
+      if (!response.ok) {
+        throw new Error('Failed to fetch liquidation data');
+      }
+      
+      const liquidationData = await response.json();
+      
+      // Sort by liquidation count and take top 10
+      const top10Assets = liquidationData
+        .sort((a: any, b: any) => parseInt(b.count) - parseInt(a.count))
+        .slice(0, 10)
+        .map((asset: any) => asset.symbol);
+      
+      // Add these assets to selected assets (merge with existing)
+      const newSelectedAssets = Array.from(new Set([...selectedAssets, ...top10Assets]));
+      onAssetsChange(newSelectedAssets);
+      
+    } catch (error) {
+      console.error('Failed to auto-select top 10 assets:', error);
+    } finally {
+      setAutoSelectLoading(false);
     }
   };
 
@@ -263,6 +293,25 @@ export default function AssetSelector({ selectedAssets, onAssetsChange }: AssetS
 
         {/* Quick Actions */}
         <div className="flex gap-2">
+          <Button
+            variant="default"
+            size="sm"
+            onClick={handleAutoSelectTop10}
+            disabled={autoSelectLoading}
+            data-testid="button-auto-select-top10"
+          >
+            {autoSelectLoading ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                Loading...
+              </>
+            ) : (
+              <>
+                <TrendingUp className="h-4 w-4 mr-2" />
+                Auto-select Top 10
+              </>
+            )}
+          </Button>
           <Button
             variant="outline"
             size="sm"
