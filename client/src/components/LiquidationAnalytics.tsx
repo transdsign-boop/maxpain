@@ -105,17 +105,15 @@ export default function LiquidationAnalytics({ selectedAssets }: LiquidationAnal
     refetchInterval: 15000, // Refresh every 15 seconds
   });
 
-  // Filter available assets to only show those being tracked
-  const trackedAssets = availableAssets?.filter(asset => 
-    selectedAssets.includes(asset.symbol)
-  ) || [];
+  // Use all available assets for analytics
+  const displayAssets = availableAssets || [];
 
-  // Auto-select the asset with most liquidations when data loads (from tracked assets only)
+  // Auto-select the asset with most liquidations when data loads
   useEffect(() => {
-    if (trackedAssets && trackedAssets.length > 0 && !selectedAsset) {
-      setSelectedAsset(trackedAssets[0].symbol);
+    if (displayAssets && displayAssets.length > 0 && !selectedAsset) {
+      setSelectedAsset(displayAssets[0].symbol);
     }
-  }, [trackedAssets, selectedAsset]);
+  }, [displayAssets, selectedAsset]);
 
   const formatCurrency = (value: number) => {
     if (value >= 1000000) {
@@ -138,7 +136,7 @@ export default function LiquidationAnalytics({ selectedAssets }: LiquidationAnal
           Liquidation Analytics
         </CardTitle>
         <p className="text-sm text-muted-foreground">
-          Analyze liquidation percentiles and statistics for your tracked assets
+          Analyze liquidation percentiles and statistics for all available assets
         </p>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -152,9 +150,9 @@ export default function LiquidationAnalytics({ selectedAssets }: LiquidationAnal
               <div className="text-sm text-destructive" data-testid="error-assets">
                 Failed to load assets
               </div>
-            ) : trackedAssets.length === 0 ? (
-              <div className="text-sm text-muted-foreground" data-testid="no-tracked-assets">
-                No tracked assets with liquidation data. Select assets to track in the panel above.
+            ) : displayAssets.length === 0 ? (
+              <div className="text-sm text-muted-foreground" data-testid="no-assets-available">
+                No assets with liquidation data available.
               </div>
             ) : (
               <Select value={selectedAsset} onValueChange={setSelectedAsset} data-testid="select-asset">
@@ -162,7 +160,7 @@ export default function LiquidationAnalytics({ selectedAssets }: LiquidationAnal
                   <SelectValue placeholder="Select an asset to analyze" />
                 </SelectTrigger>
                 <SelectContent>
-                  {trackedAssets.map(asset => (
+                  {displayAssets.map(asset => (
                     <SelectItem key={asset.symbol} value={asset.symbol} data-testid={`option-asset-${asset.symbol}`}>
                       <div className="flex items-center justify-between w-full">
                         <span>{asset.symbol}</span>
@@ -444,7 +442,7 @@ export default function LiquidationAnalytics({ selectedAssets }: LiquidationAnal
         )}
 
         {/* Call to Action when no asset selected */}
-        {!selectedAsset && !assetsLoading && trackedAssets && trackedAssets.length > 0 && (
+        {!selectedAsset && !assetsLoading && displayAssets && displayAssets.length > 0 && (
           <div className="text-center p-6 bg-muted/50 border rounded-lg" data-testid="select-asset-prompt">
             <BarChart3 className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
             <h3 className="text-lg font-medium mb-2">Select an Asset to Begin</h3>
@@ -452,24 +450,14 @@ export default function LiquidationAnalytics({ selectedAssets }: LiquidationAnal
               Choose an asset from the dropdown above to view detailed liquidation analytics
             </p>
             <Button 
-              onClick={() => trackedAssets.length > 0 && setSelectedAsset(trackedAssets[0].symbol)}
+              onClick={() => displayAssets.length > 0 && setSelectedAsset(displayAssets[0].symbol)}
               data-testid="button-auto-select"
             >
-              Analyze {trackedAssets[0]?.symbol}
+              Analyze {displayAssets[0]?.symbol}
             </Button>
           </div>
         )}
 
-        {/* Show when no assets are being tracked */}
-        {selectedAssets.length === 0 && !assetsLoading && (
-          <div className="text-center p-6 bg-muted/50 border rounded-lg" data-testid="no-assets-tracked">
-            <BarChart3 className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
-            <h3 className="text-lg font-medium mb-2">No Assets Selected</h3>
-            <p className="text-sm text-muted-foreground">
-              Select assets to track in the "Asset Selection" panel above to view liquidation analytics
-            </p>
-          </div>
-        )}
       </CardContent>
     </Card>
   );
