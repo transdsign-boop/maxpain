@@ -314,6 +314,12 @@ export class TradingEngine {
       // Calculate volatility at entry
       const volatilityAtEntry = await storage.calculateVolatility(signal.symbol, 1);
 
+      // Calculate margin requirement for this position
+      // Margin = Position Value / Leverage
+      const positionValue = signal.size * signal.entryPrice;
+      const leverage = parseFloat(riskSettings.leverage as string) || 1.00;
+      const marginRequired = positionValue / leverage;
+
       // Create position
       const position = await storage.createPosition({
         strategyId: strategy.id,
@@ -325,6 +331,7 @@ export class TradingEngine {
         currentPrice: signal.entryPrice.toString(),
         stopLossPrice: signal.stopLossPrice.toString(),
         takeProfitPrice: signal.takeProfitPrice.toString(),
+        marginRequired: marginRequired.toString(),
         tradingMode,
         triggeredByLiquidation: signal.triggeredByLiquidation,
         volatilityAtEntry: volatilityAtEntry.toString()
