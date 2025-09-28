@@ -65,6 +65,29 @@ export class RiskManager {
       extremeVolumeThreshold: '1000000.00',
       cascadeAnalysisWindowMinutes: 10,
       systemWideCascadeWindowMinutes: 15,
+      // Global Trading Settings
+      simulateOnly: false,
+      maxTotalExposureUsd: '1400.00',
+      volumeWindowSec: 60,
+      orderTtlSec: 30,
+      rateLimitBufferPercent: '10.00',
+      timeInForce: 'GTC',
+      marginType: 'cross',
+      leverage: '1.00',
+      // Order Management Settings
+      maxOpenOrdersPerSymbol: 20,
+      batchOrders: true,
+      enableOrderConsolidation: true,
+      maxStopOrdersPerSymbol: 1,
+      orderCleanupIntervalSec: 20,
+      staleLimitOrderMin: 1,
+      // Advanced Features
+      multiAssetsMode: true,
+      hedgeMode: true,
+      usePositionMonitor: true,
+      useUsdtVolume: true,
+      maxTranchesPerSymbolSide: 5,
+      tranchePnlIncrementPercent: '5.00',
       createdAt: now,
       updatedAt: now
     };

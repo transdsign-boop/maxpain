@@ -184,7 +184,12 @@ export class TradingEngine {
     
     // CRITICAL FIX: Calculate position size in USD, not in units
     const availableBalance = parseFloat(portfolio.paperBalance);
-    const maxRiskPerTrade = 0.02; // 2% risk per trade
+    
+    // Get risk settings for configurable risk per trade
+    const riskSettings = await storage.getRiskSettings(portfolio.sessionId) || {
+      maxRiskPerTradePercent: '2.00'
+    };
+    const maxRiskPerTrade = parseFloat(riskSettings.maxRiskPerTradePercent as string) / 100;
     const maxPositionValue = availableBalance * maxRiskPerTrade;
     
     // Calculate position size in units based on USD value
