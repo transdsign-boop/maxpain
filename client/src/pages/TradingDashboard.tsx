@@ -859,6 +859,13 @@ export default function TradingDashboard() {
                         {strategy.cascadeDetectionEnabled ? 'ENABLED' : 'DISABLED'}
                       </Badge>
                     </div>
+                    
+                    <div className="flex items-center justify-between pt-2">
+                      <span className="text-sm text-muted-foreground">DCA (Dollar Cost Averaging):</span>
+                      <Badge variant={(strategy as any).dcaEnabled ? 'default' : 'secondary'} data-testid={`dca-status-${strategy.name.toLowerCase().replace(/\s+/g, '-')}`}>
+                        {(strategy as any).dcaEnabled ? 'ENABLED' : 'DISABLED'}
+                      </Badge>
+                    </div>
                   </div>
                   
                   <div className="flex gap-2">
