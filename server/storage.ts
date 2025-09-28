@@ -6,13 +6,14 @@ import {
   type Portfolio, type InsertPortfolio,
   type Position, type InsertPosition,
   type Trade, type InsertTrade,
-  type MarketData, type InsertMarketData
+  type MarketData, type InsertMarketData,
+  type TradingFees, type InsertTradingFees
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { db } from "./db";
 import { 
   liquidations, users, userSettings, riskSettings,
-  tradingStrategies, portfolios, positions, trades, marketData 
+  tradingStrategies, portfolios, positions, trades, marketData, tradingFees 
 } from "@shared/schema";
 import { desc, gte, eq, sql, and, or } from "drizzle-orm";
 
@@ -42,6 +43,10 @@ export interface IStorage {
   // Risk settings operations
   getRiskSettings(sessionId: string): Promise<RiskSettings | undefined>;
   saveRiskSettings(settings: InsertRiskSettings): Promise<RiskSettings>;
+
+  // Trading fees operations
+  getTradingFees(sessionId: string): Promise<TradingFees | undefined>;
+  saveTradingFees(fees: InsertTradingFees): Promise<TradingFees>;
 
   // Trading strategy operations
   createTradingStrategy(strategy: InsertTradingStrategy): Promise<TradingStrategy>;
@@ -217,6 +222,30 @@ export class DatabaseStorage implements IStorage {
           extremeVolumeThreshold: settings.extremeVolumeThreshold,
           cascadeAnalysisWindowMinutes: settings.cascadeAnalysisWindowMinutes,
           systemWideCascadeWindowMinutes: settings.systemWideCascadeWindowMinutes,
+          updatedAt: sql`now()`,
+        }
+      })
+      .returning();
+    return result[0];
+  }
+
+  async getTradingFees(sessionId: string): Promise<TradingFees | undefined> {
+    const result = await db.select().from(tradingFees).where(eq(tradingFees.sessionId, sessionId));
+    return result[0];
+  }
+
+  async saveTradingFees(fees: InsertTradingFees): Promise<TradingFees> {
+    // Use INSERT ... ON CONFLICT to upsert trading fees
+    const result = await db.insert(tradingFees)
+      .values(fees)
+      .onConflictDoUpdate({
+        target: tradingFees.sessionId,
+        set: {
+          paperMarketOrderFeePercent: fees.paperMarketOrderFeePercent,
+          paperLimitOrderFeePercent: fees.paperLimitOrderFeePercent,
+          realMarketOrderFeePercent: fees.realMarketOrderFeePercent,
+          realLimitOrderFeePercent: fees.realLimitOrderFeePercent,
+          simulateRealisticFees: fees.simulateRealisticFees,
           updatedAt: sql`now()`,
         }
       })

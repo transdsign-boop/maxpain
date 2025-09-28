@@ -201,6 +201,26 @@ export const marketData = pgTable("market_data", {
   timestamp: timestamp("timestamp").notNull().defaultNow(),
 });
 
+// Trading fees configuration table
+export const tradingFees = pgTable("trading_fees", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sessionId: text("session_id").notNull().unique(), // Per-session fee settings
+  
+  // Paper trading fees (percentage of trade value)
+  paperMarketOrderFeePercent: decimal("paper_market_order_fee_percent", { precision: 5, scale: 4 }).notNull().default('0.1000'), // 0.10%
+  paperLimitOrderFeePercent: decimal("paper_limit_order_fee_percent", { precision: 5, scale: 4 }).notNull().default('0.0750'), // 0.075%
+  
+  // Real trading fees (percentage of trade value)
+  realMarketOrderFeePercent: decimal("real_market_order_fee_percent", { precision: 5, scale: 4 }).notNull().default('0.1000'), // 0.10%
+  realLimitOrderFeePercent: decimal("real_limit_order_fee_percent", { precision: 5, scale: 4 }).notNull().default('0.0750'), // 0.075%
+  
+  // Whether to simulate realistic fees in paper trading
+  simulateRealisticFees: boolean("simulate_realistic_fees").notNull().default(true),
+  
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 // Zod schemas for trading entities
 export const insertTradingStrategySchema = createInsertSchema(tradingStrategies).omit({
   id: true,
@@ -230,6 +250,12 @@ export const insertMarketDataSchema = createInsertSchema(marketData).omit({
   timestamp: true,
 });
 
+export const insertTradingFeesSchema = createInsertSchema(tradingFees).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 // Type exports for trading entities
 export type InsertTradingStrategy = z.infer<typeof insertTradingStrategySchema>;
 export type TradingStrategy = typeof tradingStrategies.$inferSelect;
@@ -246,3 +272,6 @@ export type Trade = typeof trades.$inferSelect;
 
 export type InsertMarketData = z.infer<typeof insertMarketDataSchema>;
 export type MarketData = typeof marketData.$inferSelect;
+
+export type InsertTradingFees = z.infer<typeof insertTradingFeesSchema>;
+export type TradingFees = typeof tradingFees.$inferSelect;
