@@ -102,7 +102,7 @@ interface RiskSettings {
 }
 
 export default function TradingDashboard() {
-  // CRITICAL FIX: Use the same session as trading engine 
+  // Use demo-session to match trading engine and Dashboard
   const [sessionId] = useState('demo-session');
   const { toast } = useToast();
   

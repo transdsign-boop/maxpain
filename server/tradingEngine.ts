@@ -37,6 +37,23 @@ export class TradingEngine {
     
     const signals: TradingSignal[] = [];
     
+    // Check if trading is restricted to selected assets for paper trading
+    const portfolio = await storage.getOrCreatePortfolio('demo-session');
+    if (portfolio.tradingMode === 'paper') {
+      const userSettings = await storage.getUserSettings('demo-session');
+      // Only filter if user has explicitly selected specific assets
+      if (userSettings && userSettings.selectedAssets && userSettings.selectedAssets.length > 0) {
+        if (!userSettings.selectedAssets.includes(liquidation.symbol)) {
+          console.log(`📝 Paper trading: ${liquidation.symbol} not in selected assets [${userSettings.selectedAssets.join(', ')}], skipping trade signals`);
+          return signals; // Skip generating trading signals but allow analytics to continue
+        } else {
+          console.log(`✅ Paper trading: ${liquidation.symbol} is in selected assets, proceeding`);
+        }
+      } else {
+        console.log(`📝 Paper trading: No asset selection found, proceeding with all assets`);
+      }
+    }
+    
     // Get all active strategies that include this symbol
     const strategies = await this.getActiveStrategiesForSymbol(liquidation.symbol);
     
