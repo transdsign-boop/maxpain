@@ -246,8 +246,9 @@ export default function TradingDashboard() {
   // Calculate portfolio metrics with error handling
   const activePositions = Array.isArray(positions) ? positions.filter((p: Position) => p?.status === 'open') : [];
   
-  // Filter positions based on trading mode
-  const filteredPositions = activePositions.filter((pos: Position) => pos?.tradingMode === portfolio?.tradingMode);
+  // Filter positions based on trading mode - using unified settings
+  const currentTradingMode = unifiedSettingsFormData.simulateOnly ? 'paper' : 'real';
+  const filteredPositions = activePositions.filter((pos: Position) => pos?.tradingMode === currentTradingMode);
   
   const totalExposure = filteredPositions.reduce((sum: number, pos: Position) => {
     const size = pos?.size ? parseFloat(pos.size) : 0;
@@ -260,8 +261,8 @@ export default function TradingDashboard() {
     return sum + pnl;
   }, 0);
 
-  // Trading analytics calculations
-  const filteredCompletedTrades = completedTrades.filter((trade: Trade) => trade?.tradingMode === portfolio?.tradingMode);
+  // Trading analytics calculations - using unified settings
+  const filteredCompletedTrades = completedTrades.filter((trade: Trade) => trade?.tradingMode === currentTradingMode);
   const winningTrades = filteredCompletedTrades.filter((trade: Trade) => parseFloat(trade.realizedPnl) > 0);
   const winRate = filteredCompletedTrades.length > 0 ? (winningTrades.length / filteredCompletedTrades.length) * 100 : 0;
   const avgTradeDuration = filteredCompletedTrades.length > 0 
@@ -538,26 +539,6 @@ export default function TradingDashboard() {
     }
   };
 
-  const toggleTradingMode = async () => {
-    try {
-      const newMode = portfolio?.tradingMode === 'paper' ? 'real' : 'paper';
-      const response = await fetch(`/api/trading/portfolio/${portfolio?.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tradingMode: newMode }),
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to update trading mode: ${response.statusText}`);
-      }
-      
-      window.location.reload(); // Refresh to show new mode
-      console.log(`Trading mode switched to: ${newMode}`);
-    } catch (error) {
-      console.error('Failed to toggle trading mode:', error);
-      alert('Failed to update trading mode. Please try again.');
-    }
-  };
 
   const resetPaperBalance = async () => {
     if (!confirm('Reset paper balance to $10,000? This will reset your paper trading balance.')) return;
@@ -881,18 +862,14 @@ export default function TradingDashboard() {
           <div className="flex items-center space-x-4">
             <div className="text-right">
               <div className="text-sm font-medium">Trading Mode</div>
-              <div className={`text-lg font-bold ${portfolio?.tradingMode === 'real' ? 'text-green-500' : 'text-blue-500'}`}>
-                {portfolio?.tradingMode === 'real' ? '🏦 REAL' : '📝 PAPER'}
+              <div className={`text-lg font-bold ${unifiedSettingsFormData.simulateOnly ? 'text-blue-500' : 'text-green-500'}`}>
+                {unifiedSettingsFormData.simulateOnly ? '📝 PAPER' : '🏦 REAL'}
               </div>
             </div>
-            <Button 
-              onClick={toggleTradingMode}
-              variant={portfolio?.tradingMode === 'real' ? 'destructive' : 'default'}
-              size="sm"
-              data-testid="toggle-trading-mode"
-            >
-              Switch to {portfolio?.tradingMode === 'paper' ? 'Real' : 'Paper'}
-            </Button>
+            <div className="text-right">
+              <div className="text-xs text-muted-foreground">Switch mode in</div>
+              <div className="text-sm font-medium text-primary">Global Settings</div>
+            </div>
           </div>
         </Card>
       </div>
@@ -903,10 +880,10 @@ export default function TradingDashboard() {
         <Card className="hover-elevate">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              {portfolio?.tradingMode === 'paper' ? 'Paper Balance' : 'Real Balance'}
+              {unifiedSettingsFormData.simulateOnly ? 'Paper Balance' : 'Real Balance'}
             </CardTitle>
             <div className="flex items-center gap-2">
-              {portfolio?.tradingMode === 'paper' && (
+              {unifiedSettingsFormData.simulateOnly && (
                 <Button
                   size="sm"
                   variant="ghost"
@@ -917,15 +894,15 @@ export default function TradingDashboard() {
                   <RotateCcw className="h-3 w-3" />
                 </Button>
               )}
-              <DollarSign className={`h-4 w-4 ${portfolio?.tradingMode === 'paper' ? 'text-blue-500' : 'text-green-500'}`} />
+              <DollarSign className={`h-4 w-4 ${unifiedSettingsFormData.simulateOnly ? 'text-blue-500' : 'text-green-500'}`} />
             </div>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {portfolio ? formatCurrency(portfolio?.tradingMode === 'paper' ? portfolio.paperBalance : (portfolio.realBalance || '0')) : '$0.00'}
+              {portfolio ? formatCurrency(unifiedSettingsFormData.simulateOnly ? portfolio.paperBalance : (portfolio.realBalance || '0')) : '$0.00'}
             </div>
             <p className="text-xs text-muted-foreground">
-              {portfolio?.tradingMode === 'paper' ? 'Simulated trading funds' : 'Actual trading funds'}
+              {unifiedSettingsFormData.simulateOnly ? 'Simulated trading funds' : 'Actual trading funds'}
             </p>
           </CardContent>
         </Card>
@@ -1013,7 +990,7 @@ export default function TradingDashboard() {
             <div className="text-2xl font-bold text-green-500">LOW</div>
             <p className="text-xs text-muted-foreground">
               {((totalExposure / parseFloat(
-                portfolio?.tradingMode === 'paper' ? (portfolio?.paperBalance || '1') : (portfolio?.realBalance || '1')
+                unifiedSettingsFormData.simulateOnly ? (portfolio?.paperBalance || '1') : (portfolio?.realBalance || '1')
               )) * 100).toFixed(1)}% portfolio exposure
             </p>
           </CardContent>
