@@ -499,7 +499,52 @@ export class DatabaseStorage implements IStorage {
       .set({ status: 'closed', updatedAt: sql`now()` })
       .where(eq(positions.id, id));
 
+    // CRITICAL FIX: Apply realized PnL to portfolio balance
+    const portfolio = await this.getPortfolioById(pos.portfolioId);
+    if (portfolio) {
+      const currentBalance = parseFloat(
+        pos.tradingMode === 'paper' ? portfolio.paperBalance : (portfolio.realBalance || '0.00')
+      );
+      const newBalance = currentBalance + realizedPnl;
+      
+      // Update the appropriate balance based on trading mode
+      const balanceUpdate = pos.tradingMode === 'paper' 
+        ? { paperBalance: newBalance.toString() }
+        : { realBalance: newBalance.toString() };
+      
+      await this.updatePortfolio(portfolio.id, balanceUpdate);
+      
+      console.log(`💰 Balance updated: ${pos.tradingMode} balance ${currentBalance.toFixed(2)} + ${realizedPnl.toFixed(2)} PnL = ${newBalance.toFixed(2)}`);
+    }
+
     return tradeResult[0];
+  }
+
+  async getUsedMargin(portfolioId: string, tradingMode: 'paper' | 'real'): Promise<number> {
+    const openPositions = await db.select().from(positions)
+      .where(and(
+        eq(positions.portfolioId, portfolioId),
+        eq(positions.status, 'open'),
+        eq(positions.tradingMode, tradingMode)
+      ));
+    
+    const totalMargin = openPositions.reduce((sum, position) => {
+      return sum + parseFloat(position.marginRequired || '0');
+    }, 0);
+    
+    return totalMargin;
+  }
+
+  async getAvailableBalance(portfolioId: string, tradingMode: 'paper' | 'real'): Promise<number> {
+    const portfolio = await this.getPortfolioById(portfolioId);
+    if (!portfolio) return 0;
+    
+    const accountBalance = parseFloat(
+      tradingMode === 'paper' ? portfolio.paperBalance : (portfolio.realBalance || '0.00')
+    );
+    const usedMargin = await this.getUsedMargin(portfolioId, tradingMode);
+    
+    return Math.max(0, accountBalance - usedMargin);
   }
 
   async updateUnrealizedPnl(portfolioId: string): Promise<Position[]> {

@@ -188,6 +188,7 @@ export const positions = pgTable("positions", {
   stopLossPrice: decimal("stop_loss_price", { precision: 18, scale: 8 }),
   takeProfitPrice: decimal("take_profit_price", { precision: 18, scale: 8 }),
   unrealizedPnl: decimal("unrealized_pnl", { precision: 18, scale: 8 }).notNull().default('0.00'),
+  marginRequired: decimal("margin_required", { precision: 18, scale: 8 }).notNull().default('0.00'),
   tradingMode: text("trading_mode").notNull(), // "paper" or "real"
   status: text("status").notNull().default('open'), // "open", "closed", "liquidated"
   triggeredByLiquidation: varchar("triggered_by_liquidation"), // liquidation ID that triggered this

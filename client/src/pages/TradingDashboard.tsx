@@ -33,7 +33,8 @@ import {
   Clock,
   ListOrdered,
   Download,
-  Upload
+  Upload,
+  Wallet
 } from "lucide-react";
 
 interface Position {
@@ -65,6 +66,13 @@ interface Portfolio {
   realBalance?: string;
   tradingMode?: string;
   totalPnl: string;
+}
+
+interface FinancialMetrics {
+  accountBalance: number;
+  availableBalance: number;
+  usedMargin: number;
+  tradingMode: string;
 }
 
 interface TradingStrategy {
@@ -210,6 +218,13 @@ export default function TradingDashboard() {
   const { data: portfolio } = useQuery<Portfolio>({
     queryKey: [`/api/trading/portfolio?sessionId=${sessionId}`],
     refetchInterval: 2000,
+  });
+
+  // Fetch financial metrics (account balance, available balance, margin used)
+  const { data: financialMetrics } = useQuery<FinancialMetrics>({
+    queryKey: [`/api/trading/portfolio/${sessionId}/financial-metrics?mode=${unifiedSettingsFormData.simulateOnly ? 'paper' : 'real'}`],
+    refetchInterval: 2000,
+    enabled: !!sessionId,
   });
 
   // Use the portfolio ID from the portfolio response to fetch positions
@@ -876,12 +891,10 @@ export default function TradingDashboard() {
 
       {/* Portfolio Overview */}
       <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
-        {/* Balance Card - Shows current trading mode balance */}
+        {/* Account Balance Card */}
         <Card className="hover-elevate">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              {unifiedSettingsFormData.simulateOnly ? 'Paper Balance' : 'Real Balance'}
-            </CardTitle>
+            <CardTitle className="text-sm font-medium">Account Balance</CardTitle>
             <div className="flex items-center gap-2">
               {unifiedSettingsFormData.simulateOnly && (
                 <Button
@@ -899,38 +912,42 @@ export default function TradingDashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {portfolio ? formatCurrency(unifiedSettingsFormData.simulateOnly ? portfolio.paperBalance : (portfolio.realBalance || '0')) : '$0.00'}
+              {financialMetrics ? formatCurrency(financialMetrics.accountBalance.toString()) : '$0.00'}
             </div>
             <p className="text-xs text-muted-foreground">
-              {unifiedSettingsFormData.simulateOnly ? 'Simulated trading funds' : 'Actual trading funds'}
+              {unifiedSettingsFormData.simulateOnly ? 'Total paper trading funds' : 'Total real trading funds'}
             </p>
           </CardContent>
         </Card>
 
-        {/* Available Trading Power Card - Shows leveraged capability */}
+        {/* Available Balance Card */}
         <Card className="hover-elevate">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Available Trading Power</CardTitle>
-            <Target className="h-4 w-4 text-purple-500" />
+            <CardTitle className="text-sm font-medium">Available Balance</CardTitle>
+            <Wallet className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-purple-600">
-              {portfolio ? (() => {
-                const rawBalance = parseFloat(unifiedSettingsFormData.simulateOnly ? portfolio.paperBalance : (portfolio.realBalance || '0'));
-                const leverage = parseFloat(unifiedSettingsFormData.leverage || '1.00');
-                const maxRiskPerTrade = parseFloat(unifiedSettingsFormData.maxRiskPerTradePercent || '2.00') / 100;
-                const maxPositionSize = rawBalance * maxRiskPerTrade * leverage;
-                return formatCurrency(maxPositionSize.toString());
-              })() : '$0.00'}
+            <div className="text-2xl font-bold text-green-600">
+              {financialMetrics ? formatCurrency(financialMetrics.availableBalance.toString()) : '$0.00'}
             </div>
             <p className="text-xs text-muted-foreground">
-              {(() => {
-                const leverage = parseFloat(unifiedSettingsFormData.leverage || '1.00');
-                const riskPercent = unifiedSettingsFormData.maxRiskPerTradePercent || '2.00';
-                return leverage > 1 
-                  ? `Max position size (${leverage}x leverage, ${riskPercent}% risk)`
-                  : `Max position size (${riskPercent}% risk per trade)`;
-              })()}
+              Funds available for new positions
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* Margin Used Card */}
+        <Card className="hover-elevate">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Margin Used</CardTitle>
+            <Shield className="h-4 w-4 text-orange-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-orange-600">
+              {financialMetrics ? formatCurrency(financialMetrics.usedMargin.toString()) : '$0.00'}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Margin locked in open positions
             </p>
           </CardContent>
         </Card>

@@ -855,6 +855,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Financial metrics endpoint
+  app.get("/api/trading/portfolio/:sessionId/financial-metrics", async (req, res) => {
+    try {
+      const { sessionId } = req.params;
+      const tradingMode = req.query.mode as 'paper' | 'real' || 'paper';
+      
+      const portfolio = await storage.getOrCreatePortfolio(sessionId);
+      
+      const accountBalance = parseFloat(
+        tradingMode === 'paper' ? portfolio.paperBalance : (portfolio.realBalance || '0.00')
+      );
+      const usedMargin = await storage.getUsedMargin(portfolio.id, tradingMode);
+      const availableBalance = await storage.getAvailableBalance(portfolio.id, tradingMode);
+      
+      res.json({
+        accountBalance,
+        availableBalance,
+        usedMargin,
+        tradingMode
+      });
+    } catch (error) {
+      console.error('Error fetching financial metrics:', error);
+      res.status(500).json({ error: 'Failed to fetch financial metrics' });
+    }
+  });
+
   // Trading fees routes
   app.get("/api/trading/fees/:sessionId", async (req, res) => {
     try {
