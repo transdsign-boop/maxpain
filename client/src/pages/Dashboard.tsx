@@ -35,12 +35,8 @@ export default function Dashboard() {
 
   // Generate or get persistent session ID
   const getSessionId = () => {
-    let sessionId = localStorage.getItem('aster-session-id');
-    if (!sessionId) {
-      sessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      localStorage.setItem('aster-session-id', sessionId);
-    }
-    return sessionId;
+    // Use demo-session to match trading engine session
+    return 'demo-session';
   };
 
   // Save settings to database

@@ -53,6 +53,7 @@ export interface IStorage {
   // Portfolio operations
   getOrCreatePortfolio(sessionId: string): Promise<Portfolio>;
   getPortfolioById(id: string): Promise<Portfolio | undefined>;
+  getAllPaperTradingPortfolios(): Promise<Portfolio[]>;
   updatePortfolio(id: string, updates: Partial<InsertPortfolio>): Promise<Portfolio>;
   
   // Position operations
@@ -282,6 +283,11 @@ export class DatabaseStorage implements IStorage {
     return result[0];
   }
 
+  async getAllPaperTradingPortfolios(): Promise<Portfolio[]> {
+    return await db.select().from(portfolios)
+      .where(eq(portfolios.tradingMode, 'paper'));
+  }
+
   async updatePortfolio(id: string, updates: Partial<InsertPortfolio>): Promise<Portfolio> {
     const result = await db.update(portfolios)
       .set({ ...updates, lastUpdated: sql`now()` })
@@ -450,7 +456,7 @@ export class DatabaseStorage implements IStorage {
       }
       
       // Get unique symbols from open positions
-      const symbols = [...new Set(openPositions.map(pos => pos.symbol))];
+      const symbols = Array.from(new Set(openPositions.map(pos => pos.symbol)));
       
       // Fetch current prices for all symbols
       const pricePromises = symbols.map(async (symbol) => {
