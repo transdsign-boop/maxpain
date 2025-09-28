@@ -97,6 +97,32 @@ export const riskSettings = pgTable("risk_settings", {
   cascadeAnalysisWindowMinutes: integer("cascade_analysis_window_minutes").notNull().default(10),
   systemWideCascadeWindowMinutes: integer("system_wide_cascade_window_minutes").notNull().default(15),
   
+  // Global Trading Settings
+  simulateOnly: boolean("simulate_only").notNull().default(false),
+  maxTotalExposureUsd: decimal("max_total_exposure_usd", { precision: 18, scale: 2 }).notNull().default('1400.00'),
+  volumeWindowSec: integer("volume_window_sec").notNull().default(60),
+  orderTtlSec: integer("order_ttl_sec").notNull().default(30),
+  rateLimitBufferPercent: decimal("rate_limit_buffer_percent", { precision: 5, scale: 2 }).notNull().default('10.00'),
+  timeInForce: text("time_in_force").notNull().default('GTC'),
+  marginType: text("margin_type").notNull().default('cross'),
+  leverage: decimal("leverage", { precision: 5, scale: 2 }).notNull().default('1.00'),
+  
+  // Order Management Settings
+  maxOpenOrdersPerSymbol: integer("max_open_orders_per_symbol").notNull().default(20),
+  batchOrders: boolean("batch_orders").notNull().default(true),
+  enableOrderConsolidation: boolean("enable_order_consolidation").notNull().default(true),
+  maxStopOrdersPerSymbol: integer("max_stop_orders_per_symbol").notNull().default(1),
+  orderCleanupIntervalSec: integer("order_cleanup_interval_sec").notNull().default(20),
+  staleLimitOrderMin: integer("stale_limit_order_min").notNull().default(1),
+  
+  // Advanced Features
+  multiAssetsMode: boolean("multi_assets_mode").notNull().default(true),
+  hedgeMode: boolean("hedge_mode").notNull().default(true),
+  usePositionMonitor: boolean("use_position_monitor").notNull().default(true),
+  useUsdtVolume: boolean("use_usdt_volume").notNull().default(true),
+  maxTranchesPerSymbolSide: integer("max_tranches_per_symbol_side").notNull().default(5),
+  tranchePnlIncrementPercent: decimal("tranche_pnl_increment_percent", { precision: 5, scale: 2 }).notNull().default('5.00'),
+  
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { 
@@ -29,7 +30,8 @@ import {
   History,
   Percent,
   Edit,
-  Clock
+  Clock,
+  ListOrdered
 } from "lucide-react";
 
 interface Position {
@@ -194,6 +196,10 @@ export default function TradingDashboard() {
   // State for risk settings
   const [riskSettingsFormData, setRiskSettingsFormData] = useState<Partial<RiskSettings>>({});
   const [isUpdatingRiskSettings, setIsUpdatingRiskSettings] = useState(false);
+  
+  // State for global settings form
+  const [globalSettingsFormData, setGlobalSettingsFormData] = useState<Partial<RiskSettings>>({});
+  const [isUpdatingGlobalSettings, setIsUpdatingGlobalSettings] = useState(false);
 
   // State for analytics features
   const [paperBalanceDialogOpen, setPaperBalanceDialogOpen] = useState(false);
@@ -281,6 +287,7 @@ export default function TradingDashboard() {
   useEffect(() => {
     if (riskSettings) {
       setRiskSettingsFormData(riskSettings);
+      setGlobalSettingsFormData(riskSettings);
     } else {
       // Set default values when no risk settings exist
       setRiskSettingsFormData({
@@ -290,6 +297,30 @@ export default function TradingDashboard() {
         maxSymbolConcentrationPercent: '20.00',
         warningPortfolioExposurePercent: '60.00',
         maxPositionSizePercent: '5.00',
+      });
+      
+      // Set default global settings values
+      setGlobalSettingsFormData({
+        simulateOnly: false,
+        maxTotalExposureUsd: '1400.00',
+        volumeWindowSec: 60,
+        orderTtlSec: 30,
+        rateLimitBufferPercent: '10.00',
+        timeInForce: 'GTC',
+        marginType: 'cross',
+        leverage: '1.00',
+        maxOpenOrdersPerSymbol: 20,
+        batchOrders: true,
+        enableOrderConsolidation: true,
+        maxStopOrdersPerSymbol: 1,
+        orderCleanupIntervalSec: 20,
+        staleLimitOrderMin: 1,
+        multiAssetsMode: true,
+        hedgeMode: true,
+        usePositionMonitor: true,
+        useUsdtVolume: true,
+        maxTranchesPerSymbolSide: 5,
+        tranchePnlIncrementPercent: '5.00',
       });
     }
   }, [riskSettings]);
@@ -616,6 +647,72 @@ export default function TradingDashboard() {
     }
   };
 
+  const handleSaveGlobalSettings = async () => {
+    setIsUpdatingGlobalSettings(true);
+    try {
+      // Create a complete risk settings object by merging global settings with existing risk settings
+      const mergedSettings = {
+        // Use existing risk settings if available, otherwise use default values
+        maxPositionsPerSymbol: riskSettingsFormData.maxPositionsPerSymbol || 2,
+        maxRiskPerTradePercent: riskSettingsFormData.maxRiskPerTradePercent || '2.00',
+        maxPortfolioExposurePercent: riskSettingsFormData.maxPortfolioExposurePercent || '80.00',
+        maxSymbolConcentrationPercent: riskSettingsFormData.maxSymbolConcentrationPercent || '20.00',
+        warningPortfolioExposurePercent: riskSettingsFormData.warningPortfolioExposurePercent || '60.00',
+        maxPositionSizePercent: riskSettingsFormData.maxPositionSizePercent || '5.00',
+        
+        // Include other required risk settings fields
+        minPositionSize: riskSettingsFormData.minPositionSize || '1.00',
+        highVolatilityThreshold: riskSettingsFormData.highVolatilityThreshold || '15.00',
+        extremeVolatilityThreshold: riskSettingsFormData.extremeVolatilityThreshold || '20.00',
+        cascadeDetectionEnabled: riskSettingsFormData.cascadeDetectionEnabled !== false,
+        cascadeCooldownMinutes: riskSettingsFormData.cascadeCooldownMinutes || 10,
+        
+        // Cascade detection thresholds
+        lowLiquidationCount: riskSettingsFormData.lowLiquidationCount || 3,
+        mediumLiquidationCount: riskSettingsFormData.mediumLiquidationCount || 7,
+        highLiquidationCount: riskSettingsFormData.highLiquidationCount || 15,
+        extremeLiquidationCount: riskSettingsFormData.extremeLiquidationCount || 25,
+        
+        lowVelocityPerMinute: riskSettingsFormData.lowVelocityPerMinute || '2.00',
+        mediumVelocityPerMinute: riskSettingsFormData.mediumVelocityPerMinute || '5.00',
+        highVelocityPerMinute: riskSettingsFormData.highVelocityPerMinute || '10.00',
+        extremeVelocityPerMinute: riskSettingsFormData.extremeVelocityPerMinute || '20.00',
+        
+        lowVolumeThreshold: riskSettingsFormData.lowVolumeThreshold || '50000.00',
+        mediumVolumeThreshold: riskSettingsFormData.mediumVolumeThreshold || '200000.00',
+        highVolumeThreshold: riskSettingsFormData.highVolumeThreshold || '500000.00',
+        extremeVolumeThreshold: riskSettingsFormData.extremeVolumeThreshold || '1000000.00',
+        
+        cascadeAnalysisWindowMinutes: riskSettingsFormData.cascadeAnalysisWindowMinutes || 10,
+        systemWideCascadeWindowMinutes: riskSettingsFormData.systemWideCascadeWindowMinutes || 15,
+        
+        // Merge global settings over the risk settings
+        ...globalSettingsFormData,
+        sessionId, // Always ensure sessionId is set
+      };
+      
+      await apiRequest('PUT', '/api/risk-settings', mergedSettings);
+      
+      // Invalidate and refetch risk settings
+      await queryClient.invalidateQueries({ queryKey: [`/api/risk-settings/${sessionId}`] });
+      
+      toast({
+        title: "Global settings updated",
+        description: "Your trading execution and order management settings have been saved.",
+      });
+      
+    } catch (error) {
+      console.error('Error saving global settings:', error);
+      toast({
+        title: "Error",
+        description: "Failed to save global settings. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUpdatingGlobalSettings(false);
+    }
+  };
+
   // Analytics handlers
   const handleSetCustomPaperBalance = async () => {
     if (!portfolio || !customPaperBalance || isNaN(parseFloat(customPaperBalance)) || parseFloat(customPaperBalance) < 0) {
@@ -842,7 +939,7 @@ export default function TradingDashboard() {
 
       {/* Main Content Tabs */}
       <Tabs defaultValue="positions" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="positions" data-testid="tab-positions">
             Active Positions ({filteredPositions.length})
           </TabsTrigger>
@@ -854,6 +951,9 @@ export default function TradingDashboard() {
           </TabsTrigger>
           <TabsTrigger value="analytics" data-testid="tab-analytics">
             Trading Analytics
+          </TabsTrigger>
+          <TabsTrigger value="global-settings" data-testid="tab-global-settings">
+            Global Settings
           </TabsTrigger>
         </TabsList>
 
@@ -1542,6 +1642,309 @@ export default function TradingDashboard() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Global Settings Tab */}
+        <TabsContent value="global-settings" className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Global Trading Settings */}
+            <Card className="hover-elevate">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Settings className="h-5 w-5" />
+                  Global Trading Settings
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">Core trading execution parameters</p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="simulateOnly"
+                    checked={globalSettingsFormData.simulateOnly || false}
+                    onCheckedChange={(checked) => setGlobalSettingsFormData({...globalSettingsFormData, simulateOnly: checked})}
+                    data-testid="switch-simulate-only"
+                  />
+                  <Label htmlFor="simulateOnly">Simulate Only</Label>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="maxTotalExposureUsd">Max Total Exposure (USD)</Label>
+                  <Input
+                    id="maxTotalExposureUsd"
+                    type="number"
+                    step="100"
+                    value={globalSettingsFormData.maxTotalExposureUsd || ''}
+                    onChange={(e) => setGlobalSettingsFormData({...globalSettingsFormData, maxTotalExposureUsd: e.target.value})}
+                    placeholder="1400"
+                    data-testid="input-max-exposure"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="volumeWindowSec">Volume Window (sec)</Label>
+                  <Input
+                    id="volumeWindowSec"
+                    type="number"
+                    min="1"
+                    value={globalSettingsFormData.volumeWindowSec || ''}
+                    onChange={(e) => setGlobalSettingsFormData({...globalSettingsFormData, volumeWindowSec: parseInt(e.target.value)})}
+                    placeholder="60"
+                    data-testid="input-volume-window"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="orderTtlSec">Order TTL (sec)</Label>
+                  <Input
+                    id="orderTtlSec"
+                    type="number"
+                    min="1"
+                    value={globalSettingsFormData.orderTtlSec || ''}
+                    onChange={(e) => setGlobalSettingsFormData({...globalSettingsFormData, orderTtlSec: parseInt(e.target.value)})}
+                    placeholder="30"
+                    data-testid="input-order-ttl"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="rateLimitBuffer">Rate Limit Buffer (%)</Label>
+                  <Input
+                    id="rateLimitBuffer"
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="100"
+                    value={globalSettingsFormData.rateLimitBufferPercent || ''}
+                    onChange={(e) => setGlobalSettingsFormData({...globalSettingsFormData, rateLimitBufferPercent: e.target.value})}
+                    placeholder="10"
+                    data-testid="input-rate-limit-buffer"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="timeInForce">Time in Force</Label>
+                  <Select 
+                    value={globalSettingsFormData.timeInForce || 'GTC'} 
+                    onValueChange={(value) => setGlobalSettingsFormData({...globalSettingsFormData, timeInForce: value})}
+                  >
+                    <SelectTrigger data-testid="select-time-in-force">
+                      <SelectValue placeholder="Select time in force" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="GTC">GTC (Good Till Cancel)</SelectItem>
+                      <SelectItem value="IOC">IOC (Immediate or Cancel)</SelectItem>
+                      <SelectItem value="FOK">FOK (Fill or Kill)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="marginType">Margin Type</Label>
+                  <Select 
+                    value={globalSettingsFormData.marginType || 'cross'} 
+                    onValueChange={(value) => setGlobalSettingsFormData({...globalSettingsFormData, marginType: value})}
+                  >
+                    <SelectTrigger data-testid="select-margin-type">
+                      <SelectValue placeholder="Select margin type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cross">Cross Margin</SelectItem>
+                      <SelectItem value="isolated">Isolated Margin</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="leverage">Leverage</Label>
+                  <Input
+                    id="leverage"
+                    type="number"
+                    step="0.1"
+                    min="1"
+                    max="125"
+                    value={globalSettingsFormData.leverage || ''}
+                    onChange={(e) => setGlobalSettingsFormData({...globalSettingsFormData, leverage: e.target.value})}
+                    placeholder="1"
+                    data-testid="input-leverage"
+                  />
+                </div>
+              </CardContent>
+            </Card>
+            
+            {/* Order Management Settings */}
+            <Card className="hover-elevate">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <ListOrdered className="h-5 w-5" />
+                  Order Management
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">Order execution and lifecycle controls</p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="maxOpenOrdersPerSymbol">Max Open Orders Per Symbol</Label>
+                  <Input
+                    id="maxOpenOrdersPerSymbol"
+                    type="number"
+                    min="1"
+                    value={globalSettingsFormData.maxOpenOrdersPerSymbol || ''}
+                    onChange={(e) => setGlobalSettingsFormData({...globalSettingsFormData, maxOpenOrdersPerSymbol: parseInt(e.target.value)})}
+                    placeholder="20"
+                    data-testid="input-max-open-orders"
+                  />
+                </div>
+                
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="batchOrders"
+                    checked={globalSettingsFormData.batchOrders !== false}
+                    onCheckedChange={(checked) => setGlobalSettingsFormData({...globalSettingsFormData, batchOrders: checked})}
+                    data-testid="switch-batch-orders"
+                  />
+                  <Label htmlFor="batchOrders">Batch Orders</Label>
+                </div>
+                
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="enableOrderConsolidation"
+                    checked={globalSettingsFormData.enableOrderConsolidation !== false}
+                    onCheckedChange={(checked) => setGlobalSettingsFormData({...globalSettingsFormData, enableOrderConsolidation: checked})}
+                    data-testid="switch-order-consolidation"
+                  />
+                  <Label htmlFor="enableOrderConsolidation">Enable Order Consolidation</Label>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="maxStopOrdersPerSymbol">Max Stop Orders Per Symbol</Label>
+                  <Input
+                    id="maxStopOrdersPerSymbol"
+                    type="number"
+                    min="1"
+                    value={globalSettingsFormData.maxStopOrdersPerSymbol || ''}
+                    onChange={(e) => setGlobalSettingsFormData({...globalSettingsFormData, maxStopOrdersPerSymbol: parseInt(e.target.value)})}
+                    placeholder="1"
+                    data-testid="input-max-stop-orders"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="orderCleanupIntervalSec">Order Cleanup Interval (sec)</Label>
+                  <Input
+                    id="orderCleanupIntervalSec"
+                    type="number"
+                    min="1"
+                    value={globalSettingsFormData.orderCleanupIntervalSec || ''}
+                    onChange={(e) => setGlobalSettingsFormData({...globalSettingsFormData, orderCleanupIntervalSec: parseInt(e.target.value)})}
+                    placeholder="20"
+                    data-testid="input-cleanup-interval"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="staleLimitOrderMin">Stale Limit Order (min)</Label>
+                  <Input
+                    id="staleLimitOrderMin"
+                    type="number"
+                    min="1"
+                    value={globalSettingsFormData.staleLimitOrderMin || ''}
+                    onChange={(e) => setGlobalSettingsFormData({...globalSettingsFormData, staleLimitOrderMin: parseInt(e.target.value)})}
+                    placeholder="1"
+                    data-testid="input-stale-limit-order"
+                  />
+                </div>
+              </CardContent>
+            </Card>
+            
+            {/* Advanced Features */}
+            <Card className="hover-elevate">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Zap className="h-5 w-5" />
+                  Advanced Features
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">Portfolio and position management features</p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="multiAssetsMode"
+                    checked={globalSettingsFormData.multiAssetsMode !== false}
+                    onCheckedChange={(checked) => setGlobalSettingsFormData({...globalSettingsFormData, multiAssetsMode: checked})}
+                    data-testid="switch-multi-assets"
+                  />
+                  <Label htmlFor="multiAssetsMode">Multi-Assets Mode</Label>
+                </div>
+                
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="hedgeMode"
+                    checked={globalSettingsFormData.hedgeMode !== false}
+                    onCheckedChange={(checked) => setGlobalSettingsFormData({...globalSettingsFormData, hedgeMode: checked})}
+                    data-testid="switch-hedge-mode"
+                  />
+                  <Label htmlFor="hedgeMode">Hedge Mode</Label>
+                </div>
+                
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="usePositionMonitor"
+                    checked={globalSettingsFormData.usePositionMonitor !== false}
+                    onCheckedChange={(checked) => setGlobalSettingsFormData({...globalSettingsFormData, usePositionMonitor: checked})}
+                    data-testid="switch-position-monitor"
+                  />
+                  <Label htmlFor="usePositionMonitor">Use Position Monitor</Label>
+                </div>
+                
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="useUsdtVolume"
+                    checked={globalSettingsFormData.useUsdtVolume !== false}
+                    onCheckedChange={(checked) => setGlobalSettingsFormData({...globalSettingsFormData, useUsdtVolume: checked})}
+                    data-testid="switch-usdt-volume"
+                  />
+                  <Label htmlFor="useUsdtVolume">Use USDT Volume</Label>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="maxTranchesPerSymbolSide">Max Tranches Per Symbol Side</Label>
+                  <Input
+                    id="maxTranchesPerSymbolSide"
+                    type="number"
+                    min="1"
+                    value={globalSettingsFormData.maxTranchesPerSymbolSide || ''}
+                    onChange={(e) => setGlobalSettingsFormData({...globalSettingsFormData, maxTranchesPerSymbolSide: parseInt(e.target.value)})}
+                    placeholder="5"
+                    data-testid="input-max-tranches"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="tranchePnlIncrementPercent">Tranche P&L Increment (%)</Label>
+                  <Input
+                    id="tranchePnlIncrementPercent"
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    value={globalSettingsFormData.tranchePnlIncrementPercent || ''}
+                    onChange={(e) => setGlobalSettingsFormData({...globalSettingsFormData, tranchePnlIncrementPercent: e.target.value})}
+                    placeholder="5"
+                    data-testid="input-tranche-pnl"
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+          
+          {/* Save Button */}
+          <div className="flex justify-end">
+            <Button 
+              onClick={handleSaveGlobalSettings}
+              disabled={isUpdatingGlobalSettings}
+              data-testid="save-global-settings"
+            >
+              {isUpdatingGlobalSettings ? 'Saving...' : 'Save Global Settings'}
+            </Button>
+          </div>
         </TabsContent>
       </Tabs>
       
