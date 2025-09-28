@@ -210,9 +210,9 @@ export const tradingFees = pgTable("trading_fees", {
   paperMarketOrderFeePercent: decimal("paper_market_order_fee_percent", { precision: 5, scale: 4 }).notNull().default('0.1000'), // 0.10%
   paperLimitOrderFeePercent: decimal("paper_limit_order_fee_percent", { precision: 5, scale: 4 }).notNull().default('0.0750'), // 0.075%
   
-  // Real trading fees (percentage of trade value)
-  realMarketOrderFeePercent: decimal("real_market_order_fee_percent", { precision: 5, scale: 4 }).notNull().default('0.1000'), // 0.10%
-  realLimitOrderFeePercent: decimal("real_limit_order_fee_percent", { precision: 5, scale: 4 }).notNull().default('0.0750'), // 0.075%
+  // Real trading fees (fetched from trading API, not stored)
+  realMarketOrderFeePercent: decimal("real_market_order_fee_percent", { precision: 5, scale: 4 }), // Fetched from API
+  realLimitOrderFeePercent: decimal("real_limit_order_fee_percent", { precision: 5, scale: 4 }), // Fetched from API
   
   // Whether to simulate realistic fees in paper trading
   simulateRealisticFees: boolean("simulate_realistic_fees").notNull().default(true),

@@ -630,16 +630,24 @@ export default function TradingDashboard() {
       tradingFeesFormData.sessionId = sessionId;
     }
     
+    // Only save paper trading fees - real fees come from trading API
+    const paperFeesOnly = {
+      sessionId: tradingFeesFormData.sessionId,
+      paperMarketOrderFeePercent: tradingFeesFormData.paperMarketOrderFeePercent,
+      paperLimitOrderFeePercent: tradingFeesFormData.paperLimitOrderFeePercent,
+      simulateRealisticFees: tradingFeesFormData.simulateRealisticFees,
+    };
+    
     setIsUpdatingTradingFees(true);
     try {
-      await apiRequest('PUT', '/api/trading/fees', tradingFeesFormData);
+      await apiRequest('PUT', '/api/trading/fees', paperFeesOnly);
       
       // Invalidate and refetch trading fees
       await queryClient.invalidateQueries({ queryKey: [`/api/trading/fees/${sessionId}`] });
       
       toast({
-        title: "Trading fees updated",
-        description: "Your market and limit order fee settings have been saved.",
+        title: "Paper trading fees updated",
+        description: "Your paper trading fee settings have been saved. Real fees are fetched from your trading API.",
       });
       
     } catch (error) {
@@ -1370,34 +1378,16 @@ export default function TradingDashboard() {
                     
                     <div className="space-y-2">
                       <Label className="text-xs text-muted-foreground">Real Market Orders (%)</Label>
-                      <Input
-                        type="number"
-                        step="0.0001"
-                        min="0"
-                        value={tradingFeesFormData.realMarketOrderFeePercent || ''}
-                        onChange={(e) => setTradingFeesFormData({
-                          ...tradingFeesFormData, 
-                          realMarketOrderFeePercent: e.target.value
-                        })}
-                        placeholder="0.1000"
-                        data-testid="input-real-market-fee"
-                      />
+                      <div className="px-3 py-2 bg-muted/50 rounded-md text-sm text-muted-foreground" data-testid="real-market-fee-display">
+                        {tradingFeesFormData.realMarketOrderFeePercent || 'N/A (Trading API required)'}
+                      </div>
                     </div>
                     
                     <div className="space-y-2">
                       <Label className="text-xs text-muted-foreground">Real Limit Orders (%)</Label>
-                      <Input
-                        type="number"
-                        step="0.0001"
-                        min="0"
-                        value={tradingFeesFormData.realLimitOrderFeePercent || ''}
-                        onChange={(e) => setTradingFeesFormData({
-                          ...tradingFeesFormData, 
-                          realLimitOrderFeePercent: e.target.value
-                        })}
-                        placeholder="0.0750"
-                        data-testid="input-real-limit-fee"
-                      />
+                      <div className="px-3 py-2 bg-muted/50 rounded-md text-sm text-muted-foreground" data-testid="real-limit-fee-display">
+                        {tradingFeesFormData.realLimitOrderFeePercent || 'N/A (Trading API required)'}
+                      </div>
                     </div>
                   </div>
                   
