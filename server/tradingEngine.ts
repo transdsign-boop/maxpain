@@ -55,23 +55,23 @@ export class TradingEngine {
     } else {
       // Check all active sessions for asset preferences (global approach)
       const allPortfolios = await storage.getAllPaperTradingPortfolios();
-      let shouldSkip = false;
       let hasAnySelections = false;
+      let anySessionIncludesAsset = false;
       
       for (const portfolio of allPortfolios) {
         const userSettings = await storage.getUserSettings(portfolio.sessionId);
         if (userSettings && userSettings.selectedAssets && userSettings.selectedAssets.length > 0) {
           hasAnySelections = true;
           if (!userSettings.selectedAssets.includes(liquidation.symbol)) {
-            shouldSkip = true;
             console.log(`🚫 Asset filter (${portfolio.sessionId}): ${liquidation.symbol} not in selected assets [${userSettings.selectedAssets.join(', ')}]`);
           } else {
             console.log(`✅ Asset filter (${portfolio.sessionId}): ${liquidation.symbol} is in selected assets`);
+            anySessionIncludesAsset = true;
           }
         }
       }
       
-      if (hasAnySelections && shouldSkip) {
+      if (hasAnySelections && !anySessionIncludesAsset) {
         console.log(`🚫 Global asset filter: ${liquidation.symbol} not allowed by any active session, skipping trade signals`);
         return signals;
       } else if (!hasAnySelections) {
