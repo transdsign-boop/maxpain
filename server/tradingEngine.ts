@@ -174,13 +174,14 @@ export class TradingEngine {
   private async generateCounterSignal(
     liquidation: Liquidation, 
     strategy: TradingStrategy, 
-    volatility: number
+    volatility: number,
+    sessionId: string
   ): Promise<TradingSignal | null> {
     // Counter-trade: if liquidation was long, we go short (and vice versa)
     const counterSide: 'long' | 'short' = liquidation.side === 'long' ? 'short' : 'long';
     
     const entryPrice = parseFloat(liquidation.price);
-    const portfolio = await storage.getOrCreatePortfolio('demo-session'); // TODO: Use dynamic portfolioId
+    const portfolio = await storage.getOrCreatePortfolio(sessionId);
     
     // CRITICAL FIX: Calculate position size in USD, not in units
     const availableBalance = parseFloat(portfolio.paperBalance);
@@ -247,6 +248,26 @@ export class TradingEngine {
         throw new Error('No active strategy found for symbol');
       }
       const strategy = strategies[0];
+
+      // CRITICAL FIX: Perform comprehensive risk assessment before executing trade
+      const riskAssessment = await riskManager.assessTradeRisk(
+        signal.symbol,
+        signal.side,
+        signal.entryPrice,
+        portfolio.id,
+        strategy
+      );
+      
+      if (!riskAssessment.canTrade) {
+        console.log(`🚫 Trade blocked by risk management: ${riskAssessment.reasons.join(', ')}`);
+        return null;
+      }
+      
+      if (riskAssessment.risk === 'high' || riskAssessment.risk === 'extreme') {
+        console.log(`⚠️ ${riskAssessment.risk.toUpperCase()} RISK: ${riskAssessment.reasons.join(', ')}`);
+        // Use recommended position size for high-risk trades
+        signal.size = riskAssessment.recommendedPositionSize;
+      }
 
       // Check if we have sufficient balance
       const availableBalance = tradingMode === 'paper' 
