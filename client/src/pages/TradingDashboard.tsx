@@ -971,54 +971,63 @@ export default function TradingDashboard() {
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
                   <AlertTriangle className="h-5 w-5" />
-                  Cascade Detection
+                  Global Settings
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="cascadeDetectionEnabled" className="text-sm font-medium">Enable cascade detection:</Label>
-                  <Switch
-                    id="cascadeDetectionEnabled"
-                    checked={riskSettingsFormData.cascadeDetectionEnabled || false}
-                    onCheckedChange={(checked) => setRiskSettingsFormData({
+                <div className="space-y-2">
+                  <Label htmlFor="maxSymbolConcentration" className="text-sm font-medium">Max symbol concentration (%):</Label>
+                  <Input
+                    id="maxSymbolConcentration"
+                    type="number"
+                    min="10"
+                    max="50"
+                    step="5"
+                    value={riskSettingsFormData.maxSymbolConcentrationPercent || ''}
+                    onChange={(e) => setRiskSettingsFormData({
                       ...riskSettingsFormData, 
-                      cascadeDetectionEnabled: checked
+                      maxSymbolConcentrationPercent: e.target.value
                     })}
-                    data-testid="switch-cascade-detection"
+                    className="h-8"
+                    data-testid="input-max-symbol-concentration"
                   />
+                  <p className="text-xs text-muted-foreground">Maximum percentage of portfolio allocated to any single asset</p>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="cascadeCooldown" className="text-sm font-medium">Cooldown period (minutes):</Label>
+                  <Label htmlFor="warningExposure" className="text-sm font-medium">Warning portfolio exposure (%):</Label>
                   <Input
-                    id="cascadeCooldown"
+                    id="warningExposure"
+                    type="number"
+                    min="30"
+                    max="80"
+                    step="5"
+                    value={riskSettingsFormData.warningPortfolioExposurePercent || ''}
+                    onChange={(e) => setRiskSettingsFormData({
+                      ...riskSettingsFormData, 
+                      warningPortfolioExposurePercent: e.target.value
+                    })}
+                    className="h-8"
+                    data-testid="input-warning-exposure"
+                  />
+                  <p className="text-xs text-muted-foreground">Warning threshold before reaching max portfolio exposure</p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="maxPositionSize" className="text-sm font-medium">Max position size (%):</Label>
+                  <Input
+                    id="maxPositionSize"
                     type="number"
                     min="1"
-                    max="60"
-                    value={riskSettingsFormData.cascadeCooldownMinutes || ''}
+                    max="10"
+                    step="0.5"
+                    value={riskSettingsFormData.maxPositionSizePercent || ''}
                     onChange={(e) => setRiskSettingsFormData({
                       ...riskSettingsFormData, 
-                      cascadeCooldownMinutes: parseInt(e.target.value) || 0
+                      maxPositionSizePercent: e.target.value
                     })}
                     className="h-8"
-                    data-testid="input-cascade-cooldown"
+                    data-testid="input-max-position-size"
                   />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="highVolatilityThreshold" className="text-sm font-medium">High volatility threshold (%):</Label>
-                  <Input
-                    id="highVolatilityThreshold"
-                    type="number"
-                    min="5"
-                    max="50"
-                    step="1"
-                    value={riskSettingsFormData.highVolatilityThreshold || ''}
-                    onChange={(e) => setRiskSettingsFormData({
-                      ...riskSettingsFormData, 
-                      highVolatilityThreshold: e.target.value
-                    })}
-                    className="h-8"
-                    data-testid="input-high-volatility-threshold"
-                  />
+                  <p className="text-xs text-muted-foreground">Maximum size of any single position as % of portfolio</p>
                 </div>
               </CardContent>
             </Card>
