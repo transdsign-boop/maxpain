@@ -1049,6 +1049,17 @@ export default function TradingDashboard() {
                       <p className="font-mono font-medium">{formatCurrency(position.currentPrice)}</p>
                     </div>
                     <div>
+                      <p className="text-muted-foreground">Leverage</p>
+                      <div className="flex items-center gap-1">
+                        <p className="font-mono font-medium text-blue-600">
+                          {riskSettings?.leverage ? `${riskSettings.leverage}x` : '1.00x'}
+                        </p>
+                        <Badge variant="outline" className="text-xs px-1 py-0.5">
+                          {riskSettings?.leverage && parseFloat(riskSettings.leverage) > 1 ? 'LEVERAGED' : 'NO LEVERAGE'}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div>
                       <p className="text-muted-foreground">Unrealized P&L</p>
                       <p className={`font-mono font-medium ${getPnlColor(position.unrealizedPnl)}`}>
                         {formatCurrency(position.unrealizedPnl)}

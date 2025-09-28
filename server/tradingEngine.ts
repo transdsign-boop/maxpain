@@ -159,7 +159,13 @@ export class TradingEngine {
       }
 
       // Generate counter-trading signal
-      // CRITICAL FIX: Ensure we always have a valid sessionId to prevent database null constraint errors\n      let targetSessionId = sessionId;\n      if (!targetSessionId) {\n        const portfolios = await storage.getAllPaperTradingPortfolios();\n        targetSessionId = portfolios.length > 0 ? portfolios[0].sessionId : 'demo-session';\n      }\n      const signal = await this.generateCounterSignal(liquidation, strategy, volatility, targetSessionId);
+      // CRITICAL FIX: Ensure we always have a valid sessionId to prevent database null constraint errors
+      let targetSessionId = sessionId;
+      if (!targetSessionId) {
+        const portfolios = await storage.getAllPaperTradingPortfolios();
+        targetSessionId = portfolios.length > 0 ? portfolios[0].sessionId : 'demo-session';
+      }
+      const signal = await this.generateCounterSignal(liquidation, strategy, volatility, targetSessionId);
       if (signal) {
         signals.push(signal);
       }
@@ -186,19 +192,27 @@ export class TradingEngine {
     // CRITICAL FIX: Calculate position size in USD, not in units
     const availableBalance = parseFloat(portfolio.paperBalance);
     
-    // Get risk settings for configurable risk per trade
+    // Get risk settings for configurable risk per trade AND leverage
     const riskSettings = await storage.getRiskSettings(portfolio.sessionId) || {
-      maxRiskPerTradePercent: '2.00'
+      maxRiskPerTradePercent: '2.00',
+      leverage: '1.00'
     };
     const maxRiskPerTrade = parseFloat(riskSettings.maxRiskPerTradePercent as string) / 100;
-    const maxPositionValue = availableBalance * maxRiskPerTrade;
+    const leverage = parseFloat(riskSettings.leverage as string) || 1.00;
     
-    // Calculate position size in units based on USD value
-    const positionSizeInUnits = maxPositionValue / entryPrice;
+    // CRITICAL FIX: Apply leverage to increase position size
+    // Leverage allows controlling larger positions with less capital
+    const basePositionValue = availableBalance * maxRiskPerTrade;
+    const leveragedPositionValue = basePositionValue * leverage;
+    
+    // Calculate position size in units based on leveraged USD value
+    const positionSizeInUnits = leveragedPositionValue / entryPrice;
     
     // Apply volatility adjustment
     const volatilityAdjustment = Math.max(0.1, 1 - (volatility / 50)); // More conservative
     const adjustedSize = positionSizeInUnits * volatilityAdjustment;
+    
+    console.log(`⚖️ Leverage ${leverage}x applied: Base value $${basePositionValue.toFixed(2)} → Leveraged value $${leveragedPositionValue.toFixed(2)}`);
     
     // Use risk manager for dynamic stop loss and take profit
     const dynamicStopLoss = riskManager.calculateDynamicStopLoss(
@@ -224,7 +238,7 @@ export class TradingEngine {
       entryPrice,
       stopLossPrice: dynamicStopLoss.stopLossPrice,
       takeProfitPrice: dynamicTakeProfit.takeProfitPrice,
-      reason: `Counter-trade liquidation: ${liquidation.side} liquidated at $${liquidation.price} (2% risk)`,
+      reason: `Counter-trade liquidation: ${liquidation.side} liquidated at $${liquidation.price} (${leverage}x leverage)`,
       triggeredByLiquidation: liquidation.id
     };
 
