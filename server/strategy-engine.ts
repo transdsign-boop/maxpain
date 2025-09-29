@@ -235,50 +235,49 @@ export class StrategyEngine extends EventEmitter {
       return false;
     }
 
-    // Check price spacing for layering
-    const currentPrice = parseFloat(liquidation.price);
-    const lastLayerPrice = parseFloat(position.lastLayerPrice || position.avgEntryPrice);
-    const spacingPercent = parseFloat(strategy.layerSpacingPercent);
-    
-    // Calculate required price movement for next layer
-    const requiredSpacing = lastLayerPrice * (spacingPercent / 100);
-    
-    if (position.side === 'long') {
-      // For long positions, add layers when price drops further
-      return currentPrice <= (lastLayerPrice - requiredSpacing);
-    } else {
-      // For short positions, add layers when price rises further
-      return currentPrice >= (lastLayerPrice + requiredSpacing);
-    }
+    // Layer is allowed - liquidation exceeds the percentile threshold
+    console.log(`📊 Layer approved: Liquidation $${currentLiquidationValue.toFixed(2)} exceeds ${strategy.percentileThreshold}% threshold $${percentileValue.toFixed(2)}`);
+    return true;
   }
 
-  // Execute initial position entry
+  // Execute initial position entry with smart order placement
   private async executeEntry(strategy: Strategy, session: TradeSession, liquidation: Liquidation) {
     try {
       const side = liquidation.side === 'long' ? 'buy' : 'sell'; // Counter-trade
       const orderSide = liquidation.side === 'long' ? 'long' : 'short';
       const price = parseFloat(liquidation.price);
+      
+      // Calculate available capital based on account usage percentage
+      const currentBalance = parseFloat(session.currentBalance);
+      const marginPercent = parseFloat(strategy.marginAmount);
+      const availableCapital = (marginPercent / 100) * currentBalance;
+      
+      // Calculate position size as percentage of available capital
       const positionSizePercent = parseFloat(strategy.positionSizePercent);
-      const quantity = (positionSizePercent / 100) * session.currentBalance / price; // Position sizing as % of portfolio
+      const positionValue = (positionSizePercent / 100) * availableCapital;
+      const quantity = positionValue / price;
 
-      console.log(`🎯 Entering ${orderSide} position for ${liquidation.symbol} at $${price}`);
+      console.log(`🎯 Entering ${orderSide} position for ${liquidation.symbol} at $${price} (Capital: ${marginPercent}% of $${currentBalance} = $${availableCapital}, Position: ${positionSizePercent}% = $${positionValue})`);
 
-      // Place paper order
-      const order = await storage.placePaperOrder({
-        sessionId: session.id,
+      // Apply order delay for smart placement
+      if (strategy.orderDelayMs > 0) {
+        console.log(`⏱️ Applying ${strategy.orderDelayMs}ms order delay...`);
+        await new Promise(resolve => setTimeout(resolve, strategy.orderDelayMs));
+      }
+
+      // Place order with price chasing
+      await this.placeOrderWithRetry({
+        strategy,
+        session,
         symbol: liquidation.symbol,
         side,
-        orderType: 'market',
-        quantity: quantity.toString(),
-        price: price.toString(),
+        orderSide,
+        quantity,
+        targetPrice: price,
         triggerLiquidationId: liquidation.id,
         layerNumber: 1,
       });
 
-      // Immediately fill the paper order
-      await this.fillPaperOrder(order, price, quantity);
-
-      console.log(`✅ Entry order filled: ${quantity.toFixed(4)} ${liquidation.symbol} at $${price}`);
     } catch (error) {
       console.error('❌ Error executing entry:', error);
     }
@@ -294,31 +293,109 @@ export class StrategyEngine extends EventEmitter {
     try {
       const side = position.side === 'long' ? 'buy' : 'sell';
       const price = parseFloat(liquidation.price);
+      
+      // Calculate available capital based on account usage percentage
+      const currentBalance = parseFloat(session.currentBalance);
+      const marginPercent = parseFloat(strategy.marginAmount);
+      const availableCapital = (marginPercent / 100) * currentBalance;
+      
+      // Calculate position size as percentage of available capital
       const positionSizePercent = parseFloat(strategy.positionSizePercent);
-      const quantity = (positionSizePercent / 100) * session.currentBalance / price;
+      const positionValue = (positionSizePercent / 100) * availableCapital;
+      const quantity = positionValue / price;
       const nextLayer = position.layersFilled + 1;
 
-      console.log(`📈 Adding layer ${nextLayer} for ${liquidation.symbol} at $${price}`);
+      console.log(`📈 Adding layer ${nextLayer} for ${liquidation.symbol} at $${price} (Position: ${positionSizePercent}% of $${availableCapital} = $${positionValue})`);
 
-      // Place layer order
-      const order = await storage.placePaperOrder({
-        sessionId: session.id,
+      // Apply order delay for smart placement
+      if (strategy.orderDelayMs > 0) {
+        console.log(`⏱️ Applying ${strategy.orderDelayMs}ms order delay for layer ${nextLayer}...`);
+        await new Promise(resolve => setTimeout(resolve, strategy.orderDelayMs));
+      }
+
+      // Place layer order with price chasing
+      await this.placeOrderWithRetry({
+        strategy,
+        session,
         symbol: liquidation.symbol,
         side,
-        orderType: 'market',
-        quantity: quantity.toString(),
-        price: price.toString(),
+        orderSide: position.side,
+        quantity,
+        targetPrice: price,
         triggerLiquidationId: liquidation.id,
         layerNumber: nextLayer,
       });
 
-      // Fill the paper order (this already updates the position)
-      await this.fillPaperOrder(order, price, quantity);
-
-      console.log(`✅ Layer ${nextLayer} filled for ${liquidation.symbol}`);
+      console.log(`✅ Layer ${nextLayer} completed for ${liquidation.symbol}`);
     } catch (error) {
       console.error('❌ Error executing layer:', error);
     }
+  }
+
+  // Smart order placement with price chasing retry logic
+  private async placeOrderWithRetry(params: {
+    strategy: Strategy;
+    session: TradeSession;
+    symbol: string;
+    side: string;
+    orderSide: string;
+    quantity: number;
+    targetPrice: number;
+    triggerLiquidationId: string;
+    layerNumber: number;
+  }) {
+    const { strategy, session, symbol, side, orderSide, quantity, targetPrice, triggerLiquidationId, layerNumber } = params;
+    const maxRetryDuration = strategy.maxRetryDurationMs;
+    const slippageTolerance = parseFloat(strategy.slippageTolerancePercent) / 100;
+    const startTime = Date.now();
+    
+    console.log(`🎯 Starting smart order placement: ${quantity.toFixed(4)} ${symbol} at $${targetPrice} (max retry: ${maxRetryDuration}ms, slippage: ${(slippageTolerance * 100).toFixed(2)}%)`);
+
+    while (Date.now() - startTime < maxRetryDuration) {
+      try {
+        // Get current market price (from cache or use target price)
+        const currentPrice = this.priceCache.get(symbol) || targetPrice;
+        
+        // Check if current price is within slippage tolerance
+        const priceDeviation = Math.abs(currentPrice - targetPrice) / targetPrice;
+        const orderPrice = strategy.orderType === 'market' ? currentPrice : targetPrice;
+        
+        if (priceDeviation <= slippageTolerance) {
+          console.log(`✅ Price acceptable: $${currentPrice} (deviation: ${(priceDeviation * 100).toFixed(2)}%)`);
+          
+          // Place the order
+          const order = await storage.placePaperOrder({
+            sessionId: session.id,
+            symbol,
+            side,
+            orderType: strategy.orderType,
+            quantity: quantity.toString(),
+            price: orderPrice.toString(),
+            triggerLiquidationId,
+            layerNumber,
+          });
+
+          // Fill the paper order immediately
+          await this.fillPaperOrder(order, orderPrice, quantity);
+          
+          console.log(`✅ Order filled: ${quantity.toFixed(4)} ${symbol} at $${orderPrice}`);
+          return;
+        } else {
+          const timeRemaining = maxRetryDuration - (Date.now() - startTime);
+          console.log(`⚠️ Price deviation too high: ${(priceDeviation * 100).toFixed(2)}% (${timeRemaining}ms remaining)`);
+          
+          if (timeRemaining <= 0) break;
+          
+          // Wait before retrying (shorter intervals for more responsive chasing)
+          await new Promise(resolve => setTimeout(resolve, Math.min(1000, timeRemaining)));
+        }
+      } catch (error) {
+        console.error('❌ Error in price chasing retry:', error);
+        break;
+      }
+    }
+    
+    console.log(`❌ Order retry timeout: Failed to place order within ${maxRetryDuration}ms due to price movement`);
   }
 
   // Fill a paper order and create fill record
