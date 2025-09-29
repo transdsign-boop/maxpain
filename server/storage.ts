@@ -27,6 +27,7 @@ export interface IStorage {
   getLiquidationsBySymbol(symbols: string[], limit?: number): Promise<Liquidation[]>;
   getLiquidationsSince(timestamp: Date, limit?: number): Promise<Liquidation[]>;
   getLargestLiquidationSince(timestamp: Date): Promise<Liquidation | undefined>;
+  getLiquidationsBySignature(symbol: string, side: string, size: string, price: string, since: Date): Promise<Liquidation[]>;
   
   // Analytics operations
   getAvailableAssets(): Promise<{ symbol: string; count: number; latestTimestamp: Date }[]>;
@@ -110,6 +111,27 @@ export class DatabaseStorage implements IStorage {
       .where(inArray(liquidations.symbol, symbols))
       .orderBy(desc(liquidations.timestamp))
       .limit(limit);
+  }
+
+  async getLiquidationsBySignature(
+    symbol: string, 
+    side: string, 
+    size: string, 
+    price: string, 
+    since: Date
+  ): Promise<Liquidation[]> {
+    return await db.select()
+      .from(liquidations)
+      .where(
+        and(
+          eq(liquidations.symbol, symbol),
+          eq(liquidations.side, side),
+          eq(liquidations.size, size),
+          eq(liquidations.price, price),
+          gte(liquidations.timestamp, since)
+        )
+      )
+      .limit(1);
   }
 
   async getLiquidationsSince(timestamp: Date, limit: number = 100): Promise<Liquidation[]> {

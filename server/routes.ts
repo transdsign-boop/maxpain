@@ -901,14 +901,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   return httpServer;
 }
 
+// Global deduplication cache (persists across reconnections)
+const recentLiquidations = new Map<string, number>();
+const DEDUP_WINDOW_MS = 5000; // 5 second window for deduplication
+
 async function connectToAsterDEX(clients: Set<WebSocket>) {
   try {
     console.log('Connecting to Aster DEX WebSocket...');
-    
-    // Deduplication: Track recent liquidation signatures to prevent duplicates
-    // Aster DEX @arr stream sometimes sends the same event multiple times
-    const recentLiquidations = new Map<string, number>();
-    const DEDUP_WINDOW_MS = 5000; // 5 second window for deduplication
     
     // Connect to real Aster DEX liquidation stream
     const asterWs = new WebSocket('wss://fstream.asterdex.com/ws/!forceOrder@arr');
@@ -961,6 +960,21 @@ async function connectToAsterDEX(clients: Set<WebSocket>) {
                 recentLiquidations.delete(key);
               }
             }
+          }
+          
+          // Database-level deduplication check
+          const fiveSecondsAgo = new Date(Date.now() - DEDUP_WINDOW_MS);
+          const recentDuplicates = await storage.getLiquidationsBySignature(
+            liquidationData.symbol,
+            liquidationData.side,
+            liquidationData.size,
+            liquidationData.price,
+            fiveSecondsAgo
+          );
+          
+          if (recentDuplicates.length > 0) {
+            console.log(`🔄 Skipping duplicate (database check): ${liquidationData.symbol} ${liquidationData.side} $${liquidationData.value}`);
+            return;
           }
           
           // Validate and store in database
