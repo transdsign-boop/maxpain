@@ -37,10 +37,8 @@ export default function LiveLiquidationsSidebar({
   // Show ALL recent liquidations (last 20) regardless of selected assets for display
   const recentLiquidations = liquidations.slice(0, 20);
 
-  // Calculate stats from ALL liquidations, not just the recent 20
+  // Calculate total value from ALL liquidations
   const totalValue = liquidations.reduce((sum, liq) => sum + parseFloat(liq.value), 0);
-  const longCount = liquidations.filter(liq => liq.side === "long").length;
-  const shortCount = liquidations.filter(liq => liq.side === "short").length;
 
   const formatValue = (value: number) => {
     if (value >= 1000000) return `$${(value / 1000000).toFixed(2)}M`;
@@ -89,23 +87,11 @@ export default function LiveLiquidationsSidebar({
           </div>
           
           {/* Quick Stats */}
-          <div className="grid grid-cols-3 gap-2 text-xs">
-            <div className="text-center p-2 rounded-md bg-muted/30">
-              <div className="text-muted-foreground text-xs">Total</div>
-              <div className="font-bold text-sm" data-testid="text-total-value">
+          <div className="text-xs">
+            <div className="text-center p-3 rounded-md bg-muted/30">
+              <div className="text-muted-foreground text-xs">Total Value</div>
+              <div className="font-bold text-lg" data-testid="text-total-value">
                 {formatValue(totalValue)}
-              </div>
-            </div>
-            <div className="text-center p-2 rounded-md bg-red-500/10">
-              <div className="text-muted-foreground text-xs">Longs</div>
-              <div className="font-bold text-sm text-red-600" data-testid="text-long-count">
-                {longCount}
-              </div>
-            </div>
-            <div className="text-center p-2 rounded-md bg-green-500/10">
-              <div className="text-muted-foreground text-xs">Shorts</div>
-              <div className="font-bold text-sm text-green-600" data-testid="text-short-count">
-                {shortCount}
               </div>
             </div>
           </div>
