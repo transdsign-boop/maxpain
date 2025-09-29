@@ -10,6 +10,7 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+- **Fixed duplicate liquidation entries:** Resolved issue where identical liquidations were being stored twice due to decimal precision mismatch in deduplication logic. Updated database queries to use numeric comparison instead of string equality for decimal columns
 - **Live/Paper Trading Toggle:** Added ability to switch between paper trading (simulated) and live trading (real orders on Aster DEX). Trading mode is configurable per strategy with a simple toggle switch
 - **Collapsible Trading Strategy Panel:** Trading strategy configuration section is now collapsible for better screen space management
 - **Real-time Price Data:** Eliminated all cached price data - all P&L calculations, position closings, and order placements now use live prices fetched directly from Aster DEX API

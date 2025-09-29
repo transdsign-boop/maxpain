@@ -120,14 +120,15 @@ export class DatabaseStorage implements IStorage {
     price: string, 
     since: Date
   ): Promise<Liquidation[]> {
+    // Use SQL to compare decimals numerically, not as strings
     return await db.select()
       .from(liquidations)
       .where(
         and(
           eq(liquidations.symbol, symbol),
           eq(liquidations.side, side),
-          eq(liquidations.size, size),
-          eq(liquidations.price, price),
+          sql`CAST(${liquidations.size} AS NUMERIC) = CAST(${size} AS NUMERIC)`,
+          sql`CAST(${liquidations.price} AS NUMERIC) = CAST(${price} AS NUMERIC)`,
           gte(liquidations.timestamp, since)
         )
       )
