@@ -10,6 +10,7 @@ interface LiquidationRowProps {
   value: string;
   timestamp: Date;
   isHighlighted?: boolean;
+  allValues?: number[]; // Array of all liquidation values for percentile calculation
 }
 
 export default function LiquidationRow({
@@ -20,7 +21,8 @@ export default function LiquidationRow({
   price,
   value,
   timestamp,
-  isHighlighted = false
+  isHighlighted = false,
+  allValues
 }: LiquidationRowProps) {
   // BUY should be green (success), SELL should be red (destructive)
   const sideColor = side === "long" ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400";
@@ -36,6 +38,55 @@ export default function LiquidationRow({
     }
     return parsed.toFixed(2);
   };
+
+  // Calculate percentile rank for this liquidation value (using pre-sorted values)
+  const calculatePercentile = (currentValue: number) => {
+    if (!allValues || allValues.length === 0) return null;
+    
+    // Binary search for efficient O(log n) lookup
+    let left = 0, right = allValues.length;
+    while (left < right) {
+      const mid = Math.floor((left + right) / 2);
+      if (allValues[mid] <= currentValue) {
+        left = mid + 1;
+      } else {
+        right = mid;
+      }
+    }
+    return Math.round((left / allValues.length) * 100);
+  };
+
+  const getOrdinalSuffix = (n: number) => {
+    const lastDigit = n % 10;
+    const lastTwoDigits = n % 100;
+    
+    // Special cases for 11th, 12th, 13th
+    if (lastTwoDigits >= 11 && lastTwoDigits <= 13) {
+      return `${n}th`;
+    }
+    
+    // Regular cases
+    switch (lastDigit) {
+      case 1: return `${n}st`;
+      case 2: return `${n}nd`;
+      case 3: return `${n}rd`;
+      default: return `${n}th`;
+    }
+  };
+
+  const getPercentileLabel = (percentile: number) => {
+    const ordinal = getOrdinalSuffix(percentile);
+    
+    if (percentile >= 95) return { text: ordinal, color: 'bg-red-500 text-white' };
+    if (percentile >= 90) return { text: ordinal, color: 'bg-orange-500 text-white' };
+    if (percentile >= 75) return { text: ordinal, color: 'bg-yellow-500 text-black' };
+    if (percentile >= 50) return { text: ordinal, color: 'bg-blue-500 text-white' };
+    return { text: ordinal, color: 'bg-gray-500 text-white' };
+  };
+
+  const currentValue = parseFloat(value);
+  const percentile = calculatePercentile(currentValue);
+  const percentileLabel = percentile ? getPercentileLabel(percentile) : null;
 
   return (
     <tr
@@ -65,7 +116,17 @@ export default function LiquidationRow({
         ${formatNumber(price)}
       </td>
       <td className={`p-2 font-mono text-sm font-semibold ${sideColor}`} data-testid={`text-value-${id}`}>
-        ${formatNumber(value)}
+        <div className="flex items-center gap-2">
+          <span>${formatNumber(value)}</span>
+          {percentileLabel && (
+            <Badge 
+              className={`text-xs px-1.5 py-0.5 ${percentileLabel.color}`}
+              data-testid={`badge-percentile-${id}`}
+            >
+              {percentileLabel.text}
+            </Badge>
+          )}
+        </div>
       </td>
     </tr>
   );

@@ -55,6 +55,9 @@ export default function LiquidationTable({
   isConnected
 }: LiquidationTableProps) {
   const displayedLiquidations = liquidations.slice(0, maxRows);
+  
+  // Pre-calculate sorted values for percentile calculations
+  const allValues = liquidations.map(liq => parseFloat(liq.value)).sort((a, b) => a - b);
 
   // Formatting function from StatsCards
   const formatNumber = (num: string | number) => {
@@ -187,6 +190,7 @@ export default function LiquidationTable({
                     key={liquidation.id}
                     {...liquidation}
                     isHighlighted={index < 3} // Highlight recent liquidations
+                    allValues={allValues}
                   />
                 ))}
                 {displayedLiquidations.length === 0 && (

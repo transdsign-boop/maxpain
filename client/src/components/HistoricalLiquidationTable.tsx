@@ -52,6 +52,55 @@ export default function HistoricalLiquidationTable({
     return num.toFixed(4);
   };
 
+  // Pre-calculate all percentiles for efficiency (O(n log n) instead of O(n²))
+  const allValues = useMemo(() => {
+    return liquidations.map(liq => parseFloat(liq.value)).sort((a, b) => a - b);
+  }, [liquidations]);
+
+  const calculatePercentile = (value: number) => {
+    if (allValues.length === 0) return 0;
+    
+    // Binary search for efficient O(log n) lookup
+    let left = 0, right = allValues.length;
+    while (left < right) {
+      const mid = Math.floor((left + right) / 2);
+      if (allValues[mid] <= value) {
+        left = mid + 1;
+      } else {
+        right = mid;
+      }
+    }
+    return Math.round((left / allValues.length) * 100);
+  };
+
+  const getOrdinalSuffix = (n: number) => {
+    const lastDigit = n % 10;
+    const lastTwoDigits = n % 100;
+    
+    // Special cases for 11th, 12th, 13th
+    if (lastTwoDigits >= 11 && lastTwoDigits <= 13) {
+      return `${n}th`;
+    }
+    
+    // Regular cases
+    switch (lastDigit) {
+      case 1: return `${n}st`;
+      case 2: return `${n}nd`;
+      case 3: return `${n}rd`;
+      default: return `${n}th`;
+    }
+  };
+
+  const getPercentileLabel = (percentile: number) => {
+    const ordinal = getOrdinalSuffix(percentile);
+    
+    if (percentile >= 95) return { text: ordinal, color: 'bg-red-500 text-white' };
+    if (percentile >= 90) return { text: ordinal, color: 'bg-orange-500 text-white' };
+    if (percentile >= 75) return { text: ordinal, color: 'bg-yellow-500 text-black' };
+    if (percentile >= 50) return { text: ordinal, color: 'bg-blue-500 text-white' };
+    return { text: ordinal, color: 'bg-gray-500 text-white' };
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-8">
@@ -159,12 +208,26 @@ export default function HistoricalLiquidationTable({
                   ${parseFloat(liquidation.price).toFixed(6)}
                 </td>
                 <td className="p-3 font-mono text-xs font-semibold">
-                  <span className={`${
-                    parseFloat(liquidation.value) > 10000 ? 'text-orange-500' : 
-                    parseFloat(liquidation.value) > 1000 ? 'text-yellow-600' : 'text-foreground'
-                  }`}>
-                    {formatValue(liquidation.value)}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className={`${
+                      parseFloat(liquidation.value) > 10000 ? 'text-orange-500' : 
+                      parseFloat(liquidation.value) > 1000 ? 'text-yellow-600' : 'text-foreground'
+                    }`}>
+                      {formatValue(liquidation.value)}
+                    </span>
+                    {(() => {
+                      const percentile = calculatePercentile(parseFloat(liquidation.value));
+                      const label = getPercentileLabel(percentile);
+                      return (
+                        <Badge 
+                          className={`text-xs px-1.5 py-0.5 ${label.color}`}
+                          data-testid={`badge-percentile-${liquidation.id}`}
+                        >
+                          {label.text}
+                        </Badge>
+                      );
+                    })()}
+                  </div>
                 </td>
               </tr>
             ))}
