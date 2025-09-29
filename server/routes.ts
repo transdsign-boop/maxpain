@@ -741,6 +741,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get position summary by strategy ID (finds active trade session automatically)
+  app.get('/api/strategies/:strategyId/positions/summary', async (req, res) => {
+    try {
+      const { strategyId } = req.params;
+      
+      // Find the active trade session for this strategy
+      const session = await storage.getActiveTradeSession(strategyId);
+      
+      if (!session) {
+        return res.status(404).json({ error: 'No active trade session found for this strategy' });
+      }
+
+      const positions = await storage.getOpenPositions(session.id);
+
+      // Calculate totals
+      const totalUnrealizedPnl = positions.reduce((sum, pos) => 
+        sum + parseFloat(pos.unrealizedPnl || '0'), 0);
+      const totalRealizedPnl = parseFloat(session.totalPnl || '0');
+      const totalExposure = positions.reduce((sum, pos) => 
+        sum + parseFloat(pos.totalCost || '0'), 0);
+      const activePositions = positions.length;
+
+      const summary = {
+        sessionId: session.id,
+        strategyId,
+        startingBalance: parseFloat(session.startingBalance),
+        currentBalance: parseFloat(session.currentBalance),
+        totalPnl: totalRealizedPnl + totalUnrealizedPnl,
+        realizedPnl: totalRealizedPnl,
+        unrealizedPnl: totalUnrealizedPnl,
+        totalExposure,
+        activePositions,
+        totalTrades: session.totalTrades,
+        winRate: parseFloat(session.winRate || '0'),
+        positions
+      };
+
+      res.json(summary);
+    } catch (error) {
+      console.error('Error fetching strategy position summary:', error);
+      res.status(500).json({ error: 'Failed to fetch position summary' });
+    }
+  });
+
   app.get('/api/positions/:sessionId/summary', async (req, res) => {
     try {
       const { sessionId } = req.params;

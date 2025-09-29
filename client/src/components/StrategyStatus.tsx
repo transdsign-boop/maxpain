@@ -41,16 +41,32 @@ interface StrategyStatusProps {
 }
 
 export function StrategyStatus({ sessionId }: StrategyStatusProps) {
-  const { data: summary, isLoading, error } = useQuery<PositionSummary>({
-    queryKey: ['/api/positions', sessionId, 'summary'],
+  // First, get active strategies for this user session
+  const { data: strategies } = useQuery<any[]>({
+    queryKey: ['/api/strategies', sessionId],
     queryFn: async () => {
-      const response = await fetch(`/api/positions/${sessionId}/summary`);
+      const response = await fetch(`/api/strategies/${sessionId}`);
+      if (!response.ok) return [];
+      return response.json();
+    },
+    enabled: !!sessionId,
+    refetchInterval: 5000,
+  });
+
+  // Find the active strategy
+  const activeStrategy = strategies?.find(s => s.isActive);
+
+  // Then fetch positions using the strategy ID
+  const { data: summary, isLoading, error } = useQuery<PositionSummary>({
+    queryKey: ['/api/strategies', activeStrategy?.id, 'positions', 'summary'],
+    queryFn: async () => {
+      const response = await fetch(`/api/strategies/${activeStrategy.id}/positions/summary`);
       if (!response.ok) {
         throw new Error(`${response.status}: ${await response.text()}`);
       }
       return response.json();
     },
-    enabled: !!sessionId,
+    enabled: !!activeStrategy?.id,
     refetchInterval: 5000, // Refresh every 5 seconds for real-time P&L
     retry: (failureCount, error: any) => {
       // Don't retry 404 errors - they indicate no trade session exists
