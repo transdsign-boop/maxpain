@@ -2,8 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import ConnectionStatus from "@/components/ConnectionStatus";
 import LiquidationTable from "@/components/LiquidationTable";
 import LiveLiquidationsSidebar from "@/components/LiveLiquidationsSidebar";
-import AssetSelector from "@/components/AssetSelector";
-import LiquidationAnalytics from "@/components/LiquidationAnalytics";
+import LiquidationAnalyticsModal from "@/components/LiquidationAnalyticsModal";
 import ThemeToggle from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -27,6 +26,10 @@ export default function Dashboard() {
   const [selectedAssets, setSelectedAssets] = useState<string[]>([]);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  
+  // Modal state for liquidation analytics
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedLiquidation, setSelectedLiquidation] = useState<Liquidation | undefined>(undefined);
   
   // Real liquidation data from WebSocket and API
   const [liquidations, setLiquidations] = useState<Liquidation[]>([]);
@@ -313,6 +316,17 @@ export default function Dashboard() {
     }
   };
 
+  // Handle liquidation click to open analytics modal
+  const handleLiquidationClick = (liquidation: Liquidation) => {
+    setSelectedLiquidation(liquidation);
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setSelectedLiquidation(undefined);
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -353,23 +367,15 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* Main Content with Dynamic Sidebar Space */}
+      {/* Main Content with Dynamic Sidebar Space - Empty for now */}
       <main 
         className={`p-6 space-y-6 transition-all duration-300 ${
           isSidebarCollapsed ? 'md:mr-12' : 'md:mr-80'
         }`}
       >
-        {/* Asset Selection */}
-        <div className="w-full max-w-2xl">
-          <AssetSelector
-            selectedAssets={selectedAssets}
-            onAssetsChange={setSelectedAssets}
-          />
-        </div>
-
-        {/* Liquidation Analytics */}
-        <div className="w-full">
-          <LiquidationAnalytics selectedAssets={selectedAssets} />
+        {/* Main section is empty - analytics are now in a pop-up modal */}
+        <div className="flex items-center justify-center h-96 text-muted-foreground">
+          <p>Click on any liquidation in the sidebar to view detailed analytics</p>
         </div>
       </main>
 
@@ -380,6 +386,7 @@ export default function Dashboard() {
         selectedAssets={selectedAssets}
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={setIsSidebarCollapsed}
+        onLiquidationClick={handleLiquidationClick}
       />
 
       {/* Hidden file input for settings import */}
@@ -390,6 +397,13 @@ export default function Dashboard() {
         onChange={importSettings}
         style={{ display: 'none' }}
         data-testid="input-import-settings"
+      />
+
+      {/* Liquidation Analytics Modal */}
+      <LiquidationAnalyticsModal
+        isOpen={isModalOpen}
+        onClose={handleCloseModal}
+        selectedLiquidation={selectedLiquidation}
       />
 
       {/* Debug Controls */}
