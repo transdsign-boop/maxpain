@@ -3,11 +3,10 @@ import ConnectionStatus from "@/components/ConnectionStatus";
 import LiquidationTable from "@/components/LiquidationTable";
 import AssetSelector from "@/components/AssetSelector";
 import LiquidationAnalytics from "@/components/LiquidationAnalytics";
-import TradingDashboard from "@/pages/TradingDashboard";
+import ThemeToggle from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Settings, Download, Upload, TrendingUp, Activity } from "lucide-react";
+import { Settings, Download, Upload } from "lucide-react";
 
 interface Liquidation {
   id: string;
@@ -33,28 +32,13 @@ export default function Dashboard() {
   // File input ref for settings import
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Generate or get persistent session ID that survives forever
+  // Generate or get persistent session ID
   const getSessionId = () => {
-    // Try multiple storage locations for maximum persistence
-    let sessionId = localStorage.getItem('aster-permanent-session-id');
-    
+    let sessionId = localStorage.getItem('aster-session-id');
     if (!sessionId) {
-      sessionId = sessionStorage.getItem('aster-permanent-session-id');
+      sessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      localStorage.setItem('aster-session-id', sessionId);
     }
-    
-    if (!sessionId) {
-      // Check if there's an existing demo-session in database (migration)
-      sessionId = 'aster-user-' + Date.now() + '-' + Math.random().toString(36).substr(2, 12);
-    }
-    
-    // Store in multiple locations for maximum persistence
-    try {
-      localStorage.setItem('aster-permanent-session-id', sessionId);
-      sessionStorage.setItem('aster-permanent-session-id', sessionId);
-    } catch (error) {
-      console.warn('Could not save session ID to storage:', error);
-    }
-    
     return sessionId;
   };
 
@@ -126,30 +110,10 @@ export default function Dashboard() {
     reader.readAsText(file);
   };
 
-  // Migrate demo-session data to permanent session
-  const migrateDemoSessionData = async (sessionId: string) => {
-    try {
-      const response = await fetch('/api/settings/migrate-demo-session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ newSessionId: sessionId }),
-      });
-      if (response.ok) {
-        console.log('Successfully migrated demo-session data to permanent session');
-      }
-    } catch (error) {
-      console.warn('Could not migrate demo-session data:', error);
-    }
-  };
-
   // Load settings from database
   const loadSettings = async () => {
     try {
       const sessionId = getSessionId();
-      
-      // First try to migrate any existing demo-session data
-      await migrateDemoSessionData(sessionId);
-      
       const response = await fetch(`/api/settings/${sessionId}`);
       if (response.ok) {
         const settings = await response.json();
@@ -349,108 +313,86 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Status Bar */}
-      <div className="border-b bg-muted/30 px-6 py-2">
-        <div className="flex items-center justify-between">
+      {/* Header */}
+      <header className="border-b bg-card">
+        <div className="flex items-center justify-between px-6 py-4">
+          <div>
+            <h1 className="text-2xl font-bold" data-testid="text-app-title">
+              Aster DEX Liquidations
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Real-time liquidation monitoring and analysis
+            </p>
+          </div>
           <div className="flex items-center gap-4">
             <ConnectionStatus isConnected={isConnected} />
-            <div className="text-sm text-muted-foreground">
-              {selectedAssets.length > 0 ? (
-                `${selectedAssets.length} assets monitored`
-              ) : (
-                "No assets selected"
-              )}
-            </div>
+            
+            {/* Settings Menu */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon" data-testid="button-settings">
+                  <Settings className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={exportSettings} data-testid="button-export-settings">
+                  <Download className="mr-2 h-4 w-4" />
+                  Export Settings
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => fileInputRef.current?.click()} data-testid="button-import-settings">
+                  <Upload className="mr-2 h-4 w-4" />
+                  Import Settings
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            
+            <ThemeToggle />
           </div>
-          
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" data-testid="button-settings-menu">
-                <Settings className="h-4 w-4" />
-                Settings
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={saveSettings} data-testid="menuitem-save-settings">
-                Save Current Settings
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={exportSettings} data-testid="menuitem-export-settings">
-                <Download className="h-4 w-4 mr-2" />
-                Export Settings
-              </DropdownMenuItem>
-              <DropdownMenuItem 
-                onClick={() => fileInputRef.current?.click()} 
-                data-testid="menuitem-import-settings"
-              >
-                <Upload className="h-4 w-4 mr-2" />
-                Import Settings
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
         </div>
-      </div>
+      </header>
 
       {/* Main Content */}
-      <main className="p-6">
-        <Tabs defaultValue="monitoring" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="monitoring" className="flex items-center gap-2" data-testid="tab-liquidation-monitoring">
-              <Activity className="h-4 w-4" />
-              Liquidation Monitoring
-            </TabsTrigger>
-            <TabsTrigger value="trading" className="flex items-center gap-2" data-testid="tab-trading-dashboard">
-              <TrendingUp className="h-4 w-4" />
-              Trading Dashboard
-            </TabsTrigger>
-          </TabsList>
-          
-          <TabsContent value="monitoring" className="space-y-6 mt-6">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Asset Selection */}
-              <div className="lg:col-span-1">
-                <AssetSelector
-                  selectedAssets={selectedAssets}
-                  onAssetsChange={setSelectedAssets}
-                />
-              </div>
+      <main className="p-6 space-y-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Asset Selection */}
+          <div className="lg:col-span-1">
+            <AssetSelector
+              selectedAssets={selectedAssets}
+              onAssetsChange={setSelectedAssets}
+            />
+          </div>
 
-              {/* Live Liquidations with Integrated Stats and Filters */}
-              <div className="lg:col-span-2">
-                <LiquidationTable 
-                  liquidations={filteredLiquidations}
-                  stats={{
-                    totalLiquidations: filteredLiquidations.length,
-                    totalVolume: totalVolume,
-                    longLiquidations: longLiquidations,
-                    shortLiquidations: shortLiquidations,
-                    largestLiquidation: largestLiquidation ? {
-                      value: largestLiquidation.value,
-                      timestamp: largestLiquidation.timestamp,
-                      symbol: largestLiquidation.symbol
-                    } : undefined
-                  }}
-                  timeRange={timeRange}
-                  sideFilter={sideFilter}
-                  minValue={minValue}
-                  onTimeRangeChange={setTimeRange}
-                  onSideFilterChange={setSideFilter}
-                  onMinValueChange={setMinValue}
-                  onRefresh={handleRefresh}
-                  isConnected={isConnected}
-                />
-              </div>
-            </div>
+          {/* Live Liquidations with Integrated Stats and Filters */}
+          <div className="lg:col-span-2">
+            <LiquidationTable 
+              liquidations={filteredLiquidations}
+              stats={{
+                totalLiquidations: filteredLiquidations.length,
+                totalVolume: totalVolume,
+                longLiquidations: longLiquidations,
+                shortLiquidations: shortLiquidations,
+                largestLiquidation: largestLiquidation ? {
+                  value: largestLiquidation.value,
+                  timestamp: largestLiquidation.timestamp,
+                  symbol: largestLiquidation.symbol
+                } : undefined
+              }}
+              timeRange={timeRange}
+              sideFilter={sideFilter}
+              minValue={minValue}
+              onTimeRangeChange={setTimeRange}
+              onSideFilterChange={setSideFilter}
+              onMinValueChange={setMinValue}
+              onRefresh={handleRefresh}
+              isConnected={isConnected}
+            />
+          </div>
+        </div>
 
-            {/* Liquidation Analytics */}
-            <div className="w-full">
-              <LiquidationAnalytics selectedAssets={selectedAssets} />
-            </div>
-          </TabsContent>
-          
-          <TabsContent value="trading" className="mt-6">
-            <TradingDashboard />
-          </TabsContent>
-        </Tabs>
+        {/* Liquidation Analytics */}
+        <div className="w-full">
+          <LiquidationAnalytics selectedAssets={selectedAssets} />
+        </div>
       </main>
 
       {/* Hidden file input for settings import */}
