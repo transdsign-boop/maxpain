@@ -13,7 +13,9 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
-import { AlertCircle, Play, Square, Settings, TrendingUp, DollarSign, Layers, Target, Trash2 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { AlertCircle, Play, Square, Settings, TrendingUp, DollarSign, Layers, Target, Trash2, ChevronDown } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -35,6 +37,7 @@ interface Strategy {
   orderType: "market" | "limit";
   maxRetryDurationMs: number;
   marginAmount: string;
+  tradingMode: "paper" | "live";
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -71,6 +74,7 @@ const strategyFormSchema = z.object({
     const num = parseFloat(val);
     return !isNaN(num) && num >= 1 && num <= 100;
   }, "Account usage must be between 1% and 100%"),
+  tradingMode: z.enum(["paper", "live"]),
 });
 
 type StrategyFormData = z.infer<typeof strategyFormSchema>;
@@ -83,6 +87,7 @@ export default function TradingControlPanel({ sessionId }: TradingControlPanelPr
   const { toast } = useToast();
   const [activeStrategy, setActiveStrategy] = useState<Strategy | null>(null);
   const [isStrategyRunning, setIsStrategyRunning] = useState(false);
+  const [isOpen, setIsOpen] = useState(true);
 
   // Fetch available assets for selection
   const { data: availableAssets, isLoading: assetsLoading } = useQuery({
@@ -117,6 +122,7 @@ export default function TradingControlPanel({ sessionId }: TradingControlPanelPr
       orderType: "limit",
       maxRetryDurationMs: 30000,
       marginAmount: "10.0",
+      tradingMode: "paper",
     }
   });
 
@@ -351,32 +357,37 @@ export default function TradingControlPanel({ sessionId }: TradingControlPanelPr
   }
 
   return (
-    <Card data-testid="trading-control-panel" className="h-fit">
-      <CardHeader>
-        <CardTitle className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Settings className="h-5 w-5" />
-            Paper Trading Strategy
-          </div>
-          <div className="flex items-center gap-2">
-            {isStrategyRunning && (
-              <Badge variant="default" className="bg-green-600">
-                <div className="w-2 h-2 bg-white rounded-full mr-1 animate-pulse" />
-                Active
-              </Badge>
-            )}
-            {activeStrategy && !isStrategyRunning && (
-              <Badge variant="secondary">Stopped</Badge>
-            )}
-          </div>
-        </CardTitle>
-        <CardDescription>
-          Configure your liquidation counter-trading strategy with position averaging
-        </CardDescription>
-      </CardHeader>
+    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+      <Card data-testid="trading-control-panel" className="h-fit">
+        <CollapsibleTrigger className="w-full" data-testid="button-collapse-strategy">
+          <CardHeader className="cursor-pointer hover-elevate">
+            <CardTitle className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Settings className="h-5 w-5" />
+                Trading Strategy
+                <ChevronDown className={`h-4 w-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+              </div>
+              <div className="flex items-center gap-2">
+                {isStrategyRunning && (
+                  <Badge variant="default" className="bg-green-600">
+                    <div className="w-2 h-2 bg-white rounded-full mr-1 animate-pulse" />
+                    Active
+                  </Badge>
+                )}
+                {activeStrategy && !isStrategyRunning && (
+                  <Badge variant="secondary">Stopped</Badge>
+                )}
+              </div>
+            </CardTitle>
+            <CardDescription>
+              Configure your liquidation counter-trading strategy with position averaging
+            </CardDescription>
+          </CardHeader>
+        </CollapsibleTrigger>
 
-      <CardContent className="space-y-6">
-        <Form {...form}>
+        <CollapsibleContent>
+          <CardContent className="space-y-6">
+            <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             
             {/* Strategy Name */}
@@ -395,6 +406,32 @@ export default function TradingControlPanel({ sessionId }: TradingControlPanelPr
                     />
                   </FormControl>
                   <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <Separator />
+
+            {/* Trading Mode Toggle */}
+            <FormField
+              control={form.control}
+              name="tradingMode"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                  <div className="space-y-0.5">
+                    <FormLabel data-testid="label-trading-mode">Live Trading Mode</FormLabel>
+                    <FormDescription>
+                      Enable live trading to execute trades on Aster DEX. When off, all trades are simulated.
+                    </FormDescription>
+                  </div>
+                  <FormControl>
+                    <Switch
+                      data-testid="switch-trading-mode"
+                      checked={field.value === "live"}
+                      onCheckedChange={(checked) => field.onChange(checked ? "live" : "paper")}
+                      disabled={isStrategyRunning}
+                    />
+                  </FormControl>
                 </FormItem>
               )}
             />
@@ -901,6 +938,8 @@ export default function TradingControlPanel({ sessionId }: TradingControlPanelPr
           </form>
         </Form>
       </CardContent>
-    </Card>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
   );
 }
