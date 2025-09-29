@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
-import { insertLiquidationSchema, insertUserSettingsSchema } from "@shared/schema";
+import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySchema, updateStrategySchema } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Liquidation API routes
@@ -545,6 +545,152 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Failed to fetch Aster DEX symbols:', error);
       res.status(500).json({ error: "Failed to fetch symbols from Aster DEX" });
+    }
+  });
+
+  // Trading Strategy API routes
+  app.get("/api/strategies/:sessionId", async (req, res) => {
+    try {
+      const sessionId = req.params.sessionId;
+      const strategies = await storage.getStrategiesBySession(sessionId);
+      res.json(strategies);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch strategies" });
+    }
+  });
+
+  app.post("/api/strategies", async (req, res) => {
+    try {
+      const validatedData = frontendStrategySchema.parse(req.body);
+      
+      // Convert frontend data to database format with proper type coercion
+      const strategyData = {
+        name: validatedData.name,
+        sessionId: validatedData.sessionId,
+        selectedAssets: validatedData.selectedAssets,
+        liquidationThresholdSeconds: validatedData.liquidationThresholdSeconds, // Already number
+        maxLayers: validatedData.maxLayers, // Already number
+        budgetPerAsset: validatedData.budgetPerAsset, // Already string for decimal
+        layerSpacingPercent: validatedData.layerSpacingPercent, // Already string for decimal
+        profitTargetPercent: validatedData.profitTargetPercent, // Already string for decimal
+        isActive: validatedData.isActive || false,
+      };
+      
+      const strategy = await storage.createStrategy(strategyData);
+      res.status(201).json(strategy);
+    } catch (error) {
+      console.error('Error creating strategy:', error);
+      if (error instanceof Error && 'issues' in error) {
+        return res.status(400).json({ error: "Invalid data", details: error.message });
+      }
+      res.status(500).json({ error: "Failed to create strategy" });
+    }
+  });
+
+  app.put("/api/strategies/:id", async (req, res) => {
+    try {
+      const strategyId = req.params.id;
+      const validatedUpdates = updateStrategySchema.parse(req.body);
+      
+      // Verify strategy exists
+      const existingStrategy = await storage.getStrategy(strategyId);
+      if (!existingStrategy) {
+        return res.status(404).json({ error: "Strategy not found" });
+      }
+      
+      // Normalize data with updatedAt timestamp
+      const updateData = {
+        ...validatedUpdates,
+        updatedAt: new Date()
+      };
+      
+      await storage.updateStrategy(strategyId, updateData);
+      
+      // Fetch and return refreshed strategy
+      const updatedStrategy = await storage.getStrategy(strategyId);
+      res.status(200).json(updatedStrategy);
+    } catch (error) {
+      console.error('Error updating strategy:', error);
+      if (error instanceof Error && 'issues' in error) {
+        return res.status(400).json({ error: "Invalid data", details: error.message });
+      }
+      res.status(500).json({ error: "Failed to update strategy" });
+    }
+  });
+
+  app.post("/api/strategies/:id/start", async (req, res) => {
+    try {
+      const strategyId = req.params.id;
+      
+      // Verify strategy exists
+      const strategy = await storage.getStrategy(strategyId);
+      if (!strategy) {
+        return res.status(404).json({ error: "Strategy not found" });
+      }
+      
+      // Update strategy to active status with timestamp
+      await storage.updateStrategy(strategyId, { 
+        isActive: true, 
+        updatedAt: new Date() 
+      });
+      
+      // Register with strategy engine (when we connect it)
+      // TODO: strategyEngine.registerStrategy(strategy);
+      
+      // Return updated strategy for easier frontend sync
+      const updatedStrategy = await storage.getStrategy(strategyId);
+      res.status(200).json(updatedStrategy);
+    } catch (error) {
+      console.error('Error starting strategy:', error);
+      res.status(500).json({ error: "Failed to start strategy" });
+    }
+  });
+
+  app.post("/api/strategies/:id/stop", async (req, res) => {
+    try {
+      const strategyId = req.params.id;
+      
+      // Verify strategy exists
+      const strategy = await storage.getStrategy(strategyId);
+      if (!strategy) {
+        return res.status(404).json({ error: "Strategy not found" });
+      }
+      
+      // Update strategy to inactive status with timestamp
+      await storage.updateStrategy(strategyId, { 
+        isActive: false, 
+        updatedAt: new Date() 
+      });
+      
+      // Unregister from strategy engine (when we connect it)
+      // TODO: strategyEngine.unregisterStrategy(strategyId);
+      
+      // Return updated strategy for easier frontend sync
+      const updatedStrategy = await storage.getStrategy(strategyId);
+      res.status(200).json(updatedStrategy);
+    } catch (error) {
+      console.error('Error stopping strategy:', error);
+      res.status(500).json({ error: "Failed to stop strategy" });
+    }
+  });
+
+  // Delete strategy route
+  app.delete("/api/strategies/:id", async (req, res) => {
+    try {
+      const strategyId = req.params.id;
+      
+      const strategy = await storage.getStrategy(strategyId);
+      if (!strategy) {
+        return res.status(404).json({ error: "Strategy not found" });
+      }
+      
+      // Delete strategy from storage
+      await storage.deleteStrategy(strategyId);
+      
+      res.status(204).send(); // No content response
+    } catch (error) {
+      console.error('Error deleting strategy:', error);
+      res.status(500).json({ error: "Failed to delete strategy" });
     }
   });
 
