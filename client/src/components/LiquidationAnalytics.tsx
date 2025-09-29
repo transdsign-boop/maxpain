@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -60,6 +60,57 @@ const timeRangeOptions = [
   { value: '72', label: '3 Days' },
   { value: '168', label: '1 Week' },
 ];
+
+// Helper function to calculate percentiles from complete dataset
+function calculatePercentiles(liquidations: Liquidation[], symbol: string) {
+  // Filter liquidations for the specific symbol and extract values
+  const symbolLiquidations = liquidations.filter(liq => liq.symbol === symbol);
+  const values = symbolLiquidations
+    .map(liq => parseFloat(liq.value))
+    .filter(val => !isNaN(val))
+    .sort((a, b) => a - b);
+
+  if (values.length === 0) {
+    return null;
+  }
+
+  // Calculate percentiles using linear interpolation method
+  const getPercentile = (percentile: number) => {
+    const index = (percentile / 100) * (values.length - 1);
+    const lower = Math.floor(index);
+    const upper = Math.ceil(index);
+    const weight = index % 1;
+    
+    if (lower === upper) {
+      return values[lower];
+    }
+    
+    return values[lower] * (1 - weight) + values[upper] * weight;
+  };
+
+  // Calculate breakdown stats
+  const longLiquidations = symbolLiquidations.filter(liq => liq.side === 'long');
+  const shortLiquidations = symbolLiquidations.filter(liq => liq.side === 'short');
+  const totalValue = values.reduce((sum, val) => sum + val, 0);
+
+  return {
+    percentiles: {
+      p50: getPercentile(50),
+      p75: getPercentile(75),
+      p90: getPercentile(90),
+      p95: getPercentile(95),
+      p99: getPercentile(99),
+    },
+    breakdown: {
+      longCount: longLiquidations.length,
+      shortCount: shortLiquidations.length,
+      averageValue: totalValue / values.length,
+      maxValue: Math.max(...values),
+      minValue: Math.min(...values),
+    },
+    totalLiquidations: symbolLiquidations.length,
+  };
+}
 
 interface Liquidation {
   id: string;
@@ -128,6 +179,17 @@ export default function LiquidationAnalytics({ selectedAssets, specificSymbol, a
       setSelectedAsset(allAssets[0].symbol);
     }
   }, [allAssets, selectedAsset, specificSymbol]);
+
+  // Calculate accurate percentiles from complete dataset when available
+  const calculatedData = useMemo(() => {
+    if (!allLiquidations || !selectedAsset || allLiquidations.length === 0) {
+      return null;
+    }
+    return calculatePercentiles(allLiquidations, selectedAsset);
+  }, [allLiquidations, selectedAsset]);
+
+  // Use calculated data when available, otherwise fall back to API data
+  const displayData = calculatedData || percentileData;
 
   const formatCurrency = (value: number) => {
     if (value >= 1000000) {
@@ -280,10 +342,10 @@ export default function LiquidationAnalytics({ selectedAssets, specificSymbol, a
 
 
         {/* Results */}
-        {percentileData && !percentileLoading && (
+        {displayData && !percentileLoading && (
           <div className="space-y-6">
             {/* No Data Message */}
-            {percentileData.totalLiquidations === 0 ? (
+            {displayData.totalLiquidations === 0 ? (
               <div className="text-center p-6 bg-muted/50 border rounded-lg" data-testid="message-no-data">
                 <Clock className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
                 <h3 className="text-lg font-medium mb-2">No Liquidation Data</h3>
@@ -299,14 +361,14 @@ export default function LiquidationAnalytics({ selectedAssets, specificSymbol, a
                     <div className="text-2xl font-bold">
                       {allLiquidations && selectedAsset ? 
                         allLiquidations.filter(liq => liq.symbol === selectedAsset).length : 
-                        percentileData.totalLiquidations
+                        displayData.totalLiquidations
                       }
                     </div>
                     <div className="text-sm text-muted-foreground">Total Liquidations</div>
                   </div>
                   <div className="text-center p-4 bg-card border rounded-lg" data-testid="stat-average-value">
                     <div className="text-2xl font-bold">
-                      {formatCurrency(percentileData.breakdown?.averageValue || 0)}
+                      {formatCurrency(displayData.breakdown?.averageValue || 0)}
                     </div>
                     <div className="text-sm text-muted-foreground">Average Value</div>
                   </div>
@@ -314,7 +376,7 @@ export default function LiquidationAnalytics({ selectedAssets, specificSymbol, a
                     <div className="text-2xl font-bold text-destructive">
                       {allLiquidations && selectedAsset ? 
                         allLiquidations.filter(liq => liq.symbol === selectedAsset && liq.side === 'long').length : 
-                        percentileData.breakdown?.longCount || 0
+                        displayData.breakdown?.longCount || 0
                       }
                     </div>
                     <div className="text-sm text-muted-foreground">Long Liquidations</div>
@@ -323,7 +385,7 @@ export default function LiquidationAnalytics({ selectedAssets, specificSymbol, a
                     <div className="text-2xl font-bold text-green-500">
                       {allLiquidations && selectedAsset ? 
                         allLiquidations.filter(liq => liq.symbol === selectedAsset && liq.side === 'short').length : 
-                        percentileData.breakdown?.shortCount || 0
+                        displayData.breakdown?.shortCount || 0
                       }
                     </div>
                     <div className="text-sm text-muted-foreground">Short Liquidations</div>
@@ -333,29 +395,29 @@ export default function LiquidationAnalytics({ selectedAssets, specificSymbol, a
             )}
 
             {/* Percentiles */}
-            {percentileData.percentiles && (
+            {displayData.percentiles && (
               <div className="space-y-4">
                 <h3 className="text-lg font-medium">Liquidation Value Percentiles</h3>
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                   <div className="text-center p-4 bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900 border rounded-lg" data-testid="percentile-50">
-                    <div className="text-xl font-bold">{formatCurrency(percentileData.percentiles.p50)}</div>
+                    <div className="text-xl font-bold">{formatCurrency(displayData.percentiles.p50)}</div>
                     <div className="text-sm text-muted-foreground">50th Percentile</div>
                     <div className="text-xs text-muted-foreground mt-1">(Median)</div>
                   </div>
                   <div className="text-center p-4 bg-gradient-to-br from-indigo-50 to-indigo-100 dark:from-indigo-950 dark:to-indigo-900 border rounded-lg" data-testid="percentile-75">
-                    <div className="text-xl font-bold">{formatCurrency(percentileData.percentiles.p75)}</div>
+                    <div className="text-xl font-bold">{formatCurrency(displayData.percentiles.p75)}</div>
                     <div className="text-sm text-muted-foreground">75th Percentile</div>
                   </div>
                   <div className="text-center p-4 bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950 dark:to-purple-900 border rounded-lg" data-testid="percentile-90">
-                    <div className="text-xl font-bold">{formatCurrency(percentileData.percentiles.p90)}</div>
+                    <div className="text-xl font-bold">{formatCurrency(displayData.percentiles.p90)}</div>
                     <div className="text-sm text-muted-foreground">90th Percentile</div>
                   </div>
                   <div className="text-center p-4 bg-gradient-to-br from-pink-50 to-pink-100 dark:from-pink-950 dark:to-pink-900 border rounded-lg" data-testid="percentile-95">
-                    <div className="text-xl font-bold">{formatCurrency(percentileData.percentiles.p95)}</div>
+                    <div className="text-xl font-bold">{formatCurrency(displayData.percentiles.p95)}</div>
                     <div className="text-sm text-muted-foreground">95th Percentile</div>
                   </div>
                   <div className="text-center p-4 bg-gradient-to-br from-red-50 to-red-100 dark:from-red-950 dark:to-red-900 border rounded-lg" data-testid="percentile-99">
-                    <div className="text-xl font-bold">{formatCurrency(percentileData.percentiles.p99)}</div>
+                    <div className="text-xl font-bold">{formatCurrency(displayData.percentiles.p99)}</div>
                     <div className="text-sm text-muted-foreground">99th Percentile</div>
                   </div>
                 </div>
@@ -363,7 +425,7 @@ export default function LiquidationAnalytics({ selectedAssets, specificSymbol, a
             )}
 
             {/* Min/Max Values */}
-            {percentileData.breakdown && (
+            {displayData.breakdown && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="p-4 bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg" data-testid="stat-min-value">
                   <div className="flex items-center gap-2 mb-2">
@@ -371,7 +433,7 @@ export default function LiquidationAnalytics({ selectedAssets, specificSymbol, a
                     <span className="text-sm font-medium text-green-800 dark:text-green-200">Smallest Liquidation</span>
                   </div>
                   <div className="text-2xl font-bold text-green-900 dark:text-green-100">
-                    {formatCurrency(percentileData.breakdown.minValue)}
+                    {formatCurrency(displayData.breakdown.minValue)}
                   </div>
                 </div>
                 <div className="p-4 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg" data-testid="stat-max-value">
@@ -380,14 +442,14 @@ export default function LiquidationAnalytics({ selectedAssets, specificSymbol, a
                     <span className="text-sm font-medium text-red-800 dark:text-red-200">Largest Liquidation</span>
                   </div>
                   <div className="text-2xl font-bold text-red-900 dark:text-red-100">
-                    {formatCurrency(percentileData.breakdown.maxValue)}
+                    {formatCurrency(displayData.breakdown.maxValue)}
                   </div>
                 </div>
               </div>
             )}
 
             {/* Latest Liquidation */}
-            {percentileData.latestLiquidation && (
+            {percentileData?.latestLiquidation && (
               <div className="p-4 border rounded-lg bg-accent/5" data-testid="latest-liquidation">
                 <h4 className="text-sm font-medium mb-2">Most Recent Liquidation</h4>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
