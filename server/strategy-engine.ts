@@ -9,6 +9,9 @@ import {
   type Fill 
 } from '@shared/schema';
 
+// Fixed liquidation monitoring window - always 60 seconds regardless of strategy settings
+const LIQUIDATION_WINDOW_SECONDS = 60;
+
 export interface LiquidationSignal {
   liquidation: Liquidation;
   strategy: Strategy;
@@ -147,10 +150,10 @@ export class StrategyEngine extends EventEmitter {
     const session = this.activeSessions.get(strategy.id);
     if (!session || !session.isActive) return;
 
-    // Check if liquidation meets threshold criteria
+    // Check if liquidation meets threshold criteria (fixed 60-second window)
     const recentLiquidations = this.getRecentLiquidations(
       liquidation.symbol, 
-      strategy.liquidationThresholdSeconds
+      LIQUIDATION_WINDOW_SECONDS
     );
 
     if (recentLiquidations.length === 0) return;
@@ -182,27 +185,28 @@ export class StrategyEngine extends EventEmitter {
     return history.filter(liq => liq.timestamp >= cutoffTime);
   }
 
-  // Determine if we should enter a new position
+  // Determine if we should enter a new position based on percentile threshold
   private async shouldEnterPosition(
     strategy: Strategy, 
     liquidation: Liquidation, 
     recentLiquidations: Liquidation[]
   ): Promise<boolean> {
-    // Counter-trade logic: enter opposite side of liquidation
-    // If recent liquidations are mostly long liquidations, we go long (expecting bounce)
-    const longLiquidations = recentLiquidations.filter(liq => liq.side === 'long').length;
-    const shortLiquidations = recentLiquidations.filter(liq => liq.side === 'short').length;
+    // Calculate percentile threshold: current liquidation must exceed specified percentile
+    const currentLiquidationValue = parseFloat(liquidation.value);
     
-    // Simple threshold: need at least 3 liquidations in same direction
-    if (longLiquidations >= 3 && liquidation.side === 'long') {
-      return true; // Enter long position after long liquidations
-    }
+    if (recentLiquidations.length === 0) return false;
     
-    if (shortLiquidations >= 3 && liquidation.side === 'short') {
-      return true; // Enter short position after short liquidations  
-    }
-
-    return false;
+    // Get all liquidation values within the 60-second window and sort them
+    const liquidationValues = recentLiquidations.map(liq => parseFloat(liq.value)).sort((a, b) => a - b);
+    
+    // Calculate the percentile position for the threshold
+    const percentileIndex = Math.floor((strategy.percentileThreshold / 100) * liquidationValues.length);
+    const percentileValue = liquidationValues[Math.min(percentileIndex, liquidationValues.length - 1)];
+    
+    console.log(`📊 Percentile Analysis: Current liquidation $${currentLiquidationValue.toFixed(2)} vs ${strategy.percentileThreshold}% threshold $${percentileValue.toFixed(2)} (${liquidationValues.length} liquidations in 60s window)`);
+    
+    // Only enter if current liquidation exceeds the percentile threshold
+    return currentLiquidationValue >= percentileValue;
   }
 
   // Determine if we should add a layer to existing position
@@ -213,6 +217,21 @@ export class StrategyEngine extends EventEmitter {
   ): Promise<boolean> {
     // Check if we haven't exceeded max layers
     if (position.layersFilled >= strategy.maxLayers) {
+      return false;
+    }
+
+    // First check percentile threshold - same as entry logic
+    const recentLiquidations = this.getRecentLiquidations(liquidation.symbol, LIQUIDATION_WINDOW_SECONDS);
+    if (recentLiquidations.length === 0) return false;
+
+    const currentLiquidationValue = parseFloat(liquidation.value);
+    const liquidationValues = recentLiquidations.map(liq => parseFloat(liq.value)).sort((a, b) => a - b);
+    const percentileIndex = Math.floor((strategy.percentileThreshold / 100) * liquidationValues.length);
+    const percentileValue = liquidationValues[Math.min(percentileIndex, liquidationValues.length - 1)];
+
+    // Only proceed with layering if liquidation exceeds percentile threshold
+    if (currentLiquidationValue < percentileValue) {
+      console.log(`📊 Layer blocked: Liquidation $${currentLiquidationValue.toFixed(2)} below ${strategy.percentileThreshold}% threshold $${percentileValue.toFixed(2)}`);
       return false;
     }
 
@@ -239,8 +258,8 @@ export class StrategyEngine extends EventEmitter {
       const side = liquidation.side === 'long' ? 'buy' : 'sell'; // Counter-trade
       const orderSide = liquidation.side === 'long' ? 'long' : 'short';
       const price = parseFloat(liquidation.price);
-      const budgetPerAsset = parseFloat(strategy.budgetPerAsset);
-      const quantity = budgetPerAsset / price; // Simple position sizing
+      const positionSizePercent = parseFloat(strategy.positionSizePercent);
+      const quantity = (positionSizePercent / 100) * session.currentBalance / price; // Position sizing as % of portfolio
 
       console.log(`🎯 Entering ${orderSide} position for ${liquidation.symbol} at $${price}`);
 
@@ -275,8 +294,8 @@ export class StrategyEngine extends EventEmitter {
     try {
       const side = position.side === 'long' ? 'buy' : 'sell';
       const price = parseFloat(liquidation.price);
-      const budgetPerAsset = parseFloat(strategy.budgetPerAsset);
-      const quantity = budgetPerAsset / price;
+      const positionSizePercent = parseFloat(strategy.positionSizePercent);
+      const quantity = (positionSizePercent / 100) * session.currentBalance / price;
       const nextLayer = position.layersFilled + 1;
 
       console.log(`📈 Adding layer ${nextLayer} for ${liquidation.symbol} at $${price}`);
