@@ -80,6 +80,29 @@ export function StrategyStatus({ sessionId }: StrategyStatusProps) {
     },
   });
 
+  // Close position mutation - must be defined before any early returns
+  const closePositionMutation = useMutation({
+    mutationFn: async (positionId: string) => {
+      const response = await apiRequest('POST', `/api/positions/${positionId}/close`);
+      return await response.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Position Closed",
+        description: `Closed ${data.position.symbol} position with ${data.pnlPercent >= 0 ? '+' : ''}${data.pnlPercent.toFixed(2)}% P&L ($${data.pnlDollar >= 0 ? '+' : ''}${data.pnlDollar.toFixed(2)})`,
+      });
+      // Invalidate queries to refresh the UI
+      queryClient.invalidateQueries({ queryKey: ['/api/strategies', activeStrategy?.id, 'positions', 'summary'] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to close position. Please try again.",
+        variant: "destructive",
+      });
+    }
+  });
+
   if (!sessionId) {
     return (
       <Card data-testid="strategy-status-no-session">
@@ -192,29 +215,6 @@ export function StrategyStatus({ sessionId }: StrategyStatusProps) {
     if (pnl < 0) return "text-red-600 dark:text-red-400";
     return "text-muted-foreground";
   };
-
-  // Close position mutation
-  const closePositionMutation = useMutation({
-    mutationFn: async (positionId: string) => {
-      const response = await apiRequest('POST', `/api/positions/${positionId}/close`);
-      return await response.json();
-    },
-    onSuccess: (data) => {
-      toast({
-        title: "Position Closed",
-        description: `Closed ${data.position.symbol} position with ${data.pnlPercent >= 0 ? '+' : ''}${data.pnlPercent.toFixed(2)}% P&L ($${data.pnlDollar >= 0 ? '+' : ''}${data.pnlDollar.toFixed(2)})`,
-      });
-      // Invalidate queries to refresh the UI
-      queryClient.invalidateQueries({ queryKey: ['/api/strategies', activeStrategy?.id, 'positions', 'summary'] });
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error?.message || "Failed to close position. Please try again.",
-        variant: "destructive",
-      });
-    }
-  });
 
   const totalReturnPercent = summary ? ((summary.totalPnl / summary.startingBalance) * 100) : 0;
   
