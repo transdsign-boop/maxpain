@@ -134,6 +134,7 @@ export default function LiquidationAnalyticsModal({
             <LiquidationAnalytics 
               selectedAssets={[]} 
               specificSymbol={selectedLiquidation?.symbol}
+              allLiquidations={allLiquidations}
             />
             
             {/* Historical Liquidations in Analytics */}
