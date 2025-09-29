@@ -9,6 +9,9 @@ import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySche
 const LIQUIDATION_WINDOW_SECONDS = 60;
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Start the strategy engine
+  await strategyEngine.start();
+  
   // Liquidation API routes
   app.get("/api/liquidations", async (req, res) => {
     try {
@@ -815,6 +818,13 @@ async function connectToAsterDEX(clients: Set<WebSocket>) {
           // Validate and store in database
           const validatedData = insertLiquidationSchema.parse(liquidationData);
           const storedLiquidation = await storage.insertLiquidation(validatedData);
+          
+          // Emit to strategy engine for trade execution
+          try {
+            strategyEngine.emit('liquidation', storedLiquidation);
+          } catch (error) {
+            console.error('❌ Error emitting liquidation to strategy engine:', error);
+          }
           
           // Broadcast to all connected clients
           const broadcastMessage = JSON.stringify({
