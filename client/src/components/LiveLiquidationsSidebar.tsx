@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
@@ -21,14 +20,17 @@ interface LiveLiquidationsSidebarProps {
   liquidations: Liquidation[];
   isConnected: boolean;
   selectedAssets: string[];
+  isCollapsed: boolean;
+  onToggleCollapse: (collapsed: boolean) => void;
 }
 
 export default function LiveLiquidationsSidebar({ 
   liquidations, 
   isConnected,
-  selectedAssets 
+  selectedAssets,
+  isCollapsed,
+  onToggleCollapse
 }: LiveLiquidationsSidebarProps) {
-  const [isCollapsed, setIsCollapsed] = useState(false);
 
   // Filter to show recent liquidations from selected assets (last 20)
   const recentLiquidations = liquidations
@@ -50,14 +52,14 @@ export default function LiveLiquidationsSidebar({
     <div 
       className={`fixed right-0 top-0 h-full bg-background border-l transition-all duration-300 z-50 ${
         isCollapsed ? 'w-12' : 'w-80'
-      }`}
+      } hidden md:block`}
       data-testid="sidebar-live-liquidations"
     >
       {/* Collapse/Expand Button */}
       <Button
         variant="ghost"
         size="icon"
-        onClick={() => setIsCollapsed(!isCollapsed)}
+        onClick={() => onToggleCollapse(!isCollapsed)}
         className="absolute -left-10 top-4 bg-background border shadow-md hover-elevate"
         data-testid="button-toggle-sidebar"
       >
