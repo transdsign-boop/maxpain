@@ -75,6 +75,7 @@ export const strategies = pgTable("strategies", {
   orderType: text("order_type").notNull().default("limit"), // "market" or "limit"
   maxRetryDurationMs: integer("max_retry_duration_ms").notNull().default(30000), // How long to chase price before giving up (milliseconds)
   marginAmount: decimal("margin_amount", { precision: 5, scale: 2 }).notNull().default("10.0"), // Percentage of account to use for trading
+  tradingMode: text("trading_mode").notNull().default("paper"), // "paper" or "live"
   isActive: boolean("is_active").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),

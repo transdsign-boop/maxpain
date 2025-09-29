@@ -105,13 +105,22 @@ export class StrategyEngine extends EventEmitter {
     if (!session) {
       session = await storage.createTradeSession({
         strategyId: strategy.id,
-        mode: 'paper',
+        mode: strategy.tradingMode || 'paper',
         currentBalance: '10000.0', // Default starting balance
       });
+    } else {
+      // Update session mode if strategy trading mode has changed
+      if (session.mode !== strategy.tradingMode) {
+        await storage.updateTradeSession(session.id, {
+          mode: strategy.tradingMode || 'paper',
+        });
+        session.mode = strategy.tradingMode || 'paper';
+        console.log(`🔄 Updated session mode to: ${session.mode}`);
+      }
     }
     
     this.activeSessions.set(strategy.id, session);
-    console.log(`✅ Strategy registered with session: ${session.id}`);
+    console.log(`✅ Strategy registered with session: ${session.id} (mode: ${session.mode})`);
   }
 
   // Unregister a strategy
@@ -393,22 +402,59 @@ export class StrategyEngine extends EventEmitter {
         if (priceDeviation <= slippageTolerance) {
           console.log(`✅ Price acceptable: $${currentPrice} (deviation: ${(priceDeviation * 100).toFixed(2)}%)`);
           
-          // Place the order
-          const order = await storage.placePaperOrder({
-            sessionId: session.id,
-            symbol,
-            side,
-            orderType: strategy.orderType,
-            quantity: quantity.toString(),
-            price: orderPrice.toString(),
-            triggerLiquidationId,
-            layerNumber,
-          });
+          // Check if this is live or paper trading
+          if (session.mode === 'live') {
+            // Execute live order on Aster DEX
+            const liveOrderResult = await this.executeLiveOrder({
+              symbol,
+              side,
+              orderType: strategy.orderType,
+              quantity,
+              price: orderPrice,
+            });
+            
+            if (!liveOrderResult.success) {
+              console.error(`❌ Live order failed: ${liveOrderResult.error}`);
+              return;
+            }
+            
+            console.log(`✅ LIVE ORDER EXECUTED on Aster DEX: ${quantity.toFixed(4)} ${symbol} at $${orderPrice}`);
+            console.log(`📝 Order ID: ${liveOrderResult.orderId || 'N/A'}`);
+            
+            // Track live order execution locally for position management
+            const order = await storage.placePaperOrder({
+              sessionId: session.id,
+              symbol,
+              side,
+              orderType: strategy.orderType,
+              quantity: quantity.toString(),
+              price: orderPrice.toString(),
+              triggerLiquidationId,
+              layerNumber,
+            });
+            
+            // Record the fill locally for position tracking
+            // Note: In production, you'd sync fills from Aster DEX API
+            await this.fillPaperOrder(order, orderPrice, quantity);
+          } else {
+            // Paper trading mode - simulate the order locally
+            const order = await storage.placePaperOrder({
+              sessionId: session.id,
+              symbol,
+              side,
+              orderType: strategy.orderType,
+              quantity: quantity.toString(),
+              price: orderPrice.toString(),
+              triggerLiquidationId,
+              layerNumber,
+            });
 
-          // Fill the paper order immediately
-          await this.fillPaperOrder(order, orderPrice, quantity);
+            // Fill the paper order immediately (simulation)
+            await this.fillPaperOrder(order, orderPrice, quantity);
+            
+            console.log(`✅ Paper order simulated: ${quantity.toFixed(4)} ${symbol} at $${orderPrice}`);
+          }
           
-          console.log(`✅ Order filled: ${quantity.toFixed(4)} ${symbol} at $${orderPrice}`);
           return;
         } else {
           const timeRemaining = maxRetryDuration - (Date.now() - startTime);
@@ -426,6 +472,72 @@ export class StrategyEngine extends EventEmitter {
     }
     
     console.log(`❌ Order retry timeout: Failed to place order within ${maxRetryDuration}ms due to price movement`);
+  }
+
+  // Execute live order on Aster DEX
+  private async executeLiveOrder(params: {
+    symbol: string;
+    side: string; // 'buy' or 'sell'
+    orderType: string;
+    quantity: number;
+    price: number;
+  }): Promise<{ success: boolean; orderId?: string; error?: string }> {
+    try {
+      const { symbol, side, orderType, quantity, price } = params;
+      
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+      
+      if (!apiKey || !secretKey) {
+        console.error('❌ Aster DEX API keys not configured');
+        return { success: false, error: 'API keys not configured' };
+      }
+      
+      // Prepare order parameters for Aster DEX API
+      const timestamp = Date.now();
+      const orderParams = {
+        symbol,
+        side: side.toUpperCase(),
+        type: orderType.toUpperCase(),
+        quantity: quantity.toString(),
+        price: orderType === 'limit' ? price.toString() : undefined,
+        timestamp,
+      };
+      
+      // Create signature (implementation depends on Aster DEX API requirements)
+      // This is a placeholder - you'll need to implement the actual signature logic
+      const queryString = Object.entries(orderParams)
+        .filter(([_, v]) => v !== undefined)
+        .map(([k, v]) => `${k}=${v}`)
+        .join('&');
+      
+      console.log(`🔴 LIVE ORDER: Executing ${side} ${quantity} ${symbol} at $${price}`);
+      console.log(`📡 Order params: ${queryString}`);
+      
+      // Execute the live order on Aster DEX
+      const response = await fetch('https://fapi.asterdex.com/fapi/v1/order', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-ASTER-APIKEY': apiKey,
+        },
+        body: JSON.stringify(orderParams),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.text();
+        console.error(`❌ Live order failed: ${errorData}`);
+        return { success: false, error: errorData };
+      }
+      
+      const result = await response.json();
+      console.log(`✅ Live order executed: ${result.orderId || 'success'}`);
+      
+      return { success: true, orderId: result.orderId };
+    } catch (error) {
+      console.error('❌ Error executing live order:', error);
+      return { success: false, error: String(error) };
+    }
   }
 
   // Fill a paper order and create fill record

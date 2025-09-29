@@ -365,10 +365,7 @@ export function StrategyStatus({ sessionId }: StrategyStatusProps) {
         {/* Portfolio Summary */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <p className="text-sm text-muted-foreground">Current Balance</p>
-              <Badge variant="outline" className="text-xs">Paper Trading</Badge>
-            </div>
+            <p className="text-sm text-muted-foreground">Current Balance</p>
             <p className={`text-lg font-semibold ${getPnlColor(summary?.unrealizedPnl || 0)}`} data-testid="current-balance">
               {formatCurrency(currentBalanceWithUnrealized)}
             </p>
