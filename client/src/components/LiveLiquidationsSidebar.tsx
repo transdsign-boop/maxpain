@@ -34,13 +34,13 @@ export default function LiveLiquidationsSidebar({
   onLiquidationClick
 }: LiveLiquidationsSidebarProps) {
 
-  // Show ALL recent liquidations (last 20) regardless of selected assets
+  // Show ALL recent liquidations (last 20) regardless of selected assets for display
   const recentLiquidations = liquidations.slice(0, 20);
 
-  // Quick stats for the sidebar
-  const totalValue = recentLiquidations.reduce((sum, liq) => sum + parseFloat(liq.value), 0);
-  const longCount = recentLiquidations.filter(liq => liq.side === "long").length;
-  const shortCount = recentLiquidations.filter(liq => liq.side === "short").length;
+  // Calculate stats from ALL liquidations, not just the recent 20
+  const totalValue = liquidations.reduce((sum, liq) => sum + parseFloat(liq.value), 0);
+  const longCount = liquidations.filter(liq => liq.side === "long").length;
+  const shortCount = liquidations.filter(liq => liq.side === "short").length;
 
   const formatValue = (value: number) => {
     if (value >= 1000000) return `$${(value / 1000000).toFixed(2)}M`;
