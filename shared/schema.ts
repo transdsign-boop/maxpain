@@ -157,7 +157,27 @@ export const insertStrategySchema = createInsertSchema(strategies).omit({
   updatedAt: true,
 });
 
+// Frontend-specific schema that matches what TradingControlPanel sends
+export const frontendStrategySchema = z.object({
+  name: z.string().min(1, "Strategy name is required").max(50, "Name too long"),
+  sessionId: z.string(),
+  selectedAssets: z.array(z.string()).min(1, "Select at least one asset"),
+  liquidationThresholdSeconds: z.number().min(30).max(300),
+  maxLayers: z.number().min(1).max(10),
+  budgetPerAsset: z.string().min(1, "Budget is required"),
+  layerSpacingPercent: z.string(),
+  profitTargetPercent: z.string(),
+  isActive: z.boolean().optional().default(false),
+});
+
+// Update schema for partial updates
+export const updateStrategySchema = frontendStrategySchema.partial().omit({
+  sessionId: true, // Don't allow changing session
+});
+
 export type InsertStrategy = z.infer<typeof insertStrategySchema>;
+export type FrontendStrategy = z.infer<typeof frontendStrategySchema>;
+export type UpdateStrategy = z.infer<typeof updateStrategySchema>;
 export type Strategy = typeof strategies.$inferSelect;
 
 // Schema exports for trade sessions
