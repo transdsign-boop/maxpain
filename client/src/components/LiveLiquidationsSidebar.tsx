@@ -84,21 +84,21 @@ export default function LiveLiquidationsSidebar({
           
           {/* Quick Stats */}
           <div className="grid grid-cols-3 gap-2 text-xs">
-            <div className="text-center">
-              <div className="text-muted-foreground">Total</div>
-              <div className="font-medium" data-testid="text-total-value">
+            <div className="text-center p-2 rounded-md bg-muted/30">
+              <div className="text-muted-foreground text-xs">Total</div>
+              <div className="font-bold text-sm" data-testid="text-total-value">
                 {formatValue(totalValue)}
               </div>
             </div>
-            <div className="text-center">
-              <div className="text-muted-foreground">Longs</div>
-              <div className="font-medium text-destructive" data-testid="text-long-count">
+            <div className="text-center p-2 rounded-md bg-red-500/10">
+              <div className="text-muted-foreground text-xs">Longs</div>
+              <div className="font-bold text-sm text-red-600" data-testid="text-long-count">
                 {longCount}
               </div>
             </div>
-            <div className="text-center">
-              <div className="text-muted-foreground">Shorts</div>
-              <div className="font-medium text-green-600" data-testid="text-short-count">
+            <div className="text-center p-2 rounded-md bg-green-500/10">
+              <div className="text-muted-foreground text-xs">Shorts</div>
+              <div className="font-bold text-sm text-green-600" data-testid="text-short-count">
                 {shortCount}
               </div>
             </div>
@@ -118,24 +118,30 @@ export default function LiveLiquidationsSidebar({
                 {recentLiquidations.map((liquidation, index) => (
                   <div
                     key={liquidation.id}
-                    className={`p-2 rounded-md border bg-card hover-elevate transition-colors ${
-                      index === 0 ? 'ring-2 ring-primary/20 bg-primary/5' : ''
+                    className={`relative p-3 rounded-lg border transition-all duration-200 ${
+                      index === 0 
+                        ? 'bg-gradient-to-r from-primary/10 to-primary/5 border-primary/30 ring-1 ring-primary/20 shadow-sm' 
+                        : 'bg-card hover-elevate border-border/50'
                     }`}
                     data-testid={`card-liquidation-${liquidation.id}`}
                   >
-                    <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
-                        <span className="font-medium text-sm" data-testid={`text-symbol-${liquidation.id}`}>
+                        <span className="font-bold text-sm" data-testid={`text-symbol-${liquidation.id}`}>
                           {liquidation.symbol}
                         </span>
                         <Badge 
                           variant={liquidation.side === 'long' ? 'destructive' : 'default'} 
-                          className="text-xs px-1 py-0"
+                          className={`text-xs px-2 py-0.5 font-medium ${
+                            liquidation.side === 'long' 
+                              ? 'bg-red-500/10 text-red-600 border-red-500/20' 
+                              : 'bg-green-500/10 text-green-600 border-green-500/20'
+                          }`}
                         >
-                          {liquidation.side}
+                          {liquidation.side.toUpperCase()}
                         </Badge>
                       </div>
-                      <div className="text-xs text-muted-foreground">
+                      <div className="text-xs text-muted-foreground font-mono">
                         {new Date(liquidation.timestamp).toLocaleTimeString([], { 
                           hour: '2-digit', 
                           minute: '2-digit',
@@ -144,19 +150,26 @@ export default function LiveLiquidationsSidebar({
                       </div>
                     </div>
                     
-                    <div className="flex items-center justify-between text-xs">
-                      <div>
-                        <span className="text-muted-foreground">Size: </span>
-                        <span className="font-medium">{parseFloat(liquidation.size).toFixed(4)}</span>
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <div className="text-muted-foreground">
+                        Size: <span className="font-medium text-foreground">{parseFloat(liquidation.size).toFixed(4)}</span>
                       </div>
-                      <div className="font-semibold">
+                      <div className={`font-bold text-sm ${
+                        parseFloat(liquidation.value) > 10000 ? 'text-orange-500' : 
+                        parseFloat(liquidation.value) > 1000 ? 'text-yellow-600' : 'text-foreground'
+                      }`}>
                         {formatValue(parseFloat(liquidation.value))}
                       </div>
                     </div>
                     
-                    <div className="text-xs text-muted-foreground mt-1">
-                      @ ${parseFloat(liquidation.price).toFixed(4)}
+                    <div className="text-xs text-muted-foreground font-mono">
+                      @ ${parseFloat(liquidation.price).toFixed(6)}
                     </div>
+
+                    {/* Visual indicator for recent liquidation */}
+                    {index === 0 && (
+                      <div className="absolute -left-1 top-1/2 transform -translate-y-1/2 w-1 h-8 bg-primary rounded-r animate-pulse"></div>
+                    )}
                   </div>
                 ))}
               </div>
