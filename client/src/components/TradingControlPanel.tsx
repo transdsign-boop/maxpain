@@ -95,7 +95,7 @@ export default function TradingControlPanel({ sessionId }: TradingControlPanelPr
       slippageTolerancePercent: "0.5",
       orderType: "limit",
       maxRetryDurationMs: 30000,
-      marginAmount: "1000.0",
+      marginAmount: "10.0",
     }
   });
 
@@ -140,6 +140,22 @@ export default function TradingControlPanel({ sessionId }: TradingControlPanelPr
       });
       queryClient.invalidateQueries({ queryKey: [`/api/strategies/${sessionId}`] });
       setActiveStrategy(strategy);
+      
+      // Reset form with updated strategy data to refresh UI
+      form.reset({
+        name: strategy.name,
+        selectedAssets: strategy.selectedAssets,
+        percentileThreshold: strategy.percentileThreshold,
+        maxLayers: strategy.maxLayers,
+        positionSizePercent: strategy.positionSizePercent,
+        profitTargetPercent: strategy.profitTargetPercent,
+        marginMode: strategy.marginMode,
+        orderDelayMs: strategy.orderDelayMs,
+        slippageTolerancePercent: strategy.slippageTolerancePercent,
+        orderType: strategy.orderType,
+        maxRetryDurationMs: strategy.maxRetryDurationMs,
+        marginAmount: strategy.marginAmount,
+      });
     },
     onError: () => {
       toast({
@@ -248,14 +264,26 @@ export default function TradingControlPanel({ sessionId }: TradingControlPanelPr
     }
   };
 
-  // Load first strategy if available
+  // Load and maintain active strategy
   useEffect(() => {
-    if (strategies && strategies.length > 0 && !activeStrategy) {
-      const strategy = strategies[0];
+    if (strategies && strategies.length > 0) {
+      let strategy: Strategy | null = null;
+      
+      // Try to find the current active strategy in the updated strategies list
+      if (activeStrategy) {
+        strategy = strategies.find(s => s.id === activeStrategy.id) || null;
+      }
+      
+      // If no current strategy or it's not found, use the first available strategy
+      if (!strategy) {
+        strategy = strategies[0];
+      }
+      
+      // Update state with the strategy (could be updated data for existing strategy)
       setActiveStrategy(strategy);
       setIsStrategyRunning(strategy.isActive);
       
-      // Update form with strategy data
+      // Always update form with latest strategy data to ensure UI reflects current state
       form.reset({
         name: strategy.name,
         selectedAssets: strategy.selectedAssets,
@@ -270,8 +298,12 @@ export default function TradingControlPanel({ sessionId }: TradingControlPanelPr
         maxRetryDurationMs: strategy.maxRetryDurationMs,
         marginAmount: strategy.marginAmount,
       });
+    } else if (strategies && strategies.length === 0) {
+      // No strategies available, clear active strategy
+      setActiveStrategy(null);
+      setIsStrategyRunning(false);
     }
-  }, [strategies, activeStrategy, form]);
+  }, [strategies, form]); // Remove activeStrategy from dependencies to prevent stale state
 
   if (assetsLoading || strategiesLoading) {
     return (
@@ -657,21 +689,21 @@ export default function TradingControlPanel({ sessionId }: TradingControlPanelPr
                   name="marginAmount"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel data-testid="label-margin-amount">Margin Amount ($)</FormLabel>
+                      <FormLabel data-testid="label-margin-amount">Account Usage (%)</FormLabel>
                       <FormControl>
                         <Input
                           data-testid="input-margin-amount"
                           type="number"
-                          step="100"
-                          min="100"
-                          max="100000"
-                          placeholder="1000.0"
+                          step="1"
+                          min="1"
+                          max="100"
+                          placeholder="10.0"
                           {...field}
                           disabled={isStrategyRunning}
                         />
                       </FormControl>
                       <FormDescription className="text-xs">
-                        Available margin for leverage
+                        Percentage of account to use for trading
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
