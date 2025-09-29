@@ -862,10 +862,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: 'Position is already closed' });
       }
 
-      // Get current market price from strategy engine
-      const currentPrice = strategyEngine.getCurrentPrice(position.symbol);
+      // Get current market price from strategy engine cache
+      let currentPrice = strategyEngine.getCurrentPrice(position.symbol);
+      
+      // If not in cache, fetch from Aster DEX API
       if (!currentPrice) {
-        return res.status(400).json({ error: 'Unable to get current market price' });
+        try {
+          const asterApiUrl = `https://fapi.asterdex.com/fapi/v1/ticker/price?symbol=${position.symbol}`;
+          const priceResponse = await fetch(asterApiUrl);
+          
+          if (priceResponse.ok) {
+            const priceData = await priceResponse.json();
+            currentPrice = parseFloat(priceData.price);
+            console.log(`📊 Fetched current price for ${position.symbol} from Aster API: $${currentPrice}`);
+          }
+        } catch (apiError) {
+          console.error('Failed to fetch price from Aster API:', apiError);
+        }
+      }
+      
+      if (!currentPrice) {
+        return res.status(400).json({ error: 'Unable to get current market price. Please try again.' });
       }
 
       // Calculate P&L
