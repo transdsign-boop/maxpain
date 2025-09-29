@@ -1,8 +1,11 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TrendingUp, TrendingDown, DollarSign, Target, Layers } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { TrendingUp, TrendingDown, DollarSign, Target, Layers, X } from "lucide-react";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface Position {
   id: string;
@@ -41,6 +44,8 @@ interface StrategyStatusProps {
 }
 
 export function StrategyStatus({ sessionId }: StrategyStatusProps) {
+  const { toast } = useToast();
+
   // First, get active strategies for this user session
   const { data: strategies } = useQuery<any[]>({
     queryKey: ['/api/strategies', sessionId],
@@ -188,7 +193,35 @@ export function StrategyStatus({ sessionId }: StrategyStatusProps) {
     return "text-muted-foreground";
   };
 
+  // Close position mutation
+  const closePositionMutation = useMutation({
+    mutationFn: async (positionId: string) => {
+      const response = await apiRequest('POST', `/api/positions/${positionId}/close`);
+      return await response.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Position Closed",
+        description: `Closed ${data.position.symbol} position with ${data.pnlPercent >= 0 ? '+' : ''}${data.pnlPercent.toFixed(2)}% P&L ($${data.pnlDollar >= 0 ? '+' : ''}${data.pnlDollar.toFixed(2)})`,
+      });
+      // Invalidate queries to refresh the UI
+      queryClient.invalidateQueries({ queryKey: ['/api/strategies', activeStrategy?.id, 'positions', 'summary'] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to close position. Please try again.",
+        variant: "destructive",
+      });
+    }
+  });
+
   const totalReturnPercent = summary ? ((summary.totalPnl / summary.startingBalance) * 100) : 0;
+  
+  // Calculate current balance including unrealized P&L
+  const currentBalanceWithUnrealized = summary 
+    ? summary.currentBalance + (summary.unrealizedPnl || 0)
+    : 0;
 
   return (
     <Card data-testid="strategy-status">
@@ -203,9 +236,14 @@ export function StrategyStatus({ sessionId }: StrategyStatusProps) {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="space-y-1">
             <p className="text-sm text-muted-foreground">Current Balance</p>
-            <p className="text-lg font-semibold" data-testid="current-balance">
-              {formatCurrency(summary?.currentBalance || 0)}
+            <p className={`text-lg font-semibold ${getPnlColor(summary?.unrealizedPnl || 0)}`} data-testid="current-balance">
+              {formatCurrency(currentBalanceWithUnrealized)}
             </p>
+            {summary && summary.unrealizedPnl !== 0 && (
+              <p className="text-xs text-muted-foreground">
+                Base: {formatCurrency(summary.currentBalance)}
+              </p>
+            )}
           </div>
           <div className="space-y-1">
             <p className="text-sm text-muted-foreground">Total P&L</p>
@@ -292,13 +330,24 @@ export function StrategyStatus({ sessionId }: StrategyStatusProps) {
                         </p>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className={`font-medium ${getPnlColor(unrealizedPnl)}`}>
-                        {formatCurrency(unrealizedPnl)}
-                      </p>
-                      <p className={`text-sm ${getPnlColor(pnlPercent)}`}>
-                        {formatPercentage(pnlPercent)}
-                      </p>
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <p className={`font-medium ${getPnlColor(unrealizedPnl)}`}>
+                          {formatCurrency(unrealizedPnl)}
+                        </p>
+                        <p className={`text-sm ${getPnlColor(pnlPercent)}`}>
+                          {formatPercentage(pnlPercent)}
+                        </p>
+                      </div>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        data-testid={`button-close-position-${position.symbol}`}
+                        onClick={() => closePositionMutation.mutate(position.id)}
+                        disabled={closePositionMutation.isPending}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
                 );
