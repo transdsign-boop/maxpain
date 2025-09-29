@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
+import { strategyEngine } from "./strategy-engine";
 import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySchema, updateStrategySchema } from "@shared/schema";
 
 // Fixed liquidation window - always 60 seconds regardless of user input
@@ -635,8 +636,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         isActive: true
       });
       
-      // Register with strategy engine (when we connect it)
-      // TODO: strategyEngine.registerStrategy(strategy);
+      // Register with strategy engine to create trade session
+      await strategyEngine.registerStrategy(strategy);
       
       // Return updated strategy for easier frontend sync
       const updatedStrategy = await storage.getStrategy(strategyId);
@@ -662,8 +663,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         isActive: false
       });
       
-      // Unregister from strategy engine (when we connect it)
-      // TODO: strategyEngine.unregisterStrategy(strategyId);
+      // Unregister from strategy engine and end trade session
+      await strategyEngine.unregisterStrategy(strategyId);
       
       // Return updated strategy for easier frontend sync
       const updatedStrategy = await storage.getStrategy(strategyId);
@@ -719,6 +720,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Connect to Aster DEX WebSocket and relay data
   connectToAsterDEX(clients);
+
+  // Positions API Routes
+  app.get('/api/positions/:sessionId', async (req, res) => {
+    try {
+      const { sessionId } = req.params;
+      const positions = await storage.getOpenPositions(sessionId);
+      res.json(positions);
+    } catch (error) {
+      console.error('Error fetching positions:', error);
+      res.status(500).json({ error: 'Failed to fetch positions' });
+    }
+  });
+
+  app.get('/api/positions/:sessionId/summary', async (req, res) => {
+    try {
+      const { sessionId } = req.params;
+      const positions = await storage.getOpenPositions(sessionId);
+      const session = await storage.getTradeSession(sessionId);
+      
+      if (!session) {
+        return res.status(404).json({ error: 'Trade session not found' });
+      }
+
+      // Calculate totals
+      const totalUnrealizedPnl = positions.reduce((sum, pos) => 
+        sum + parseFloat(pos.unrealizedPnl || '0'), 0);
+      const totalRealizedPnl = parseFloat(session.totalPnl || '0');
+      const totalExposure = positions.reduce((sum, pos) => 
+        sum + parseFloat(pos.totalCost || '0'), 0);
+      const activePositions = positions.length;
+
+      const summary = {
+        sessionId,
+        startingBalance: parseFloat(session.startingBalance),
+        currentBalance: parseFloat(session.currentBalance),
+        totalPnl: totalRealizedPnl + totalUnrealizedPnl,
+        realizedPnl: totalRealizedPnl,
+        unrealizedPnl: totalUnrealizedPnl,
+        totalExposure,
+        activePositions,
+        totalTrades: session.totalTrades,
+        winRate: parseFloat(session.winRate || '0'),
+        positions
+      };
+
+      res.json(summary);
+    } catch (error) {
+      console.error('Error fetching position summary:', error);
+      res.status(500).json({ error: 'Failed to fetch position summary' });
+    }
+  });
 
   return httpServer;
 }
@@ -802,4 +854,3 @@ async function connectToAsterDEX(clients: Set<WebSocket>) {
     console.log('❌ Real-time liquidation data unavailable');
   }
 }
-
