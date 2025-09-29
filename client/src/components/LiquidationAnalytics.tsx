@@ -61,12 +61,23 @@ const timeRangeOptions = [
   { value: '168', label: '1 Week' },
 ];
 
+interface Liquidation {
+  id: string;
+  symbol: string;
+  side: "long" | "short";
+  size: string;
+  price: string;
+  value: string;
+  timestamp: Date;
+}
+
 interface LiquidationAnalyticsProps {
   selectedAssets: string[];
   specificSymbol?: string; // Symbol to analyze when opened from a specific liquidation
+  allLiquidations?: Liquidation[]; // Complete liquidation data for accurate totals
 }
 
-export default function LiquidationAnalytics({ selectedAssets, specificSymbol }: LiquidationAnalyticsProps) {
+export default function LiquidationAnalytics({ selectedAssets, specificSymbol, allLiquidations }: LiquidationAnalyticsProps) {
   const [selectedAsset, setSelectedAsset] = useState<string>(specificSymbol || "");
   const [selectedHours, setSelectedHours] = useState<string>("24");
 
@@ -285,7 +296,12 @@ export default function LiquidationAnalytics({ selectedAssets, specificSymbol }:
                 {/* Summary - Only show when we have real data */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="text-center p-4 bg-card border rounded-lg" data-testid="stat-total-liquidations">
-                    <div className="text-2xl font-bold">{percentileData.totalLiquidations}</div>
+                    <div className="text-2xl font-bold">
+                      {allLiquidations && selectedAsset ? 
+                        allLiquidations.filter(liq => liq.symbol === selectedAsset).length : 
+                        percentileData.totalLiquidations
+                      }
+                    </div>
                     <div className="text-sm text-muted-foreground">Total Liquidations</div>
                   </div>
                   <div className="text-center p-4 bg-card border rounded-lg" data-testid="stat-average-value">
@@ -296,13 +312,19 @@ export default function LiquidationAnalytics({ selectedAssets, specificSymbol }:
                   </div>
                   <div className="text-center p-4 bg-card border rounded-lg" data-testid="stat-long-count">
                     <div className="text-2xl font-bold text-destructive">
-                      {percentileData.breakdown?.longCount || 0}
+                      {allLiquidations && selectedAsset ? 
+                        allLiquidations.filter(liq => liq.symbol === selectedAsset && liq.side === 'long').length : 
+                        percentileData.breakdown?.longCount || 0
+                      }
                     </div>
                     <div className="text-sm text-muted-foreground">Long Liquidations</div>
                   </div>
                   <div className="text-center p-4 bg-card border rounded-lg" data-testid="stat-short-count">
                     <div className="text-2xl font-bold text-green-500">
-                      {percentileData.breakdown?.shortCount || 0}
+                      {allLiquidations && selectedAsset ? 
+                        allLiquidations.filter(liq => liq.symbol === selectedAsset && liq.side === 'short').length : 
+                        percentileData.breakdown?.shortCount || 0
+                      }
                     </div>
                     <div className="text-sm text-muted-foreground">Short Liquidations</div>
                   </div>
