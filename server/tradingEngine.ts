@@ -337,13 +337,9 @@ export class TradingEngine {
         volatilityAtEntry: volatilityAtEntry.toString()
       });
 
-      // Update portfolio balance
-      const newBalance = availableBalance - requiredBalance;
-      if (tradingMode === 'paper') {
-        await storage.updatePortfolio(portfolio.id, { paperBalance: newBalance.toString() });
-      } else {
-        await storage.updatePortfolio(portfolio.id, { realBalance: newBalance.toString() });
-      }
+      // NOTE: Do NOT deduct from account balance when opening positions!
+      // Account balance should only change with realized/unrealized P&L
+      // Margin is calculated separately for risk management purposes
 
       console.log(`✅ Position opened: ${position.symbol} ${position.side} size:${position.size} @ $${position.entryPrice}`);
       
@@ -464,24 +460,9 @@ export class TradingEngine {
         triggeredByLiquidation: signal.triggeredByLiquidation || existingPosition.triggeredByLiquidation
       });
 
-      // Update portfolio balance using the existing position's portfolio
-      const additionalCost = newSize * newEntryPrice;
-      const portfolio = await storage.getPortfolioById(existingPosition.portfolioId);
-      if (!portfolio) {
-        console.error('❌ Portfolio not found for position:', existingPosition.portfolioId);
-        return null;
-      }
-      
-      const currentBalance = tradingMode === 'paper' 
-        ? parseFloat(portfolio.paperBalance)
-        : parseFloat(portfolio.realBalance);
-      
-      const newBalance = currentBalance - additionalCost;
-      if (tradingMode === 'paper') {
-        await storage.updatePortfolio(portfolio.id, { paperBalance: newBalance.toString() });
-      } else {
-        await storage.updatePortfolio(portfolio.id, { realBalance: newBalance.toString() });
-      }
+      // NOTE: Do NOT deduct from account balance when adding to positions (DCA)!
+      // Account balance should only change with realized/unrealized P&L
+      // Additional margin is calculated separately for risk management
 
       const totalPositionValue = totalSize * avgEntryPrice;
       console.log(`📈 DCA executed: ${signal.symbol} ${signal.side} added ${newSize.toFixed(6)} @ $${newEntryPrice.toFixed(2)}`);
