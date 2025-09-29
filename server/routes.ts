@@ -826,6 +826,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get fills for a position (for layer details)
+  app.get('/api/positions/:positionId/fills', async (req, res) => {
+    try {
+      const { positionId } = req.params;
+      
+      const position = await storage.getPosition(positionId);
+      if (!position) {
+        return res.status(404).json({ error: 'Position not found' });
+      }
+
+      // Get all fills for this position's session and symbol
+      const sessionFills = await storage.getFillsBySession(position.sessionId);
+      const positionFills = sessionFills.filter(fill => fill.symbol === position.symbol);
+
+      res.json(positionFills);
+    } catch (error) {
+      console.error('Error fetching position fills:', error);
+      res.status(500).json({ error: 'Failed to fetch position fills' });
+    }
+  });
+
   // Manual close position endpoint
   app.post('/api/positions/:positionId/close', async (req, res) => {
     try {
