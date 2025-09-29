@@ -4,6 +4,9 @@ import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySchema, updateStrategySchema } from "@shared/schema";
 
+// Fixed liquidation window - always 60 seconds regardless of user input
+const LIQUIDATION_WINDOW_SECONDS = 60;
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // Liquidation API routes
   app.get("/api/liquidations", async (req, res) => {
@@ -563,16 +566,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const validatedData = frontendStrategySchema.parse(req.body);
       
-      // Convert frontend data to database format with proper type coercion
+      // Convert frontend data to database format with hardcoded 60-second liquidation window
       const strategyData = {
         name: validatedData.name,
         sessionId: validatedData.sessionId,
         selectedAssets: validatedData.selectedAssets,
-        liquidationThresholdSeconds: validatedData.liquidationThresholdSeconds, // Already number
-        maxLayers: validatedData.maxLayers, // Already number
-        budgetPerAsset: validatedData.budgetPerAsset, // Already string for decimal
-        layerSpacingPercent: validatedData.layerSpacingPercent, // Already string for decimal
-        profitTargetPercent: validatedData.profitTargetPercent, // Already string for decimal
+        percentileThreshold: validatedData.percentileThreshold,
+        maxLayers: validatedData.maxLayers,
+        positionSizePercent: validatedData.positionSizePercent,
+        layerSpacingPercent: validatedData.layerSpacingPercent,
+        profitTargetPercent: validatedData.profitTargetPercent,
         isActive: validatedData.isActive || false,
       };
       
@@ -598,10 +601,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Strategy not found" });
       }
       
-      // Normalize data with updatedAt timestamp
+      // Normalize data - liquidation window is always 60 seconds regardless of input
       const updateData = {
-        ...validatedUpdates,
-        updatedAt: new Date()
+        ...validatedUpdates
       };
       
       await storage.updateStrategy(strategyId, updateData);
@@ -628,10 +630,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Strategy not found" });
       }
       
-      // Update strategy to active status with timestamp
+      // Update strategy to active status (using fixed 60-second liquidation window)
       await storage.updateStrategy(strategyId, { 
-        isActive: true, 
-        updatedAt: new Date() 
+        isActive: true
       });
       
       // Register with strategy engine (when we connect it)
@@ -656,10 +657,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Strategy not found" });
       }
       
-      // Update strategy to inactive status with timestamp
+      // Update strategy to inactive status 
       await storage.updateStrategy(strategyId, { 
-        isActive: false, 
-        updatedAt: new Date() 
+        isActive: false
       });
       
       // Unregister from strategy engine (when we connect it)

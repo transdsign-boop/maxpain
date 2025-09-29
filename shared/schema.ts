@@ -61,9 +61,9 @@ export const strategies = pgTable("strategies", {
   name: text("name").notNull(),
   sessionId: text("session_id").notNull(), // Browser session ID
   selectedAssets: text("selected_assets").array().notNull(),
-  liquidationThresholdSeconds: integer("liquidation_threshold_seconds").notNull().default(60),
+  percentileThreshold: integer("percentile_threshold").notNull().default(50), // 1-100%
   maxLayers: integer("max_layers").notNull().default(5),
-  budgetPerAsset: decimal("budget_per_asset", { precision: 18, scale: 8 }).notNull(),
+  positionSizePercent: decimal("position_size_percent", { precision: 5, scale: 2 }).notNull(), // % of portfolio per position
   layerSpacingPercent: decimal("layer_spacing_percent", { precision: 5, scale: 2 }).notNull().default("2.0"),
   profitTargetPercent: decimal("profit_target_percent", { precision: 5, scale: 2 }).notNull().default("1.0"),
   isActive: boolean("is_active").notNull().default(false),
@@ -162,9 +162,9 @@ export const frontendStrategySchema = z.object({
   name: z.string().min(1, "Strategy name is required").max(50, "Name too long"),
   sessionId: z.string(),
   selectedAssets: z.array(z.string()).min(1, "Select at least one asset"),
-  liquidationThresholdSeconds: z.number().min(30).max(300),
+  percentileThreshold: z.number().min(1).max(100),
   maxLayers: z.number().min(1).max(10),
-  budgetPerAsset: z.string().min(1, "Budget is required"),
+  positionSizePercent: z.string().min(1, "Position size is required"),
   layerSpacingPercent: z.string(),
   profitTargetPercent: z.string(),
   isActive: z.boolean().optional().default(false),

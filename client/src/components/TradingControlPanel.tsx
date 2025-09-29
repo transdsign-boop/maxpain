@@ -23,9 +23,9 @@ interface Strategy {
   name: string;
   sessionId: string;
   selectedAssets: string[];
-  liquidationThresholdSeconds: number;
+  percentileThreshold: number;
   maxLayers: number;
-  budgetPerAsset: string;
+  positionSizePercent: string;
   layerSpacingPercent: string;
   profitTargetPercent: string;
   isActive: boolean;
@@ -37,9 +37,9 @@ interface Strategy {
 const strategyFormSchema = z.object({
   name: z.string().min(1, "Strategy name is required").max(50, "Name too long"),
   selectedAssets: z.array(z.string()).min(1, "Select at least one asset"),
-  liquidationThresholdSeconds: z.number().min(30).max(300),
+  percentileThreshold: z.number().min(1).max(100),
   maxLayers: z.number().min(1).max(10),
-  budgetPerAsset: z.string().min(1, "Budget is required"),
+  positionSizePercent: z.string().min(1, "Position size is required"),
   layerSpacingPercent: z.string().min(0.1).max(10),
   profitTargetPercent: z.string().min(0.1).max(20),
 });
@@ -76,9 +76,9 @@ export default function TradingControlPanel({ sessionId }: TradingControlPanelPr
     defaultValues: {
       name: "Liquidation Counter-Trade",
       selectedAssets: ["ASTERUSDT"],
-      liquidationThresholdSeconds: 60,
+      percentileThreshold: 50,
       maxLayers: 5,
-      budgetPerAsset: "1000",
+      positionSizePercent: "5.0",
       layerSpacingPercent: "2.0",
       profitTargetPercent: "1.0",
     }
@@ -244,9 +244,9 @@ export default function TradingControlPanel({ sessionId }: TradingControlPanelPr
       form.reset({
         name: strategy.name,
         selectedAssets: strategy.selectedAssets,
-        liquidationThresholdSeconds: strategy.liquidationThresholdSeconds,
+        percentileThreshold: strategy.percentileThreshold,
         maxLayers: strategy.maxLayers,
-        budgetPerAsset: strategy.budgetPerAsset,
+        positionSizePercent: strategy.positionSizePercent,
         layerSpacingPercent: strategy.layerSpacingPercent,
         profitTargetPercent: strategy.profitTargetPercent,
       });
@@ -372,24 +372,24 @@ export default function TradingControlPanel({ sessionId }: TradingControlPanelPr
             {/* Liquidation Threshold */}
             <FormField
               control={form.control}
-              name="liquidationThresholdSeconds"
+              name="percentileThreshold"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel data-testid="label-liquidation-threshold">
+                  <FormLabel data-testid="label-percentile-threshold">
                     <div className="flex items-center gap-2">
-                      <AlertCircle className="h-4 w-4" />
-                      Liquidation Threshold
+                      <Target className="h-4 w-4" />
+                      Percentile Threshold: {field.value}%
                     </div>
                   </FormLabel>
                   <FormDescription>
-                    Minimum liquidation activity window: {field.value} seconds
+                    Trigger trades when liquidation volume exceeds this percentile within a fixed 60-second monitoring window
                   </FormDescription>
                   <FormControl>
                     <Slider
-                      data-testid="slider-liquidation-threshold"
-                      min={30}
-                      max={300}
-                      step={10}
+                      data-testid="slider-percentile-threshold"
+                      min={1}
+                      max={100}
+                      step={1}
                       value={[field.value]}
                       onValueChange={(value) => field.onChange(value[0])}
                       disabled={isStrategyRunning}
@@ -397,8 +397,8 @@ export default function TradingControlPanel({ sessionId }: TradingControlPanelPr
                     />
                   </FormControl>
                   <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>30s</span>
-                    <span>5min</span>
+                    <span>1%</span>
+                    <span>100%</span>
                   </div>
                   <FormMessage />
                 </FormItem>
@@ -484,23 +484,24 @@ export default function TradingControlPanel({ sessionId }: TradingControlPanelPr
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField
                   control={form.control}
-                  name="budgetPerAsset"
+                  name="positionSizePercent"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel data-testid="label-budget-per-asset">Budget per Asset ($)</FormLabel>
+                      <FormLabel data-testid="label-position-size">Position Size (%)</FormLabel>
                       <FormControl>
                         <Input
-                          data-testid="input-budget-per-asset"
+                          data-testid="input-position-size"
                           type="number"
-                          step="100"
-                          min="100"
-                          placeholder="1000"
+                          step="0.1"
+                          min="0.1"
+                          max="50"
+                          placeholder="5.0"
                           {...field}
                           disabled={isStrategyRunning}
                         />
                       </FormControl>
                       <FormDescription className="text-xs">
-                        Maximum to invest per layer
+                        Percentage of portfolio per position
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
