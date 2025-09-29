@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import ConnectionStatus from "@/components/ConnectionStatus";
 import LiquidationTable from "@/components/LiquidationTable";
+import LiveLiquidationsSidebar from "@/components/LiveLiquidationsSidebar";
 import AssetSelector from "@/components/AssetSelector";
 import LiquidationAnalytics from "@/components/LiquidationAnalytics";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -351,42 +352,14 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="p-6 space-y-6">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Asset Selection */}
-          <div className="lg:col-span-1">
-            <AssetSelector
-              selectedAssets={selectedAssets}
-              onAssetsChange={setSelectedAssets}
-            />
-          </div>
-
-          {/* Live Liquidations with Integrated Stats and Filters */}
-          <div className="lg:col-span-2">
-            <LiquidationTable 
-              liquidations={filteredLiquidations}
-              stats={{
-                totalLiquidations: filteredLiquidations.length,
-                totalVolume: totalVolume,
-                longLiquidations: longLiquidations,
-                shortLiquidations: shortLiquidations,
-                largestLiquidation: largestLiquidation ? {
-                  value: largestLiquidation.value,
-                  timestamp: largestLiquidation.timestamp,
-                  symbol: largestLiquidation.symbol
-                } : undefined
-              }}
-              timeRange={timeRange}
-              sideFilter={sideFilter}
-              minValue={minValue}
-              onTimeRangeChange={setTimeRange}
-              onSideFilterChange={setSideFilter}
-              onMinValueChange={setMinValue}
-              onRefresh={handleRefresh}
-              isConnected={isConnected}
-            />
-          </div>
+      {/* Main Content with Sidebar Space */}
+      <main className="p-6 space-y-6 pr-24" style={{ marginRight: '320px' }}>
+        {/* Asset Selection */}
+        <div className="w-full max-w-2xl">
+          <AssetSelector
+            selectedAssets={selectedAssets}
+            onAssetsChange={setSelectedAssets}
+          />
         </div>
 
         {/* Liquidation Analytics */}
@@ -394,6 +367,13 @@ export default function Dashboard() {
           <LiquidationAnalytics selectedAssets={selectedAssets} />
         </div>
       </main>
+
+      {/* Live Liquidations Sidebar */}
+      <LiveLiquidationsSidebar 
+        liquidations={liquidations}
+        isConnected={isConnected}
+        selectedAssets={selectedAssets}
+      />
 
       {/* Hidden file input for settings import */}
       <input
@@ -406,7 +386,7 @@ export default function Dashboard() {
       />
 
       {/* Debug Controls */}
-      <div className="fixed bottom-4 right-4 space-y-2">
+      <div className="fixed bottom-4 left-4 space-y-2">
         <button
           onClick={() => setIsConnected(!isConnected)}
           className="bg-primary text-primary-foreground px-3 py-1 rounded text-xs hover-elevate"
