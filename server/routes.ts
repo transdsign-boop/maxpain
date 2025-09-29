@@ -831,6 +831,11 @@ async function connectToAsterDEX(clients: Set<WebSocket>) {
   try {
     console.log('Connecting to Aster DEX WebSocket...');
     
+    // Deduplication: Track recent liquidation signatures to prevent duplicates
+    // Aster DEX @arr stream sometimes sends the same event multiple times
+    const recentLiquidations = new Map<string, number>();
+    const DEDUP_WINDOW_MS = 5000; // 5 second window for deduplication
+    
     // Connect to real Aster DEX liquidation stream
     const asterWs = new WebSocket('wss://fstream.asterdex.com/ws/!forceOrder@arr');
     
@@ -858,6 +863,31 @@ async function connectToAsterDEX(clients: Set<WebSocket>) {
             price: message.o.p,
             value: (parseFloat(message.o.q) * parseFloat(message.o.p)).toFixed(8),
           };
+          
+          // Create unique signature for deduplication
+          const signature = `${liquidationData.symbol}-${liquidationData.side}-${liquidationData.size}-${liquidationData.price}-${liquidationData.value}`;
+          const now = Date.now();
+          
+          // Check if we've seen this exact liquidation recently
+          const lastSeen = recentLiquidations.get(signature);
+          if (lastSeen && (now - lastSeen) < DEDUP_WINDOW_MS) {
+            console.log(`🔄 Skipping duplicate liquidation: ${liquidationData.symbol} ${liquidationData.side} $${liquidationData.value}`);
+            return;
+          }
+          
+          // Record this liquidation
+          recentLiquidations.set(signature, now);
+          
+          // Clean up old entries periodically (keep map size bounded)
+          if (recentLiquidations.size > 100) {
+            const cutoff = now - DEDUP_WINDOW_MS;
+            const entries = Array.from(recentLiquidations.entries());
+            for (const [key, timestamp] of entries) {
+              if (timestamp < cutoff) {
+                recentLiquidations.delete(key);
+              }
+            }
+          }
           
           // Validate and store in database
           const validatedData = insertLiquidationSchema.parse(liquidationData);
