@@ -40,6 +40,7 @@ export interface IStorage {
   createStrategy(strategy: InsertStrategy): Promise<Strategy>;
   getStrategy(id: string): Promise<Strategy | undefined>;
   getStrategiesBySession(sessionId: string): Promise<Strategy[]>;
+  getAllActiveStrategies(): Promise<Strategy[]>;
   updateStrategy(id: string, updates: Partial<InsertStrategy>): Promise<Strategy>;
   deleteStrategy(id: string): Promise<void>;
 
@@ -185,6 +186,12 @@ export class DatabaseStorage implements IStorage {
   async getStrategiesBySession(sessionId: string): Promise<Strategy[]> {
     return await db.select().from(strategies)
       .where(eq(strategies.sessionId, sessionId))
+      .orderBy(desc(strategies.createdAt));
+  }
+
+  async getAllActiveStrategies(): Promise<Strategy[]> {
+    return await db.select().from(strategies)
+      .where(eq(strategies.isActive, true))
       .orderBy(desc(strategies.createdAt));
   }
 

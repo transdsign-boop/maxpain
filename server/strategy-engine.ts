@@ -77,10 +77,14 @@ export class StrategyEngine extends EventEmitter {
   // Load all active strategies from database
   private async loadActiveStrategies() {
     try {
-      // For simplicity, we'll load strategies by session ID patterns
-      // In a real implementation, you'd have a better way to track active strategies
-      console.log('📚 Loading active strategies...');
-      // Note: This is a simplified implementation. In practice, you'd track active strategies better.
+      console.log('📚 Loading active strategies from database...');
+      const activeStrategies = await storage.getAllActiveStrategies();
+      
+      for (const strategy of activeStrategies) {
+        await this.registerStrategy(strategy);
+      }
+      
+      console.log(`✅ Loaded ${activeStrategies.length} active strategies`);
     } catch (error) {
       console.error('❌ Error loading active strategies:', error);
     }
@@ -121,6 +125,8 @@ export class StrategyEngine extends EventEmitter {
   private async handleLiquidation(liquidation: Liquidation) {
     if (!this.isRunning) return;
 
+    console.log(`📊 Strategy Engine received liquidation: ${liquidation.symbol} ${liquidation.side} $${parseFloat(liquidation.value).toFixed(2)}`);
+
     // Update price cache
     this.priceCache.set(liquidation.symbol, parseFloat(liquidation.price));
     
@@ -150,11 +156,15 @@ export class StrategyEngine extends EventEmitter {
     const session = this.activeSessions.get(strategy.id);
     if (!session || !session.isActive) return;
 
+    console.log(`🎯 Evaluating strategy "${strategy.name}" for ${liquidation.symbol}`);
+
     // Check if liquidation meets threshold criteria (fixed 60-second window)
     const recentLiquidations = this.getRecentLiquidations(
       liquidation.symbol, 
       LIQUIDATION_WINDOW_SECONDS
     );
+
+    console.log(`📈 Found ${recentLiquidations.length} liquidations in last ${LIQUIDATION_WINDOW_SECONDS}s for ${liquidation.symbol}`);
 
     if (recentLiquidations.length === 0) return;
 
