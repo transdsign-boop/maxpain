@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
@@ -44,6 +45,55 @@ export default function LiveLiquidationsSidebar({
     if (value >= 1000000) return `$${(value / 1000000).toFixed(2)}M`;
     if (value >= 1000) return `$${(value / 1000).toFixed(1)}K`;
     return `$${value.toFixed(0)}`;
+  };
+
+  // Pre-calculate all percentiles for efficiency (O(n log n) instead of O(n²))
+  const allValues = useMemo(() => {
+    return liquidations.map(liq => parseFloat(liq.value)).sort((a, b) => a - b);
+  }, [liquidations]);
+
+  const calculatePercentile = (value: number) => {
+    if (allValues.length === 0) return 0;
+    
+    // Binary search for efficient O(log n) lookup
+    let left = 0, right = allValues.length;
+    while (left < right) {
+      const mid = Math.floor((left + right) / 2);
+      if (allValues[mid] <= value) {
+        left = mid + 1;
+      } else {
+        right = mid;
+      }
+    }
+    return Math.round((left / allValues.length) * 100);
+  };
+
+  const getOrdinalSuffix = (n: number) => {
+    const lastDigit = n % 10;
+    const lastTwoDigits = n % 100;
+    
+    // Special cases for 11th, 12th, 13th
+    if (lastTwoDigits >= 11 && lastTwoDigits <= 13) {
+      return `${n}th`;
+    }
+    
+    // Regular cases
+    switch (lastDigit) {
+      case 1: return `${n}st`;
+      case 2: return `${n}nd`;
+      case 3: return `${n}rd`;
+      default: return `${n}th`;
+    }
+  };
+
+  const getPercentileLabel = (percentile: number) => {
+    const ordinal = getOrdinalSuffix(percentile);
+    
+    if (percentile >= 95) return { text: ordinal, color: 'bg-red-500 text-white' };
+    if (percentile >= 90) return { text: ordinal, color: 'bg-orange-500 text-white' };
+    if (percentile >= 75) return { text: ordinal, color: 'bg-yellow-500 text-black' };
+    if (percentile >= 50) return { text: ordinal, color: 'bg-blue-500 text-white' };
+    return { text: ordinal, color: 'bg-gray-500 text-white' };
   };
 
   return (
@@ -147,11 +197,25 @@ export default function LiveLiquidationsSidebar({
                       <div className="text-muted-foreground">
                         Size: <span className="font-medium text-foreground">{parseFloat(liquidation.size).toFixed(4)}</span>
                       </div>
-                      <div className={`font-bold text-sm ${
-                        parseFloat(liquidation.value) > 10000 ? 'text-orange-500' : 
-                        parseFloat(liquidation.value) > 1000 ? 'text-yellow-600' : 'text-foreground'
-                      }`}>
-                        {formatValue(parseFloat(liquidation.value))}
+                      <div className="flex items-center gap-2">
+                        <div className={`font-bold text-sm ${
+                          parseFloat(liquidation.value) > 10000 ? 'text-orange-500' : 
+                          parseFloat(liquidation.value) > 1000 ? 'text-yellow-600' : 'text-foreground'
+                        }`}>
+                          {formatValue(parseFloat(liquidation.value))}
+                        </div>
+                        {(() => {
+                          const percentile = calculatePercentile(parseFloat(liquidation.value));
+                          const label = getPercentileLabel(percentile);
+                          return (
+                            <Badge 
+                              className={`text-xs px-1.5 py-0.5 ${label.color}`}
+                              data-testid={`badge-percentile-${liquidation.id}`}
+                            >
+                              {label.text}
+                            </Badge>
+                          );
+                        })()}
                       </div>
                     </div>
                     
