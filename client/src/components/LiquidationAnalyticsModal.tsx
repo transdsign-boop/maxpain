@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useQuery } from "@tanstack/react-query";
 import LiquidationAnalytics from "./LiquidationAnalytics";
 import LiquidationRow from "./LiquidationRow";
+import HistoricalLiquidationTable from "./HistoricalLiquidationTable";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Activity } from "lucide-react";
@@ -134,6 +135,25 @@ export default function LiquidationAnalyticsModal({
               selectedAssets={[]} 
               specificSymbol={selectedLiquidation?.symbol}
             />
+            
+            {/* Historical Liquidations in Analytics */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Activity className="h-5 w-5" />
+                  All {selectedLiquidation?.symbol} Liquidations
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Complete historical record with pagination and advanced formatting
+                </p>
+              </CardHeader>
+              <CardContent>
+                <HistoricalLiquidationTable 
+                  liquidations={allLiquidations}
+                  isLoading={liquidationsLoading}
+                />
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
       </DialogContent>
