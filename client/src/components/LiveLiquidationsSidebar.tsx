@@ -50,9 +50,13 @@ export default function LiveLiquidationsSidebar({
 
   return (
     <div 
-      className={`fixed right-0 top-0 h-full bg-background border-l transition-all duration-300 z-50 ${
+      className={`fixed right-0 bg-background border-l transition-all duration-300 z-50 ${
         isCollapsed ? 'w-12' : 'w-80'
       } hidden md:block`}
+      style={{
+        top: '73px', // Position below the header
+        height: 'calc(100vh - 73px)' // Full height minus header
+      }}
       data-testid="sidebar-live-liquidations"
     >
       {/* Collapse/Expand Button */}
