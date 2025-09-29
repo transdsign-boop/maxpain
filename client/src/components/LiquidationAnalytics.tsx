@@ -140,57 +140,6 @@ export default function LiquidationAnalytics({ selectedAssets }: LiquidationAnal
         </p>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Asset and Time Range Selection */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Asset</label>
-            {assetsLoading ? (
-              <Skeleton className="h-10 w-full" data-testid="skeleton-asset-select" />
-            ) : assetsError ? (
-              <div className="text-sm text-destructive" data-testid="error-assets">
-                Failed to load assets
-              </div>
-            ) : allAssets.length === 0 ? (
-              <div className="text-sm text-muted-foreground" data-testid="no-available-assets">
-                No perpetual assets with liquidation data available.
-              </div>
-            ) : (
-              <Select value={selectedAsset} onValueChange={setSelectedAsset} data-testid="select-asset">
-                <SelectTrigger>
-                  <SelectValue placeholder="Select an asset to analyze" />
-                </SelectTrigger>
-                <SelectContent>
-                  {allAssets.map((asset: AvailableAsset) => (
-                    <SelectItem key={asset.symbol} value={asset.symbol} data-testid={`option-asset-${asset.symbol}`}>
-                      <div className="flex items-center justify-between w-full">
-                        <span>{asset.symbol}</span>
-                        <Badge variant="secondary" className="ml-2">
-                          {asset.count} liquidations
-                        </Badge>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Time Range</label>
-            <Select value={selectedHours} onValueChange={setSelectedHours} data-testid="select-timerange">
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {timeRangeOptions.map(option => (
-                  <SelectItem key={option.value} value={option.value} data-testid={`option-timerange-${option.value}`}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
 
         {/* Loading State */}
         {percentileLoading && selectedAsset && (
