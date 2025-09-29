@@ -65,8 +65,10 @@ export const strategies = pgTable("strategies", {
   maxLayers: integer("max_layers").notNull().default(5),
   positionSizePercent: decimal("position_size_percent", { precision: 5, scale: 2 }).notNull(), // % of portfolio per position
   profitTargetPercent: decimal("profit_target_percent", { precision: 5, scale: 2 }).notNull().default("1.0"),
+  stopLossPercent: decimal("stop_loss_percent", { precision: 5, scale: 2 }).notNull().default("2.0"), // Stop loss percentage
   // Margin and Risk Management
   marginMode: text("margin_mode").notNull().default("cross"), // "cross" or "isolated"
+  leverage: integer("leverage").notNull().default(1), // 1-125x leverage
   // Smart Order Placement
   orderDelayMs: integer("order_delay_ms").notNull().default(1000), // Delay before placing orders (milliseconds)
   slippageTolerancePercent: decimal("slippage_tolerance_percent", { precision: 5, scale: 2 }).notNull().default("0.5"), // Max slippage %
@@ -171,13 +173,27 @@ export const frontendStrategySchema = z.object({
   selectedAssets: z.array(z.string()).min(1, "Select at least one asset"),
   percentileThreshold: z.number().min(1).max(100),
   maxLayers: z.number().min(1).max(10),
-  positionSizePercent: z.string().min(1, "Position size is required"),
-  profitTargetPercent: z.string(),
+  positionSizePercent: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 0.1 && num <= 50;
+  }, "Position size must be between 0.1% and 50%"),
+  profitTargetPercent: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 0.1 && num <= 20;
+  }, "Profit target must be between 0.1% and 20%"),
+  stopLossPercent: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 0.1 && num <= 50;
+  }, "Stop loss must be between 0.1% and 50%").default("2.0"),
   // Margin and Risk Management
   marginMode: z.enum(["cross", "isolated"]).default("cross"),
+  leverage: z.number().min(1).max(125).default(1), // 1-125x leverage
   // Smart Order Placement
   orderDelayMs: z.number().min(100).max(30000).default(1000), // 100ms to 30s
-  slippageTolerancePercent: z.string().default("0.5"),
+  slippageTolerancePercent: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 0.1 && num <= 5;
+  }, "Slippage tolerance must be between 0.1% and 5%").default("0.5"),
   orderType: z.enum(["market", "limit"]).default("limit"),
   maxRetryDurationMs: z.number().min(5000).max(300000).default(30000), // 5s to 5min
   marginAmount: z.string().refine((val) => {

@@ -27,7 +27,9 @@ interface Strategy {
   maxLayers: number;
   positionSizePercent: string;
   profitTargetPercent: string;
+  stopLossPercent: string;
   marginMode: "cross" | "isolated";
+  leverage: number;
   orderDelayMs: number;
   slippageTolerancePercent: string;
   orderType: "market" | "limit";
@@ -44,14 +46,31 @@ const strategyFormSchema = z.object({
   selectedAssets: z.array(z.string()).min(1, "Select at least one asset"),
   percentileThreshold: z.number().min(1).max(100),
   maxLayers: z.number().min(1).max(10),
-  positionSizePercent: z.string().min(1, "Position size is required"),
-  profitTargetPercent: z.string().min(0.1).max(20),
+  positionSizePercent: z.string().min(1, "Position size is required").refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 0.1 && num <= 50;
+  }, "Position size must be between 0.1% and 50%"),
+  profitTargetPercent: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 0.1 && num <= 20;
+  }, "Profit target must be between 0.1% and 20%"),
+  stopLossPercent: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 0.1 && num <= 50;
+  }, "Stop loss must be between 0.1% and 50%"),
   marginMode: z.enum(["cross", "isolated"]),
+  leverage: z.number().min(1).max(125),
   orderDelayMs: z.number().min(100).max(30000),
-  slippageTolerancePercent: z.string().min(0.1).max(5),
+  slippageTolerancePercent: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 0.1 && num <= 5;
+  }, "Slippage tolerance must be between 0.1% and 5%"),
   orderType: z.enum(["market", "limit"]),
   maxRetryDurationMs: z.number().min(5000).max(300000),
-  marginAmount: z.string().min(1, "Margin amount is required"),
+  marginAmount: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 1 && num <= 100;
+  }, "Account usage must be between 1% and 100%"),
 });
 
 type StrategyFormData = z.infer<typeof strategyFormSchema>;
@@ -90,7 +109,9 @@ export default function TradingControlPanel({ sessionId }: TradingControlPanelPr
       maxLayers: 5,
       positionSizePercent: "5.0",
       profitTargetPercent: "1.0",
+      stopLossPercent: "2.0",
       marginMode: "cross",
+      leverage: 1,
       orderDelayMs: 1000,
       slippageTolerancePercent: "0.5",
       orderType: "limit",
@@ -149,7 +170,9 @@ export default function TradingControlPanel({ sessionId }: TradingControlPanelPr
         maxLayers: strategy.maxLayers,
         positionSizePercent: strategy.positionSizePercent,
         profitTargetPercent: strategy.profitTargetPercent,
+        stopLossPercent: strategy.stopLossPercent,
         marginMode: strategy.marginMode,
+        leverage: strategy.leverage,
         orderDelayMs: strategy.orderDelayMs,
         slippageTolerancePercent: strategy.slippageTolerancePercent,
         orderType: strategy.orderType,
@@ -291,7 +314,9 @@ export default function TradingControlPanel({ sessionId }: TradingControlPanelPr
         maxLayers: strategy.maxLayers,
         positionSizePercent: strategy.positionSizePercent,
         profitTargetPercent: strategy.profitTargetPercent,
+        stopLossPercent: strategy.stopLossPercent,
         marginMode: strategy.marginMode,
+        leverage: strategy.leverage,
         orderDelayMs: strategy.orderDelayMs,
         slippageTolerancePercent: strategy.slippageTolerancePercent,
         orderType: strategy.orderType,
@@ -657,7 +682,7 @@ export default function TradingControlPanel({ sessionId }: TradingControlPanelPr
                 Risk Management
               </Label>
               
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <FormField
                   control={form.control}
                   name="positionSizePercent"
@@ -712,6 +737,34 @@ export default function TradingControlPanel({ sessionId }: TradingControlPanelPr
 
                 <FormField
                   control={form.control}
+                  name="leverage"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel data-testid="label-leverage">Leverage</FormLabel>
+                      <FormControl>
+                        <Input
+                          data-testid="input-leverage"
+                          type="number"
+                          step="1"
+                          min="1"
+                          max="125"
+                          placeholder="1"
+                          {...field}
+                          onChange={(e) => field.onChange(parseInt(e.target.value) || 1)}
+                          value={field.value}
+                          disabled={isStrategyRunning}
+                        />
+                      </FormControl>
+                      <FormDescription className="text-xs">
+                        Trading leverage (1-125x)
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
                   name="profitTargetPercent"
                   render={({ field }) => (
                     <FormItem>
@@ -735,6 +788,32 @@ export default function TradingControlPanel({ sessionId }: TradingControlPanelPr
                       </FormControl>
                       <FormDescription className="text-xs">
                         Exit when position is profitable
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="stopLossPercent"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel data-testid="label-stop-loss">Stop Loss %</FormLabel>
+                      <FormControl>
+                        <Input
+                          data-testid="input-stop-loss"
+                          type="number"
+                          step="0.1"
+                          min="0.1"
+                          max="50"
+                          placeholder="2.0"
+                          {...field}
+                          disabled={isStrategyRunning}
+                        />
+                      </FormControl>
+                      <FormDescription className="text-xs">
+                        Exit when position loss exceeds
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
