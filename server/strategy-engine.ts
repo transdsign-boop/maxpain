@@ -527,26 +527,43 @@ export class StrategyEngine extends EventEmitter {
   }
 
   // Close a position at current market price
-  private async closePosition(position: Position, exitPrice: number, realizedPnl: number) {
+  private async closePosition(position: Position, exitPrice: number, realizedPnlPercent: number) {
     try {
-      console.log(`🎯 Closing position ${position.symbol} at $${exitPrice} with ${realizedPnl.toFixed(2)}% profit`);
+      // Calculate dollar P&L from percentage
+      const totalCost = parseFloat(position.totalCost);
+      const dollarPnl = (realizedPnlPercent / 100) * totalCost;
+      
+      console.log(`🎯 Closing position ${position.symbol} at $${exitPrice} with ${realizedPnlPercent.toFixed(2)}% profit ($${dollarPnl.toFixed(2)})`);
 
       // Close position in database
-      await storage.closePosition(position.id, new Date(), realizedPnl);
+      await storage.closePosition(position.id, new Date(), realizedPnlPercent);
 
-      // Update session statistics
+      // Update session statistics and balance
       const session = this.activeSessions.get(position.sessionId);
       if (session) {
         const newTotalTrades = session.totalTrades + 1;
-        const newTotalPnl = parseFloat(session.totalPnl) + realizedPnl;
+        const oldTotalPnl = parseFloat(session.totalPnl);
+        const newTotalPnl = oldTotalPnl + dollarPnl;
+        
+        // Update current balance with realized P&L
+        const oldBalance = parseFloat(session.currentBalance);
+        const newBalance = oldBalance + dollarPnl;
         
         await storage.updateTradeSession(session.id, {
           totalTrades: newTotalTrades,
           totalPnl: newTotalPnl.toString(),
+          currentBalance: newBalance.toString(),
         });
+        
+        // Update local session cache
+        session.totalTrades = newTotalTrades;
+        session.totalPnl = newTotalPnl.toString();
+        session.currentBalance = newBalance.toString();
+        
+        console.log(`💰 Balance updated: $${oldBalance.toFixed(2)} → $${newBalance.toFixed(2)} (${dollarPnl >= 0 ? '+' : ''}$${dollarPnl.toFixed(2)})`);
       }
 
-      console.log(`✅ Position closed: ${position.symbol} - P&L: ${realizedPnl.toFixed(2)}%`);
+      console.log(`✅ Position closed: ${position.symbol} - P&L: ${realizedPnlPercent.toFixed(2)}% ($${dollarPnl.toFixed(2)})`);
     } catch (error) {
       console.error('❌ Error closing position:', error);
     }
