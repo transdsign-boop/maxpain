@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import ConnectionStatus from "@/components/ConnectionStatus";
-import LiquidationTable from "@/components/LiquidationTable";
 import LiveLiquidationsSidebar from "@/components/LiveLiquidationsSidebar";
 import LiquidationAnalyticsModal from "@/components/LiquidationAnalyticsModal";
+import TradingControlPanel from "@/components/TradingControlPanel";
 import ThemeToggle from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -334,10 +334,10 @@ export default function Dashboard() {
         <div className="flex items-center justify-between px-6 py-4">
           <div>
             <h1 className="text-2xl font-bold" data-testid="text-app-title">
-              Aster DEX Liquidations
+              Aster DEX Trading Platform
             </h1>
             <p className="text-sm text-muted-foreground">
-              Real-time liquidation monitoring and analysis
+              Real-time liquidation monitoring and automated trading strategies
             </p>
           </div>
           <div className="flex items-center gap-4">
@@ -367,16 +367,14 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* Main Content with Dynamic Sidebar Space - Empty for now */}
+      {/* Main Content with Trading Controls */}
       <main 
         className={`p-6 space-y-6 transition-all duration-300 ${
           isSidebarCollapsed ? 'md:mr-12' : 'md:mr-80'
         }`}
       >
-        {/* Main section is empty - analytics are now in a pop-up modal */}
-        <div className="flex items-center justify-center h-96 text-muted-foreground">
-          <p>Click on any liquidation in the sidebar to view detailed analytics</p>
-        </div>
+        {/* Trading Control Panel */}
+        <TradingControlPanel sessionId={getSessionId()} />
       </main>
 
       {/* Live Liquidations Sidebar */}
