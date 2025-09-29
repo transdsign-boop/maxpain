@@ -3,6 +3,7 @@ import ConnectionStatus from "@/components/ConnectionStatus";
 import LiquidationTable from "@/components/LiquidationTable";
 import LiveLiquidationsSidebar from "@/components/LiveLiquidationsSidebar";
 import LiquidationAnalyticsModal from "@/components/LiquidationAnalyticsModal";
+import TopLiquidatedAssets from "@/components/TopLiquidatedAssets";
 import ThemeToggle from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -367,16 +368,13 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* Main Content with Dynamic Sidebar Space - Empty for now */}
+      {/* Main Content - Counter Trading Interface */}
       <main 
         className={`p-6 space-y-6 transition-all duration-300 ${
           isSidebarCollapsed ? 'md:mr-12' : 'md:mr-80'
         }`}
       >
-        {/* Main section is empty - analytics are now in a pop-up modal */}
-        <div className="flex items-center justify-center h-96 text-muted-foreground">
-          <p>Click on any liquidation in the sidebar to view detailed analytics</p>
-        </div>
+        <TopLiquidatedAssets liquidations={liquidations} />
       </main>
 
       {/* Live Liquidations Sidebar */}
