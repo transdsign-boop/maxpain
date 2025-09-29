@@ -10,10 +10,6 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
-- **Fixed missing Create Strategy functionality:** Added comprehensive "Create Strategy" feature to Trading Dashboard, allowing users to configure automated trading strategies with full risk management parameters, DCA options, and cascade detection
-- **Added DCA visibility to strategy display:** DCA (Dollar Cost Averaging) status is now prominently displayed in Trading Strategies section with ENABLED/DISABLED badges
-- **Verified Risk Management functionality:** All risk management controls including position limits, global settings, and emergency controls are fully operational
-- **Enhanced forever-persistent session management:** Extended asset selection filtering to apply universally to ALL trading modes with persistent session IDs and migration system
 - **Added dominant direction analysis feature:** Integrates real-time Aster DEX order book and funding rate data to determine market sentiment (bullish/bearish/neutral) with confidence scoring algorithm that combines order book pressure (60%) and funding rates (40%)
 - **Database cleanup:** Removed 237 fake liquidation entries to ensure database contains only real Aster DEX data
 - **Enhanced analytics filtering:** Analytics section now only shows user-selected tracked assets instead of all available assets in database
