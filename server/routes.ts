@@ -826,6 +826,78 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Manual close position endpoint
+  app.post('/api/positions/:positionId/close', async (req, res) => {
+    try {
+      const { positionId } = req.params;
+      
+      // Get the position
+      const position = await storage.getPosition(positionId);
+      if (!position) {
+        return res.status(404).json({ error: 'Position not found' });
+      }
+
+      if (!position.isOpen) {
+        return res.status(400).json({ error: 'Position is already closed' });
+      }
+
+      // Get current market price from strategy engine
+      const currentPrice = strategyEngine.getCurrentPrice(position.symbol);
+      if (!currentPrice) {
+        return res.status(400).json({ error: 'Unable to get current market price' });
+      }
+
+      // Calculate P&L
+      const avgEntryPrice = parseFloat(position.avgEntryPrice);
+      let unrealizedPnl = 0;
+      if (position.side === 'long') {
+        unrealizedPnl = ((currentPrice - avgEntryPrice) / avgEntryPrice) * 100;
+      } else {
+        unrealizedPnl = ((avgEntryPrice - currentPrice) / avgEntryPrice) * 100;
+      }
+
+      // Calculate dollar P&L
+      const totalCost = parseFloat(position.totalCost);
+      const dollarPnl = (unrealizedPnl / 100) * totalCost;
+
+      // Close the position
+      await storage.closePosition(position.id, new Date(), unrealizedPnl);
+
+      // Update session balance and stats
+      const session = await storage.getTradeSession(position.sessionId);
+      if (session) {
+        const newTotalTrades = session.totalTrades + 1;
+        const oldTotalPnl = parseFloat(session.totalPnl);
+        const newTotalPnl = oldTotalPnl + dollarPnl;
+        const oldBalance = parseFloat(session.currentBalance);
+        const newBalance = oldBalance + dollarPnl;
+
+        await storage.updateTradeSession(session.id, {
+          totalTrades: newTotalTrades,
+          totalPnl: newTotalPnl.toString(),
+          currentBalance: newBalance.toString(),
+        });
+      }
+
+      console.log(`✋ Manually closed position ${position.symbol} at $${currentPrice} with ${unrealizedPnl.toFixed(2)}% P&L ($${dollarPnl.toFixed(2)})`);
+
+      res.json({ 
+        success: true, 
+        position: {
+          ...position,
+          isOpen: false,
+          closedAt: new Date(),
+        },
+        exitPrice: currentPrice,
+        pnlPercent: unrealizedPnl,
+        pnlDollar: dollarPnl
+      });
+    } catch (error) {
+      console.error('Error closing position:', error);
+      res.status(500).json({ error: 'Failed to close position' });
+    }
+  });
+
   return httpServer;
 }
 
