@@ -63,10 +63,11 @@ const timeRangeOptions = [
 
 interface LiquidationAnalyticsProps {
   selectedAssets: string[];
+  specificSymbol?: string; // Symbol to analyze when opened from a specific liquidation
 }
 
-export default function LiquidationAnalytics({ selectedAssets }: LiquidationAnalyticsProps) {
-  const [selectedAsset, setSelectedAsset] = useState<string>("");
+export default function LiquidationAnalytics({ selectedAssets, specificSymbol }: LiquidationAnalyticsProps) {
+  const [selectedAsset, setSelectedAsset] = useState<string>(specificSymbol || "");
   const [selectedHours, setSelectedHours] = useState<string>("24");
 
   // Fetch available assets
@@ -108,12 +109,14 @@ export default function LiquidationAnalytics({ selectedAssets }: LiquidationAnal
   // Show all available assets with liquidation data
   const allAssets = availableAssets || [];
 
-  // Auto-select the asset with most liquidations when data loads
+  // Auto-select the asset when data loads - use specificSymbol if provided, otherwise first available
   useEffect(() => {
-    if (allAssets && allAssets.length > 0 && !selectedAsset) {
+    if (specificSymbol) {
+      setSelectedAsset(specificSymbol);
+    } else if (allAssets && allAssets.length > 0 && !selectedAsset) {
       setSelectedAsset(allAssets[0].symbol);
     }
-  }, [allAssets, selectedAsset]);
+  }, [allAssets, selectedAsset, specificSymbol]);
 
   const formatCurrency = (value: number) => {
     if (value >= 1000000) {

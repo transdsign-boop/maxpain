@@ -42,7 +42,10 @@ export default function LiquidationAnalyticsModal({
         </DialogHeader>
         
         <div className="w-full">
-          <LiquidationAnalytics selectedAssets={[]} />
+          <LiquidationAnalytics 
+            selectedAssets={[]} 
+            specificSymbol={selectedLiquidation?.symbol}
+          />
         </div>
       </DialogContent>
     </Dialog>
