@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
@@ -41,31 +42,72 @@ export default function LiveLiquidationsSidebar({
   // Calculate total value from ALL liquidations
   const totalValue = liquidations.reduce((sum, liq) => sum + parseFloat(liq.value), 0);
 
+  // Get unique symbols from recent liquidations to fetch their complete history
+  const uniqueSymbols = useMemo(() => {
+    return Array.from(new Set(recentLiquidations.map(liq => liq.symbol)));
+  }, [recentLiquidations]);
+
+  // Fetch complete historical data for all unique symbols shown in sidebar
+  const { data: symbolHistories, isLoading: historiesLoading } = useQuery<Record<string, Liquidation[]>>({
+    queryKey: [`/api/liquidations/by-symbol?symbols=${uniqueSymbols.join(',')}&limit=10000`],
+    enabled: uniqueSymbols.length > 0,
+    refetchInterval: 30000, // Refresh every 30 seconds
+    select: (data: any) => {
+      // Normalize timestamps and group by symbol
+      const normalized = data.map((liq: any) => ({
+        ...liq,
+        timestamp: typeof liq.timestamp === 'string' ? new Date(liq.timestamp) : liq.timestamp
+      }));
+      
+      // Group by symbol
+      const grouped: Record<string, Liquidation[]> = {};
+      normalized.forEach((liq: Liquidation) => {
+        if (!grouped[liq.symbol]) {
+          grouped[liq.symbol] = [];
+        }
+        grouped[liq.symbol].push(liq);
+      });
+      
+      return grouped;
+    }
+  });
+
   const formatValue = (value: number) => {
     if (value >= 1000000) return `$${(value / 1000000).toFixed(2)}M`;
     if (value >= 1000) return `$${(value / 1000).toFixed(1)}K`;
     return `$${value.toFixed(0)}`;
   };
 
-  // Pre-calculate all percentiles for efficiency (O(n log n) instead of O(n²))
-  const allValues = useMemo(() => {
-    return liquidations.map(liq => parseFloat(liq.value)).sort((a, b) => a - b);
-  }, [liquidations]);
+  // Cache sorted asset values to avoid recomputing on every render
+  const sortedAssetValues = useMemo(() => {
+    const cache: Record<string, number[]> = {};
+    if (symbolHistories) {
+      Object.keys(symbolHistories).forEach(symbol => {
+        const values = symbolHistories[symbol].map(liq => parseFloat(liq.value));
+        cache[symbol] = values.sort((a, b) => a - b);
+      });
+    }
+    return cache;
+  }, [symbolHistories]);
 
-  const calculatePercentile = (value: number) => {
-    if (allValues.length === 0) return 0;
+  // Calculate asset-specific percentile based on complete history for that symbol
+  const calculateAssetPercentile = (symbol: string, value: number) => {
+    const assetValues = sortedAssetValues[symbol];
+    if (!assetValues || assetValues.length === 0) {
+      return 0;
+    }
     
     // Binary search for efficient O(log n) lookup
-    let left = 0, right = allValues.length;
+    let left = 0, right = assetValues.length;
     while (left < right) {
       const mid = Math.floor((left + right) / 2);
-      if (allValues[mid] <= value) {
+      if (assetValues[mid] <= value) {
         left = mid + 1;
       } else {
         right = mid;
       }
     }
-    return Math.round((left / allValues.length) * 100);
+    return Math.round((left / assetValues.length) * 100);
   };
 
   const getOrdinalSuffix = (n: number) => {
@@ -205,7 +247,7 @@ export default function LiveLiquidationsSidebar({
                           {formatValue(parseFloat(liquidation.value))}
                         </div>
                         {(() => {
-                          const percentile = calculatePercentile(parseFloat(liquidation.value));
+                          const percentile = calculateAssetPercentile(liquidation.symbol, parseFloat(liquidation.value));
                           const label = getPercentileLabel(percentile);
                           return (
                             <Badge 
