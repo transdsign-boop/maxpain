@@ -43,6 +43,13 @@ interface StrategyStatusProps {
 export function StrategyStatus({ sessionId }: StrategyStatusProps) {
   const { data: summary, isLoading, error } = useQuery<PositionSummary>({
     queryKey: ['/api/positions', sessionId, 'summary'],
+    queryFn: async () => {
+      const response = await fetch(`/api/positions/${sessionId}/summary`);
+      if (!response.ok) {
+        throw new Error(`${response.status}: ${await response.text()}`);
+      }
+      return response.json();
+    },
     enabled: !!sessionId,
     refetchInterval: 5000, // Refresh every 5 seconds for real-time P&L
     retry: (failureCount, error: any) => {
