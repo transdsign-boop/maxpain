@@ -575,8 +575,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         percentileThreshold: validatedData.percentileThreshold,
         maxLayers: validatedData.maxLayers,
         positionSizePercent: validatedData.positionSizePercent,
-        layerSpacingPercent: validatedData.layerSpacingPercent,
         profitTargetPercent: validatedData.profitTargetPercent,
+        marginMode: validatedData.marginMode,
+        orderDelayMs: validatedData.orderDelayMs,
+        slippageTolerancePercent: validatedData.slippageTolerancePercent,
+        orderType: validatedData.orderType,
         isActive: validatedData.isActive || false,
       };
       

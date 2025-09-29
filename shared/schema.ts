@@ -64,8 +64,13 @@ export const strategies = pgTable("strategies", {
   percentileThreshold: integer("percentile_threshold").notNull().default(50), // 1-100%
   maxLayers: integer("max_layers").notNull().default(5),
   positionSizePercent: decimal("position_size_percent", { precision: 5, scale: 2 }).notNull(), // % of portfolio per position
-  layerSpacingPercent: decimal("layer_spacing_percent", { precision: 5, scale: 2 }).notNull().default("2.0"),
   profitTargetPercent: decimal("profit_target_percent", { precision: 5, scale: 2 }).notNull().default("1.0"),
+  // Margin and Risk Management
+  marginMode: text("margin_mode").notNull().default("cross"), // "cross" or "isolated"
+  // Smart Order Placement
+  orderDelayMs: integer("order_delay_ms").notNull().default(1000), // Delay before placing orders (milliseconds)
+  slippageTolerancePercent: decimal("slippage_tolerance_percent", { precision: 5, scale: 2 }).notNull().default("0.5"), // Max slippage %
+  orderType: text("order_type").notNull().default("limit"), // "market" or "limit"
   isActive: boolean("is_active").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -165,8 +170,13 @@ export const frontendStrategySchema = z.object({
   percentileThreshold: z.number().min(1).max(100),
   maxLayers: z.number().min(1).max(10),
   positionSizePercent: z.string().min(1, "Position size is required"),
-  layerSpacingPercent: z.string(),
   profitTargetPercent: z.string(),
+  // Margin and Risk Management
+  marginMode: z.enum(["cross", "isolated"]).default("cross"),
+  // Smart Order Placement
+  orderDelayMs: z.number().min(100).max(30000).default(1000), // 100ms to 30s
+  slippageTolerancePercent: z.string().default("0.5"),
+  orderType: z.enum(["market", "limit"]).default("limit"),
   isActive: z.boolean().optional().default(false),
 });
 

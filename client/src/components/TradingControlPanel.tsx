@@ -26,8 +26,11 @@ interface Strategy {
   percentileThreshold: number;
   maxLayers: number;
   positionSizePercent: string;
-  layerSpacingPercent: string;
   profitTargetPercent: string;
+  marginMode: "cross" | "isolated";
+  orderDelayMs: number;
+  slippageTolerancePercent: string;
+  orderType: "market" | "limit";
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -40,8 +43,11 @@ const strategyFormSchema = z.object({
   percentileThreshold: z.number().min(1).max(100),
   maxLayers: z.number().min(1).max(10),
   positionSizePercent: z.string().min(1, "Position size is required"),
-  layerSpacingPercent: z.string().min(0.1).max(10),
   profitTargetPercent: z.string().min(0.1).max(20),
+  marginMode: z.enum(["cross", "isolated"]),
+  orderDelayMs: z.number().min(100).max(30000),
+  slippageTolerancePercent: z.string().min(0.1).max(5),
+  orderType: z.enum(["market", "limit"]),
 });
 
 type StrategyFormData = z.infer<typeof strategyFormSchema>;
@@ -79,8 +85,11 @@ export default function TradingControlPanel({ sessionId }: TradingControlPanelPr
       percentileThreshold: 50,
       maxLayers: 5,
       positionSizePercent: "5.0",
-      layerSpacingPercent: "2.0",
       profitTargetPercent: "1.0",
+      marginMode: "cross",
+      orderDelayMs: 1000,
+      slippageTolerancePercent: "0.5",
+      orderType: "limit",
     }
   });
 
@@ -247,8 +256,11 @@ export default function TradingControlPanel({ sessionId }: TradingControlPanelPr
         percentileThreshold: strategy.percentileThreshold,
         maxLayers: strategy.maxLayers,
         positionSizePercent: strategy.positionSizePercent,
-        layerSpacingPercent: strategy.layerSpacingPercent,
         profitTargetPercent: strategy.profitTargetPercent,
+        marginMode: strategy.marginMode,
+        orderDelayMs: strategy.orderDelayMs,
+        slippageTolerancePercent: strategy.slippageTolerancePercent,
+        orderType: strategy.orderType,
       });
     }
   }, [strategies, activeStrategy, form]);
@@ -446,24 +458,121 @@ export default function TradingControlPanel({ sessionId }: TradingControlPanelPr
 
                 <FormField
                   control={form.control}
-                  name="layerSpacingPercent"
+                  name="marginMode"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel data-testid="label-layer-spacing">Layer Spacing %</FormLabel>
+                      <FormLabel data-testid="label-margin-mode">Margin Mode</FormLabel>
+                      <FormControl>
+                        <Select 
+                          value={field.value} 
+                          onValueChange={field.onChange}
+                          disabled={isStrategyRunning}
+                        >
+                          <SelectTrigger data-testid="select-margin-mode">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="cross">Cross Margin</SelectItem>
+                            <SelectItem value="isolated">Isolated Margin</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </FormControl>
+                      <FormDescription className="text-xs">
+                        Cross: Uses full account as collateral. Isolated: Only allocated margin at risk
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Smart Order Placement */}
+            <div className="space-y-4">
+              <Label className="text-base font-medium flex items-center gap-2">
+                <Settings className="h-4 w-4" />
+                Smart Order Placement
+              </Label>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <FormField
+                  control={form.control}
+                  name="orderDelayMs"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel data-testid="label-order-delay">Order Delay (ms)</FormLabel>
                       <FormControl>
                         <Input
-                          data-testid="input-layer-spacing"
+                          data-testid="input-order-delay"
+                          type="number"
+                          step="100"
+                          min="100"
+                          max="30000"
+                          placeholder="1000"
+                          {...field}
+                          disabled={isStrategyRunning}
+                          onChange={(e) => field.onChange(parseInt(e.target.value) || 1000)}
+                        />
+                      </FormControl>
+                      <FormDescription className="text-xs">
+                        Delay before placing orders
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="slippageTolerancePercent"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel data-testid="label-slippage-tolerance">Slippage Tolerance %</FormLabel>
+                      <FormControl>
+                        <Input
+                          data-testid="input-slippage-tolerance"
                           type="number"
                           step="0.1"
                           min="0.1"
-                          max="10"
-                          placeholder="2.0"
+                          max="5"
+                          placeholder="0.5"
                           {...field}
                           disabled={isStrategyRunning}
                         />
                       </FormControl>
                       <FormDescription className="text-xs">
-                        Price drop % between layers
+                        Max acceptable slippage
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="orderType"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel data-testid="label-order-type">Order Type</FormLabel>
+                      <FormControl>
+                        <Select 
+                          value={field.value} 
+                          onValueChange={field.onChange}
+                          disabled={isStrategyRunning}
+                        >
+                          <SelectTrigger data-testid="select-order-type">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="limit">Limit Orders</SelectItem>
+                            <SelectItem value="market">Market Orders</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </FormControl>
+                      <FormDescription className="text-xs">
+                        Order execution type
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
