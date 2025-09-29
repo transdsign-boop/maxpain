@@ -3,6 +3,7 @@ import ConnectionStatus from "@/components/ConnectionStatus";
 import LiveLiquidationsSidebar from "@/components/LiveLiquidationsSidebar";
 import LiquidationAnalyticsModal from "@/components/LiquidationAnalyticsModal";
 import TradingControlPanel from "@/components/TradingControlPanel";
+import { StrategyStatus } from "@/components/StrategyStatus";
 import ThemeToggle from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -375,6 +376,9 @@ export default function Dashboard() {
       >
         {/* Trading Control Panel */}
         <TradingControlPanel sessionId={getSessionId()} />
+        
+        {/* Strategy Status Widget */}
+        <StrategyStatus sessionId={getSessionId()} />
       </main>
 
       {/* Live Liquidations Sidebar */}
