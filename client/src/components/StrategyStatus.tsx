@@ -1,11 +1,26 @@
+import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, TrendingDown, DollarSign, Target, Layers, X } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { TrendingUp, TrendingDown, DollarSign, Target, Layers, X, ChevronDown, ChevronUp } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+
+interface Fill {
+  id: string;
+  orderId: string;
+  sessionId: string;
+  symbol: string;
+  side: string;
+  quantity: string;
+  price: string;
+  value: string;
+  layerNumber: number;
+  filledAt: Date;
+}
 
 interface Position {
   id: string;
@@ -41,6 +56,121 @@ interface PositionSummary {
 
 interface StrategyStatusProps {
   sessionId: string | null;
+}
+
+interface PositionCardProps {
+  position: Position;
+  strategy: any;
+  onClose: () => void;
+  isClosing: boolean;
+  formatCurrency: (value: number) => string;
+  formatPercentage: (value: number) => string;
+  getPnlColor: (pnl: number) => string;
+}
+
+function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, formatPercentage, getPnlColor }: PositionCardProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  
+  const { data: fills } = useQuery<Fill[]>({
+    queryKey: ['/api/positions', position.id, 'fills'],
+    enabled: isExpanded,
+  });
+
+  const unrealizedPnl = parseFloat(position.unrealizedPnl);
+  const pnlPercent = (unrealizedPnl / parseFloat(position.totalCost)) * 100;
+  const avgEntry = parseFloat(position.avgEntryPrice);
+  
+  // Calculate SL and TP based on strategy settings
+  const stopLossPercent = strategy ? parseFloat(strategy.stopLossPercent) : 2;
+  const profitTargetPercent = strategy ? parseFloat(strategy.profitTargetPercent) : 1;
+  
+  const stopLossPrice = position.side === 'long'
+    ? avgEntry * (1 - stopLossPercent / 100)
+    : avgEntry * (1 + stopLossPercent / 100);
+    
+  const takeProfitPrice = position.side === 'long'
+    ? avgEntry * (1 + profitTargetPercent / 100)
+    : avgEntry * (1 - profitTargetPercent / 100);
+
+  return (
+    <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
+      <div className="rounded-lg border bg-card" data-testid={`position-${position.symbol}`}>
+        <div className="flex items-center justify-between p-3">
+          <div className="flex items-center gap-3 flex-1">
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-6 w-6">
+                {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </Button>
+            </CollapsibleTrigger>
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="font-medium">{position.symbol}</span>
+                <Badge variant={position.side === 'long' ? 'default' : 'secondary'} className="text-xs">
+                  {position.side === 'long' ? (
+                    <TrendingUp className="h-3 w-3 mr-1" />
+                  ) : (
+                    <TrendingDown className="h-3 w-3 mr-1" />
+                  )}
+                  {position.side.toUpperCase()}
+                </Badge>
+                <Badge variant="outline" className="flex items-center gap-1 text-xs">
+                  <Layers className="h-3 w-3" />
+                  {position.layersFilled}/{position.maxLayers}
+                </Badge>
+              </div>
+              <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                <span>Avg: {formatCurrency(avgEntry)}</span>
+                <span className="text-red-600 dark:text-red-400">SL: {formatCurrency(stopLossPrice)}</span>
+                <span className="text-emerald-600 dark:text-emerald-400">TP: {formatCurrency(takeProfitPrice)}</span>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="text-right">
+              <p className={`font-medium ${getPnlColor(unrealizedPnl)}`}>
+                {formatCurrency(unrealizedPnl)}
+              </p>
+              <p className={`text-sm ${getPnlColor(pnlPercent)}`}>
+                {formatPercentage(pnlPercent)}
+              </p>
+            </div>
+            <Button
+              size="icon"
+              variant="ghost"
+              data-testid={`button-close-position-${position.symbol}`}
+              onClick={onClose}
+              disabled={isClosing}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+
+        <CollapsibleContent>
+          <div className="border-t px-3 py-2">
+            <p className="text-xs font-medium text-muted-foreground mb-2">Layer Entries</p>
+            {fills && fills.length > 0 ? (
+              <div className="space-y-1">
+                {fills.map((fill) => (
+                  <div key={fill.id} className="flex items-center justify-between text-xs py-1">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs h-5">L{fill.layerNumber}</Badge>
+                      <span className="text-muted-foreground">
+                        {parseFloat(fill.quantity).toFixed(4)} @ {formatCurrency(parseFloat(fill.price))}
+                      </span>
+                    </div>
+                    <span className="text-muted-foreground">{formatCurrency(parseFloat(fill.value))}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">No layer details available</p>
+            )}
+          </div>
+        </CollapsibleContent>
+      </div>
+    </Collapsible>
+  );
 }
 
 export function StrategyStatus({ sessionId }: StrategyStatusProps) {
@@ -298,60 +428,18 @@ export function StrategyStatus({ sessionId }: StrategyStatusProps) {
           <div className="space-y-3">
             <h4 className="text-sm font-medium text-muted-foreground">Active Positions</h4>
             <div className="space-y-2">
-              {summary.positions.map((position) => {
-                const unrealizedPnl = parseFloat(position.unrealizedPnl);
-                const pnlPercent = (unrealizedPnl / parseFloat(position.totalCost)) * 100;
-                
-                return (
-                  <div
-                    key={position.id}
-                    className="flex items-center justify-between p-3 rounded-lg border bg-card"
-                    data-testid={`position-${position.symbol}`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">{position.symbol}</span>
-                          <Badge variant={position.side === 'long' ? 'default' : 'secondary'}>
-                            {position.side === 'long' ? (
-                              <TrendingUp className="h-3 w-3 mr-1" />
-                            ) : (
-                              <TrendingDown className="h-3 w-3 mr-1" />
-                            )}
-                            {position.side.toUpperCase()}
-                          </Badge>
-                          <Badge variant="outline" className="flex items-center gap-1">
-                            <Layers className="h-3 w-3" />
-                            {position.layersFilled}/{position.maxLayers}
-                          </Badge>
-                        </div>
-                        <p className="text-sm text-muted-foreground">
-                          {parseFloat(position.totalQuantity).toFixed(4)} @ {formatCurrency(parseFloat(position.avgEntryPrice))}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <div className="text-right">
-                        <p className={`font-medium ${getPnlColor(unrealizedPnl)}`}>
-                          {formatCurrency(unrealizedPnl)}
-                        </p>
-                        <p className={`text-sm ${getPnlColor(pnlPercent)}`}>
-                          {formatPercentage(pnlPercent)}
-                        </p>
-                      </div>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        data-testid={`button-close-position-${position.symbol}`}
-                        onClick={() => closePositionMutation.mutate(position.id)}
-                        disabled={closePositionMutation.isPending}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                );
-              })}
+              {summary.positions.map((position) => (
+                <PositionCard
+                  key={position.id}
+                  position={position}
+                  strategy={activeStrategy}
+                  onClose={() => closePositionMutation.mutate(position.id)}
+                  isClosing={closePositionMutation.isPending}
+                  formatCurrency={formatCurrency}
+                  formatPercentage={formatPercentage}
+                  getPnlColor={getPnlColor}
+                />
+              ))}
             </div>
           </div>
         ) : (
