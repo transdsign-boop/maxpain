@@ -71,6 +71,8 @@ export const strategies = pgTable("strategies", {
   orderDelayMs: integer("order_delay_ms").notNull().default(1000), // Delay before placing orders (milliseconds)
   slippageTolerancePercent: decimal("slippage_tolerance_percent", { precision: 5, scale: 2 }).notNull().default("0.5"), // Max slippage %
   orderType: text("order_type").notNull().default("limit"), // "market" or "limit"
+  maxRetryDurationMs: integer("max_retry_duration_ms").notNull().default(30000), // How long to chase price before giving up (milliseconds)
+  marginAmount: decimal("margin_amount", { precision: 18, scale: 8 }).notNull().default("1000.0"), // Available margin/leverage amount
   isActive: boolean("is_active").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -177,6 +179,8 @@ export const frontendStrategySchema = z.object({
   orderDelayMs: z.number().min(100).max(30000).default(1000), // 100ms to 30s
   slippageTolerancePercent: z.string().default("0.5"),
   orderType: z.enum(["market", "limit"]).default("limit"),
+  maxRetryDurationMs: z.number().min(5000).max(300000).default(30000), // 5s to 5min
+  marginAmount: z.string().min(1, "Margin amount is required").default("1000.0"),
   isActive: z.boolean().optional().default(false),
 });
 

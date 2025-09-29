@@ -31,6 +31,8 @@ interface Strategy {
   orderDelayMs: number;
   slippageTolerancePercent: string;
   orderType: "market" | "limit";
+  maxRetryDurationMs: number;
+  marginAmount: string;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -48,6 +50,8 @@ const strategyFormSchema = z.object({
   orderDelayMs: z.number().min(100).max(30000),
   slippageTolerancePercent: z.string().min(0.1).max(5),
   orderType: z.enum(["market", "limit"]),
+  maxRetryDurationMs: z.number().min(5000).max(300000),
+  marginAmount: z.string().min(1, "Margin amount is required"),
 });
 
 type StrategyFormData = z.infer<typeof strategyFormSchema>;
@@ -90,6 +94,8 @@ export default function TradingControlPanel({ sessionId }: TradingControlPanelPr
       orderDelayMs: 1000,
       slippageTolerancePercent: "0.5",
       orderType: "limit",
+      maxRetryDurationMs: 30000,
+      marginAmount: "1000.0",
     }
   });
 
@@ -261,6 +267,8 @@ export default function TradingControlPanel({ sessionId }: TradingControlPanelPr
         orderDelayMs: strategy.orderDelayMs,
         slippageTolerancePercent: strategy.slippageTolerancePercent,
         orderType: strategy.orderType,
+        maxRetryDurationMs: strategy.maxRetryDurationMs,
+        marginAmount: strategy.marginAmount,
       });
     }
   }, [strategies, activeStrategy, form]);
@@ -496,7 +504,7 @@ export default function TradingControlPanel({ sessionId }: TradingControlPanelPr
                 Smart Order Placement
               </Label>
               
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField
                   control={form.control}
                   name="orderDelayMs"
@@ -518,6 +526,33 @@ export default function TradingControlPanel({ sessionId }: TradingControlPanelPr
                       </FormControl>
                       <FormDescription className="text-xs">
                         Delay before placing orders
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="maxRetryDurationMs"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel data-testid="label-max-retry-duration">Max Retry Duration (ms)</FormLabel>
+                      <FormControl>
+                        <Input
+                          data-testid="input-max-retry-duration"
+                          type="number"
+                          step="1000"
+                          min="5000"
+                          max="300000"
+                          placeholder="30000"
+                          {...field}
+                          disabled={isStrategyRunning}
+                          onChange={(e) => field.onChange(parseInt(e.target.value) || 30000)}
+                        />
+                      </FormControl>
+                      <FormDescription className="text-xs">
+                        How long to chase price before giving up
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
@@ -590,7 +625,7 @@ export default function TradingControlPanel({ sessionId }: TradingControlPanelPr
                 Risk Management
               </Label>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <FormField
                   control={form.control}
                   name="positionSizePercent"
@@ -611,6 +646,32 @@ export default function TradingControlPanel({ sessionId }: TradingControlPanelPr
                       </FormControl>
                       <FormDescription className="text-xs">
                         Percentage of portfolio per position
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="marginAmount"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel data-testid="label-margin-amount">Margin Amount ($)</FormLabel>
+                      <FormControl>
+                        <Input
+                          data-testid="input-margin-amount"
+                          type="number"
+                          step="100"
+                          min="100"
+                          max="100000"
+                          placeholder="1000.0"
+                          {...field}
+                          disabled={isStrategyRunning}
+                        />
+                      </FormControl>
+                      <FormDescription className="text-xs">
+                        Available margin for leverage
                       </FormDescription>
                       <FormMessage />
                     </FormItem>

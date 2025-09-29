@@ -580,6 +580,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         orderDelayMs: validatedData.orderDelayMs,
         slippageTolerancePercent: validatedData.slippageTolerancePercent,
         orderType: validatedData.orderType,
+        maxRetryDurationMs: validatedData.maxRetryDurationMs,
+        marginAmount: validatedData.marginAmount,
         isActive: validatedData.isActive || false,
       };
       
