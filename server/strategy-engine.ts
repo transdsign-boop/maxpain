@@ -262,12 +262,14 @@ export class StrategyEngine extends EventEmitter {
       const marginPercent = parseFloat(strategy.marginAmount);
       const availableCapital = (marginPercent / 100) * currentBalance;
       
-      // Calculate position size as percentage of available capital
+      // Calculate position size as percentage of available capital with leverage
       const positionSizePercent = parseFloat(strategy.positionSizePercent);
-      const positionValue = (positionSizePercent / 100) * availableCapital;
+      const leverage = strategy.leverage;
+      const basePositionValue = (positionSizePercent / 100) * availableCapital;
+      const positionValue = basePositionValue * leverage;
       const quantity = positionValue / price;
 
-      console.log(`🎯 Entering ${orderSide} position for ${liquidation.symbol} at $${price} (Capital: ${marginPercent}% of $${currentBalance} = $${availableCapital}, Position: ${positionSizePercent}% = $${positionValue})`);
+      console.log(`🎯 Entering ${orderSide} position for ${liquidation.symbol} at $${price} (Capital: ${marginPercent}% of $${currentBalance} = $${availableCapital}, Position: ${positionSizePercent}% = $${basePositionValue}, Leverage: ${leverage}x = $${positionValue})`);
 
       // Apply order delay for smart placement
       if (strategy.orderDelayMs > 0) {
@@ -309,13 +311,15 @@ export class StrategyEngine extends EventEmitter {
       const marginPercent = parseFloat(strategy.marginAmount);
       const availableCapital = (marginPercent / 100) * currentBalance;
       
-      // Calculate position size as percentage of available capital
+      // Calculate position size as percentage of available capital with leverage
       const positionSizePercent = parseFloat(strategy.positionSizePercent);
-      const positionValue = (positionSizePercent / 100) * availableCapital;
+      const leverage = strategy.leverage;
+      const basePositionValue = (positionSizePercent / 100) * availableCapital;
+      const positionValue = basePositionValue * leverage;
       const quantity = positionValue / price;
       const nextLayer = position.layersFilled + 1;
 
-      console.log(`📈 Adding layer ${nextLayer} for ${liquidation.symbol} at $${price} (Position: ${positionSizePercent}% of $${availableCapital} = $${positionValue})`);
+      console.log(`📈 Adding layer ${nextLayer} for ${liquidation.symbol} at $${price} (Position: ${positionSizePercent}% of $${availableCapital} = $${basePositionValue}, Leverage: ${leverage}x = $${positionValue})`);
 
       // Apply order delay for smart placement
       if (strategy.orderDelayMs > 0) {
@@ -523,6 +527,15 @@ export class StrategyEngine extends EventEmitter {
     // Check if profit target is reached
     if (unrealizedPnl >= profitTargetPercent) {
       await this.closePosition(position, currentPrice, unrealizedPnl);
+      return;
+    }
+
+    // Check if stop loss is triggered (negative P&L exceeds threshold)
+    const stopLossPercent = parseFloat(strategy.stopLossPercent);
+    if (unrealizedPnl <= -stopLossPercent) {
+      console.log(`🛑 Stop loss triggered for ${position.symbol}: ${unrealizedPnl.toFixed(2)}% loss exceeds -${stopLossPercent}% threshold`);
+      await this.closePosition(position, currentPrice, unrealizedPnl);
+      return;
     }
   }
 
