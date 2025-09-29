@@ -71,21 +71,22 @@ export default function HistoricalLiquidationTable({
   return (
     <div className="space-y-4">
       {/* Pagination Controls */}
-      <div className="flex items-center justify-between">
-        <div className="text-sm text-muted-foreground">
+      <div className="flex items-center justify-between" data-testid="pagination-controls">
+        <div className="text-sm text-muted-foreground" data-testid="pagination-info">
           Showing {startIndex + 1}-{Math.min(startIndex + ITEMS_PER_PAGE, sortedLiquidations.length)} of {sortedLiquidations.length} liquidations
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2" data-testid="pagination-buttons">
           <Button
             variant="outline"
             size="sm"
             onClick={() => setCurrentPage(currentPage - 1)}
             disabled={currentPage === 1}
+            data-testid="button-pagination-previous"
           >
             <ChevronLeft className="h-4 w-4" />
             Previous
           </Button>
-          <span className="text-sm text-muted-foreground px-2">
+          <span className="text-sm text-muted-foreground px-2" data-testid="pagination-status">
             Page {currentPage} of {totalPages}
           </span>
           <Button
@@ -93,6 +94,7 @@ export default function HistoricalLiquidationTable({
             size="sm"
             onClick={() => setCurrentPage(currentPage + 1)}
             disabled={currentPage === totalPages}
+            data-testid="button-pagination-next"
           >
             Next
             <ChevronRight className="h-4 w-4" />
