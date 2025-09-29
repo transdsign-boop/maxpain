@@ -372,8 +372,19 @@ export class StrategyEngine extends EventEmitter {
 
     while (Date.now() - startTime < maxRetryDuration) {
       try {
-        // Get current market price (from cache or use target price)
-        const currentPrice = this.priceCache.get(symbol) || targetPrice;
+        // Fetch real-time current price from Aster DEX API
+        let currentPrice = targetPrice; // fallback to target price
+        try {
+          const asterApiUrl = `https://fapi.asterdex.com/fapi/v1/ticker/price?symbol=${symbol}`;
+          const priceResponse = await fetch(asterApiUrl);
+          
+          if (priceResponse.ok) {
+            const priceData = await priceResponse.json();
+            currentPrice = parseFloat(priceData.price);
+          }
+        } catch (apiError) {
+          console.log(`⚠️ Using target price as fallback (API unavailable)`);
+        }
         
         // Check if current price is within slippage tolerance
         const priceDeviation = Math.abs(currentPrice - targetPrice) / targetPrice;
@@ -511,7 +522,21 @@ export class StrategyEngine extends EventEmitter {
 
   // Check if position should be closed
   private async checkExitCondition(strategy: Strategy, position: Position) {
-    const currentPrice = this.priceCache.get(position.symbol);
+    // Fetch real-time current price from Aster DEX API (no cache)
+    let currentPrice: number | null = null;
+    try {
+      const asterApiUrl = `https://fapi.asterdex.com/fapi/v1/ticker/price?symbol=${position.symbol}`;
+      const priceResponse = await fetch(asterApiUrl);
+      
+      if (priceResponse.ok) {
+        const priceData = await priceResponse.json();
+        currentPrice = parseFloat(priceData.price);
+      }
+    } catch (error) {
+      console.error(`Failed to fetch real-time price for ${position.symbol}:`, error);
+      return;
+    }
+    
     if (!currentPrice) return;
 
     const avgEntryPrice = parseFloat(position.avgEntryPrice);
@@ -524,7 +549,7 @@ export class StrategyEngine extends EventEmitter {
       unrealizedPnl = ((avgEntryPrice - currentPrice) / avgEntryPrice) * 100;
     }
 
-    // Update position with latest unrealized PnL
+    // Update position with latest unrealized PnL (based on real-time price)
     await storage.updatePosition(position.id, {
       unrealizedPnl: unrealizedPnl.toString(),
     });
