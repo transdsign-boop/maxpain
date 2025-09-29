@@ -32,10 +32,8 @@ export default function LiveLiquidationsSidebar({
   onToggleCollapse
 }: LiveLiquidationsSidebarProps) {
 
-  // Filter to show recent liquidations from selected assets (last 20)
-  const recentLiquidations = liquidations
-    .filter(liq => selectedAssets.length === 0 || selectedAssets.includes(liq.symbol))
-    .slice(0, 20);
+  // Show ALL recent liquidations (last 20) regardless of selected assets
+  const recentLiquidations = liquidations.slice(0, 20);
 
   // Quick stats for the sidebar
   const totalValue = recentLiquidations.reduce((sum, liq) => sum + parseFloat(liq.value), 0);
