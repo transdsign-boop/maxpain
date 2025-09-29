@@ -26,6 +26,7 @@ export default function Dashboard() {
   const [minValue, setMinValue] = useState("0");
   const [selectedAssets, setSelectedAssets] = useState<string[]>([]);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   
   // Real liquidation data from WebSocket and API
   const [liquidations, setLiquidations] = useState<Liquidation[]>([]);
@@ -352,8 +353,12 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* Main Content with Sidebar Space */}
-      <main className="p-6 space-y-6 pr-24" style={{ marginRight: '320px' }}>
+      {/* Main Content with Dynamic Sidebar Space */}
+      <main 
+        className={`p-6 space-y-6 transition-all duration-300 ${
+          isSidebarCollapsed ? 'md:mr-12' : 'md:mr-80'
+        }`}
+      >
         {/* Asset Selection */}
         <div className="w-full max-w-2xl">
           <AssetSelector
@@ -373,6 +378,8 @@ export default function Dashboard() {
         liquidations={liquidations}
         isConnected={isConnected}
         selectedAssets={selectedAssets}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={setIsSidebarCollapsed}
       />
 
       {/* Hidden file input for settings import */}
