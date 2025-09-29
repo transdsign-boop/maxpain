@@ -2,7 +2,7 @@ import { type User, type InsertUser, type Liquidation, type InsertLiquidation, t
 import { randomUUID } from "crypto";
 import { db } from "./db";
 import { liquidations, users, userSettings } from "@shared/schema";
-import { desc, gte, eq, sql } from "drizzle-orm";
+import { desc, gte, eq, sql, inArray } from "drizzle-orm";
 
 // modify the interface with any CRUD methods
 // you might need
@@ -56,19 +56,10 @@ export class DatabaseStorage implements IStorage {
   async getLiquidationsBySymbol(symbols: string[], limit: number = 100): Promise<Liquidation[]> {
     if (symbols.length === 0) return [];
     
-    // Use OR conditions for multiple symbols
-    if (symbols.length === 1) {
-      return await db.select()
-        .from(liquidations)
-        .where(eq(liquidations.symbol, symbols[0]))
-        .orderBy(desc(liquidations.timestamp))
-        .limit(limit);
-    }
-    
-    // For multiple symbols, use inArray
+    // Use inArray for proper symbol filtering
     return await db.select()
       .from(liquidations)
-      .where(sql`${liquidations.symbol} = ANY(${symbols})`)
+      .where(inArray(liquidations.symbol, symbols))
       .orderBy(desc(liquidations.timestamp))
       .limit(limit);
   }
