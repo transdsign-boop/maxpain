@@ -74,6 +74,11 @@ export class StrategyEngine extends EventEmitter {
     console.log('✅ StrategyEngine stopped');
   }
 
+  // Get current market price for a symbol
+  getCurrentPrice(symbol: string): number | undefined {
+    return this.priceCache.get(symbol);
+  }
+
   // Load all active strategies from database
   private async loadActiveStrategies() {
     try {
