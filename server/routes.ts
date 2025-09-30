@@ -604,7 +604,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           averageLoss: 0,
           bestTrade: 0,
           worstTrade: 0,
-          profitFactor: 0
+          profitFactor: 0,
+          totalFees: 0,
+          averageTradeTimeMs: 0
         });
       }
 
@@ -627,7 +629,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           averageLoss: 0,
           bestTrade: 0,
           worstTrade: 0,
-          profitFactor: 0
+          profitFactor: 0,
+          totalFees: 0,
+          averageTradeTimeMs: 0
         });
       }
 
@@ -649,7 +653,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           averageLoss: 0,
           bestTrade: 0,
           worstTrade: 0,
-          profitFactor: 0
+          profitFactor: 0,
+          totalFees: 0,
+          averageTradeTimeMs: 0
         });
       }
 
@@ -696,6 +702,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const totalLosses = Math.abs(losingTrades.reduce((sum, pnl) => sum + pnl, 0));
       const profitFactor = totalLosses > 0 ? totalWins / totalLosses : totalWins > 0 ? 999 : 0;
 
+      // Calculate total fees from fills
+      const sessionFills = await storage.getFillsBySession(activeSession.id);
+      const totalFees = sessionFills.reduce((sum, fill) => sum + parseFloat(fill.fee || '0'), 0);
+
+      // Calculate average trade time from closed positions (in milliseconds)
+      const tradeTimesMs = closedPositions
+        .filter(p => p.openedAt && p.closedAt)
+        .map(p => new Date(p.closedAt!).getTime() - new Date(p.openedAt!).getTime());
+      
+      const averageTradeTimeMs = tradeTimesMs.length > 0
+        ? tradeTimesMs.reduce((sum, time) => sum + time, 0) / tradeTimesMs.length
+        : 0;
+
       res.json({
         totalTrades: allPositions.length,
         openTrades: openPositions.length,
@@ -710,7 +729,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         averageLoss,
         bestTrade,
         worstTrade,
-        profitFactor
+        profitFactor,
+        totalFees,
+        averageTradeTimeMs
       });
     } catch (error) {
       console.error('Error fetching performance overview:', error);

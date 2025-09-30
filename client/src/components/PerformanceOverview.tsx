@@ -19,6 +19,8 @@ interface PerformanceMetrics {
   bestTrade: number;
   worstTrade: number;
   profitFactor: number;
+  totalFees: number;
+  averageTradeTimeMs: number;
 }
 
 interface TradeDataPoint {
@@ -63,6 +65,29 @@ export default function PerformanceOverview() {
 
   const formatPercent = (value: number) => {
     return `${value.toFixed(1)}%`;
+  };
+
+  const formatTradeTime = (ms: number) => {
+    if (ms === 0) return '0s';
+    
+    const seconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    
+    if (days > 0) {
+      const remainingHours = hours % 24;
+      return remainingHours > 0 ? `${days}d ${remainingHours}h` : `${days}d`;
+    }
+    if (hours > 0) {
+      const remainingMinutes = minutes % 60;
+      return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
+    }
+    if (minutes > 0) {
+      const remainingSeconds = seconds % 60;
+      return remainingSeconds > 0 ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`;
+    }
+    return `${seconds}s`;
   };
 
   const isProfitable = performance.totalPnl >= 0;
@@ -280,6 +305,22 @@ export default function PerformanceOverview() {
             <div className="text-xs text-muted-foreground">Worst Trade</div>
             <div className="text-xl font-mono font-semibold text-red-500" data-testid="text-worst-trade">
               {formatCurrency(performance.worstTrade)}
+            </div>
+          </div>
+
+          {/* Total Fees */}
+          <div className="space-y-1">
+            <div className="text-xs text-muted-foreground">Total Fees</div>
+            <div className="text-xl font-mono font-semibold text-red-500" data-testid="text-total-fees">
+              ${performance.totalFees.toFixed(4)}
+            </div>
+          </div>
+
+          {/* Average Trade Time */}
+          <div className="space-y-1">
+            <div className="text-xs text-muted-foreground">Avg Time</div>
+            <div className="text-xl font-mono font-semibold" data-testid="text-avg-trade-time">
+              {formatTradeTime(performance.averageTradeTimeMs)}
             </div>
           </div>
         </div>
