@@ -704,6 +704,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/performance/chart", async (req, res) => {
+    try {
+      // Get active strategy and session
+      const strategies = await storage.getStrategiesByUser(DEFAULT_USER_ID);
+      const activeStrategy = strategies.find((s: any) => s.isActive === true);
+      
+      if (!activeStrategy) {
+        return res.json([]);
+      }
+
+      const activeSession = await storage.getActiveTradeSession(activeStrategy.id);
+      if (!activeSession) {
+        return res.json([]);
+      }
+
+      // Get all closed positions for the active session, sorted by close time
+      const allPositions = await storage.getPositionsBySession(activeSession.id);
+      const closedPositions = allPositions
+        .filter(p => p.isOpen === false && p.closedAt)
+        .sort((a, b) => new Date(a.closedAt!).getTime() - new Date(b.closedAt!).getTime());
+
+      if (closedPositions.length === 0) {
+        return res.json([]);
+      }
+
+      // Build chart data with cumulative P&L
+      let cumulativePnl = 0;
+      const chartData = closedPositions.map((position, index) => {
+        const pnl = parseFloat(position.realizedPnl || '0');
+        cumulativePnl += pnl;
+        
+        return {
+          tradeNumber: index + 1,
+          timestamp: new Date(position.closedAt!).getTime(),
+          symbol: position.symbol,
+          side: position.side,
+          pnl: pnl,
+          cumulativePnl: cumulativePnl,
+          entryPrice: parseFloat(position.avgEntryPrice),
+          quantity: parseFloat(position.totalQuantity),
+        };
+      });
+
+      res.json(chartData);
+    } catch (error) {
+      console.error('Error fetching performance chart data:', error);
+      res.status(500).json({ error: "Failed to fetch performance chart data" });
+    }
+  });
+
   app.post("/api/strategies", async (req, res) => {
     try {
       const validatedData = frontendStrategySchema.parse({
