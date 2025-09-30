@@ -7,6 +7,7 @@ import PerformanceOverview from "@/components/PerformanceOverview";
 import TradingStrategyDialog from "@/components/TradingStrategyDialog";
 import { StrategyStatus } from "@/components/StrategyStatus";
 import ThemeToggle from "@/components/ThemeToggle";
+import AsterLogo from "@/components/AsterLogo";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Settings, Download, Upload, Settings2 } from "lucide-react";
@@ -368,14 +369,7 @@ export default function Dashboard() {
       {/* Header */}
       <header className="fixed top-0 left-0 right-0 z-50 border-b bg-card">
         <div className="flex items-center justify-between px-6 py-4">
-          <div>
-            <h1 className="text-2xl font-bold" data-testid="text-app-title">
-              Aster DEX Trading Platform
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Real-time liquidation monitoring and automated trading strategies
-            </p>
-          </div>
+          <AsterLogo data-testid="app-logo" />
 
           <div className="flex items-center gap-6">
             {/* Trading Account Metrics */}
