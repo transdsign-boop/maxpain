@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, decimal, timestamp, boolean, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, decimal, timestamp, boolean, integer, index, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -21,25 +21,37 @@ export const insertLiquidationSchema = createInsertSchema(liquidations).omit({
 export type InsertLiquidation = z.infer<typeof insertLiquidationSchema>;
 export type Liquidation = typeof liquidations.$inferSelect;
 
-// User table for future authentication
+// Session storage table for Replit Auth (passport sessions)
+// (IMPORTANT) This table is mandatory for Replit Auth, don't drop it.
+export const sessions = pgTable(
+  "sessions",
+  {
+    sid: varchar("sid").primaryKey(),
+    sess: jsonb("sess").notNull(),
+    expire: timestamp("expire").notNull(),
+  },
+  (table) => [index("IDX_session_expire").on(table.expire)],
+);
+
+// User storage table for Replit Auth
+// (IMPORTANT) This table is mandatory for Replit Auth, don't drop it.
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
+  email: varchar("email").unique(),
+  firstName: varchar("first_name"),
+  lastName: varchar("last_name"),
+  profileImageUrl: varchar("profile_image_url"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
-});
-
-export type InsertUser = z.infer<typeof insertUserSchema>;
+export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
 
 // User settings table for persistent preferences
 export const userSettings = pgTable("user_settings", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  sessionId: text("session_id").notNull().unique(), // Browser session ID
+  userId: varchar("user_id").notNull().unique(), // Replit Auth user ID
   selectedAssets: text("selected_assets").array().notNull().default(sql`'{}'::text[]`),
   sideFilter: text("side_filter").notNull().default('all'),
   minValue: text("min_value").notNull().default('0'),
@@ -59,7 +71,7 @@ export type UserSettings = typeof userSettings.$inferSelect;
 export const strategies = pgTable("strategies", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
-  sessionId: text("session_id").notNull(), // Browser session ID
+  userId: varchar("user_id").notNull(), // Replit Auth user ID
   selectedAssets: text("selected_assets").array().notNull(),
   percentileThreshold: integer("percentile_threshold").notNull().default(50), // 1-100%
   maxLayers: integer("max_layers").notNull().default(5),
@@ -170,7 +182,7 @@ export const insertStrategySchema = createInsertSchema(strategies).omit({
 // Frontend-specific schema that matches what TradingControlPanel sends
 export const frontendStrategySchema = z.object({
   name: z.string().min(1, "Strategy name is required").max(50, "Name too long"),
-  sessionId: z.string(),
+  userId: z.string(),
   selectedAssets: z.array(z.string()).min(1, "Select at least one asset"),
   percentileThreshold: z.number().min(1).max(100),
   maxLayers: z.number().min(1).max(10),
@@ -206,7 +218,7 @@ export const frontendStrategySchema = z.object({
 
 // Update schema for partial updates
 export const updateStrategySchema = frontendStrategySchema.partial().omit({
-  sessionId: true, // Don't allow changing session
+  userId: true, // Don't allow changing user
 });
 
 export type InsertStrategy = z.infer<typeof insertStrategySchema>;
