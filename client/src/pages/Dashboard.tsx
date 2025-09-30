@@ -224,7 +224,6 @@ export default function Dashboard() {
       }
     };
 
-    loadSettings();
     loadInitialData();
     connectWebSocket();
 
@@ -243,6 +242,13 @@ export default function Dashboard() {
       }
     };
   }, []);
+
+  // Load settings when user is authenticated
+  useEffect(() => {
+    if (user) {
+      loadSettings();
+    }
+  }, [user]);
 
   // Save settings when they change (only after initial load)
   useEffect(() => {
