@@ -15,7 +15,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { AlertCircle, Play, Square, Settings, TrendingUp, DollarSign, Layers, Target, Trash2, ChevronDown } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { AlertCircle, Play, Square, Settings, TrendingUp, DollarSign, Layers, Target, Trash2, ChevronDown, RotateCcw } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -257,6 +258,30 @@ export default function TradingControlPanel() {
       toast({
         title: "Error",
         description: "Failed to delete strategy. Please try again.",
+        variant: "destructive",
+      });
+    }
+  });
+
+  // Clear paper trades mutation
+  const clearPaperTradesMutation = useMutation({
+    mutationFn: async (strategyId: string) => {
+      const response = await apiRequest('DELETE', `/api/strategies/${strategyId}/clear-paper-trades`);
+      return await response.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Paper Trades Cleared",
+        description: `Cleared ${data.cleared.positions} positions and ${data.cleared.fills} fills. Starting fresh!`,
+      });
+      // Invalidate queries to refresh the UI
+      queryClient.invalidateQueries({ queryKey: ['/api/strategies'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/performance/overview'] });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to clear paper trades. Please try again.",
         variant: "destructive",
       });
     }
@@ -937,6 +962,41 @@ export default function TradingControlPanel() {
                   <Trash2 className="mr-2 h-4 w-4" />
                   {deleteStrategyMutation.isPending ? "Deleting..." : "Delete Strategy"}
                 </Button>
+              )}
+
+              {activeStrategy && !isStrategyRunning && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      data-testid="button-clear-paper-trades"
+                      disabled={clearPaperTradesMutation.isPending}
+                      variant="outline"
+                      className="flex-1"
+                    >
+                      <RotateCcw className="mr-2 h-4 w-4" />
+                      {clearPaperTradesMutation.isPending ? "Clearing..." : "Clear Paper Trades"}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Clear All Paper Trade Data?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This will permanently delete all positions, fills, and trade history for this strategy.
+                        Your balance will reset to the starting amount. This action cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel data-testid="button-cancel-clear">Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        data-testid="button-confirm-clear"
+                        onClick={() => activeStrategy && clearPaperTradesMutation.mutate(activeStrategy.id)}
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      >
+                        Clear All Data
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               )}
 
               {activeStrategy && (

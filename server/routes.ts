@@ -1051,6 +1051,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Clear all paper trading data for a strategy
+  app.delete('/api/strategies/:strategyId/clear-paper-trades', async (req, res) => {
+    try {
+      const { strategyId } = req.params;
+      
+      // Get the strategy to verify it exists
+      const strategy = await storage.getStrategy(strategyId);
+      if (!strategy) {
+        return res.status(404).json({ error: 'Strategy not found' });
+      }
+
+      // Get the active session for this strategy
+      const sessions = await storage.getSessionsByStrategy(strategyId);
+      
+      if (sessions.length === 0) {
+        return res.json({ 
+          success: true, 
+          message: 'No paper trade data to clear',
+          cleared: { positions: 0, fills: 0 }
+        });
+      }
+
+      let totalPositionsCleared = 0;
+      let totalFillsCleared = 0;
+
+      // Clear data for each session
+      for (const session of sessions) {
+        // Delete all fills for this session
+        const fills = await storage.getFillsBySession(session.id);
+        totalFillsCleared += fills.length;
+        await storage.clearFillsBySession(session.id);
+        
+        // Delete all positions for this session
+        const positions = await storage.getPositionsBySession(session.id);
+        totalPositionsCleared += positions.length;
+        await storage.clearPositionsBySession(session.id);
+        
+        // Reset session to starting state
+        await storage.updateTradeSession(session.id, {
+          currentBalance: session.startingBalance.toString(),
+          totalPnl: '0',
+          totalTrades: 0,
+        });
+      }
+
+      console.log(`🗑️ Cleared ${totalPositionsCleared} positions and ${totalFillsCleared} fills for strategy ${strategyId}`);
+
+      res.json({ 
+        success: true, 
+        message: 'Paper trade data cleared successfully',
+        cleared: {
+          positions: totalPositionsCleared,
+          fills: totalFillsCleared
+        }
+      });
+    } catch (error) {
+      console.error('Error clearing paper trades:', error);
+      res.status(500).json({ error: 'Failed to clear paper trade data' });
+    }
+  });
+
   return httpServer;
 }
 
