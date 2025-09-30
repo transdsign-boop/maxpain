@@ -968,8 +968,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const positions = await storage.getOpenPositions(session.id);
+      const closedPositions = await storage.getClosedPositions(session.id);
 
-      // Calculate totals
+      // Calculate unrealized P&L from open positions
       // Convert unrealized P&L percentages to dollar values before summing
       const totalUnrealizedPnl = positions.reduce((sum, pos) => {
         const pnlPercent = parseFloat(pos.unrealizedPnl || '0');
@@ -977,23 +978,54 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const pnlDollar = (pnlPercent / 100) * totalCost;
         return sum + pnlDollar;
       }, 0);
-      const totalRealizedPnl = parseFloat(session.totalPnl || '0');
+
+      // Calculate realized P&L from closed positions
+      // This ensures accuracy even if session updates fail
+      // Get all fills to calculate total fees
+      const sessionFills = await storage.getFillsBySession(session.id);
+      
+      const totalRealizedPnl = closedPositions.reduce((sum, pos) => {
+        const pnlPercent = parseFloat(pos.unrealizedPnl || '0'); // Contains final P&L at close
+        const totalCost = parseFloat(pos.totalCost || '0');
+        const pnlDollar = (pnlPercent / 100) * totalCost;
+        
+        // Calculate total fees for this position (all fills for this symbol)
+        // This includes entry and exit fees
+        const positionFills = sessionFills.filter(f => 
+          f.symbol === pos.symbol && 
+          new Date(f.filledAt) >= new Date(pos.openedAt) &&
+          (!pos.closedAt || new Date(f.filledAt) <= new Date(pos.closedAt))
+        );
+        const totalFees = positionFills.reduce((feeSum, fill) => 
+          feeSum + parseFloat(fill.fee || '0'), 0);
+        
+        // Net P&L = Gross P&L - Fees
+        return sum + (pnlDollar - totalFees);
+      }, 0);
+
+      // Calculate current balance from starting balance + realized P&L (net of fees)
+      const startingBalance = parseFloat(session.startingBalance);
+      const currentBalance = startingBalance + totalRealizedPnl;
+      
       const totalExposure = positions.reduce((sum, pos) => 
         sum + parseFloat(pos.totalCost || '0'), 0);
       const activePositions = positions.length;
+      const totalTrades = closedPositions.length;
 
       const summary = {
         sessionId: session.id,
         strategyId,
-        startingBalance: parseFloat(session.startingBalance),
-        currentBalance: parseFloat(session.currentBalance),
+        startingBalance,
+        currentBalance,
         totalPnl: totalRealizedPnl + totalUnrealizedPnl,
         realizedPnl: totalRealizedPnl,
         unrealizedPnl: totalUnrealizedPnl,
         totalExposure,
         activePositions,
-        totalTrades: session.totalTrades,
-        winRate: parseFloat(session.winRate || '0'),
+        totalTrades,
+        winRate: totalTrades > 0 
+          ? (closedPositions.filter(p => parseFloat(p.unrealizedPnl || '0') > 0).length / totalTrades) * 100 
+          : 0,
         positions
       };
 
@@ -1008,13 +1040,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { sessionId } = req.params;
       const positions = await storage.getOpenPositions(sessionId);
+      const closedPositions = await storage.getClosedPositions(sessionId);
       const session = await storage.getTradeSession(sessionId);
       
       if (!session) {
         return res.status(404).json({ error: 'Trade session not found' });
       }
 
-      // Calculate totals
+      // Calculate unrealized P&L from open positions
       // Convert unrealized P&L percentages to dollar values before summing
       const totalUnrealizedPnl = positions.reduce((sum, pos) => {
         const pnlPercent = parseFloat(pos.unrealizedPnl || '0');
@@ -1022,22 +1055,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const pnlDollar = (pnlPercent / 100) * totalCost;
         return sum + pnlDollar;
       }, 0);
-      const totalRealizedPnl = parseFloat(session.totalPnl || '0');
+
+      // Calculate realized P&L from closed positions
+      // This ensures accuracy even if session updates fail
+      // Get all fills to calculate total fees
+      const sessionFills = await storage.getFillsBySession(sessionId);
+      
+      const totalRealizedPnl = closedPositions.reduce((sum, pos) => {
+        const pnlPercent = parseFloat(pos.unrealizedPnl || '0'); // Contains final P&L at close
+        const totalCost = parseFloat(pos.totalCost || '0');
+        const pnlDollar = (pnlPercent / 100) * totalCost;
+        
+        // Calculate total fees for this position (all fills for this symbol)
+        // This includes entry and exit fees
+        const positionFills = sessionFills.filter(f => 
+          f.symbol === pos.symbol && 
+          new Date(f.filledAt) >= new Date(pos.openedAt) &&
+          (!pos.closedAt || new Date(f.filledAt) <= new Date(pos.closedAt))
+        );
+        const totalFees = positionFills.reduce((feeSum, fill) => 
+          feeSum + parseFloat(fill.fee || '0'), 0);
+        
+        // Net P&L = Gross P&L - Fees
+        return sum + (pnlDollar - totalFees);
+      }, 0);
+
+      // Calculate current balance from starting balance + realized P&L (net of fees)
+      const startingBalance = parseFloat(session.startingBalance);
+      const currentBalance = startingBalance + totalRealizedPnl;
+      
       const totalExposure = positions.reduce((sum, pos) => 
         sum + parseFloat(pos.totalCost || '0'), 0);
       const activePositions = positions.length;
+      const totalTrades = closedPositions.length;
 
       const summary = {
         sessionId,
-        startingBalance: parseFloat(session.startingBalance),
-        currentBalance: parseFloat(session.currentBalance),
+        startingBalance,
+        currentBalance,
         totalPnl: totalRealizedPnl + totalUnrealizedPnl,
         realizedPnl: totalRealizedPnl,
         unrealizedPnl: totalUnrealizedPnl,
         totalExposure,
         activePositions,
-        totalTrades: session.totalTrades,
-        winRate: parseFloat(session.winRate || '0'),
+        totalTrades,
+        winRate: totalTrades > 0 
+          ? (closedPositions.filter(p => parseFloat(p.unrealizedPnl || '0') > 0).length / totalTrades) * 100 
+          : 0,
         positions
       };
 
