@@ -627,7 +627,7 @@ export class StrategyEngine extends EventEmitter {
           await this.checkExitCondition(strategy, position);
         }
       });
-    }, 5000); // Check every 5 seconds
+    }, 1000); // Check every 1 second for real-time updates
   }
 
   // Check if position should be closed

@@ -216,7 +216,7 @@ export function StrategyStatus() {
       return response.json();
     },
     enabled: !!activeStrategy?.id,
-    refetchInterval: 5000, // Refresh every 5 seconds for real-time P&L
+    refetchInterval: 1000, // Refresh every 1 second for real-time P&L
     retry: (failureCount, error: any) => {
       // Don't retry 404 errors - they indicate no trade session exists
       if (error?.status === 404) return false;
