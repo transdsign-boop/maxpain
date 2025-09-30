@@ -144,7 +144,7 @@ export default function LiveLiquidationsSidebar({
 
   return (
     <div 
-      className={`fixed right-0 bg-background border-l transition-all duration-300 z-50 ${
+      className={`fixed right-0 bg-background border-l transition-all duration-300 z-40 ${
         isCollapsed ? 'w-12' : 'w-80'
       } hidden md:block`}
       style={{

@@ -363,7 +363,7 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b bg-card">
+      <header className="fixed top-0 left-0 right-0 z-50 border-b bg-card">
         <div className="flex items-center justify-between px-6 py-4">
           <div>
             <h1 className="text-2xl font-bold" data-testid="text-app-title">
@@ -439,7 +439,7 @@ export default function Dashboard() {
 
       {/* Main Content with Trading Controls */}
       <main 
-        className={`p-6 space-y-6 transition-all duration-300 ${
+        className={`p-6 space-y-6 transition-all duration-300 pt-[97px] ${
           isSidebarCollapsed ? 'md:mr-12' : 'md:mr-80'
         }`}
       >
