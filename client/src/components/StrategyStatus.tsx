@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { TrendingUp, TrendingDown, DollarSign, Target, Layers, X, ChevronDown, ChevronUp } from "lucide-react";
+import { TrendingUp, TrendingDown, DollarSign, Target, Layers, X, ChevronDown, ChevronUp, CheckCircle2 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -38,6 +38,7 @@ interface Position {
   lastLayerPrice: string | null;
   isOpen: boolean;
   openedAt: Date;
+  closedAt?: Date | null;
   updatedAt: Date;
 }
 
@@ -193,6 +194,7 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
 
 export function StrategyStatus() {
   const { toast } = useToast();
+  const [showClosedTrades, setShowClosedTrades] = useState(false);
 
   // First, get active strategies
   const { data: strategies } = useQuery<any[]>({
@@ -220,6 +222,13 @@ export function StrategyStatus() {
       if (error?.status === 404) return false;
       return failureCount < 3;
     },
+  });
+
+  // Fetch closed positions when section is expanded
+  const { data: closedPositions } = useQuery<Position[]>({
+    queryKey: ['/api/strategies', activeStrategy?.id, 'positions', 'closed'],
+    enabled: !!activeStrategy?.id && showClosedTrades,
+    refetchInterval: 10000, // Refresh every 10 seconds
   });
 
   // Close position mutation - must be defined before any early returns
@@ -467,6 +476,86 @@ export function StrategyStatus() {
             <p className="text-sm text-muted-foreground">Positions will appear here when your strategy triggers trades</p>
           </div>
         )}
+
+        {/* Completed Trades */}
+        <Collapsible open={showClosedTrades} onOpenChange={setShowClosedTrades}>
+          <CollapsibleTrigger className="flex items-center justify-between w-full hover-elevate rounded-lg px-4 py-3 border" data-testid="button-toggle-closed-trades">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium">Completed Trades</span>
+              {closedPositions && (
+                <Badge variant="secondary" className="text-xs">
+                  {closedPositions.length}
+                </Badge>
+              )}
+            </div>
+            {showClosedTrades ? (
+              <ChevronUp className="h-4 w-4 text-muted-foreground" />
+            ) : (
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            )}
+          </CollapsibleTrigger>
+          <CollapsibleContent className="mt-3">
+            {closedPositions && closedPositions.length > 0 ? (
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {closedPositions.map((position) => {
+                  const realizedPnl = parseFloat(position.realizedPnl);
+                  const pnlPercent = (realizedPnl / parseFloat(position.totalCost)) * 100;
+                  const avgEntry = parseFloat(position.avgEntryPrice);
+                  
+                  return (
+                    <div
+                      key={position.id}
+                      className="p-4 rounded-lg border bg-card hover-elevate"
+                      data-testid={`completed-trade-${position.id}`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-sm">{position.symbol}</span>
+                          <Badge 
+                            variant={position.side === 'long' ? 'destructive' : 'default'}
+                            className="text-xs"
+                          >
+                            {position.side.toUpperCase()}
+                          </Badge>
+                          <Badge variant="outline" className="text-xs">
+                            {position.layersFilled}/{position.maxLayers} layers
+                          </Badge>
+                        </div>
+                        <div className={`text-sm font-semibold ${getPnlColor(realizedPnl)}`}>
+                          {realizedPnl >= 0 ? '+' : ''}{formatCurrency(realizedPnl)}
+                          <span className="text-xs ml-1">
+                            ({realizedPnl >= 0 ? '+' : ''}{formatPercentage(pnlPercent)})
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                        <div>
+                          Quantity: <span className="text-foreground">{parseFloat(position.totalQuantity).toFixed(4)}</span>
+                        </div>
+                        <div>
+                          Entry: <span className="text-foreground">{formatCurrency(avgEntry)}</span>
+                        </div>
+                        <div>
+                          Opened: <span className="text-foreground">{format(new Date(position.openedAt), 'MMM d, h:mm a')}</span>
+                        </div>
+                        <div>
+                          Closed: <span className="text-foreground">{position.closedAt ? format(new Date(position.closedAt), 'MMM d, h:mm a') : 'N/A'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-center py-6">
+                <CheckCircle2 className="h-8 w-8 mx-auto text-muted-foreground/50 mb-2" />
+                <p className="text-sm text-muted-foreground">No completed trades yet</p>
+              </div>
+            )}
+          </CollapsibleContent>
+        </Collapsible>
       </CardContent>
     </Card>
   );
