@@ -116,7 +116,7 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-1">
                 <span className="font-medium">{position.symbol}</span>
-                <Badge variant={position.side === 'long' ? 'default' : 'secondary'} className="text-xs">
+                <Badge className={`text-xs ${position.side === 'long' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
                   {position.side === 'long' ? (
                     <TrendingUp className="h-3 w-3 mr-1" />
                   ) : (
@@ -438,8 +438,7 @@ export function StrategyStatus() {
                         <div className="flex items-center gap-2">
                           <span className="font-semibold text-sm">{position.symbol}</span>
                           <Badge 
-                            variant={position.side === 'long' ? 'destructive' : 'default'}
-                            className="text-xs"
+                            className={`text-xs ${position.side === 'long' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}
                           >
                             {position.side.toUpperCase()}
                           </Badge>

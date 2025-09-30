@@ -10,6 +10,7 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+- **Consistent Long/Short Color Scheme:** Standardized color coding across entire application - green for LONG positions/liquidations, red for SHORT positions/liquidations. Applied to all badges, labels, charts, and position indicators throughout LiveLiquidationsSidebar, StrategyStatus, LiquidationAnalytics, HistoricalLiquidationTable, and LiquidationPriceChart
 - **Global Trading Strategy Button:** Replaced collapsible trading control panel with a prominent "Trading Strategy" button in the top header bar. Opens a full-screen dialog popup for strategy configuration, providing easier access and better organization of settings
 - **Performance Chart Visualization:** Added interactive chart to Performance Overview showing all completed trades with individual trade P&L bars (green for wins, red for losses) and cumulative P&L line graph. Chart includes detailed tooltips with trade information, timestamps, and P&L breakdown. Updates in real-time as new trades complete. Chart is always visible even with no trades (shows empty state)
 - **Realistic Limit Order Simulation (Paper Mode):** Paper trading now fully simulates limit order behavior identical to live trading. Limit orders remain pending until market price crosses the limit price, with dynamic price chasing when market moves beyond slippage tolerance, and automatic cancellation after maxRetryDurationMs timeout. Market orders continue to fill immediately

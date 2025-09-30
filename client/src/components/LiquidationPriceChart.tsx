@@ -329,8 +329,8 @@ export default function LiquidationPriceChart({ symbol, hours }: LiquidationPric
                         return <g />;
                       }
                       
-                      const color = payload.side === 'long' ? '#ef4444' : '#22c55e';
-                      const strokeColor = payload.side === 'long' ? '#dc2626' : '#16a34a';
+                      const color = payload.side === 'long' ? '#22c55e' : '#ef4444';
+                      const strokeColor = payload.side === 'long' ? '#16a34a' : '#dc2626';
                       const radius = Math.max(4, Math.min(12, Math.sqrt(payload.value / 1000) * 2));
                       
                       return (

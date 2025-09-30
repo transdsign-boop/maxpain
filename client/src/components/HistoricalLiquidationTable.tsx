@@ -186,11 +186,10 @@ export default function HistoricalLiquidationTable({
                 </td>
                 <td className="p-3">
                   <Badge
-                    variant={liquidation.side === 'long' ? 'destructive' : 'default'}
                     className={`flex items-center gap-1 w-fit text-xs ${
                       liquidation.side === 'long' 
-                        ? 'bg-red-500/10 text-red-600 border-red-500/20 hover:bg-red-500/20' 
-                        : 'bg-green-500/10 text-green-600 border-green-500/20 hover:bg-green-500/20'
+                        ? 'bg-green-500/10 text-green-600 border-green-500/20 hover:bg-green-500/20' 
+                        : 'bg-red-500/10 text-red-600 border-red-500/20 hover:bg-red-500/20'
                     }`}
                   >
                     {liquidation.side === 'long' ? (
