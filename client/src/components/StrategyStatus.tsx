@@ -77,15 +77,19 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
     enabled: isExpanded,
   });
 
-  const unrealizedPnl = parseFloat(position.unrealizedPnl);
-  const pnlPercent = (unrealizedPnl / parseFloat(position.totalCost)) * 100;
+  // unrealizedPnl is stored as percentage in the database (e.g., 0.36292126 = 0.36%)
+  const unrealizedPnlPercent = parseFloat(position.unrealizedPnl);
+  const totalCost = parseFloat(position.totalCost);
+  
+  // Calculate dollar P&L from percentage and leveraged position size
+  const unrealizedPnlDollar = (unrealizedPnlPercent / 100) * totalCost;
+  
   const avgEntry = parseFloat(position.avgEntryPrice);
   
-  // Calculate current price from unrealized P&L
-  // unrealizedPnl is stored as percentage in the database
+  // Calculate current price from unrealized P&L percentage
   const currentPrice = position.side === 'long'
-    ? avgEntry * (1 + pnlPercent / 100)
-    : avgEntry * (1 - pnlPercent / 100);
+    ? avgEntry * (1 + unrealizedPnlPercent / 100)
+    : avgEntry * (1 - unrealizedPnlPercent / 100);
   
   // Calculate SL and TP based on strategy settings
   const stopLossPercent = strategy ? parseFloat(strategy.stopLossPercent) : 2;
@@ -101,7 +105,7 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
   
   // Calculate margin (totalCost is already the leveraged position value)
   const leverage = strategy ? strategy.leverage : 1;
-  const totalMargin = parseFloat(position.totalCost) / leverage;
+  const totalMargin = totalCost / leverage;
 
   return (
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
@@ -144,11 +148,11 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
           </div>
           <div className="flex items-center gap-3">
             <div className="text-right">
-              <p className={`font-medium ${getPnlColor(unrealizedPnl)}`}>
-                {formatCurrency(unrealizedPnl)}
+              <p className={`font-medium ${getPnlColor(unrealizedPnlDollar)}`}>
+                {formatCurrency(unrealizedPnlDollar)}
               </p>
-              <p className={`text-sm ${getPnlColor(pnlPercent)}`}>
-                {formatPercentage(pnlPercent)}
+              <p className={`text-sm ${getPnlColor(unrealizedPnlPercent)}`}>
+                {formatPercentage(unrealizedPnlPercent)}
               </p>
             </div>
             <Button

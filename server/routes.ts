@@ -953,8 +953,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const positions = await storage.getOpenPositions(session.id);
 
       // Calculate totals
-      const totalUnrealizedPnl = positions.reduce((sum, pos) => 
-        sum + parseFloat(pos.unrealizedPnl || '0'), 0);
+      // Convert unrealized P&L percentages to dollar values before summing
+      const totalUnrealizedPnl = positions.reduce((sum, pos) => {
+        const pnlPercent = parseFloat(pos.unrealizedPnl || '0');
+        const totalCost = parseFloat(pos.totalCost || '0');
+        const pnlDollar = (pnlPercent / 100) * totalCost;
+        return sum + pnlDollar;
+      }, 0);
       const totalRealizedPnl = parseFloat(session.totalPnl || '0');
       const totalExposure = positions.reduce((sum, pos) => 
         sum + parseFloat(pos.totalCost || '0'), 0);
@@ -993,8 +998,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Calculate totals
-      const totalUnrealizedPnl = positions.reduce((sum, pos) => 
-        sum + parseFloat(pos.unrealizedPnl || '0'), 0);
+      // Convert unrealized P&L percentages to dollar values before summing
+      const totalUnrealizedPnl = positions.reduce((sum, pos) => {
+        const pnlPercent = parseFloat(pos.unrealizedPnl || '0');
+        const totalCost = parseFloat(pos.totalCost || '0');
+        const pnlDollar = (pnlPercent / 100) * totalCost;
+        return sum + pnlDollar;
+      }, 0);
       const totalRealizedPnl = parseFloat(session.totalPnl || '0');
       const totalExposure = positions.reduce((sum, pos) => 
         sum + parseFloat(pos.totalCost || '0'), 0);
