@@ -846,6 +846,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get closed positions (completed trades) for a strategy
+  app.get('/api/strategies/:strategyId/positions/closed', async (req, res) => {
+    try {
+      const { strategyId } = req.params;
+      
+      // Find the active trade session for this strategy
+      const session = await storage.getActiveTradeSession(strategyId);
+      
+      if (!session) {
+        return res.status(404).json({ error: 'No active trade session found for this strategy' });
+      }
+
+      const closedPositions = await storage.getClosedPositions(session.id);
+      res.json(closedPositions);
+    } catch (error) {
+      console.error('Error fetching closed positions:', error);
+      res.status(500).json({ error: 'Failed to fetch closed positions' });
+    }
+  });
+
   // Get fills for a position (for layer details)
   app.get('/api/positions/:positionId/fills', async (req, res) => {
     try {

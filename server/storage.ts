@@ -68,6 +68,7 @@ export interface IStorage {
   getPosition(id: string): Promise<Position | undefined>;
   getPositionBySymbol(sessionId: string, symbol: string): Promise<Position | undefined>;
   getOpenPositions(sessionId: string): Promise<Position[]>;
+  getClosedPositions(sessionId: string): Promise<Position[]>;
   updatePosition(id: string, updates: Partial<InsertPosition>): Promise<Position>;
   closePosition(id: string, closedAt: Date, realizedPnl: number): Promise<Position>;
 
@@ -342,6 +343,12 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(positions)
       .where(and(eq(positions.sessionId, sessionId), eq(positions.isOpen, true)))
       .orderBy(desc(positions.openedAt));
+  }
+
+  async getClosedPositions(sessionId: string): Promise<Position[]> {
+    return await db.select().from(positions)
+      .where(and(eq(positions.sessionId, sessionId), eq(positions.isOpen, false)))
+      .orderBy(desc(positions.closedAt));
   }
 
   async updatePosition(id: string, updates: Partial<InsertPosition>): Promise<Position> {
