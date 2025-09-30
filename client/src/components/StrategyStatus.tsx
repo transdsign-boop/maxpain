@@ -349,6 +349,11 @@ export function StrategyStatus() {
   const currentBalanceWithUnrealized = summary 
     ? summary.currentBalance + (summary.unrealizedPnl || 0)
     : 0;
+  
+  // Calculate available margin (current balance minus margin in use)
+  const leverage = activeStrategy?.leverage || 1;
+  const marginInUse = summary ? (summary.totalExposure / leverage) : 0;
+  const availableMargin = summary ? (summary.currentBalance - marginInUse) : 0;
 
   return (
     <Card data-testid="strategy-status">
@@ -395,9 +400,15 @@ export function StrategyStatus() {
         {/* Portfolio Metrics */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Active Positions</p>
-            <p className="text-lg font-semibold" data-testid="active-positions">
-              {summary?.activePositions || 0}
+            <p className="text-sm text-muted-foreground">Available Margin</p>
+            <p className="text-lg font-semibold text-emerald-600 dark:text-emerald-400" data-testid="available-margin">
+              {formatCurrency(availableMargin)}
+            </p>
+          </div>
+          <div className="space-y-1">
+            <p className="text-sm text-muted-foreground">Margin In Use</p>
+            <p className="text-lg font-semibold" data-testid="margin-in-use">
+              {formatCurrency(marginInUse)}
             </p>
           </div>
           <div className="space-y-1">
@@ -406,6 +417,16 @@ export function StrategyStatus() {
               {formatCurrency(summary?.totalExposure || 0)}
             </p>
           </div>
+          <div className="space-y-1">
+            <p className="text-sm text-muted-foreground">Active Positions</p>
+            <p className="text-lg font-semibold" data-testid="active-positions">
+              {summary?.activePositions || 0}
+            </p>
+          </div>
+        </div>
+        
+        {/* P&L Metrics */}
+        <div className="grid grid-cols-2 gap-4">
           <div className="space-y-1">
             <p className="text-sm text-muted-foreground">Unrealized P&L</p>
             <p className={`text-lg font-semibold ${getPnlColor(summary?.unrealizedPnl || 0)}`} data-testid="unrealized-pnl">
