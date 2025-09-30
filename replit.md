@@ -10,6 +10,8 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+- **Cross-Browser Settings Persistence:** Settings and strategies now automatically persist to the database using a fixed user ID. No login required - all data is stored in PostgreSQL and available across any browser or device accessing the application
+- **Removed Authentication:** Removed Replit Auth system per user request - this is a personal app that doesn't need login functionality
 - **Fixed duplicate liquidation entries:** Implemented multi-layer deduplication to prevent identical liquidations from being stored twice:
   - Queue-based processing to serialize duplicate signatures  
   - Numeric comparison for decimal columns (size/price) instead of string equality

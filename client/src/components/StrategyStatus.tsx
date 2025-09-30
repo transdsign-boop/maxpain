@@ -8,7 +8,6 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { TrendingUp, TrendingDown, DollarSign, Target, Layers, X, ChevronDown, ChevronUp } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/hooks/useAuth";
 
 interface Fill {
   id: string;
@@ -174,12 +173,10 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
 
 export function StrategyStatus() {
   const { toast } = useToast();
-  const { user } = useAuth();
 
-  // First, get active strategies for this authenticated user
+  // First, get active strategies
   const { data: strategies } = useQuery<any[]>({
     queryKey: ['/api/strategies'],
-    enabled: !!user,
     refetchInterval: 5000,
   });
 
@@ -228,21 +225,6 @@ export function StrategyStatus() {
     }
   });
 
-  if (!user) {
-    return (
-      <Card data-testid="strategy-status-no-user">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Target className="h-5 w-5" />
-            Strategy Status
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground">Log in to view trading strategies and positions.</p>
-        </CardContent>
-      </Card>
-    );
-  }
 
   if (isLoading) {
     return (

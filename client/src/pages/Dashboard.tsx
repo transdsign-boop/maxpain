@@ -7,8 +7,7 @@ import { StrategyStatus } from "@/components/StrategyStatus";
 import ThemeToggle from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Settings, Download, Upload, LogOut } from "lucide-react";
-import { useAuth } from "@/hooks/useAuth";
+import { Settings, Download, Upload } from "lucide-react";
 
 interface Liquidation {
   id: string;
@@ -39,13 +38,8 @@ export default function Dashboard() {
   // File input ref for settings import
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Get authenticated user
-  const { user } = useAuth();
-
   // Save settings to database
   const saveSettings = async () => {
-    if (!user) return; // Don't save if not authenticated
-    
     try {
       await fetch('/api/settings', {
         method: 'POST',
@@ -112,11 +106,6 @@ export default function Dashboard() {
 
   // Load settings from database
   const loadSettings = async () => {
-    if (!user) {
-      setSettingsLoaded(true);
-      return; // Don't load if not authenticated
-    }
-    
     try {
       const response = await fetch('/api/settings');
       if (response.ok) {
@@ -226,6 +215,7 @@ export default function Dashboard() {
 
     loadInitialData();
     connectWebSocket();
+    loadSettings();
 
     return () => {
       isMounted = false;
@@ -242,13 +232,6 @@ export default function Dashboard() {
       }
     };
   }, []);
-
-  // Load settings when user is authenticated
-  useEffect(() => {
-    if (user) {
-      loadSettings();
-    }
-  }, [user]);
 
   // Save settings when they change (only after initial load)
   useEffect(() => {
@@ -363,10 +346,6 @@ export default function Dashboard() {
                 <DropdownMenuItem onClick={() => fileInputRef.current?.click()} data-testid="button-import-settings">
                   <Upload className="mr-2 h-4 w-4" />
                   Import Settings
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => window.location.href = '/api/logout'} data-testid="button-logout">
-                  <LogOut className="mr-2 h-4 w-4" />
-                  Log Out
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
