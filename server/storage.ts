@@ -1,5 +1,5 @@
 import { 
-  type User, type InsertUser, type Liquidation, type InsertLiquidation, 
+  type User, type UpsertUser, type Liquidation, type InsertLiquidation, 
   type UserSettings, type InsertUserSettings,
   type Strategy, type InsertStrategy,
   type TradeSession, type InsertTradeSession,
@@ -17,9 +17,9 @@ import { desc, gte, eq, sql, inArray, and } from "drizzle-orm";
 // you might need
 
 export interface IStorage {
+  // Replit Auth user operations (IMPORTANT - mandatory for Replit Auth)
   getUser(id: string): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
+  upsertUser(user: UpsertUser): Promise<User>;
   
   // Liquidation operations
   insertLiquidation(liquidation: InsertLiquidation): Promise<Liquidation>;
@@ -34,13 +34,13 @@ export interface IStorage {
   getLiquidationAnalytics(symbol: string, sinceTimestamp: Date): Promise<Liquidation[]>;
   
   // User settings operations
-  getUserSettings(sessionId: string): Promise<UserSettings | undefined>;
+  getUserSettings(userId: string): Promise<UserSettings | undefined>;
   saveUserSettings(settings: InsertUserSettings): Promise<UserSettings>;
 
   // Trading Strategy operations
   createStrategy(strategy: InsertStrategy): Promise<Strategy>;
   getStrategy(id: string): Promise<Strategy | undefined>;
-  getStrategiesBySession(sessionId: string): Promise<Strategy[]>;
+  getStrategiesByUser(userId: string): Promise<Strategy[]>;
   getAllActiveStrategies(): Promise<Strategy[]>;
   updateStrategy(id: string, updates: Partial<InsertStrategy>): Promise<Strategy>;
   deleteStrategy(id: string): Promise<void>;
@@ -83,14 +83,19 @@ export class DatabaseStorage implements IStorage {
     return result[0];
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    const result = await db.select().from(users).where(eq(users.username, username));
-    return result[0];
-  }
-
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const result = await db.insert(users).values(insertUser).returning();
-    return result[0];
+  async upsertUser(userData: UpsertUser): Promise<User> {
+    const [user] = await db
+      .insert(users)
+      .values(userData)
+      .onConflictDoUpdate({
+        target: users.id,
+        set: {
+          ...userData,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return user;
   }
 
   async insertLiquidation(liquidation: InsertLiquidation): Promise<Liquidation> {
@@ -152,8 +157,8 @@ export class DatabaseStorage implements IStorage {
     return result[0];
   }
 
-  async getUserSettings(sessionId: string): Promise<UserSettings | undefined> {
-    const result = await db.select().from(userSettings).where(eq(userSettings.sessionId, sessionId));
+  async getUserSettings(userId: string): Promise<UserSettings | undefined> {
+    const result = await db.select().from(userSettings).where(eq(userSettings.userId, userId));
     return result[0];
   }
 
@@ -182,7 +187,7 @@ export class DatabaseStorage implements IStorage {
     const result = await db.insert(userSettings)
       .values(settings)
       .onConflictDoUpdate({
-        target: userSettings.sessionId,
+        target: userSettings.userId,
         set: {
           selectedAssets: settings.selectedAssets,
           sideFilter: settings.sideFilter,
@@ -206,9 +211,9 @@ export class DatabaseStorage implements IStorage {
     return result[0];
   }
 
-  async getStrategiesBySession(sessionId: string): Promise<Strategy[]> {
+  async getStrategiesByUser(userId: string): Promise<Strategy[]> {
     return await db.select().from(strategies)
-      .where(eq(strategies.sessionId, sessionId))
+      .where(eq(strategies.userId, userId))
       .orderBy(desc(strategies.createdAt));
   }
 

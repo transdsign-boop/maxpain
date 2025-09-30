@@ -4,11 +4,27 @@ import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { strategyEngine } from "./strategy-engine";
 import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySchema, updateStrategySchema } from "@shared/schema";
+import { setupAuth, isAuthenticated } from "./replitAuth";
 
 // Fixed liquidation window - always 60 seconds regardless of user input
 const LIQUIDATION_WINDOW_SECONDS = 60;
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Setup Replit Auth (must be first)
+  await setupAuth(app);
+
+  // Auth routes
+  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      res.json(user);
+    } catch (error) {
+      console.error("Error fetching user:", error);
+      res.status(500).json({ message: "Failed to fetch user" });
+    }
+  });
+  
   // Start the strategy engine
   await strategyEngine.start();
   
@@ -92,20 +108,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // User settings API routes
-  app.get("/api/settings/:sessionId", async (req, res) => {
+  // User settings API routes (protected)
+  app.get("/api/settings", isAuthenticated, async (req: any, res) => {
     try {
-      const sessionId = req.params.sessionId;
-      const settings = await storage.getUserSettings(sessionId);
+      const userId = req.user.claims.sub;
+      const settings = await storage.getUserSettings(userId);
       res.json(settings || null);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch user settings" });
     }
   });
 
-  app.post("/api/settings", async (req, res) => {
+  app.post("/api/settings", isAuthenticated, async (req: any, res) => {
     try {
-      const validatedSettings = insertUserSettingsSchema.parse(req.body);
+      const userId = req.user.claims.sub;
+      const validatedSettings = insertUserSettingsSchema.parse({
+        ...req.body,
+        userId
+      });
       const settings = await storage.saveUserSettings(validatedSettings);
       res.json(settings);
     } catch (error) {
@@ -555,25 +575,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Trading Strategy API routes
-  app.get("/api/strategies/:sessionId", async (req, res) => {
+  // Trading Strategy API routes (protected)
+  app.get("/api/strategies", isAuthenticated, async (req: any, res) => {
     try {
-      const sessionId = req.params.sessionId;
-      const strategies = await storage.getStrategiesBySession(sessionId);
+      const userId = req.user.claims.sub;
+      const strategies = await storage.getStrategiesByUser(userId);
       res.json(strategies);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch strategies" });
     }
   });
 
-  app.post("/api/strategies", async (req, res) => {
+  app.post("/api/strategies", isAuthenticated, async (req: any, res) => {
     try {
-      const validatedData = frontendStrategySchema.parse(req.body);
+      const userId = req.user.claims.sub;
+      const validatedData = frontendStrategySchema.parse({
+        ...req.body,
+        userId
+      });
       
       // Convert frontend data to database format with hardcoded 60-second liquidation window
       const strategyData = {
         name: validatedData.name,
-        sessionId: validatedData.sessionId,
+        userId: validatedData.userId,
         selectedAssets: validatedData.selectedAssets,
         percentileThreshold: validatedData.percentileThreshold,
         maxLayers: validatedData.maxLayers,
