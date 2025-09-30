@@ -200,16 +200,16 @@ export default function PerformanceOverview() {
     </Card>
 
     {/* Performance Chart */}
-    {!chartLoading && chartData && chartData.length > 0 && (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <LineChart className="h-5 w-5" />
-            Trading Performance
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="h-80">
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <LineChart className="h-5 w-5" />
+          Trading Performance
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="h-80">
+          {!chartLoading && chartData && chartData.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
@@ -260,10 +260,18 @@ export default function PerformanceOverview() {
                 />
               </ComposedChart>
             </ResponsiveContainer>
-          </div>
-        </CardContent>
-      </Card>
-    )}
+          ) : (
+            <div className="flex items-center justify-center h-full text-muted-foreground">
+              <div className="text-center space-y-2">
+                <LineChart className="h-12 w-12 mx-auto opacity-50" />
+                <p className="text-sm font-medium">No Completed Trades Yet</p>
+                <p className="text-xs">Start trading to see your performance chart</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
     </div>
   );
 }
