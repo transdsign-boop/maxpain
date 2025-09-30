@@ -78,6 +78,12 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
   const pnlPercent = (unrealizedPnl / parseFloat(position.totalCost)) * 100;
   const avgEntry = parseFloat(position.avgEntryPrice);
   
+  // Calculate current price from unrealized P&L
+  // unrealizedPnl is stored as percentage in the database
+  const currentPrice = position.side === 'long'
+    ? avgEntry * (1 + pnlPercent / 100)
+    : avgEntry * (1 - pnlPercent / 100);
+  
   // Calculate SL and TP based on strategy settings
   const stopLossPercent = strategy ? parseFloat(strategy.stopLossPercent) : 2;
   const profitTargetPercent = strategy ? parseFloat(strategy.profitTargetPercent) : 1;
@@ -118,6 +124,9 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
               </div>
               <div className="flex items-center gap-4 text-xs text-muted-foreground">
                 <span>Avg: {formatCurrency(avgEntry)}</span>
+                <span className="font-medium text-foreground" data-testid={`current-price-${position.symbol}`}>
+                  Current: {formatCurrency(currentPrice)}
+                </span>
                 <span className="text-red-600 dark:text-red-400">SL: {formatCurrency(stopLossPrice)}</span>
                 <span className="text-emerald-600 dark:text-emerald-400">TP: {formatCurrency(takeProfitPrice)}</span>
               </div>

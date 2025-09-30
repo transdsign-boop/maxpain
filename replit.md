@@ -10,6 +10,7 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+- **Position Cards Current Price Display:** Added real-time current price to position cards, calculated from unrealized P&L and displayed alongside average entry, stop loss, and take profit prices
 - **Cross-Browser Settings Persistence:** Settings and strategies now automatically persist to the database using a fixed user ID. No login required - all data is stored in PostgreSQL and available across any browser or device accessing the application
 - **Removed Authentication:** Removed Replit Auth system per user request - this is a personal app that doesn't need login functionality
 - **Fixed duplicate liquidation entries:** Implemented multi-layer deduplication to prevent identical liquidations from being stored twice:
