@@ -620,7 +620,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/strategies/:id", async (req, res) => {
     try {
       const strategyId = req.params.id;
+      console.log('📝 Update strategy request:', JSON.stringify(req.body, null, 2));
       const validatedUpdates = updateStrategySchema.parse(req.body);
+      console.log('✅ Validated updates:', JSON.stringify(validatedUpdates, null, 2));
       
       // Verify strategy exists
       const existingStrategy = await storage.getStrategy(strategyId);
@@ -633,10 +635,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...validatedUpdates
       };
       
+      console.log('💾 Sending to database:', JSON.stringify(updateData, null, 2));
       await storage.updateStrategy(strategyId, updateData);
       
       // Fetch and return refreshed strategy
       const updatedStrategy = await storage.getStrategy(strategyId);
+      console.log('📊 Updated strategy from DB:', JSON.stringify(updatedStrategy, null, 2));
       res.status(200).json(updatedStrategy);
     } catch (error) {
       console.error('Error updating strategy:', error);
