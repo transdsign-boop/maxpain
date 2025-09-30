@@ -74,7 +74,17 @@ export default function PerformanceOverview() {
 
   const formatCurrency = (value: number) => {
     const sign = value >= 0 ? '+' : '';
-    return `${sign}$${value.toFixed(4)}`;
+    const absValue = Math.abs(value);
+    
+    // For very large values, use K/M notation
+    if (absValue >= 1000000) {
+      return `${sign}$${(value / 1000000).toFixed(2)}M`;
+    } else if (absValue >= 10000) {
+      return `${sign}$${(value / 1000).toFixed(2)}K`;
+    } else {
+      // Standard currency format with 2 decimals
+      return `${sign}$${Math.abs(value).toFixed(2)}`;
+    }
   };
 
   const formatPercent = (value: number) => {
@@ -131,10 +141,10 @@ export default function PerformanceOverview() {
           <p className="text-xs text-muted-foreground mb-2">{format(new Date(data.timestamp), "MMM d, h:mm a")}</p>
           <p className="text-xs mb-1"><span className="font-medium">{data.symbol}</span> {data.side}</p>
           <p className={`text-sm font-mono font-semibold ${data.pnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-            P&L: {data.pnl >= 0 ? '+' : ''}${data.pnl.toFixed(4)}
+            P&L: {data.pnl >= 0 ? '+' : ''}${Math.abs(data.pnl).toFixed(2)}
           </p>
           <p className={`text-sm font-mono font-semibold ${data.cumulativePnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-            Cumulative: {data.cumulativePnl >= 0 ? '+' : ''}${data.cumulativePnl.toFixed(4)}
+            Cumulative: {data.cumulativePnl >= 0 ? '+' : ''}${Math.abs(data.cumulativePnl).toFixed(2)}
           </p>
         </div>
       );
@@ -356,7 +366,7 @@ export default function PerformanceOverview() {
           <div className="space-y-1">
             <div className="text-xs text-muted-foreground">Total Fees</div>
             <div className="text-xl font-mono font-semibold text-red-500" data-testid="text-total-fees">
-              ${performance.totalFees.toFixed(4)}
+              ${performance.totalFees.toFixed(2)}
             </div>
           </div>
 
