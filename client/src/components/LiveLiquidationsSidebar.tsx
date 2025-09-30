@@ -36,8 +36,12 @@ export default function LiveLiquidationsSidebar({
   onLiquidationClick
 }: LiveLiquidationsSidebarProps) {
 
-  // Show ALL recent liquidations (last 20) regardless of selected assets for display
-  const recentLiquidations = liquidations.slice(0, 20);
+  // Show liquidations from the last 8 hours
+  const eightHoursAgo = new Date(Date.now() - 8 * 60 * 60 * 1000);
+  const recentLiquidations = liquidations.filter(liq => {
+    const liqDate = typeof liq.timestamp === 'string' ? new Date(liq.timestamp) : liq.timestamp;
+    return liqDate >= eightHoursAgo;
+  });
 
   // Calculate total value from ALL liquidations
   const totalValue = liquidations.reduce((sum, liq) => sum + parseFloat(liq.value), 0);
