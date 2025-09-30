@@ -446,11 +446,11 @@ export default function Dashboard() {
         {/* Performance Overview */}
         <PerformanceOverview />
         
+        {/* Active Positions */}
+        <StrategyStatus />
+        
         {/* Trading Control Panel */}
         <TradingControlPanel />
-        
-        {/* Strategy Status Widget */}
-        <StrategyStatus />
       </main>
 
       {/* Live Liquidations Sidebar */}
