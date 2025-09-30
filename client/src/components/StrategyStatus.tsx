@@ -280,7 +280,7 @@ export function StrategyStatus() {
     onSuccess: (data) => {
       toast({
         title: "Position Closed",
-        description: `Closed ${data.position.symbol} position with ${data.pnlPercent >= 0 ? '+' : ''}${data.pnlPercent.toFixed(2)}% P&L ($${data.pnlDollar >= 0 ? '+' : ''}${data.pnlDollar.toFixed(4)})`,
+        description: `Closed ${data.position.symbol} position with ${data.pnlPercent >= 0 ? '+' : ''}${data.pnlPercent.toFixed(2)}% P&L ($${data.pnlDollar >= 0 ? '+' : ''}${Math.abs(data.pnlDollar).toFixed(2)})`,
       });
       // Invalidate queries to refresh the UI
       queryClient.invalidateQueries({ queryKey: ['/api/strategies', activeStrategy?.id, 'positions', 'summary'] });
@@ -377,8 +377,8 @@ export function StrategyStatus() {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
-      minimumFractionDigits: 4,
-      maximumFractionDigits: 4
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
     }).format(value);
   };
 
