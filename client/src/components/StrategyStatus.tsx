@@ -438,8 +438,10 @@ export function StrategyStatus() {
             {closedPositions && closedPositions.length > 0 ? (
               <div className="space-y-2 max-h-96 overflow-y-auto">
                 {closedPositions.map((position) => {
-                  const realizedPnl = parseFloat(position.realizedPnl);
-                  const pnlPercent = (realizedPnl / parseFloat(position.totalCost)) * 100;
+                  // realizedPnl is stored as percentage in the database
+                  const realizedPnlPercent = parseFloat(position.realizedPnl);
+                  const totalCost = parseFloat(position.totalCost);
+                  const realizedPnlDollar = (realizedPnlPercent / 100) * totalCost;
                   const avgEntry = parseFloat(position.avgEntryPrice);
                   
                   return (
@@ -460,10 +462,10 @@ export function StrategyStatus() {
                             {position.layersFilled}/{position.maxLayers} layers
                           </Badge>
                         </div>
-                        <div className={`text-sm font-semibold ${getPnlColor(realizedPnl)}`}>
-                          {realizedPnl >= 0 ? '+' : ''}{formatCurrency(realizedPnl)}
+                        <div className={`text-sm font-semibold ${getPnlColor(realizedPnlDollar)}`}>
+                          {realizedPnlDollar >= 0 ? '+' : ''}{formatCurrency(realizedPnlDollar)}
                           <span className="text-xs ml-1">
-                            ({realizedPnl >= 0 ? '+' : ''}{formatPercentage(pnlPercent)})
+                            ({realizedPnlPercent >= 0 ? '+' : ''}{formatPercentage(realizedPnlPercent)})
                           </span>
                         </div>
                       </div>
