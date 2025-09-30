@@ -32,11 +32,11 @@ export default function LiquidationRow({
   const formatNumber = (num: string) => {
     const parsed = parseFloat(num);
     if (parsed >= 1000000) {
-      return `${(parsed / 1000000).toFixed(2)}M`;
+      return `${(parsed / 1000000).toFixed(4)}M`;
     } else if (parsed >= 1000) {
-      return `${(parsed / 1000).toFixed(2)}K`;
+      return `${(parsed / 1000).toFixed(4)}K`;
     }
-    return parsed.toFixed(2);
+    return parsed.toFixed(4);
   };
 
   // Calculate percentile rank for this liquidation value (using pre-sorted values)

@@ -40,15 +40,15 @@ export default function HistoricalLiquidationTable({
 
   const formatValue = (value: string) => {
     const num = parseFloat(value);
-    if (num >= 1000000) return `$${(num / 1000000).toFixed(2)}M`;
-    if (num >= 1000) return `$${(num / 1000).toFixed(1)}K`;
-    return `$${num.toFixed(2)}`;
+    if (num >= 1000000) return `$${(num / 1000000).toFixed(4)}M`;
+    if (num >= 1000) return `$${(num / 1000).toFixed(4)}K`;
+    return `$${num.toFixed(4)}`;
   };
 
   const formatSize = (size: string) => {
     const num = parseFloat(size);
-    if (num >= 1000000) return `${(num / 1000000).toFixed(3)}M`;
-    if (num >= 1000) return `${(num / 1000).toFixed(3)}K`;
+    if (num >= 1000000) return `${(num / 1000000).toFixed(4)}M`;
+    if (num >= 1000) return `${(num / 1000).toFixed(4)}K`;
     return num.toFixed(4);
   };
 
@@ -204,7 +204,7 @@ export default function HistoricalLiquidationTable({
                   {formatSize(liquidation.size)}
                 </td>
                 <td className="p-3 font-mono text-xs">
-                  ${parseFloat(liquidation.price).toFixed(6)}
+                  ${parseFloat(liquidation.price).toFixed(4)}
                 </td>
                 <td className="p-3 font-mono text-xs font-semibold">
                   <div className="flex items-center gap-2">

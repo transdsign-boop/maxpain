@@ -57,18 +57,8 @@ export default function PerformanceOverview() {
   }
 
   const formatCurrency = (value: number) => {
-    // Use more decimals for smaller values to show meaningful detail
-    const absValue = Math.abs(value);
-    let decimals = 2;
-    
-    if (absValue < 0.01 && absValue > 0) {
-      decimals = 6; // For very small prices like $0.000123
-    } else if (absValue < 1 && absValue > 0) {
-      decimals = 4; // For small prices like $0.0925
-    }
-    
     const sign = value >= 0 ? '+' : '';
-    return `${sign}$${value.toFixed(decimals)}`;
+    return `${sign}$${value.toFixed(4)}`;
   };
 
   const formatPercent = (value: number) => {
@@ -86,10 +76,10 @@ export default function PerformanceOverview() {
           <p className="text-xs text-muted-foreground mb-2">{format(new Date(data.timestamp), "MMM d, h:mm a")}</p>
           <p className="text-xs mb-1"><span className="font-medium">{data.symbol}</span> {data.side}</p>
           <p className={`text-sm font-mono font-semibold ${data.pnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-            P&L: {data.pnl >= 0 ? '+' : ''}${data.pnl.toFixed(2)}
+            P&L: {data.pnl >= 0 ? '+' : ''}${data.pnl.toFixed(4)}
           </p>
           <p className={`text-sm font-mono font-semibold ${data.cumulativePnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-            Cumulative: {data.cumulativePnl >= 0 ? '+' : ''}${data.cumulativePnl.toFixed(2)}
+            Cumulative: {data.cumulativePnl >= 0 ? '+' : ''}${data.cumulativePnl.toFixed(4)}
           </p>
         </div>
       );

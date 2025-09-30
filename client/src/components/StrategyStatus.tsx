@@ -245,7 +245,7 @@ export function StrategyStatus() {
     onSuccess: (data) => {
       toast({
         title: "Position Closed",
-        description: `Closed ${data.position.symbol} position with ${data.pnlPercent >= 0 ? '+' : ''}${data.pnlPercent.toFixed(2)}% P&L ($${data.pnlDollar >= 0 ? '+' : ''}${data.pnlDollar.toFixed(2)})`,
+        description: `Closed ${data.position.symbol} position with ${data.pnlPercent >= 0 ? '+' : ''}${data.pnlPercent.toFixed(2)}% P&L ($${data.pnlDollar >= 0 ? '+' : ''}${data.pnlDollar.toFixed(4)})`,
       });
       // Invalidate queries to refresh the UI
       queryClient.invalidateQueries({ queryKey: ['/api/strategies', activeStrategy?.id, 'positions', 'summary'] });
@@ -339,21 +339,11 @@ export function StrategyStatus() {
   }
 
   const formatCurrency = (value: number) => {
-    // Use more decimals for smaller values to show meaningful detail
-    const absValue = Math.abs(value);
-    let decimals = 2;
-    
-    if (absValue < 0.01 && absValue > 0) {
-      decimals = 6; // For very small prices like $0.000123
-    } else if (absValue < 1 && absValue > 0) {
-      decimals = 4; // For small prices like $0.0925
-    }
-    
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
-      minimumFractionDigits: decimals,
-      maximumFractionDigits: decimals
+      minimumFractionDigits: 4,
+      maximumFractionDigits: 4
     }).format(value);
   };
 
