@@ -335,11 +335,21 @@ export function StrategyStatus() {
   }
 
   const formatCurrency = (value: number) => {
+    // Use more decimals for smaller values to show meaningful detail
+    const absValue = Math.abs(value);
+    let decimals = 2;
+    
+    if (absValue < 0.01 && absValue > 0) {
+      decimals = 6; // For very small prices like $0.000123
+    } else if (absValue < 1 && absValue > 0) {
+      decimals = 4; // For small prices like $0.0925
+    }
+    
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals
     }).format(value);
   };
 
