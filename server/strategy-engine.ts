@@ -36,7 +36,16 @@ export class StrategyEngine extends EventEmitter {
   private activeSessions: Map<string, TradeSession> = new Map();
   private liquidationHistory: Map<string, Liquidation[]> = new Map(); // symbol -> liquidations
   private priceCache: Map<string, number> = new Map(); // symbol -> latest price
+  private pendingPaperOrders: Map<string, {
+    order: Order;
+    strategy: Strategy;
+    targetPrice: number;
+    startTime: number;
+    maxRetryDuration: number;
+    slippageTolerance: number;
+  }> = new Map(); // Track pending paper orders for limit order simulation
   private isRunning = false;
+  private orderMonitorInterval?: NodeJS.Timeout;
 
   constructor() {
     super();
@@ -64,6 +73,9 @@ export class StrategyEngine extends EventEmitter {
     // Start periodic checks for exit conditions
     this.startExitMonitoring();
     
+    // Start monitoring pending paper orders for limit order simulation
+    this.startPaperOrderMonitoring();
+    
     console.log(`✅ StrategyEngine started with ${this.activeStrategies.size} active strategies`);
   }
 
@@ -71,9 +83,17 @@ export class StrategyEngine extends EventEmitter {
   stop() {
     console.log('🛑 StrategyEngine stopping...');
     this.isRunning = false;
+    
+    // Clear all monitoring intervals
+    if (this.orderMonitorInterval) {
+      clearInterval(this.orderMonitorInterval);
+      this.orderMonitorInterval = undefined;
+    }
+    
     this.activeStrategies.clear();
     this.activeSessions.clear();
     this.liquidationHistory.clear();
+    this.pendingPaperOrders.clear();
     console.log('✅ StrategyEngine stopped');
   }
 
@@ -450,10 +470,22 @@ export class StrategyEngine extends EventEmitter {
               layerNumber,
             });
 
-            // Fill the paper order immediately (simulation)
-            await this.fillPaperOrder(order, orderPrice, quantity);
-            
-            console.log(`✅ Paper order simulated: ${quantity.toFixed(4)} ${symbol} at $${orderPrice}`);
+            if (strategy.orderType === 'market') {
+              // Market orders fill immediately at current price
+              await this.fillPaperOrder(order, currentPrice, quantity);
+              console.log(`✅ Paper market order filled: ${quantity.toFixed(4)} ${symbol} at $${currentPrice}`);
+            } else {
+              // Limit orders go into pending state for realistic simulation
+              this.pendingPaperOrders.set(order.id, {
+                order,
+                strategy,
+                targetPrice,
+                startTime: Date.now(),
+                maxRetryDuration,
+                slippageTolerance,
+              });
+              console.log(`📋 Paper limit order placed: ${quantity.toFixed(4)} ${symbol} at $${orderPrice} (pending fill)`);
+            }
           }
           
           return;
@@ -647,6 +679,100 @@ export class StrategyEngine extends EventEmitter {
         }
       });
     }, 1000); // Check every 1 second for real-time updates
+  }
+
+  // Start monitoring pending paper orders for limit order simulation
+  private startPaperOrderMonitoring() {
+    this.orderMonitorInterval = setInterval(async () => {
+      if (!this.isRunning) return;
+      
+      // Check each pending paper order
+      const pendingOrders = Array.from(this.pendingPaperOrders.entries());
+      for (const [orderId, orderData] of pendingOrders) {
+        await this.checkPaperOrderFill(orderId, orderData);
+      }
+    }, 500); // Check every 500ms for responsive limit order fills
+  }
+
+  // Check if a pending paper order should fill or timeout
+  private async checkPaperOrderFill(
+    orderId: string,
+    orderData: {
+      order: Order;
+      strategy: Strategy;
+      targetPrice: number;
+      startTime: number;
+      maxRetryDuration: number;
+      slippageTolerance: number;
+    }
+  ) {
+    try {
+      const { order, strategy, targetPrice, startTime, maxRetryDuration, slippageTolerance } = orderData;
+      const elapsedTime = Date.now() - startTime;
+      
+      // Check for timeout
+      if (elapsedTime >= maxRetryDuration) {
+        console.log(`⏰ Paper order ${order.symbol} timed out after ${maxRetryDuration}ms - cancelling`);
+        await storage.updateOrderStatus(order.id, 'cancelled');
+        this.pendingPaperOrders.delete(orderId);
+        return;
+      }
+      
+      // Fetch current market price
+      let currentPrice: number | null = null;
+      try {
+        const asterApiUrl = `https://fapi.asterdex.com/fapi/v1/ticker/price?symbol=${order.symbol}`;
+        const priceResponse = await fetch(asterApiUrl);
+        if (priceResponse.ok) {
+          const priceData = await priceResponse.json();
+          currentPrice = parseFloat(priceData.price);
+        }
+      } catch (error) {
+        // Skip this check if price fetch fails
+        return;
+      }
+      
+      if (!currentPrice) return;
+      
+      const orderPrice = parseFloat(order.price || '0');
+      const quantity = parseFloat(order.quantity);
+      
+      // Check if limit order should fill (market price crossed limit price)
+      let shouldFill = false;
+      if (order.side === 'buy') {
+        // Buy limit fills when market price drops to or below limit price
+        shouldFill = currentPrice <= orderPrice;
+      } else {
+        // Sell limit fills when market price rises to or above limit price
+        shouldFill = currentPrice >= orderPrice;
+      }
+      
+      if (shouldFill) {
+        // Fill the order at the limit price
+        console.log(`✅ Paper limit order filled: ${order.symbol} ${order.side} at $${orderPrice} (market: $${currentPrice})`);
+        await this.fillPaperOrder(order, orderPrice, quantity);
+        this.pendingPaperOrders.delete(orderId);
+        return;
+      }
+      
+      // Check if we should chase the price (update limit if market moved too far)
+      const priceDeviation = Math.abs(currentPrice - targetPrice) / targetPrice;
+      if (priceDeviation > slippageTolerance) {
+        // Update the limit price to chase the market
+        const newLimitPrice = currentPrice;
+        console.log(`🏃 Chasing price for ${order.symbol}: updating limit from $${orderPrice} to $${newLimitPrice} (deviation: ${(priceDeviation * 100).toFixed(2)}%)`);
+        
+        await storage.updateOrderStatus(order.id, 'pending', undefined, newLimitPrice.toString());
+        
+        // Update order in tracking
+        orderData.order.price = newLimitPrice.toString();
+      }
+      
+    } catch (error) {
+      console.error(`Error checking paper order ${orderId}:`, error);
+      // Clean up failed order
+      this.pendingPaperOrders.delete(orderId);
+    }
   }
 
   // Check if position should be closed

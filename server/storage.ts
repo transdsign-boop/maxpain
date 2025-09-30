@@ -58,7 +58,7 @@ export interface IStorage {
   placePaperOrder(order: InsertOrder): Promise<Order>;
   getOrder(id: string): Promise<Order | undefined>;
   getOrdersBySession(sessionId: string): Promise<Order[]>;
-  updateOrderStatus(id: string, status: string, filledAt?: Date): Promise<Order>;
+  updateOrderStatus(id: string, status: string, filledAt?: Date, price?: string): Promise<Order>;
 
   // Fill operations
   applyFill(fill: InsertFill): Promise<Fill>;
@@ -314,9 +314,10 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(orders.createdAt));
   }
 
-  async updateOrderStatus(id: string, status: string, filledAt?: Date): Promise<Order> {
+  async updateOrderStatus(id: string, status: string, filledAt?: Date, price?: string): Promise<Order> {
     const updateData: any = { status };
     if (filledAt) updateData.filledAt = filledAt;
+    if (price) updateData.price = price;
     
     const result = await db.update(orders)
       .set(updateData)
