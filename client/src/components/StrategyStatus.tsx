@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -236,6 +236,41 @@ export function StrategyStatus() {
     refetchInterval: 10000, // Refresh every 10 seconds
   });
 
+  // Fetch strategy changes for the session
+  const { data: strategyChanges } = useQuery<any[]>({
+    queryKey: ['/api/strategies', activeStrategy?.id, 'changes'],
+    enabled: !!activeStrategy?.id && showClosedTrades,
+    refetchInterval: 10000, // Refresh every 10 seconds
+  });
+
+  // Merge and sort closed positions with strategy changes by timestamp
+  const tradeHistory = useMemo(() => {
+    const items: Array<{ type: 'trade' | 'change'; timestamp: Date; data: any }> = [];
+    
+    if (closedPositions) {
+      closedPositions.forEach(position => {
+        items.push({
+          type: 'trade',
+          timestamp: position.closedAt ? new Date(position.closedAt) : new Date(position.openedAt),
+          data: position
+        });
+      });
+    }
+    
+    if (strategyChanges) {
+      strategyChanges.forEach(change => {
+        items.push({
+          type: 'change',
+          timestamp: new Date(change.changedAt),
+          data: change
+        });
+      });
+    }
+    
+    // Sort by timestamp, newest first
+    return items.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+  }, [closedPositions, strategyChanges]);
+
   // Close position mutation - must be defined before any early returns
   const closePositionMutation = useMutation({
     mutationFn: async (positionId: string) => {
@@ -425,9 +460,51 @@ export function StrategyStatus() {
             )}
           </CollapsibleTrigger>
           <CollapsibleContent className="mt-3">
-            {closedPositions && closedPositions.length > 0 ? (
+            {tradeHistory && tradeHistory.length > 0 ? (
               <div className="space-y-2 max-h-96 overflow-y-auto">
-                {closedPositions.map((position) => {
+                {tradeHistory.map((item) => {
+                  if (item.type === 'change') {
+                    // Render strategy change card
+                    const change = item.data;
+                    const changes = change.changes as Record<string, { old: any; new: any }>;
+                    const changeCount = Object.keys(changes).length;
+                    
+                    return (
+                      <div
+                        key={change.id}
+                        className="p-4 rounded-lg border bg-muted/30 border-primary/20"
+                        data-testid={`strategy-change-${change.id}`}
+                      >
+                        <div className="flex items-center gap-2 mb-2">
+                          <Badge variant="outline" className="text-xs border-primary/50">
+                            Strategy Updated
+                          </Badge>
+                          <span className="text-xs text-muted-foreground">
+                            {format(new Date(change.changedAt), 'MMM d, h:mm a')}
+                          </span>
+                        </div>
+                        <div className="space-y-1">
+                          {Object.entries(changes).slice(0, 3).map(([field, value]) => (
+                            <div key={field} className="text-xs">
+                              <span className="text-muted-foreground capitalize">
+                                {field.replace(/([A-Z])/g, ' $1').trim()}:
+                              </span>
+                              <span className="text-foreground ml-1">
+                                {JSON.stringify(value.old)} → {JSON.stringify(value.new)}
+                              </span>
+                            </div>
+                          ))}
+                          {changeCount > 3 && (
+                            <div className="text-xs text-muted-foreground">
+                              +{changeCount - 3} more changes
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  } else {
+                    // Render trade card
+                    const position = item.data;
                   // realizedPnl is stored as percentage in the database
                   const realizedPnlPercent = parseFloat(position.realizedPnl);
                   const totalCost = parseFloat(position.totalCost);
@@ -482,6 +559,7 @@ export function StrategyStatus() {
                       </div>
                     </div>
                   );
+                  }
                 })}
               </div>
             ) : (

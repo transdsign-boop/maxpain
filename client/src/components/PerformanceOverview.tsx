@@ -45,6 +45,20 @@ export default function PerformanceOverview() {
     refetchInterval: 5000,
   });
 
+  // Fetch active strategy
+  const { data: strategies } = useQuery<any[]>({
+    queryKey: ['/api/strategies'],
+    refetchInterval: 5000,
+  });
+  const activeStrategy = strategies?.find(s => s.isActive);
+
+  // Fetch strategy changes for vertical lines
+  const { data: strategyChanges } = useQuery<any[]>({
+    queryKey: ['/api/strategies', activeStrategy?.id, 'changes'],
+    enabled: !!activeStrategy?.id,
+    refetchInterval: 10000,
+  });
+
   if (isLoading || !performance) {
     return (
       <Card>
@@ -164,6 +178,36 @@ export default function PerformanceOverview() {
                 <Tooltip content={<CustomTooltip />} />
                 <Legend />
                 <ReferenceLine yAxisId="left" y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
+                {/* Vertical lines for strategy changes */}
+                {strategyChanges?.map((change) => {
+                  // Find the trade number at or after this change timestamp
+                  const changeTime = new Date(change.changedAt).getTime();
+                  let tradeIndex = chartData.findIndex(trade => trade.timestamp >= changeTime);
+                  
+                  // If no trade after change, use the last trade
+                  if (tradeIndex === -1 && chartData.length > 0) {
+                    tradeIndex = chartData.length - 1;
+                  }
+                  
+                  if (tradeIndex >= 0) {
+                    return (
+                      <ReferenceLine
+                        key={change.id}
+                        x={chartData[tradeIndex].tradeNumber}
+                        stroke="hsl(var(--primary))"
+                        strokeWidth={2}
+                        strokeDasharray="5 5"
+                        label={{
+                          value: 'Strategy Updated',
+                          position: 'top',
+                          fill: 'hsl(var(--primary))',
+                          fontSize: 10,
+                        }}
+                      />
+                    );
+                  }
+                  return null;
+                })}
                 <defs>
                   <linearGradient id="cumulativePnlGradient" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="hsl(199, 89%, 48%)" stopOpacity={0.6}/>

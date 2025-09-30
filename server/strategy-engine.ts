@@ -927,6 +927,23 @@ export class StrategyEngine extends EventEmitter {
       recentFills: recentFills.slice(0, 10),
     };
   }
+
+  // Reload a strategy when settings are updated
+  async reloadStrategy(strategyId: string) {
+    try {
+      const updatedStrategy = await storage.getStrategy(strategyId);
+      if (!updatedStrategy) {
+        console.log(`⚠️ Cannot reload strategy ${strategyId}: not found`);
+        return;
+      }
+
+      // Update the strategy in memory
+      this.activeStrategies.set(strategyId, updatedStrategy);
+      console.log(`🔄 Reloaded strategy: ${updatedStrategy.name} (${strategyId})`);
+    } catch (error) {
+      console.error(`❌ Error reloading strategy ${strategyId}:`, error);
+    }
+  }
 }
 
 // Export singleton instance
