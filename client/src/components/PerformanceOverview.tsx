@@ -67,6 +67,22 @@ export default function PerformanceOverview() {
 
   const isProfitable = performance.totalPnl >= 0;
 
+  // Calculate symmetric domain for 1:1 scale
+  const calculateSymmetricDomain = (data: TradeDataPoint[] | undefined, key: 'pnl' | 'cumulativePnl') => {
+    if (!data || data.length === 0) return [-100, 100];
+    
+    const values = data.map(d => d[key]);
+    const maxAbsValue = Math.max(...values.map(Math.abs));
+    
+    // Add 10% padding and round to nice numbers
+    const paddedMax = maxAbsValue * 1.1;
+    
+    return [-paddedMax, paddedMax];
+  };
+
+  const pnlDomain = calculateSymmetricDomain(chartData, 'pnl');
+  const cumulativePnlDomain = calculateSymmetricDomain(chartData, 'cumulativePnl');
+
   const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
@@ -109,12 +125,14 @@ export default function PerformanceOverview() {
                 />
                 <YAxis 
                   yAxisId="left"
+                  domain={pnlDomain}
                   label={{ value: 'P&L ($)', angle: -90, position: 'insideLeft' }}
                   className="text-xs"
                 />
                 <YAxis 
                   yAxisId="right"
                   orientation="right"
+                  domain={cumulativePnlDomain}
                   label={{ value: 'Cumulative P&L ($)', angle: 90, position: 'insideRight' }}
                   className="text-xs"
                 />
