@@ -4,25 +4,21 @@ import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { strategyEngine } from "./strategy-engine";
 import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySchema, updateStrategySchema } from "@shared/schema";
-import { setupAuth, isAuthenticated } from "./replitAuth";
 
 // Fixed liquidation window - always 60 seconds regardless of user input
 const LIQUIDATION_WINDOW_SECONDS = 60;
 
-export async function registerRoutes(app: Express): Promise<Server> {
-  // Setup Replit Auth (must be first)
-  await setupAuth(app);
+// Fixed user ID for personal app (no authentication needed)
+const DEFAULT_USER_ID = "personal_user";
 
-  // Auth routes
-  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
-      res.json(user);
-    } catch (error) {
-      console.error("Error fetching user:", error);
-      res.status(500).json({ message: "Failed to fetch user" });
-    }
+export async function registerRoutes(app: Express): Promise<Server> {
+  // Ensure default user exists
+  await storage.upsertUser({
+    id: DEFAULT_USER_ID,
+    email: "user@personal.app",
+    firstName: "Personal",
+    lastName: "User",
+    profileImageUrl: null,
   });
   
   // Start the strategy engine
@@ -108,23 +104,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // User settings API routes (protected)
-  app.get("/api/settings", isAuthenticated, async (req: any, res) => {
+  // User settings API routes
+  app.get("/api/settings", async (req, res) => {
     try {
-      const userId = req.user.claims.sub;
-      const settings = await storage.getUserSettings(userId);
+      const settings = await storage.getUserSettings(DEFAULT_USER_ID);
       res.json(settings || null);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch user settings" });
     }
   });
 
-  app.post("/api/settings", isAuthenticated, async (req: any, res) => {
+  app.post("/api/settings", async (req, res) => {
     try {
-      const userId = req.user.claims.sub;
       const validatedSettings = insertUserSettingsSchema.parse({
         ...req.body,
-        userId
+        userId: DEFAULT_USER_ID
       });
       const settings = await storage.saveUserSettings(validatedSettings);
       res.json(settings);
@@ -575,23 +569,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Trading Strategy API routes (protected)
-  app.get("/api/strategies", isAuthenticated, async (req: any, res) => {
+  // Trading Strategy API routes
+  app.get("/api/strategies", async (req, res) => {
     try {
-      const userId = req.user.claims.sub;
-      const strategies = await storage.getStrategiesByUser(userId);
+      const strategies = await storage.getStrategiesByUser(DEFAULT_USER_ID);
       res.json(strategies);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch strategies" });
     }
   });
 
-  app.post("/api/strategies", isAuthenticated, async (req: any, res) => {
+  app.post("/api/strategies", async (req, res) => {
     try {
-      const userId = req.user.claims.sub;
       const validatedData = frontendStrategySchema.parse({
         ...req.body,
-        userId
+        userId: DEFAULT_USER_ID
       });
       
       // Convert frontend data to database format with hardcoded 60-second liquidation window
@@ -625,7 +617,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put("/api/strategies/:id", isAuthenticated, async (req: any, res) => {
+  app.put("/api/strategies/:id", async (req, res) => {
     try {
       const strategyId = req.params.id;
       const validatedUpdates = updateStrategySchema.parse(req.body);
@@ -655,7 +647,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/strategies/:id/start", isAuthenticated, async (req: any, res) => {
+  app.post("/api/strategies/:id/start", async (req, res) => {
     try {
       const strategyId = req.params.id;
       
@@ -682,7 +674,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/strategies/:id/stop", isAuthenticated, async (req: any, res) => {
+  app.post("/api/strategies/:id/stop", async (req, res) => {
     try {
       const strategyId = req.params.id;
       
@@ -710,7 +702,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Delete strategy route
-  app.delete("/api/strategies/:id", isAuthenticated, async (req: any, res) => {
+  app.delete("/api/strategies/:id", async (req, res) => {
     try {
       const strategyId = req.params.id;
       

@@ -18,7 +18,6 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { AlertCircle, Play, Square, Settings, TrendingUp, DollarSign, Layers, Target, Trash2, ChevronDown } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/hooks/useAuth";
 
 // Types
 interface Strategy {
@@ -82,7 +81,6 @@ type StrategyFormData = z.infer<typeof strategyFormSchema>;
 
 export default function TradingControlPanel() {
   const { toast } = useToast();
-  const { user } = useAuth();
   const [activeStrategy, setActiveStrategy] = useState<Strategy | null>(null);
   const [isStrategyRunning, setIsStrategyRunning] = useState(false);
   const [isOpen, setIsOpen] = useState(true);
@@ -97,10 +95,9 @@ export default function TradingControlPanel() {
     }))
   });
 
-  // Fetch current strategies for authenticated user
+  // Fetch current strategies
   const { data: strategies, isLoading: strategiesLoading } = useQuery<Strategy[]>({
     queryKey: ['/api/strategies'],
-    enabled: !!user, // Only fetch if authenticated
   });
 
   // Form setup with default values
