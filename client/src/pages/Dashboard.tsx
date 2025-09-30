@@ -4,12 +4,12 @@ import ConnectionStatus from "@/components/ConnectionStatus";
 import LiveLiquidationsSidebar from "@/components/LiveLiquidationsSidebar";
 import LiquidationAnalyticsModal from "@/components/LiquidationAnalyticsModal";
 import PerformanceOverview from "@/components/PerformanceOverview";
-import TradingControlPanel from "@/components/TradingControlPanel";
+import TradingStrategyDialog from "@/components/TradingStrategyDialog";
 import { StrategyStatus } from "@/components/StrategyStatus";
 import ThemeToggle from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Settings, Download, Upload } from "lucide-react";
+import { Settings, Download, Upload, Settings2 } from "lucide-react";
 
 interface Liquidation {
   id: string;
@@ -33,6 +33,9 @@ export default function Dashboard() {
   // Modal state for liquidation analytics
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedLiquidation, setSelectedLiquidation] = useState<Liquidation | undefined>(undefined);
+  
+  // Trading strategy dialog state
+  const [isStrategyDialogOpen, setIsStrategyDialogOpen] = useState(false);
   
   // Real liquidation data from WebSocket and API
   const [liquidations, setLiquidations] = useState<Liquidation[]>([]);
@@ -413,6 +416,18 @@ export default function Dashboard() {
 
             <ConnectionStatus isConnected={isConnected} />
             
+            {/* Trading Strategy Button */}
+            <Button 
+              variant="default" 
+              size="sm"
+              onClick={() => setIsStrategyDialogOpen(true)}
+              data-testid="button-trading-strategy"
+              className="gap-2"
+            >
+              <Settings2 className="h-4 w-4" />
+              Trading Strategy
+            </Button>
+            
             {/* Settings Menu */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -449,9 +464,6 @@ export default function Dashboard() {
         
         {/* Active Positions */}
         <StrategyStatus />
-        
-        {/* Trading Control Panel */}
-        <TradingControlPanel />
       </main>
 
       {/* Live Liquidations Sidebar */}
@@ -479,6 +491,12 @@ export default function Dashboard() {
         isOpen={isModalOpen}
         onClose={handleCloseModal}
         selectedLiquidation={selectedLiquidation}
+      />
+
+      {/* Trading Strategy Dialog */}
+      <TradingStrategyDialog
+        open={isStrategyDialogOpen}
+        onOpenChange={setIsStrategyDialogOpen}
       />
 
       {/* Debug Controls */}
