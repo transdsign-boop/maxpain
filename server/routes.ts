@@ -625,7 +625,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put("/api/strategies/:id", async (req, res) => {
+  app.put("/api/strategies/:id", isAuthenticated, async (req: any, res) => {
     try {
       const strategyId = req.params.id;
       const validatedUpdates = updateStrategySchema.parse(req.body);
@@ -655,7 +655,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/strategies/:id/start", async (req, res) => {
+  app.post("/api/strategies/:id/start", isAuthenticated, async (req: any, res) => {
     try {
       const strategyId = req.params.id;
       
@@ -682,7 +682,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/strategies/:id/stop", async (req, res) => {
+  app.post("/api/strategies/:id/stop", isAuthenticated, async (req: any, res) => {
     try {
       const strategyId = req.params.id;
       
@@ -710,7 +710,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Delete strategy route
-  app.delete("/api/strategies/:id", async (req, res) => {
+  app.delete("/api/strategies/:id", isAuthenticated, async (req: any, res) => {
     try {
       const strategyId = req.params.id;
       

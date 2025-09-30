@@ -18,12 +18,13 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { AlertCircle, Play, Square, Settings, TrendingUp, DollarSign, Layers, Target, Trash2, ChevronDown } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 
 // Types
 interface Strategy {
   id: string;
   name: string;
-  sessionId: string;
+  userId: string;
   selectedAssets: string[];
   percentileThreshold: number;
   maxLayers: number;
@@ -79,12 +80,9 @@ const strategyFormSchema = z.object({
 
 type StrategyFormData = z.infer<typeof strategyFormSchema>;
 
-interface TradingControlPanelProps {
-  sessionId: string;
-}
-
-export default function TradingControlPanel({ sessionId }: TradingControlPanelProps) {
+export default function TradingControlPanel() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [activeStrategy, setActiveStrategy] = useState<Strategy | null>(null);
   const [isStrategyRunning, setIsStrategyRunning] = useState(false);
   const [isOpen, setIsOpen] = useState(true);
@@ -99,9 +97,10 @@ export default function TradingControlPanel({ sessionId }: TradingControlPanelPr
     }))
   });
 
-  // Fetch current strategies for this session
+  // Fetch current strategies for authenticated user
   const { data: strategies, isLoading: strategiesLoading } = useQuery<Strategy[]>({
-    queryKey: [`/api/strategies/${sessionId}`],
+    queryKey: ['/api/strategies'],
+    enabled: !!user, // Only fetch if authenticated
   });
 
   // Form setup with default values
@@ -131,7 +130,6 @@ export default function TradingControlPanel({ sessionId }: TradingControlPanelPr
     mutationFn: async (data: StrategyFormData) => {
       const response = await apiRequest('POST', '/api/strategies', {
         ...data,
-        sessionId,
         isActive: false,
       });
       return await response.json() as Strategy;
@@ -141,7 +139,7 @@ export default function TradingControlPanel({ sessionId }: TradingControlPanelPr
         title: "Strategy Created",
         description: `Strategy "${strategy.name}" has been created successfully.`,
       });
-      queryClient.invalidateQueries({ queryKey: [`/api/strategies/${sessionId}`] });
+      queryClient.invalidateQueries({ queryKey: ['/api/strategies'] });
       setActiveStrategy(strategy);
     },
     onError: (error) => {
@@ -165,7 +163,7 @@ export default function TradingControlPanel({ sessionId }: TradingControlPanelPr
         title: "Strategy Updated",
         description: `Strategy "${strategy.name}" has been updated successfully.`,
       });
-      queryClient.invalidateQueries({ queryKey: [`/api/strategies/${sessionId}`] });
+      queryClient.invalidateQueries({ queryKey: ['/api/strategies'] });
       setActiveStrategy(strategy);
       
       // Reset form with updated strategy data to refresh UI
@@ -208,7 +206,7 @@ export default function TradingControlPanel({ sessionId }: TradingControlPanelPr
         title: "Strategy Started",
         description: "Paper trading strategy is now active and monitoring liquidations.",
       });
-      queryClient.invalidateQueries({ queryKey: [`/api/strategies/${sessionId}`] });
+      queryClient.invalidateQueries({ queryKey: ['/api/strategies'] });
     },
     onError: () => {
       toast({
@@ -232,7 +230,7 @@ export default function TradingControlPanel({ sessionId }: TradingControlPanelPr
         title: "Strategy Stopped",
         description: "Paper trading strategy has been stopped.",
       });
-      queryClient.invalidateQueries({ queryKey: [`/api/strategies/${sessionId}`] });
+      queryClient.invalidateQueries({ queryKey: ['/api/strategies'] });
     },
     onError: () => {
       toast({
@@ -254,7 +252,7 @@ export default function TradingControlPanel({ sessionId }: TradingControlPanelPr
         title: "Strategy Deleted",
         description: "Strategy has been deleted successfully.",
       });
-      queryClient.invalidateQueries({ queryKey: [`/api/strategies/${sessionId}`] });
+      queryClient.invalidateQueries({ queryKey: ['/api/strategies'] });
       setActiveStrategy(null);
       setIsStrategyRunning(false);
     },
