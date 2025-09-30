@@ -194,11 +194,12 @@ export default function Dashboard() {
       }
     };
 
-    // Load initial liquidations from API
+    // Load initial liquidations from API (last 8 hours)
     const loadInitialData = async () => {
       if (!isMounted) return;
       try {
-        const response = await fetch('/api/liquidations?limit=50');
+        const eightHoursAgo = new Date(Date.now() - 8 * 60 * 60 * 1000);
+        const response = await fetch(`/api/liquidations/since/${eightHoursAgo.toISOString()}?limit=10000`);
         if (response.ok) {
           const data = await response.json();
           // Normalize timestamps in initial data
@@ -283,13 +284,10 @@ export default function Dashboard() {
   const handleRefresh = async () => {
     console.log("Refreshing data...");
     try {
-      // Fetch liquidations filtered by selected assets if any are selected
-      let url = '/api/liquidations?limit=100';
-      if (selectedAssets.length > 0) {
-        url = `/api/liquidations/by-symbol?symbols=${selectedAssets.join(',')}&limit=100`;
-      }
+      // Fetch all liquidations from the last 8 hours
+      const eightHoursAgo = new Date(Date.now() - 8 * 60 * 60 * 1000);
+      const response = await fetch(`/api/liquidations/since/${eightHoursAgo.toISOString()}?limit=10000`);
       
-      const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();
         // Normalize timestamps in refreshed data
