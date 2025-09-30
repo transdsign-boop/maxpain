@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import ConnectionStatus from "@/components/ConnectionStatus";
 import LiveLiquidationsSidebar from "@/components/LiveLiquidationsSidebar";
 import LiquidationAnalyticsModal from "@/components/LiquidationAnalyticsModal";
@@ -38,6 +39,26 @@ export default function Dashboard() {
   
   // File input ref for settings import
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Fetch active strategies
+  const { data: strategies } = useQuery<any[]>({
+    queryKey: ['/api/strategies'],
+    refetchInterval: 5000,
+  });
+
+  const activeStrategy = strategies?.find(s => s.isActive);
+
+  // Fetch position summary for header display
+  const { data: positionSummary } = useQuery<any>({
+    queryKey: ['/api/strategies', activeStrategy?.id, 'positions', 'summary'],
+    queryFn: async () => {
+      const response = await fetch(`/api/strategies/${activeStrategy.id}/positions/summary`);
+      if (!response.ok) return null;
+      return response.json();
+    },
+    enabled: !!activeStrategy?.id,
+    refetchInterval: 1000, // Refresh every second for real-time updates
+  });
 
   // Save settings to database
   const saveSettings = async () => {
@@ -321,43 +342,104 @@ export default function Dashboard() {
     setSelectedLiquidation(undefined);
   };
 
+  // Format currency
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(value);
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="border-b bg-card">
-        <div className="flex items-center justify-between px-6 py-4">
-          <div>
-            <h1 className="text-2xl font-bold" data-testid="text-app-title">
-              Aster DEX Trading Platform
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Real-time liquidation monitoring and automated trading strategies
-            </p>
+        <div className="flex flex-col gap-4 px-6 py-4">
+          {/* Top Row: Title and Controls */}
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold" data-testid="text-app-title">
+                Aster DEX Trading Platform
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                Real-time liquidation monitoring and automated trading strategies
+              </p>
+            </div>
+            <div className="flex items-center gap-4">
+              <ConnectionStatus isConnected={isConnected} />
+              
+              {/* Settings Menu */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon" data-testid="button-settings">
+                    <Settings className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={exportSettings} data-testid="button-export-settings">
+                    <Download className="mr-2 h-4 w-4" />
+                    Export Settings
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => fileInputRef.current?.click()} data-testid="button-import-settings">
+                    <Upload className="mr-2 h-4 w-4" />
+                    Import Settings
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              
+              <ThemeToggle />
+            </div>
           </div>
-          <div className="flex items-center gap-4">
-            <ConnectionStatus isConnected={isConnected} />
-            
-            {/* Settings Menu */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon" data-testid="button-settings">
-                  <Settings className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={exportSettings} data-testid="button-export-settings">
-                  <Download className="mr-2 h-4 w-4" />
-                  Export Settings
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => fileInputRef.current?.click()} data-testid="button-import-settings">
-                  <Upload className="mr-2 h-4 w-4" />
-                  Import Settings
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            
-            <ThemeToggle />
-          </div>
+
+          {/* Trading Account Status Bar */}
+          {positionSummary && (
+            <div className="grid grid-cols-5 gap-4 pt-3 border-t">
+              {/* Current Balance */}
+              <div>
+                <div className="text-xs text-muted-foreground">Current Balance</div>
+                <div className="text-xl font-bold" data-testid="text-current-balance">
+                  {formatCurrency(positionSummary.currentBalance)}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Base: {formatCurrency(positionSummary.startingBalance)}
+                </div>
+              </div>
+
+              {/* Available Margin */}
+              <div>
+                <div className="text-xs text-muted-foreground">Available Margin</div>
+                <div className="text-xl font-bold text-emerald-600 dark:text-emerald-400" data-testid="text-available-margin">
+                  {formatCurrency(positionSummary.currentBalance - positionSummary.totalExposure)}
+                </div>
+              </div>
+
+              {/* Margin In Use */}
+              <div>
+                <div className="text-xs text-muted-foreground">Margin In Use</div>
+                <div className="text-xl font-bold" data-testid="text-margin-in-use">
+                  {formatCurrency(positionSummary.totalExposure)}
+                </div>
+              </div>
+
+              {/* Total Exposure */}
+              <div>
+                <div className="text-xs text-muted-foreground">Total Exposure</div>
+                <div className="text-xl font-bold" data-testid="text-total-exposure">
+                  {formatCurrency(positionSummary.totalExposure)}
+                </div>
+              </div>
+
+              {/* Active Positions */}
+              <div>
+                <div className="text-xs text-muted-foreground">Active Positions</div>
+                <div className="text-xl font-bold" data-testid="text-active-positions">
+                  {positionSummary.activePositions}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </header>
 
