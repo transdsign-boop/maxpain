@@ -270,9 +270,40 @@ export default function TradingControlPanel() {
     }
   };
 
-  const handleStartStrategy = () => {
+  const handleStartStrategy = async () => {
     if (activeStrategy) {
-      startStrategyMutation.mutate(activeStrategy.id);
+      // First, save any form changes before starting
+      const formValues = form.getValues();
+      const hasChanges = JSON.stringify(formValues) !== JSON.stringify({
+        name: activeStrategy.name,
+        selectedAssets: activeStrategy.selectedAssets,
+        percentileThreshold: activeStrategy.percentileThreshold,
+        maxLayers: activeStrategy.maxLayers,
+        positionSizePercent: activeStrategy.positionSizePercent,
+        profitTargetPercent: activeStrategy.profitTargetPercent,
+        stopLossPercent: activeStrategy.stopLossPercent,
+        marginMode: activeStrategy.marginMode,
+        leverage: activeStrategy.leverage,
+        orderDelayMs: activeStrategy.orderDelayMs,
+        slippageTolerancePercent: activeStrategy.slippageTolerancePercent,
+        orderType: activeStrategy.orderType,
+        maxRetryDurationMs: activeStrategy.maxRetryDurationMs,
+        marginAmount: activeStrategy.marginAmount,
+      });
+
+      if (hasChanges) {
+        // Save changes first, then start after save completes
+        try {
+          await updateStrategyMutation.mutateAsync(formValues);
+          startStrategyMutation.mutate(activeStrategy.id);
+        } catch (error) {
+          // Update failed, don't start trading
+          return;
+        }
+      } else {
+        // No changes, just start
+        startStrategyMutation.mutate(activeStrategy.id);
+      }
     }
   };
 
