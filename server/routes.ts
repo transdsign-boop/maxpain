@@ -657,29 +657,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const openPositions = allPositions.filter(p => p.isOpen === true);
       const closedPositions = allPositions.filter(p => p.isOpen === false);
       
-      const winningTrades = closedPositions.filter(p => parseFloat(p.realizedPnl || '0') > 0);
-      const losingTrades = closedPositions.filter(p => parseFloat(p.realizedPnl || '0') < 0);
+      // Convert realizedPnl percentages to dollar amounts for all closed positions
+      const closedPnlDollars = closedPositions.map(p => {
+        const pnlPercent = parseFloat(p.realizedPnl || '0');
+        const totalCost = parseFloat(p.totalCost || '0');
+        return (pnlPercent / 100) * totalCost;
+      });
       
-      const totalRealizedPnl = closedPositions.reduce((sum, p) => sum + parseFloat(p.realizedPnl || '0'), 0);
-      const totalUnrealizedPnl = openPositions.reduce((sum, p) => sum + parseFloat(p.unrealizedPnl || '0'), 0);
+      const winningTrades = closedPnlDollars.filter(pnl => pnl > 0);
+      const losingTrades = closedPnlDollars.filter(pnl => pnl < 0);
+      
+      const totalRealizedPnl = closedPnlDollars.reduce((sum, pnl) => sum + pnl, 0);
+      
+      // Convert unrealized P&L percentages to dollar amounts for open positions
+      const totalUnrealizedPnl = openPositions.reduce((sum, p) => {
+        const pnlPercent = parseFloat(p.unrealizedPnl || '0');
+        const totalCost = parseFloat(p.totalCost || '0');
+        const pnlDollar = (pnlPercent / 100) * totalCost;
+        return sum + pnlDollar;
+      }, 0);
+      
       const totalPnl = totalRealizedPnl + totalUnrealizedPnl;
       
       const winRate = closedPositions.length > 0 ? (winningTrades.length / closedPositions.length) * 100 : 0;
       
       const averageWin = winningTrades.length > 0
-        ? winningTrades.reduce((sum, p) => sum + parseFloat(p.realizedPnl || '0'), 0) / winningTrades.length
+        ? winningTrades.reduce((sum, pnl) => sum + pnl, 0) / winningTrades.length
         : 0;
       
       const averageLoss = losingTrades.length > 0
-        ? losingTrades.reduce((sum, p) => sum + parseFloat(p.realizedPnl || '0'), 0) / losingTrades.length
+        ? losingTrades.reduce((sum, pnl) => sum + pnl, 0) / losingTrades.length
         : 0;
       
-      const allPnls = closedPositions.map(p => parseFloat(p.realizedPnl || '0'));
-      const bestTrade = allPnls.length > 0 ? Math.max(...allPnls) : 0;
-      const worstTrade = allPnls.length > 0 ? Math.min(...allPnls) : 0;
+      const bestTrade = closedPnlDollars.length > 0 ? Math.max(...closedPnlDollars) : 0;
+      const worstTrade = closedPnlDollars.length > 0 ? Math.min(...closedPnlDollars) : 0;
       
-      const totalWins = winningTrades.reduce((sum, p) => sum + parseFloat(p.realizedPnl || '0'), 0);
-      const totalLosses = Math.abs(losingTrades.reduce((sum, p) => sum + parseFloat(p.realizedPnl || '0'), 0));
+      const totalWins = winningTrades.reduce((sum, pnl) => sum + pnl, 0);
+      const totalLosses = Math.abs(losingTrades.reduce((sum, pnl) => sum + pnl, 0));
       const profitFactor = totalLosses > 0 ? totalWins / totalLosses : totalWins > 0 ? 999 : 0;
 
       res.json({
@@ -730,17 +744,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Build chart data with cumulative P&L
+      // Convert realizedPnl percentages to dollar amounts
       let cumulativePnl = 0;
       const chartData = closedPositions.map((position, index) => {
-        const pnl = parseFloat(position.realizedPnl || '0');
-        cumulativePnl += pnl;
+        const pnlPercent = parseFloat(position.realizedPnl || '0');
+        const totalCost = parseFloat(position.totalCost || '0');
+        const pnlDollar = (pnlPercent / 100) * totalCost;
+        cumulativePnl += pnlDollar;
         
         return {
           tradeNumber: index + 1,
           timestamp: new Date(position.closedAt!).getTime(),
           symbol: position.symbol,
           side: position.side,
-          pnl: pnl,
+          pnl: pnlDollar,
           cumulativePnl: cumulativePnl,
           entryPrice: parseFloat(position.avgEntryPrice),
           quantity: parseFloat(position.totalQuantity),
