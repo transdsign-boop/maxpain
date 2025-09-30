@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TrendingUp, TrendingDown, Target, Award, Activity, LineChart } from "lucide-react";
-import { ComposedChart, Line, Area, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from "recharts";
+import { ComposedChart, Line, Area, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, Label } from "recharts";
 import { format } from "date-fns";
 
 interface PerformanceMetrics {
@@ -165,10 +165,17 @@ export default function PerformanceOverview() {
       </CardHeader>
       <CardContent className="space-y-6">
         {/* Performance Chart - On Top */}
-        <div className="h-80">
+        <div className="h-80 relative">
           {!chartLoading && chartData && chartData.length > 0 ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+            <>
+              {/* Current P&L Label */}
+              <div className="absolute top-2 right-12 z-10">
+                <div className={`text-base font-mono font-bold ${chartData[chartData.length - 1].cumulativePnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                  {formatCurrency(chartData[chartData.length - 1].cumulativePnl)}
+                </div>
+              </div>
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                 <XAxis 
                   dataKey="tradeNumber" 
@@ -251,29 +258,10 @@ export default function PerformanceOverview() {
                   fill="url(#cumulativePnlGradient)"
                   dot={false}
                   data-testid="chart-area-cumulative"
-                  label={({ index, value }: { index: number; value: number }) => {
-                    // Only show label on the last point
-                    if (index === chartData.length - 1) {
-                      const formattedValue = formatCurrency(value);
-                      return (
-                        <text
-                          x={0}
-                          y={0}
-                          dx={10}
-                          dy={-5}
-                          fill={value >= 0 ? 'hsl(142, 76%, 36%)' : 'hsl(0, 84%, 60%)'}
-                          fontSize={14}
-                          fontWeight="bold"
-                        >
-                          {formattedValue}
-                        </text>
-                      );
-                    }
-                    return null;
-                  }}
                 />
               </ComposedChart>
-            </ResponsiveContainer>
+              </ResponsiveContainer>
+            </>
           ) : (
             <div className="flex items-center justify-center h-full text-muted-foreground">
               <div className="text-center space-y-2">
