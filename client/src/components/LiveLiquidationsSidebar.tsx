@@ -220,11 +220,10 @@ export default function LiveLiquidationsSidebar({
                           {liquidation.symbol}
                         </span>
                         <Badge 
-                          variant={liquidation.side === 'long' ? 'destructive' : 'default'} 
                           className={`text-xs px-2 py-0.5 font-medium ${
                             liquidation.side === 'long' 
-                              ? 'bg-red-500/10 text-red-600 border-red-500/20' 
-                              : 'bg-green-500/10 text-green-600 border-green-500/20'
+                              ? 'bg-green-500/10 text-green-600 border-green-500/20' 
+                              : 'bg-red-500/10 text-red-600 border-red-500/20'
                           }`}
                         >
                           {liquidation.side.toUpperCase()}

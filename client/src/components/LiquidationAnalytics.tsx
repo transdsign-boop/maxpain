@@ -459,7 +459,7 @@ export default function LiquidationAnalytics({ selectedAssets, specificSymbol, a
                   </div>
                   <div>
                     <span className="text-muted-foreground">Side:</span>{" "}
-                    <Badge variant={percentileData.latestLiquidation.side === 'long' ? 'destructive' : 'default'}>
+                    <Badge className={`${percentileData.latestLiquidation.side === 'long' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
                       {percentileData.latestLiquidation.side}
                     </Badge>
                   </div>
