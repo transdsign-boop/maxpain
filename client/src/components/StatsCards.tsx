@@ -23,11 +23,11 @@ export default function StatsCards({
   const formatNumber = (num: string | number) => {
     const parsed = typeof num === 'string' ? parseFloat(num) : num;
     if (parsed >= 1000000) {
-      return `${(parsed / 1000000).toFixed(2)}M`;
+      return `${(parsed / 1000000).toFixed(4)}M`;
     } else if (parsed >= 1000) {
-      return `${(parsed / 1000).toFixed(2)}K`;
+      return `${(parsed / 1000).toFixed(4)}K`;
     }
-    return parsed.toLocaleString();
+    return parsed.toFixed(4);
   };
 
   const longPercentage = totalLiquidations > 0 ? 

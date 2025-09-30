@@ -77,9 +77,9 @@ export default function LiveLiquidationsSidebar({
   });
 
   const formatValue = (value: number) => {
-    if (value >= 1000000) return `$${(value / 1000000).toFixed(2)}M`;
-    if (value >= 1000) return `$${(value / 1000).toFixed(1)}K`;
-    return `$${value.toFixed(0)}`;
+    if (value >= 1000000) return `$${(value / 1000000).toFixed(4)}M`;
+    if (value >= 1000) return `$${(value / 1000).toFixed(4)}K`;
+    return `$${value.toFixed(4)}`;
   };
 
   // Cache sorted asset values to avoid recomputing on every render
@@ -265,7 +265,7 @@ export default function LiveLiquidationsSidebar({
                     </div>
                     
                     <div className="text-xs text-muted-foreground font-mono">
-                      @ ${parseFloat(liquidation.price).toFixed(6)}
+                      @ ${parseFloat(liquidation.price).toFixed(4)}
                     </div>
 
                     {/* Visual indicator for recent liquidation */}

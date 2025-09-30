@@ -75,14 +75,14 @@ export default function LiquidationPriceChart({ symbol, hours }: LiquidationPric
 
   const formatCurrency = (value: number) => {
     if (value >= 1000) {
-      return `$${(value / 1000).toFixed(1)}K`;
+      return `$${(value / 1000).toFixed(4)}K`;
     }
-    return `$${value.toFixed(2)}`;
+    return `$${value.toFixed(4)}`;
   };
 
   const formatPrice = (value: number) => {
     if (value >= 1000) {
-      return `$${(value / 1000).toFixed(3)}K`;
+      return `$${(value / 1000).toFixed(4)}K`;
     }
     return `$${value.toFixed(4)}`;
   };
