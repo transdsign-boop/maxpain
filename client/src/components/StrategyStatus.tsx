@@ -96,6 +96,10 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
   const takeProfitPrice = position.side === 'long'
     ? avgEntry * (1 + profitTargetPercent / 100)
     : avgEntry * (1 - profitTargetPercent / 100);
+  
+  // Calculate margin (totalCost is already the leveraged position value)
+  const leverage = strategy ? strategy.leverage : 1;
+  const totalMargin = parseFloat(position.totalCost) / leverage;
 
   return (
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
@@ -121,6 +125,9 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
                 <Badge variant="outline" className="flex items-center gap-1 text-xs">
                   <Layers className="h-3 w-3" />
                   {position.layersFilled}/{position.maxLayers}
+                </Badge>
+                <Badge variant="outline" className="text-xs" data-testid={`leverage-${position.symbol}`}>
+                  {leverage}x • {formatCurrency(totalMargin)}
                 </Badge>
               </div>
               <div className="flex items-center gap-4 text-xs text-muted-foreground">
