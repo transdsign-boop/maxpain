@@ -12,6 +12,9 @@ import {
 // Fixed liquidation monitoring window - always 60 seconds regardless of strategy settings
 const LIQUIDATION_WINDOW_SECONDS = 60;
 
+// Aster DEX taker fee (0.035% per trade) - applied to paper trading only for realistic simulation
+const ASTER_TAKER_FEE_PERCENT = 0.035;
+
 export interface LiquidationSignal {
   liquidation: Liquidation;
   strategy: Strategy;
@@ -543,8 +546,10 @@ export class StrategyEngine extends EventEmitter {
     // Update order status
     await storage.updateOrderStatus(order.id, 'filled', new Date());
 
-    // Create fill record
+    // Create fill record with Aster DEX taker fee
     const fillValue = fillPrice * fillQuantity;
+    const fee = (fillValue * ASTER_TAKER_FEE_PERCENT) / 100; // 0.035% taker fee
+    
     await storage.applyFill({
       orderId: order.id,
       sessionId: order.sessionId,
@@ -553,9 +558,23 @@ export class StrategyEngine extends EventEmitter {
       quantity: fillQuantity.toString(),
       price: fillPrice.toString(),
       value: fillValue.toString(),
-      fee: '0.0', // No fees for paper trading
+      fee: fee.toString(),
       layerNumber: order.layerNumber,
     });
+
+    // Deduct entry fee from session balance
+    const session = this.activeSessions.get(order.sessionId);
+    if (session) {
+      const currentBalance = parseFloat(session.currentBalance);
+      const newBalance = currentBalance - fee;
+      
+      await storage.updateTradeSession(session.id, {
+        currentBalance: newBalance.toString(),
+      });
+      
+      session.currentBalance = newBalance.toString();
+      console.log(`💸 Entry fee applied: $${fee.toFixed(4)} (${ASTER_TAKER_FEE_PERCENT}% of $${fillValue.toFixed(2)})`);
+    }
 
     // Create or update position
     await this.createOrUpdatePosition(order, fillPrice, fillQuantity);
@@ -688,19 +707,43 @@ export class StrategyEngine extends EventEmitter {
       
       console.log(`🎯 Closing position ${position.symbol} at $${exitPrice} with ${realizedPnlPercent.toFixed(2)}% profit ($${dollarPnl.toFixed(2)})`);
 
+      // Get session to check if it's paper trading
+      const session = this.activeSessions.get(position.sessionId);
+      const isPaperTrading = session?.mode === 'paper';
+      
+      // Calculate exit fee for paper trading (Aster DEX taker fee: 0.035%)
+      const quantity = parseFloat(position.totalQuantity);
+      const exitValue = exitPrice * quantity;
+      const exitFee = isPaperTrading ? (exitValue * ASTER_TAKER_FEE_PERCENT) / 100 : 0;
+      
+      // Create exit fill record
+      await storage.applyFill({
+        orderId: `exit-${position.id}`, // Synthetic order ID for exit
+        sessionId: position.sessionId,
+        symbol: position.symbol,
+        side: position.side === 'long' ? 'sell' : 'buy', // Opposite side to close
+        quantity: position.totalQuantity,
+        price: exitPrice.toString(),
+        value: exitValue.toString(),
+        fee: exitFee.toString(),
+        layerNumber: 0, // Exit trades don't have layers
+      });
+
       // Close position in database
       await storage.closePosition(position.id, new Date(), realizedPnlPercent);
 
       // Update session statistics and balance
-      const session = this.activeSessions.get(position.sessionId);
       if (session) {
         const newTotalTrades = session.totalTrades + 1;
         const oldTotalPnl = parseFloat(session.totalPnl);
-        const newTotalPnl = oldTotalPnl + dollarPnl;
         
-        // Update current balance with realized P&L
+        // Subtract exit fee from realized P&L for paper trading
+        const netDollarPnl = isPaperTrading ? dollarPnl - exitFee : dollarPnl;
+        const newTotalPnl = oldTotalPnl + netDollarPnl;
+        
+        // Update current balance with net realized P&L
         const oldBalance = parseFloat(session.currentBalance);
-        const newBalance = oldBalance + dollarPnl;
+        const newBalance = oldBalance + netDollarPnl;
         
         await storage.updateTradeSession(session.id, {
           totalTrades: newTotalTrades,
@@ -713,10 +756,15 @@ export class StrategyEngine extends EventEmitter {
         session.totalPnl = newTotalPnl.toString();
         session.currentBalance = newBalance.toString();
         
-        console.log(`💰 Balance updated: $${oldBalance.toFixed(2)} → $${newBalance.toFixed(2)} (${dollarPnl >= 0 ? '+' : ''}$${dollarPnl.toFixed(2)})`);
+        if (isPaperTrading) {
+          console.log(`💸 Exit fee applied: $${exitFee.toFixed(4)} (${ASTER_TAKER_FEE_PERCENT}% of $${exitValue.toFixed(2)})`);
+          console.log(`💰 Balance updated: $${oldBalance.toFixed(2)} → $${newBalance.toFixed(2)} (P&L: $${dollarPnl.toFixed(2)}, Fee: -$${exitFee.toFixed(4)}, Net: $${netDollarPnl.toFixed(2)})`);
+        } else {
+          console.log(`💰 Balance updated: $${oldBalance.toFixed(2)} → $${newBalance.toFixed(2)} (${dollarPnl >= 0 ? '+' : ''}$${dollarPnl.toFixed(2)})`);
+        }
       }
 
-      console.log(`✅ Position closed: ${position.symbol} - P&L: ${realizedPnlPercent.toFixed(2)}% ($${dollarPnl.toFixed(2)})`);
+      console.log(`✅ Position closed: ${position.symbol} - P&L: ${realizedPnlPercent.toFixed(2)}% ($${dollarPnl.toFixed(2)}${isPaperTrading ? `, Fee: $${exitFee.toFixed(4)}` : ''})`);
     } catch (error) {
       console.error('❌ Error closing position:', error);
     }
