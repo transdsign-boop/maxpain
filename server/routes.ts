@@ -764,21 +764,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json([]);
       }
 
-      // Build chart data with cumulative P&L
-      // Convert realizedPnl percentages to dollar amounts
+      // Build chart data with cumulative P&L (net of fees)
+      // Get all fills to calculate fees per position
+      const sessionFills = await storage.getFillsBySession(activeSession.id);
+      
       let cumulativePnl = 0;
       const chartData = closedPositions.map((position, index) => {
         const pnlPercent = parseFloat(position.realizedPnl || '0');
         const totalCost = parseFloat(position.totalCost || '0');
-        const pnlDollar = (pnlPercent / 100) * totalCost;
-        cumulativePnl += pnlDollar;
+        const grossPnlDollar = (pnlPercent / 100) * totalCost;
+        
+        // Calculate fees for this position
+        const positionOpenTime = new Date(position.openedAt).getTime();
+        const positionCloseTime = position.closedAt ? new Date(position.closedAt).getTime() : Date.now();
+        
+        const exitFill = sessionFills.find(fill => fill.orderId === `exit-${position.id}`);
+        const entryFills = sessionFills.filter(fill => {
+          if (fill.symbol !== position.symbol) return false;
+          if (fill.orderId.startsWith('exit-')) return false;
+          const fillTime = new Date(fill.filledAt).getTime();
+          const correctSide = (position.side === 'long' && fill.side === 'buy') || 
+                             (position.side === 'short' && fill.side === 'sell');
+          return correctSide && fillTime >= positionOpenTime && fillTime <= positionCloseTime;
+        });
+        
+        const totalFees = [...entryFills, ...(exitFill ? [exitFill] : [])].reduce((sum, fill) => {
+          return sum + parseFloat(fill.fee || '0');
+        }, 0);
+        
+        // Net P&L = Gross P&L - Fees
+        const netPnlDollar = grossPnlDollar - totalFees;
+        cumulativePnl += netPnlDollar;
         
         return {
           tradeNumber: index + 1,
           timestamp: new Date(position.closedAt!).getTime(),
           symbol: position.symbol,
           side: position.side,
-          pnl: pnlDollar,
+          pnl: netPnlDollar,
           cumulativePnl: cumulativePnl,
           entryPrice: parseFloat(position.avgEntryPrice),
           quantity: parseFloat(position.totalQuantity),
