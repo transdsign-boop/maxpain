@@ -584,9 +584,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get overall trading performance metrics
   app.get("/api/performance/overview", async (req, res) => {
     try {
-      // Since this is a personal app with no auth, get ALL positions from database
-      // This ensures we include all historical data regardless of session ownership
-      const allPositions = await db.select().from(positions).orderBy(desc(positions.openedAt));
+      // Get the active strategy
+      const strategies = await storage.getStrategiesByUser(DEFAULT_USER_ID);
+      const activeStrategy = strategies.find(s => s.isActive);
+
+      // If no active strategy, return zeros
+      if (!activeStrategy) {
+        return res.json({
+          totalTrades: 0,
+          openTrades: 0,
+          closedTrades: 0,
+          winningTrades: 0,
+          losingTrades: 0,
+          winRate: 0,
+          totalRealizedPnl: 0,
+          totalUnrealizedPnl: 0,
+          totalPnl: 0,
+          averageWin: 0,
+          averageLoss: 0,
+          bestTrade: 0,
+          worstTrade: 0,
+          profitFactor: 0
+        });
+      }
+
+      // Get the active session for this strategy
+      const activeSession = await storage.getActiveTradeSession(activeStrategy.id);
+
+      // If no active session, return zeros
+      if (!activeSession) {
+        return res.json({
+          totalTrades: 0,
+          openTrades: 0,
+          closedTrades: 0,
+          winningTrades: 0,
+          losingTrades: 0,
+          winRate: 0,
+          totalRealizedPnl: 0,
+          totalUnrealizedPnl: 0,
+          totalPnl: 0,
+          averageWin: 0,
+          averageLoss: 0,
+          bestTrade: 0,
+          worstTrade: 0,
+          profitFactor: 0
+        });
+      }
+
+      // Get positions ONLY for the current active session
+      const allPositions = await storage.getPositionsBySession(activeSession.id);
 
       if (!allPositions || allPositions.length === 0) {
         return res.json({
