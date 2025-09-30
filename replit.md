@@ -10,7 +10,11 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
-- **Fixed duplicate liquidation entries:** Resolved issue where identical liquidations were being stored twice due to decimal precision mismatch in deduplication logic. Updated database queries to use numeric comparison instead of string equality for decimal columns
+- **Fixed duplicate liquidation entries:** Implemented multi-layer deduplication to prevent identical liquidations from being stored twice:
+  - Queue-based processing to serialize duplicate signatures  
+  - Numeric comparison for decimal columns (size/price) instead of string equality
+  - Database error handling as fallback for race conditions
+  - Note: Aster DEX WebSocket sometimes sends duplicate messages milliseconds apart, which the system now handles gracefully
 - **Live/Paper Trading Toggle:** Added ability to switch between paper trading (simulated) and live trading (real orders on Aster DEX). Trading mode is configurable per strategy with a simple toggle switch
 - **Collapsible Trading Strategy Panel:** Trading strategy configuration section is now collapsible for better screen space management
 - **Real-time Price Data:** Eliminated all cached price data - all P&L calculations, position closings, and order placements now use live prices fetched directly from Aster DEX API

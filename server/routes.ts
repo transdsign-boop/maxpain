@@ -937,6 +937,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
 // Global deduplication cache (persists across reconnections)
 const recentLiquidations = new Map<string, number>();
+const processingQueue = new Map<string, Promise<void>>(); // Queue to serialize duplicate signatures
 const DEDUP_WINDOW_MS = 5000; // 5 second window for deduplication
 
 async function connectToAsterDEX(clients: Set<WebSocket>) {
@@ -975,66 +976,94 @@ async function connectToAsterDEX(clients: Set<WebSocket>) {
           const signature = `${liquidationData.symbol}-${liquidationData.side}-${liquidationData.size}-${liquidationData.price}-${liquidationData.value}`;
           const now = Date.now();
           
-          // Check if we've seen this exact liquidation recently
-          const lastSeen = recentLiquidations.get(signature);
-          if (lastSeen && (now - lastSeen) < DEDUP_WINDOW_MS) {
-            console.log(`🔄 Skipping duplicate liquidation: ${liquidationData.symbol} ${liquidationData.side} $${liquidationData.value}`);
-            return;
+          // Wait for any pending processing of this signature to complete (queue-based dedup)
+          const existingProcess = processingQueue.get(signature);
+          if (existingProcess) {
+            console.log(`🔄 Skipping duplicate (already processing): ${liquidationData.symbol} ${liquidationData.side} $${liquidationData.value}`);
+            await existingProcess; // Wait for it to finish
+            return; // Skip this duplicate
           }
           
-          // Record this liquidation
-          recentLiquidations.set(signature, now);
+          // Create a promise for this processing
+          let resolveProcessing: () => void;
+          const processingPromise = new Promise<void>((resolve) => {
+            resolveProcessing = resolve;
+          });
+          processingQueue.set(signature, processingPromise);
           
-          // Clean up old entries periodically (keep map size bounded)
-          if (recentLiquidations.size > 100) {
-            const cutoff = now - DEDUP_WINDOW_MS;
-            const entries = Array.from(recentLiquidations.entries());
-            for (const [key, timestamp] of entries) {
-              if (timestamp < cutoff) {
-                recentLiquidations.delete(key);
+          try {
+            // Check if we've seen this exact liquidation recently  
+            const lastSeen = recentLiquidations.get(signature);
+            if (lastSeen && (now - lastSeen) < DEDUP_WINDOW_MS) {
+              console.log(`🔄 Skipping duplicate liquidation: ${liquidationData.symbol} ${liquidationData.side} $${liquidationData.value}`);
+              return;
+            }
+            // Record this liquidation
+            recentLiquidations.set(signature, now);
+            
+            // Clean up old entries periodically (keep map size bounded)
+            if (recentLiquidations.size > 100) {
+              const cutoff = now - DEDUP_WINDOW_MS;
+              const entries = Array.from(recentLiquidations.entries());
+              for (const [key, timestamp] of entries) {
+                if (timestamp < cutoff) {
+                  recentLiquidations.delete(key);
+                }
               }
             }
-          }
-          
-          // Database-level deduplication check
-          const fiveSecondsAgo = new Date(Date.now() - DEDUP_WINDOW_MS);
-          const recentDuplicates = await storage.getLiquidationsBySignature(
-            liquidationData.symbol,
-            liquidationData.side,
-            liquidationData.size,
-            liquidationData.price,
-            fiveSecondsAgo
-          );
-          
-          if (recentDuplicates.length > 0) {
-            console.log(`🔄 Skipping duplicate (database check): ${liquidationData.symbol} ${liquidationData.side} $${liquidationData.value}`);
-            return;
-          }
-          
-          // Validate and store in database
-          const validatedData = insertLiquidationSchema.parse(liquidationData);
-          const storedLiquidation = await storage.insertLiquidation(validatedData);
-          
-          // Emit to strategy engine for trade execution
-          try {
-            strategyEngine.emit('liquidation', storedLiquidation);
-          } catch (error) {
-            console.error('❌ Error emitting liquidation to strategy engine:', error);
-          }
-          
-          // Broadcast to all connected clients
-          const broadcastMessage = JSON.stringify({
-            type: 'liquidation',
-            data: storedLiquidation
-          });
-
-          clients.forEach(client => {
-            if (client.readyState === WebSocket.OPEN) {
-              client.send(broadcastMessage);
+            
+            // Database-level deduplication check
+            const fiveSecondsAgo = new Date(Date.now() - DEDUP_WINDOW_MS);
+            const recentDuplicates = await storage.getLiquidationsBySignature(
+              liquidationData.symbol,
+              liquidationData.side,
+              liquidationData.size,
+              liquidationData.price,
+              fiveSecondsAgo
+            );
+            
+            if (recentDuplicates.length > 0) {
+              console.log(`🔄 Skipping duplicate (database check): ${liquidationData.symbol} ${liquidationData.side} $${liquidationData.value}`);
+              return;
             }
-          });
+            
+            // Validate and store in database
+            const validatedData = insertLiquidationSchema.parse(liquidationData);
+            let storedLiquidation;
+            try {
+              storedLiquidation = await storage.insertLiquidation(validatedData);
+            } catch (dbError: any) {
+              // If this fails due to constraint or other DB error, it might be a duplicate
+              console.log(`🔄 Database insert failed (likely duplicate): ${liquidationData.symbol} ${liquidationData.side}`);
+              return;
+            }
+          
+            // Emit to strategy engine for trade execution
+            try {
+              strategyEngine.emit('liquidation', storedLiquidation);
+            } catch (error) {
+              console.error('❌ Error emitting liquidation to strategy engine:', error);
+            }
+            
+            // Broadcast to all connected clients
+            const broadcastMessage = JSON.stringify({
+              type: 'liquidation',
+              data: storedLiquidation
+            });
 
-          console.log(`🚨 REAL Liquidation: ${liquidationData.symbol} ${liquidationData.side} $${(parseFloat(liquidationData.value)).toFixed(2)}`);
+            clients.forEach(client => {
+              if (client.readyState === WebSocket.OPEN) {
+                client.send(broadcastMessage);
+              }
+            });
+
+            console.log(`🚨 REAL Liquidation: ${liquidationData.symbol} ${liquidationData.side} $${(parseFloat(liquidationData.value)).toFixed(2)}`);
+          } finally {
+            // Resolve the processing promise and clean up
+            resolveProcessing!();
+            // Clean up after a short delay to allow waiting duplicates to finish
+            setTimeout(() => processingQueue.delete(signature), 100);
+          }
         }
       } catch (error) {
         console.error('Failed to process Aster DEX message:', error);
