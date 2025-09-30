@@ -449,7 +449,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                         data-testid="input-strategy-name"
                         placeholder="My Trading Strategy" 
                         {...field} 
-                        disabled={isStrategyRunning}
+                        disabled={false}
                       />
                     </FormControl>
                     <FormMessage />
@@ -476,7 +476,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                         data-testid="switch-trading-mode"
                         checked={field.value === "live"}
                         onCheckedChange={(checked) => field.onChange(checked ? "live" : "paper")}
-                        disabled={isStrategyRunning}
+                        disabled={false}
                       />
                     </FormControl>
                   </FormItem>
@@ -502,7 +502,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                             data-testid={`checkbox-asset-${asset.symbol}`}
                             id={`asset-${asset.symbol}`}
                             checked={field.value.includes(asset.symbol)}
-                            disabled={isStrategyRunning}
+                            disabled={false}
                             onCheckedChange={(checked) => {
                               if (checked) {
                                 field.onChange([...field.value, asset.symbol]);
@@ -553,7 +553,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                         step={1}
                         value={[field.value]}
                         onValueChange={(value) => field.onChange(value[0])}
-                        disabled={isStrategyRunning}
+                        disabled={false}
                         className="w-full"
                       />
                     </FormControl>
@@ -586,7 +586,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                           <Select 
                             value={field.value.toString()} 
                             onValueChange={(value) => field.onChange(parseInt(value))}
-                            disabled={isStrategyRunning}
+                            disabled={false}
                           >
                             <SelectTrigger data-testid="select-max-layers">
                               <SelectValue />
@@ -625,7 +625,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                             type="text"
                             placeholder="5.0"
                             {...field}
-                            disabled={isStrategyRunning}
+                            disabled={false}
                           />
                         </FormControl>
                         <FormDescription className="text-xs">
@@ -660,7 +660,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                             type="text"
                             placeholder="1.0"
                             {...field}
-                            disabled={isStrategyRunning}
+                            disabled={false}
                           />
                         </FormControl>
                         <FormDescription className="text-xs">
@@ -683,7 +683,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                             type="text"
                             placeholder="2.0"
                             {...field}
-                            disabled={isStrategyRunning}
+                            disabled={false}
                           />
                         </FormControl>
                         <FormDescription className="text-xs">
@@ -716,7 +716,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                           <Select 
                             value={field.value} 
                             onValueChange={field.onChange}
-                            disabled={isStrategyRunning}
+                            disabled={false}
                           >
                             <SelectTrigger data-testid="select-margin-mode">
                               <SelectValue />
@@ -749,7 +749,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                             step={1}
                             value={[field.value]}
                             onValueChange={(value) => field.onChange(value[0])}
-                            disabled={isStrategyRunning}
+                            disabled={false}
                           />
                         </FormControl>
                         <div className="flex justify-between text-xs text-muted-foreground">
@@ -773,7 +773,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                             type="text"
                             placeholder="10.0"
                             {...field}
-                            disabled={isStrategyRunning}
+                            disabled={false}
                           />
                         </FormControl>
                         <FormDescription className="text-xs">
@@ -806,7 +806,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                           <Select 
                             value={field.value} 
                             onValueChange={field.onChange}
-                            disabled={isStrategyRunning}
+                            disabled={false}
                           >
                             <SelectTrigger data-testid="select-order-type">
                               <SelectValue />
@@ -837,7 +837,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                             type="text"
                             placeholder="0.5"
                             {...field}
-                            disabled={isStrategyRunning}
+                            disabled={false}
                           />
                         </FormControl>
                         <FormDescription className="text-xs">
@@ -864,7 +864,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                             step={100}
                             value={[field.value]}
                             onValueChange={(value) => field.onChange(value[0])}
-                            disabled={isStrategyRunning}
+                            disabled={false}
                           />
                         </FormControl>
                         <div className="flex justify-between text-xs text-muted-foreground">
@@ -890,7 +890,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                             step={5000}
                             value={[field.value]}
                             onValueChange={(value) => field.onChange(value[0])}
-                            disabled={isStrategyRunning}
+                            disabled={false}
                           />
                         </FormControl>
                         <div className="flex justify-between text-xs text-muted-foreground">
@@ -972,28 +972,26 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
           </div>
 
           <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={form.handleSubmit(onSubmit)}
+              disabled={createStrategyMutation.isPending || updateStrategyMutation.isPending}
+              data-testid="button-save-strategy"
+            >
+              {activeStrategy ? 'Update' : 'Create'} Strategy
+            </Button>
             {!isStrategyRunning ? (
-              <>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={form.handleSubmit(onSubmit)}
-                  disabled={createStrategyMutation.isPending || updateStrategyMutation.isPending}
-                  data-testid="button-save-strategy"
-                >
-                  {activeStrategy ? 'Update' : 'Create'} Strategy
-                </Button>
-                <Button
-                  type="button"
-                  onClick={handleStartStrategy}
-                  disabled={!activeStrategy || startStrategyMutation.isPending}
-                  className="bg-green-600 hover:bg-green-700"
-                  data-testid="button-start-strategy"
-                >
-                  <Play className="h-4 w-4 mr-2" />
-                  Start Trading
-                </Button>
-              </>
+              <Button
+                type="button"
+                onClick={handleStartStrategy}
+                disabled={!activeStrategy || startStrategyMutation.isPending}
+                className="bg-green-600 hover:bg-green-700"
+                data-testid="button-start-strategy"
+              >
+                <Play className="h-4 w-4 mr-2" />
+                Start Trading
+              </Button>
             ) : (
               <Button
                 type="button"

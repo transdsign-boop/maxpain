@@ -843,6 +843,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Strategy not found" });
       }
       
+      // Track changes for active sessions
+      const changes: Record<string, { old: any; new: any }> = {};
+      const fieldsToTrack = [
+        'percentileThreshold', 'maxLayers', 'positionSizePercent', 'profitTargetPercent',
+        'stopLossPercent', 'marginMode', 'leverage', 'orderDelayMs', 'slippageTolerancePercent',
+        'orderType', 'maxRetryDurationMs', 'marginAmount', 'tradingMode', 'selectedAssets'
+      ];
+      
+      fieldsToTrack.forEach(field => {
+        const oldValue = existingStrategy[field as keyof typeof existingStrategy];
+        const newValue = validatedUpdates[field as keyof typeof validatedUpdates];
+        
+        if (newValue !== undefined && JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
+          changes[field] = { old: oldValue, new: newValue };
+        }
+      });
+      
       // Normalize data - liquidation window is always 60 seconds regardless of input
       const updateData = {
         ...validatedUpdates
@@ -851,9 +868,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('💾 Sending to database:', JSON.stringify(updateData, null, 2));
       await storage.updateStrategy(strategyId, updateData);
       
+      // If there are changes and strategy has an active session, record the change
+      if (Object.keys(changes).length > 0) {
+        const activeSession = await storage.getActiveTradeSession(strategyId);
+        if (activeSession) {
+          await storage.recordStrategyChange({
+            strategyId,
+            sessionId: activeSession.id,
+            changes: changes as any,
+          });
+          console.log(`📋 Recorded ${Object.keys(changes).length} strategy changes for session ${activeSession.id}`);
+        }
+      }
+      
       // Fetch and return refreshed strategy
       const updatedStrategy = await storage.getStrategy(strategyId);
       console.log('📊 Updated strategy from DB:', JSON.stringify(updatedStrategy, null, 2));
+      
+      // Notify strategy engine to reload the strategy
+      strategyEngine.reloadStrategy(strategyId);
+      
       res.status(200).json(updatedStrategy);
     } catch (error) {
       console.error('Error updating strategy:', error);
@@ -1187,6 +1221,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error fetching closed positions:', error);
       res.status(500).json({ error: 'Failed to fetch closed positions' });
+    }
+  });
+
+  // Get strategy changes for a session
+  app.get('/api/strategies/:strategyId/changes', async (req, res) => {
+    try {
+      const { strategyId } = req.params;
+      
+      // Find the active trade session for this strategy
+      const session = await storage.getActiveTradeSession(strategyId);
+      
+      if (!session) {
+        return res.status(404).json({ error: 'No active trade session found for this strategy' });
+      }
+
+      const changes = await storage.getStrategyChanges(session.id);
+      res.json(changes);
+    } catch (error) {
+      console.error('Error fetching strategy changes:', error);
+      res.status(500).json({ error: 'Failed to fetch strategy changes' });
     }
   });
 
