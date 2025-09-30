@@ -160,7 +160,14 @@ export default function Dashboard() {
                 ...message.data,
                 timestamp: normalizeTimestamp(message.data.timestamp)
               };
-              setLiquidations(prev => [normalizedLiquidation, ...prev.slice(0, 99)]);
+              // Deduplicate: only add if not already in the list
+              setLiquidations(prev => {
+                const exists = prev.some(liq => liq.id === normalizedLiquidation.id);
+                if (exists) {
+                  return prev; // Already have this liquidation
+                }
+                return [normalizedLiquidation, ...prev.slice(0, 9999)];
+              });
             }
           } catch (error) {
             console.error('Failed to parse WebSocket message:', error);
