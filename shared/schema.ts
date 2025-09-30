@@ -274,3 +274,20 @@ export const insertPnlSnapshotSchema = createInsertSchema(pnlSnapshots).omit({
 
 export type InsertPnlSnapshot = z.infer<typeof insertPnlSnapshotSchema>;
 export type PnlSnapshot = typeof pnlSnapshots.$inferSelect;
+
+// Strategy Changes (track modifications to running strategies)
+export const strategyChanges = pgTable("strategy_changes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  strategyId: varchar("strategy_id").notNull(), // References strategies.id
+  sessionId: varchar("session_id").notNull(), // References tradeSessions.id
+  changes: jsonb("changes").notNull(), // JSON object with changed fields {field: {old: value, new: value}}
+  changedAt: timestamp("changed_at").notNull().defaultNow(),
+});
+
+export const insertStrategyChangeSchema = createInsertSchema(strategyChanges).omit({
+  id: true,
+  changedAt: true,
+});
+
+export type InsertStrategyChange = z.infer<typeof insertStrategyChangeSchema>;
+export type StrategyChange = typeof strategyChanges.$inferSelect;

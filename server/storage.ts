@@ -6,11 +6,12 @@ import {
   type Order, type InsertOrder,
   type Fill, type InsertFill,
   type Position, type InsertPosition,
-  type PnlSnapshot, type InsertPnlSnapshot
+  type PnlSnapshot, type InsertPnlSnapshot,
+  type StrategyChange, type InsertStrategyChange
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { db } from "./db";
-import { liquidations, users, userSettings, strategies, tradeSessions, orders, fills, positions, pnlSnapshots } from "@shared/schema";
+import { liquidations, users, userSettings, strategies, tradeSessions, orders, fills, positions, pnlSnapshots, strategyChanges } from "@shared/schema";
 import { desc, gte, eq, sql, inArray, and } from "drizzle-orm";
 
 // modify the interface with any CRUD methods
@@ -81,6 +82,11 @@ export interface IStorage {
   createPnlSnapshot(snapshot: InsertPnlSnapshot): Promise<PnlSnapshot>;
   getPnlSnapshots(sessionId: string, limit?: number): Promise<PnlSnapshot[]>;
   getLatestPnlSnapshot(sessionId: string): Promise<PnlSnapshot | undefined>;
+
+  // Strategy Change operations
+  recordStrategyChange(change: InsertStrategyChange): Promise<StrategyChange>;
+  getStrategyChanges(sessionId: string): Promise<StrategyChange[]>;
+  getStrategyChangesByStrategy(strategyId: string): Promise<StrategyChange[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -432,6 +438,24 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(pnlSnapshots.snapshotAt))
       .limit(1);
     return result[0];
+  }
+
+  // Strategy Change operations
+  async recordStrategyChange(change: InsertStrategyChange): Promise<StrategyChange> {
+    const result = await db.insert(strategyChanges).values(change).returning();
+    return result[0];
+  }
+
+  async getStrategyChanges(sessionId: string): Promise<StrategyChange[]> {
+    return await db.select().from(strategyChanges)
+      .where(eq(strategyChanges.sessionId, sessionId))
+      .orderBy(desc(strategyChanges.changedAt));
+  }
+
+  async getStrategyChangesByStrategy(strategyId: string): Promise<StrategyChange[]> {
+    return await db.select().from(strategyChanges)
+      .where(eq(strategyChanges.strategyId, strategyId))
+      .orderBy(desc(strategyChanges.changedAt));
   }
 }
 
