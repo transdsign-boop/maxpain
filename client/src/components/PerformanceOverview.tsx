@@ -172,9 +172,9 @@ export default function PerformanceOverview() {
 
         {/* Performance Metrics - Below Chart */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-          {/* Total P&L */}
+          {/* Live P&L */}
           <div className="space-y-1">
-            <div className="text-xs text-muted-foreground">Total P&L</div>
+            <div className="text-xs text-muted-foreground">Live P&L</div>
             <div className={`text-xl font-mono font-semibold ${isProfitable ? 'text-green-500' : 'text-red-500'}`} data-testid="text-total-pnl">
               {formatCurrency(performance.totalPnl)}
             </div>
