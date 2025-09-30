@@ -364,92 +364,76 @@ export default function Dashboard() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="border-b bg-card">
-        <div className="flex flex-col gap-4 px-6 py-4">
-          {/* Top Row: Title and Controls */}
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold" data-testid="text-app-title">
-                Aster DEX Trading Platform
-              </h1>
-              <p className="text-sm text-muted-foreground">
-                Real-time liquidation monitoring and automated trading strategies
-              </p>
-            </div>
-            <div className="flex items-center gap-4">
-              <ConnectionStatus isConnected={isConnected} />
-              
-              {/* Settings Menu */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="icon" data-testid="button-settings">
-                    <Settings className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={exportSettings} data-testid="button-export-settings">
-                    <Download className="mr-2 h-4 w-4" />
-                    Export Settings
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => fileInputRef.current?.click()} data-testid="button-import-settings">
-                    <Upload className="mr-2 h-4 w-4" />
-                    Import Settings
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-              
-              <ThemeToggle />
-            </div>
+        <div className="flex items-center justify-between px-6 py-4">
+          <div>
+            <h1 className="text-2xl font-bold" data-testid="text-app-title">
+              Aster DEX Trading Platform
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Real-time liquidation monitoring and automated trading strategies
+            </p>
           </div>
 
-          {/* Trading Account Status Bar */}
-          {positionSummary && (
-            <div className="grid grid-cols-5 gap-4 pt-3 border-t">
-              {/* Current Balance */}
-              <div>
-                <div className="text-xs text-muted-foreground">Current Balance</div>
-                <div className="text-xl font-bold" data-testid="text-current-balance">
-                  {formatCurrency(currentBalanceWithUnrealized)}
-                </div>
-                {positionSummary.unrealizedPnl !== 0 && (
-                  <div className="text-xs text-muted-foreground">
-                    Base: {formatCurrency(positionSummary.currentBalance)}
+          <div className="flex items-center gap-6">
+            {/* Trading Account Metrics */}
+            {positionSummary && (
+              <div className="flex items-center gap-4 text-xs">
+                <div>
+                  <div className="text-muted-foreground">Balance</div>
+                  <div className="font-semibold" data-testid="text-current-balance">
+                    {formatCurrency(currentBalanceWithUnrealized)}
                   </div>
-                )}
-              </div>
-
-              {/* Available Margin */}
-              <div>
-                <div className="text-xs text-muted-foreground">Available Margin</div>
-                <div className="text-xl font-bold text-emerald-600 dark:text-emerald-400" data-testid="text-available-margin">
-                  {formatCurrency(availableMargin)}
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Available</div>
+                  <div className="font-semibold text-emerald-600 dark:text-emerald-400" data-testid="text-available-margin">
+                    {formatCurrency(availableMargin)}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">In Use</div>
+                  <div className="font-semibold" data-testid="text-margin-in-use">
+                    {formatCurrency(marginInUse)}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Exposure</div>
+                  <div className="font-semibold" data-testid="text-total-exposure">
+                    {formatCurrency(positionSummary.totalExposure)}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Positions</div>
+                  <div className="font-semibold" data-testid="text-active-positions">
+                    {positionSummary.activePositions}
+                  </div>
                 </div>
               </div>
+            )}
 
-              {/* Margin In Use */}
-              <div>
-                <div className="text-xs text-muted-foreground">Margin In Use</div>
-                <div className="text-xl font-bold" data-testid="text-margin-in-use">
-                  {formatCurrency(marginInUse)}
-                </div>
-              </div>
-
-              {/* Total Exposure */}
-              <div>
-                <div className="text-xs text-muted-foreground">Total Exposure</div>
-                <div className="text-xl font-bold" data-testid="text-total-exposure">
-                  {formatCurrency(positionSummary.totalExposure)}
-                </div>
-              </div>
-
-              {/* Active Positions */}
-              <div>
-                <div className="text-xs text-muted-foreground">Active Positions</div>
-                <div className="text-xl font-bold" data-testid="text-active-positions">
-                  {positionSummary.activePositions}
-                </div>
-              </div>
-            </div>
-          )}
+            <ConnectionStatus isConnected={isConnected} />
+            
+            {/* Settings Menu */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon" data-testid="button-settings">
+                  <Settings className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={exportSettings} data-testid="button-export-settings">
+                  <Download className="mr-2 h-4 w-4" />
+                  Export Settings
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => fileInputRef.current?.click()} data-testid="button-import-settings">
+                  <Upload className="mr-2 h-4 w-4" />
+                  Import Settings
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            
+            <ThemeToggle />
+          </div>
         </div>
       </header>
 
