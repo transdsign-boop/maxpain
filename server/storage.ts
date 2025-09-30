@@ -49,6 +49,7 @@ export interface IStorage {
   createTradeSession(session: InsertTradeSession): Promise<TradeSession>;
   getTradeSession(id: string): Promise<TradeSession | undefined>;
   getActiveTradeSession(strategyId: string): Promise<TradeSession | undefined>;
+  getSessionsByStrategy(strategyId: string): Promise<TradeSession[]>;
   getAllTradeSessions(userId: string): Promise<TradeSession[]>;
   updateTradeSession(id: string, updates: Partial<InsertTradeSession>): Promise<TradeSession>;
   endTradeSession(id: string): Promise<TradeSession>;
@@ -63,6 +64,7 @@ export interface IStorage {
   applyFill(fill: InsertFill): Promise<Fill>;
   getFillsBySession(sessionId: string): Promise<Fill[]>;
   getFillsByOrder(orderId: string): Promise<Fill[]>;
+  clearFillsBySession(sessionId: string): Promise<void>;
 
   // Position operations
   createPosition(position: InsertPosition): Promise<Position>;
@@ -73,6 +75,7 @@ export interface IStorage {
   getPositionsBySession(sessionId: string): Promise<Position[]>;
   updatePosition(id: string, updates: Partial<InsertPosition>): Promise<Position>;
   closePosition(id: string, closedAt: Date, realizedPnl: number): Promise<Position>;
+  clearPositionsBySession(sessionId: string): Promise<void>;
 
   // P&L Snapshot operations
   createPnlSnapshot(snapshot: InsertPnlSnapshot): Promise<PnlSnapshot>;
@@ -257,6 +260,12 @@ export class DatabaseStorage implements IStorage {
     return result[0];
   }
 
+  async getSessionsByStrategy(strategyId: string): Promise<TradeSession[]> {
+    return await db.select().from(tradeSessions)
+      .where(eq(tradeSessions.strategyId, strategyId))
+      .orderBy(desc(tradeSessions.startedAt));
+  }
+
   async getAllTradeSessions(userId: string): Promise<TradeSession[]> {
     // Get all strategies for this user first
     const userStrategies = await db.select().from(strategies)
@@ -334,6 +343,10 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(fills.filledAt));
   }
 
+  async clearFillsBySession(sessionId: string): Promise<void> {
+    await db.delete(fills).where(eq(fills.sessionId, sessionId));
+  }
+
   // Position operations
   async createPosition(position: InsertPosition): Promise<Position> {
     const result = await db.insert(positions).values(position).returning();
@@ -393,6 +406,10 @@ export class DatabaseStorage implements IStorage {
       .where(eq(positions.id, id))
       .returning();
     return result[0];
+  }
+
+  async clearPositionsBySession(sessionId: string): Promise<void> {
+    await db.delete(positions).where(eq(positions.sessionId, sessionId));
   }
 
   // P&L Snapshot operations
