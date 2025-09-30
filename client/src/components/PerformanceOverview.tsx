@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TrendingUp, TrendingDown, Target, Award, Activity, LineChart } from "lucide-react";
-import { ComposedChart, Line, Area, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from "recharts";
+import { ComposedChart, Line, Area, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from "recharts";
 import { format } from "date-fns";
 
 interface PerformanceMetrics {
@@ -123,29 +123,23 @@ export default function PerformanceOverview() {
                 <ReferenceLine yAxisId="left" y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
                 <defs>
                   <linearGradient id="cumulativePnlGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="hsl(199, 89%, 48%)" stopOpacity={0.3}/>
-                    <stop offset="100%" stopColor="hsl(199, 89%, 48%)" stopOpacity={0.05}/>
+                    <stop offset="0%" stopColor="hsl(199, 89%, 48%)" stopOpacity={0.6}/>
+                    <stop offset="100%" stopColor="hsl(199, 89%, 48%)" stopOpacity={0.1}/>
                   </linearGradient>
                 </defs>
                 <Bar 
                   yAxisId="left"
                   dataKey="pnl" 
                   name="Trade P&L"
-                  shape={(props: any) => {
-                    const { fill, x, y, width, height, payload } = props;
-                    const barFill = payload.pnl >= 0 ? 'hsl(199, 89%, 48%)' : 'hsl(0, 84%, 60%)';
-                    return (
-                      <rect
-                        x={x}
-                        y={y}
-                        width={width}
-                        height={height}
-                        fill={barFill}
-                      />
-                    );
-                  }}
                   data-testid="chart-bar-pnl"
-                />
+                >
+                  {chartData.map((entry, index) => (
+                    <Cell 
+                      key={`cell-${index}`} 
+                      fill={entry.pnl >= 0 ? 'hsl(199, 89%, 48%)' : 'hsl(0, 84%, 60%)'} 
+                    />
+                  ))}
+                </Bar>
                 <Area 
                   yAxisId="right"
                   type="monotone" 
