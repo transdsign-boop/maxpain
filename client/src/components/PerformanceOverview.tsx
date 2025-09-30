@@ -88,16 +88,80 @@ export default function PerformanceOverview() {
   };
 
   return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Activity className="h-5 w-5" />
-            Performance Overview
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Activity className="h-5 w-5" />
+          Performance Overview
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {/* Performance Chart - On Top */}
+        <div className="h-80">
+          {!chartLoading && chartData && chartData.length > 0 ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                <XAxis 
+                  dataKey="tradeNumber" 
+                  label={{ value: 'Trade #', position: 'insideBottom', offset: -5 }}
+                  className="text-xs"
+                />
+                <YAxis 
+                  yAxisId="left"
+                  label={{ value: 'P&L ($)', angle: -90, position: 'insideLeft' }}
+                  className="text-xs"
+                />
+                <YAxis 
+                  yAxisId="right"
+                  orientation="right"
+                  label={{ value: 'Cumulative P&L ($)', angle: 90, position: 'insideRight' }}
+                  className="text-xs"
+                />
+                <Tooltip content={<CustomTooltip />} />
+                <Legend />
+                <ReferenceLine yAxisId="left" y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
+                <Bar 
+                  yAxisId="left"
+                  dataKey="pnl" 
+                  name="Trade P&L"
+                  fill="hsl(var(--primary))"
+                  fillOpacity={0.6}
+                  data-testid="chart-bar-pnl"
+                >
+                  {chartData.map((entry, index) => (
+                    <rect 
+                      key={`bar-${index}`}
+                      fill={entry.pnl >= 0 ? 'hsl(142, 76%, 36%)' : 'hsl(0, 84%, 60%)'}
+                    />
+                  ))}
+                </Bar>
+                <Line 
+                  yAxisId="right"
+                  type="monotone" 
+                  dataKey="cumulativePnl" 
+                  name="Cumulative P&L"
+                  stroke="hsl(217, 91%, 60%)"
+                  strokeWidth={3}
+                  dot={{ fill: 'hsl(217, 91%, 60%)', r: 4 }}
+                  activeDot={{ r: 6 }}
+                  data-testid="chart-line-cumulative"
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="flex items-center justify-center h-full text-muted-foreground">
+              <div className="text-center space-y-2">
+                <LineChart className="h-12 w-12 mx-auto opacity-50" />
+                <p className="text-sm font-medium">No Completed Trades Yet</p>
+                <p className="text-xs">Start trading to see your performance chart</p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Performance Metrics - Below Chart */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           {/* Total P&L */}
           <div className="space-y-1">
             <div className="text-xs text-muted-foreground">Total P&L</div>
@@ -198,80 +262,5 @@ export default function PerformanceOverview() {
         </div>
       </CardContent>
     </Card>
-
-    {/* Performance Chart */}
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <LineChart className="h-5 w-5" />
-          Trading Performance
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="h-80">
-          {!chartLoading && chartData && chartData.length > 0 ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                <XAxis 
-                  dataKey="tradeNumber" 
-                  label={{ value: 'Trade #', position: 'insideBottom', offset: -5 }}
-                  className="text-xs"
-                />
-                <YAxis 
-                  yAxisId="left"
-                  label={{ value: 'P&L ($)', angle: -90, position: 'insideLeft' }}
-                  className="text-xs"
-                />
-                <YAxis 
-                  yAxisId="right"
-                  orientation="right"
-                  label={{ value: 'Cumulative P&L ($)', angle: 90, position: 'insideRight' }}
-                  className="text-xs"
-                />
-                <Tooltip content={<CustomTooltip />} />
-                <Legend />
-                <ReferenceLine yAxisId="left" y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
-                <Bar 
-                  yAxisId="left"
-                  dataKey="pnl" 
-                  name="Trade P&L"
-                  fill="hsl(var(--primary))"
-                  fillOpacity={0.6}
-                  data-testid="chart-bar-pnl"
-                >
-                  {chartData.map((entry, index) => (
-                    <rect 
-                      key={`bar-${index}`}
-                      fill={entry.pnl >= 0 ? 'hsl(142, 76%, 36%)' : 'hsl(0, 84%, 60%)'}
-                    />
-                  ))}
-                </Bar>
-                <Line 
-                  yAxisId="right"
-                  type="monotone" 
-                  dataKey="cumulativePnl" 
-                  name="Cumulative P&L"
-                  stroke="hsl(217, 91%, 60%)"
-                  strokeWidth={3}
-                  dot={{ fill: 'hsl(217, 91%, 60%)', r: 4 }}
-                  activeDot={{ r: 6 }}
-                  data-testid="chart-line-cumulative"
-                />
-              </ComposedChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="flex items-center justify-center h-full text-muted-foreground">
-              <div className="text-center space-y-2">
-                <LineChart className="h-12 w-12 mx-auto opacity-50" />
-                <p className="text-sm font-medium">No Completed Trades Yet</p>
-                <p className="text-xs">Start trading to see your performance chart</p>
-              </div>
-            </div>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-    </div>
   );
 }
