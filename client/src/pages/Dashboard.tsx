@@ -352,6 +352,14 @@ export default function Dashboard() {
     }).format(value);
   };
 
+  // Calculate metrics
+  const leverage = activeStrategy?.leverage || 1;
+  const currentBalanceWithUnrealized = positionSummary 
+    ? positionSummary.currentBalance + (positionSummary.unrealizedPnl || 0)
+    : 0;
+  const marginInUse = positionSummary ? (positionSummary.totalExposure / leverage) : 0;
+  const availableMargin = positionSummary ? (positionSummary.currentBalance - marginInUse) : 0;
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -400,18 +408,20 @@ export default function Dashboard() {
               <div>
                 <div className="text-xs text-muted-foreground">Current Balance</div>
                 <div className="text-xl font-bold" data-testid="text-current-balance">
-                  {formatCurrency(positionSummary.currentBalance)}
+                  {formatCurrency(currentBalanceWithUnrealized)}
                 </div>
-                <div className="text-xs text-muted-foreground">
-                  Base: {formatCurrency(positionSummary.startingBalance)}
-                </div>
+                {positionSummary.unrealizedPnl !== 0 && (
+                  <div className="text-xs text-muted-foreground">
+                    Base: {formatCurrency(positionSummary.currentBalance)}
+                  </div>
+                )}
               </div>
 
               {/* Available Margin */}
               <div>
                 <div className="text-xs text-muted-foreground">Available Margin</div>
                 <div className="text-xl font-bold text-emerald-600 dark:text-emerald-400" data-testid="text-available-margin">
-                  {formatCurrency(positionSummary.currentBalance - positionSummary.totalExposure)}
+                  {formatCurrency(availableMargin)}
                 </div>
               </div>
 
@@ -419,7 +429,7 @@ export default function Dashboard() {
               <div>
                 <div className="text-xs text-muted-foreground">Margin In Use</div>
                 <div className="text-xl font-bold" data-testid="text-margin-in-use">
-                  {formatCurrency(positionSummary.totalExposure)}
+                  {formatCurrency(marginInUse)}
                 </div>
               </div>
 

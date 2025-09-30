@@ -369,86 +369,10 @@ export function StrategyStatus() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Target className="h-5 w-5" />
-          Strategy Status
+          Active Positions
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Portfolio Summary */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Current Balance</p>
-            <p className={`text-lg font-semibold ${getPnlColor(summary?.unrealizedPnl || 0)}`} data-testid="current-balance">
-              {formatCurrency(currentBalanceWithUnrealized)}
-            </p>
-            {summary && summary.unrealizedPnl !== 0 && (
-              <p className="text-xs text-muted-foreground">
-                Base: {formatCurrency(summary.currentBalance)}
-              </p>
-            )}
-          </div>
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Total P&L</p>
-            <p className={`text-lg font-semibold ${getPnlColor(summary?.totalPnl || 0)}`} data-testid="total-pnl">
-              {formatCurrency(summary?.totalPnl || 0)}
-            </p>
-          </div>
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Total Return</p>
-            <p className={`text-lg font-semibold ${getPnlColor(totalReturnPercent)}`} data-testid="total-return">
-              {formatPercentage(totalReturnPercent)}
-            </p>
-          </div>
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Win Rate</p>
-            <p className="text-lg font-semibold" data-testid="win-rate">
-              {summary?.winRate || 0}%
-            </p>
-          </div>
-        </div>
-
-        {/* Portfolio Metrics */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Available Margin</p>
-            <p className="text-lg font-semibold text-emerald-600 dark:text-emerald-400" data-testid="available-margin">
-              {formatCurrency(availableMargin)}
-            </p>
-          </div>
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Margin In Use</p>
-            <p className="text-lg font-semibold" data-testid="margin-in-use">
-              {formatCurrency(marginInUse)}
-            </p>
-          </div>
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Total Exposure</p>
-            <p className="text-lg font-semibold" data-testid="total-exposure">
-              {formatCurrency(summary?.totalExposure || 0)}
-            </p>
-          </div>
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Active Positions</p>
-            <p className="text-lg font-semibold" data-testid="active-positions">
-              {summary?.activePositions || 0}
-            </p>
-          </div>
-        </div>
-        
-        {/* P&L Metrics */}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Unrealized P&L</p>
-            <p className={`text-lg font-semibold ${getPnlColor(summary?.unrealizedPnl || 0)}`} data-testid="unrealized-pnl">
-              {formatCurrency(summary?.unrealizedPnl || 0)}
-            </p>
-          </div>
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Realized P&L</p>
-            <p className={`text-lg font-semibold ${getPnlColor(summary?.realizedPnl || 0)}`} data-testid="realized-pnl">
-              {formatCurrency(summary?.realizedPnl || 0)}
-            </p>
-          </div>
-        </div>
 
         {/* Active Positions */}
         {summary?.positions && summary.positions.length > 0 ? (
