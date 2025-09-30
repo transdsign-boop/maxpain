@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TrendingUp, TrendingDown, Target, Award, Activity, LineChart } from "lucide-react";
-import { ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from "recharts";
+import { ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from "recharts";
 import { format } from "date-fns";
 
 interface PerformanceMetrics {
@@ -121,21 +121,24 @@ export default function PerformanceOverview() {
                 <Tooltip content={<CustomTooltip />} />
                 <Legend />
                 <ReferenceLine yAxisId="left" y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
-                <Bar 
+                <defs>
+                  <linearGradient id="pnlGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="hsl(142, 76%, 36%)" stopOpacity={0.8}/>
+                    <stop offset="100%" stopColor="hsl(142, 76%, 36%)" stopOpacity={0.1}/>
+                  </linearGradient>
+                </defs>
+                <Area 
                   yAxisId="left"
+                  type="monotone"
                   dataKey="pnl" 
                   name="Trade P&L"
-                  fill="hsl(var(--primary))"
-                  fillOpacity={0.6}
-                  data-testid="chart-bar-pnl"
-                >
-                  {chartData.map((entry, index) => (
-                    <rect 
-                      key={`bar-${index}`}
-                      fill={entry.pnl >= 0 ? 'hsl(142, 76%, 36%)' : 'hsl(0, 84%, 60%)'}
-                    />
-                  ))}
-                </Bar>
+                  stroke="hsl(142, 76%, 36%)"
+                  strokeWidth={2}
+                  fill="url(#pnlGradient)"
+                  dot={{ fill: 'hsl(142, 76%, 36%)', r: 3 }}
+                  activeDot={{ r: 5 }}
+                  data-testid="chart-area-pnl"
+                />
                 <Line 
                   yAxisId="right"
                   type="monotone" 
