@@ -128,11 +128,9 @@ export class StrategyEngine extends EventEmitter {
     console.log(`📤 Unregistering strategy: ${strategyId}`);
     this.activeStrategies.delete(strategyId);
     
-    const session = this.activeSessions.get(strategyId);
-    if (session) {
-      await storage.endTradeSession(session.id);
-      this.activeSessions.delete(strategyId);
-    }
+    // Note: We do NOT end the trade session here to preserve open positions
+    // The session stays active so positions remain visible when strategy is restarted
+    this.activeSessions.delete(strategyId);
   }
 
   // Handle incoming liquidation event
