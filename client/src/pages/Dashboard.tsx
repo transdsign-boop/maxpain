@@ -7,7 +7,8 @@ import { StrategyStatus } from "@/components/StrategyStatus";
 import ThemeToggle from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Settings, Download, Upload } from "lucide-react";
+import { Settings, Download, Upload, LogOut } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
 
 interface Liquidation {
   id: string;
@@ -38,27 +39,20 @@ export default function Dashboard() {
   // File input ref for settings import
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Generate or get persistent session ID
-  const getSessionId = () => {
-    let sessionId = localStorage.getItem('aster-session-id');
-    if (!sessionId) {
-      sessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      localStorage.setItem('aster-session-id', sessionId);
-    }
-    return sessionId;
-  };
+  // Get authenticated user
+  const { user } = useAuth();
 
   // Save settings to database
   const saveSettings = async () => {
+    if (!user) return; // Don't save if not authenticated
+    
     try {
-      const sessionId = getSessionId();
       await fetch('/api/settings', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          sessionId,
           selectedAssets,
           sideFilter,
           minValue,
@@ -118,9 +112,13 @@ export default function Dashboard() {
 
   // Load settings from database
   const loadSettings = async () => {
+    if (!user) {
+      setSettingsLoaded(true);
+      return; // Don't load if not authenticated
+    }
+    
     try {
-      const sessionId = getSessionId();
-      const response = await fetch(`/api/settings/${sessionId}`);
+      const response = await fetch('/api/settings');
       if (response.ok) {
         const settings = await response.json();
         if (settings) {
@@ -360,6 +358,10 @@ export default function Dashboard() {
                   <Upload className="mr-2 h-4 w-4" />
                   Import Settings
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => window.location.href = '/api/logout'} data-testid="button-logout">
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Log Out
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
             
@@ -375,10 +377,10 @@ export default function Dashboard() {
         }`}
       >
         {/* Trading Control Panel */}
-        <TradingControlPanel sessionId={getSessionId()} />
+        <TradingControlPanel />
         
         {/* Strategy Status Widget */}
-        <StrategyStatus sessionId={getSessionId()} />
+        <StrategyStatus />
       </main>
 
       {/* Live Liquidations Sidebar */}
