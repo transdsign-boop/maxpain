@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { strategyEngine } from "./strategy-engine";
-import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySchema, updateStrategySchema } from "@shared/schema";
+import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySchema, updateStrategySchema, type Position } from "@shared/schema";
 
 // Fixed liquidation window - always 60 seconds regardless of user input
 const LIQUIDATION_WINDOW_SECONDS = 60;
@@ -576,6 +576,89 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(strategies);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch strategies" });
+    }
+  });
+
+  // Get overall trading performance metrics
+  app.get("/api/performance/overview", async (req, res) => {
+    try {
+      // Get all trade sessions
+      const sessions = await storage.getAllTradeSessions(DEFAULT_USER_ID);
+      
+      if (!sessions || sessions.length === 0) {
+        return res.json({
+          totalTrades: 0,
+          openTrades: 0,
+          closedTrades: 0,
+          winningTrades: 0,
+          losingTrades: 0,
+          winRate: 0,
+          totalRealizedPnl: 0,
+          totalUnrealizedPnl: 0,
+          totalPnl: 0,
+          averageWin: 0,
+          averageLoss: 0,
+          bestTrade: 0,
+          worstTrade: 0,
+          profitFactor: 0
+        });
+      }
+
+      // Get all positions from all sessions
+      let allPositions: Position[] = [];
+      for (const session of sessions) {
+        const positions = await storage.getPositionsBySession(session.id);
+        allPositions = [...allPositions, ...positions];
+      }
+
+      // Calculate metrics
+      const openPositions = allPositions.filter(p => p.isOpen === true);
+      const closedPositions = allPositions.filter(p => p.isOpen === false);
+      
+      const winningTrades = closedPositions.filter(p => parseFloat(p.realizedPnl || '0') > 0);
+      const losingTrades = closedPositions.filter(p => parseFloat(p.realizedPnl || '0') < 0);
+      
+      const totalRealizedPnl = closedPositions.reduce((sum, p) => sum + parseFloat(p.realizedPnl || '0'), 0);
+      const totalUnrealizedPnl = openPositions.reduce((sum, p) => sum + parseFloat(p.unrealizedPnl || '0'), 0);
+      const totalPnl = totalRealizedPnl + totalUnrealizedPnl;
+      
+      const winRate = closedPositions.length > 0 ? (winningTrades.length / closedPositions.length) * 100 : 0;
+      
+      const averageWin = winningTrades.length > 0
+        ? winningTrades.reduce((sum, p) => sum + parseFloat(p.realizedPnl || '0'), 0) / winningTrades.length
+        : 0;
+      
+      const averageLoss = losingTrades.length > 0
+        ? losingTrades.reduce((sum, p) => sum + parseFloat(p.realizedPnl || '0'), 0) / losingTrades.length
+        : 0;
+      
+      const allPnls = closedPositions.map(p => parseFloat(p.realizedPnl || '0'));
+      const bestTrade = allPnls.length > 0 ? Math.max(...allPnls) : 0;
+      const worstTrade = allPnls.length > 0 ? Math.min(...allPnls) : 0;
+      
+      const totalWins = winningTrades.reduce((sum, p) => sum + parseFloat(p.realizedPnl || '0'), 0);
+      const totalLosses = Math.abs(losingTrades.reduce((sum, p) => sum + parseFloat(p.realizedPnl || '0'), 0));
+      const profitFactor = totalLosses > 0 ? totalWins / totalLosses : totalWins > 0 ? 999 : 0;
+
+      res.json({
+        totalTrades: allPositions.length,
+        openTrades: openPositions.length,
+        closedTrades: closedPositions.length,
+        winningTrades: winningTrades.length,
+        losingTrades: losingTrades.length,
+        winRate,
+        totalRealizedPnl,
+        totalUnrealizedPnl,
+        totalPnl,
+        averageWin,
+        averageLoss,
+        bestTrade,
+        worstTrade,
+        profitFactor
+      });
+    } catch (error) {
+      console.error('Error fetching performance overview:', error);
+      res.status(500).json({ error: "Failed to fetch performance overview" });
     }
   });
 

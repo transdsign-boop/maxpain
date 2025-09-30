@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import ConnectionStatus from "@/components/ConnectionStatus";
 import LiveLiquidationsSidebar from "@/components/LiveLiquidationsSidebar";
 import LiquidationAnalyticsModal from "@/components/LiquidationAnalyticsModal";
+import PerformanceOverview from "@/components/PerformanceOverview";
 import TradingControlPanel from "@/components/TradingControlPanel";
 import { StrategyStatus } from "@/components/StrategyStatus";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -366,6 +367,9 @@ export default function Dashboard() {
           isSidebarCollapsed ? 'md:mr-12' : 'md:mr-80'
         }`}
       >
+        {/* Performance Overview */}
+        <PerformanceOverview />
+        
         {/* Trading Control Panel */}
         <TradingControlPanel />
         

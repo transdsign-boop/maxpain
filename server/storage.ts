@@ -49,6 +49,7 @@ export interface IStorage {
   createTradeSession(session: InsertTradeSession): Promise<TradeSession>;
   getTradeSession(id: string): Promise<TradeSession | undefined>;
   getActiveTradeSession(strategyId: string): Promise<TradeSession | undefined>;
+  getAllTradeSessions(userId: string): Promise<TradeSession[]>;
   updateTradeSession(id: string, updates: Partial<InsertTradeSession>): Promise<TradeSession>;
   endTradeSession(id: string): Promise<TradeSession>;
 
@@ -69,6 +70,7 @@ export interface IStorage {
   getPositionBySymbol(sessionId: string, symbol: string): Promise<Position | undefined>;
   getOpenPositions(sessionId: string): Promise<Position[]>;
   getClosedPositions(sessionId: string): Promise<Position[]>;
+  getPositionsBySession(sessionId: string): Promise<Position[]>;
   updatePosition(id: string, updates: Partial<InsertPosition>): Promise<Position>;
   closePosition(id: string, closedAt: Date, realizedPnl: number): Promise<Position>;
 
@@ -255,6 +257,14 @@ export class DatabaseStorage implements IStorage {
     return result[0];
   }
 
+  async getAllTradeSessions(userId: string): Promise<TradeSession[]> {
+    return await db.select().from(tradeSessions)
+      .innerJoin(strategies, eq(tradeSessions.strategyId, strategies.id))
+      .where(eq(strategies.userId, userId))
+      .orderBy(desc(tradeSessions.startedAt))
+      .then(rows => rows.map(row => row.trade_sessions));
+  }
+
   async updateTradeSession(id: string, updates: Partial<InsertTradeSession>): Promise<TradeSession> {
     const result = await db.update(tradeSessions)
       .set(updates)
@@ -349,6 +359,12 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(positions)
       .where(and(eq(positions.sessionId, sessionId), eq(positions.isOpen, false)))
       .orderBy(desc(positions.closedAt));
+  }
+
+  async getPositionsBySession(sessionId: string): Promise<Position[]> {
+    return await db.select().from(positions)
+      .where(eq(positions.sessionId, sessionId))
+      .orderBy(desc(positions.openedAt));
   }
 
   async updatePosition(id: string, updates: Partial<InsertPosition>): Promise<Position> {
