@@ -8,6 +8,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { TrendingUp, TrendingDown, DollarSign, Target, Layers, X, ChevronDown, ChevronUp } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { format } from "date-fns";
 
 interface Fill {
   id: string;
@@ -160,10 +161,13 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
               <div className="space-y-1">
                 {fills.map((fill) => (
                   <div key={fill.id} className="flex items-center justify-between text-xs py-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-1">
                       <Badge variant="outline" className="text-xs h-5">L{fill.layerNumber}</Badge>
                       <span className="text-muted-foreground">
                         {parseFloat(fill.quantity).toFixed(4)} @ {formatCurrency(parseFloat(fill.price))}
+                      </span>
+                      <span className="text-xs text-muted-foreground/70">
+                        {format(new Date(fill.filledAt), 'MMM d, h:mm:ss a')}
                       </span>
                     </div>
                     <span className="text-muted-foreground">{formatCurrency(parseFloat(fill.value))}</span>
