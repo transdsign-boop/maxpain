@@ -131,6 +131,7 @@ export default function PerformanceOverview() {
                   yAxisId="left"
                   dataKey="pnl" 
                   name="Trade P&L"
+                  barSize={20}
                   data-testid="chart-bar-pnl"
                 >
                   {chartData.map((entry, index) => (
