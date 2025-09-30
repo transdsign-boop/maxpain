@@ -40,6 +40,7 @@ interface Position {
   openedAt: Date;
   closedAt?: Date | null;
   updatedAt: Date;
+  totalFees?: string; // Total fees paid for this position (entry + exit)
 }
 
 interface PositionSummary {
@@ -467,6 +468,12 @@ export function StrategyStatus() {
                         <div>
                           Closed: <span className="text-foreground">{position.closedAt ? format(new Date(position.closedAt), 'MMM d, h:mm a') : 'N/A'}</span>
                         </div>
+                        {position.totalFees && parseFloat(position.totalFees) > 0 && (
+                          <div className="col-span-2">
+                            Fees: <span className="text-foreground">{formatCurrency(parseFloat(position.totalFees))}</span>
+                            <span className="text-xs text-muted-foreground ml-1">(0.035% taker)</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   );

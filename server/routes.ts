@@ -938,7 +938,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const closedPositions = await storage.getClosedPositions(session.id);
-      res.json(closedPositions);
+      
+      // Fetch fills for all closed positions to calculate total fees
+      const sessionFills = await storage.getFillsBySession(session.id);
+      
+      // Enhance closed positions with fee information
+      const closedPositionsWithFees = closedPositions.map(position => {
+        // Get fills for this specific position:
+        // 1. Exit fill has synthetic orderId = `exit-${position.id}`
+        // 2. Entry fills match by symbol AND fall within position's time window
+        const exitFill = sessionFills.find(fill => fill.orderId === `exit-${position.id}`);
+        
+        // For entry fills, match by symbol and timestamp within position lifetime
+        const positionOpenTime = new Date(position.openedAt).getTime();
+        const positionCloseTime = position.closedAt ? new Date(position.closedAt).getTime() : Date.now();
+        
+        const entryFills = sessionFills.filter(fill => {
+          if (fill.symbol !== position.symbol) return false;
+          if (fill.orderId.startsWith('exit-')) return false; // Exclude exit fills
+          
+          const fillTime = new Date(fill.filledAt).getTime();
+          // Entry fills should be between position open and close, with side matching position direction
+          const correctSide = (position.side === 'long' && fill.side === 'buy') || 
+                             (position.side === 'short' && fill.side === 'sell');
+          return correctSide && fillTime >= positionOpenTime && fillTime <= positionCloseTime;
+        });
+        
+        // Calculate total fees from entry fills + exit fill
+        const totalFees = [...entryFills, ...(exitFill ? [exitFill] : [])].reduce((sum, fill) => {
+          return sum + parseFloat(fill.fee || '0');
+        }, 0);
+        
+        return {
+          ...position,
+          totalFees: totalFees.toFixed(4), // Include total fees for display
+        };
+      });
+      
+      res.json(closedPositionsWithFees);
     } catch (error) {
       console.error('Error fetching closed positions:', error);
       res.status(500).json({ error: 'Failed to fetch closed positions' });
