@@ -14,6 +14,7 @@ interface PerformanceMetrics {
   totalRealizedPnl: number;
   totalUnrealizedPnl: number;
   totalPnl: number;
+  totalPnlPercent: number;
   averageWin: number;
   averageLoss: number;
   bestTrade: number;
@@ -21,6 +22,8 @@ interface PerformanceMetrics {
   profitFactor: number;
   totalFees: number;
   averageTradeTimeMs: number;
+  maxDrawdown: number;
+  maxDrawdownPercent: number;
 }
 
 interface TradeDataPoint {
@@ -248,6 +251,26 @@ export default function PerformanceOverview() {
                   fill="url(#cumulativePnlGradient)"
                   dot={false}
                   data-testid="chart-area-cumulative"
+                  label={({ index, value }: { index: number; value: number }) => {
+                    // Only show label on the last point
+                    if (index === chartData.length - 1) {
+                      const formattedValue = formatCurrency(value);
+                      return (
+                        <text
+                          x={0}
+                          y={0}
+                          dx={10}
+                          dy={-5}
+                          fill={value >= 0 ? 'hsl(142, 76%, 36%)' : 'hsl(0, 84%, 60%)'}
+                          fontSize={14}
+                          fontWeight="bold"
+                        >
+                          {formattedValue}
+                        </text>
+                      );
+                    }
+                    return null;
+                  }}
                 />
               </ComposedChart>
             </ResponsiveContainer>
@@ -269,6 +292,9 @@ export default function PerformanceOverview() {
             <div className="text-xs text-muted-foreground">Live P&L</div>
             <div className={`text-xl font-mono font-semibold ${isProfitable ? 'text-green-500' : 'text-red-500'}`} data-testid="text-total-pnl">
               {formatCurrency(performance.totalPnl)}
+            </div>
+            <div className={`text-xs font-mono ${isProfitable ? 'text-green-500' : 'text-red-500'}`}>
+              {performance.totalPnlPercent >= 0 ? '+' : ''}{performance.totalPnlPercent.toFixed(2)}%
             </div>
           </div>
 
@@ -307,6 +333,20 @@ export default function PerformanceOverview() {
             <div className="text-xs text-muted-foreground">Profit Factor</div>
             <div className={`text-xl font-mono font-semibold ${performance.profitFactor >= 1 ? 'text-green-500' : 'text-red-500'}`} data-testid="text-profit-factor">
               {performance.profitFactor >= 999 ? '∞' : performance.profitFactor.toFixed(2)}
+            </div>
+          </div>
+
+          {/* Max Drawdown */}
+          <div className="space-y-1">
+            <div className="text-xs text-muted-foreground flex items-center gap-1">
+              <TrendingDown className="h-3 w-3" />
+              Max Drawdown
+            </div>
+            <div className="text-xl font-mono font-semibold text-red-500" data-testid="text-max-drawdown">
+              {formatCurrency(-performance.maxDrawdown)}
+            </div>
+            <div className="text-xs font-mono text-red-500">
+              {performance.maxDrawdownPercent.toFixed(2)}%
             </div>
           </div>
 

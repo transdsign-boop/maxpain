@@ -715,6 +715,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ? tradeTimesMs.reduce((sum, time) => sum + time, 0) / tradeTimesMs.length
         : 0;
 
+      // Calculate percentage P&L based on starting balance
+      const startingBalance = parseFloat(activeSession.startingBalance);
+      const totalPnlPercent = startingBalance > 0 ? (totalPnl / startingBalance) * 100 : 0;
+
+      // Calculate maximum drawdown from cumulative P&L
+      let maxDrawdown = 0;
+      if (closedPositions.length > 0) {
+        let peakPnl = 0;
+        let cumulativePnl = 0;
+        
+        for (const p of closedPositions) {
+          const pnlPercent = parseFloat(p.realizedPnl || '0');
+          const totalCost = parseFloat(p.totalCost || '0');
+          const pnlDollar = (pnlPercent / 100) * totalCost;
+          cumulativePnl += pnlDollar;
+          
+          // Update peak if we reached a new high
+          if (cumulativePnl > peakPnl) {
+            peakPnl = cumulativePnl;
+          }
+          
+          // Calculate drawdown from peak
+          const currentDrawdown = peakPnl - cumulativePnl;
+          if (currentDrawdown > maxDrawdown) {
+            maxDrawdown = currentDrawdown;
+          }
+        }
+      }
+      
+      // Calculate drawdown as percentage of starting balance
+      const maxDrawdownPercent = startingBalance > 0 ? (maxDrawdown / startingBalance) * 100 : 0;
+
       res.json({
         totalTrades: allPositions.length,
         openTrades: openPositions.length,
@@ -725,13 +757,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         totalRealizedPnl,
         totalUnrealizedPnl,
         totalPnl,
+        totalPnlPercent,
         averageWin,
         averageLoss,
         bestTrade,
         worstTrade,
         profitFactor,
         totalFees,
-        averageTradeTimeMs
+        averageTradeTimeMs,
+        maxDrawdown,
+        maxDrawdownPercent
       });
     } catch (error) {
       console.error('Error fetching performance overview:', error);
