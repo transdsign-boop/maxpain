@@ -258,11 +258,18 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAllTradeSessions(userId: string): Promise<TradeSession[]> {
+    // Get all strategies for this user first
+    const userStrategies = await db.select().from(strategies)
+      .where(eq(strategies.userId, userId));
+    
+    if (userStrategies.length === 0) return [];
+    
+    const strategyIds = userStrategies.map(s => s.id);
+    
+    // Get all trade sessions for these strategies
     return await db.select().from(tradeSessions)
-      .innerJoin(strategies, eq(tradeSessions.strategyId, strategies.id))
-      .where(eq(strategies.userId, userId))
-      .orderBy(desc(tradeSessions.startedAt))
-      .then(rows => rows.map(row => row.trade_sessions));
+      .where(sql`${tradeSessions.strategyId} IN (${sql.join(strategyIds.map(id => sql`${id}`), sql`, `)})`)
+      .orderBy(desc(tradeSessions.startedAt));
   }
 
   async updateTradeSession(id: string, updates: Partial<InsertTradeSession>): Promise<TradeSession> {

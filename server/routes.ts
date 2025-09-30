@@ -3,7 +3,9 @@ import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { strategyEngine } from "./strategy-engine";
-import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySchema, updateStrategySchema, type Position } from "@shared/schema";
+import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySchema, updateStrategySchema, type Position, positions } from "@shared/schema";
+import { db } from "./db";
+import { desc } from "drizzle-orm";
 
 // Fixed liquidation window - always 60 seconds regardless of user input
 const LIQUIDATION_WINDOW_SECONDS = 60;
@@ -582,10 +584,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get overall trading performance metrics
   app.get("/api/performance/overview", async (req, res) => {
     try {
-      // Get all trade sessions
-      const sessions = await storage.getAllTradeSessions(DEFAULT_USER_ID);
-      
-      if (!sessions || sessions.length === 0) {
+      // Since this is a personal app with no auth, get ALL positions from database
+      // This ensures we include all historical data regardless of session ownership
+      const allPositions = await db.select().from(positions).orderBy(desc(positions.openedAt));
+
+      if (!allPositions || allPositions.length === 0) {
         return res.json({
           totalTrades: 0,
           openTrades: 0,
@@ -602,13 +605,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           worstTrade: 0,
           profitFactor: 0
         });
-      }
-
-      // Get all positions from all sessions
-      let allPositions: Position[] = [];
-      for (const session of sessions) {
-        const positions = await storage.getPositionsBySession(session.id);
-        allPositions = [...allPositions, ...positions];
       }
 
       // Calculate metrics
