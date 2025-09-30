@@ -439,9 +439,10 @@ export default function Dashboard() {
 
       {/* Main Content with Trading Controls */}
       <main 
-        className={`p-6 space-y-6 transition-all duration-300 pt-[97px] ${
+        className={`p-6 space-y-6 transition-all duration-300 ${
           isSidebarCollapsed ? 'md:mr-12' : 'md:mr-80'
         }`}
+        style={{ paddingTop: 'calc(73px + 1.5rem)' }}
       >
         {/* Performance Overview */}
         <PerformanceOverview />
@@ -481,7 +482,7 @@ export default function Dashboard() {
       />
 
       {/* Debug Controls */}
-      <div className="fixed bottom-4 left-4 space-y-2">
+      <div className="fixed bottom-4 left-4 space-y-2 z-30">
         <button
           onClick={() => setIsConnected(!isConnected)}
           className="bg-primary text-primary-foreground px-3 py-1 rounded text-xs hover-elevate"
