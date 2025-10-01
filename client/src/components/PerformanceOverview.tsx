@@ -213,50 +213,10 @@ export default function PerformanceOverview() {
           </div>
         </div>
 
-        {/* Performance Chart with Floating Metrics */}
+        {/* Performance Chart */}
         <div className="relative h-64 md:h-80">
           {!chartLoading && chartData && chartData.length > 0 ? (
             <>
-              {/* Floating Metrics Overlay - Layered Text */}
-              <div className="absolute top-6 left-4 right-4 z-10 pointer-events-none">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-                  <div className="space-y-0.5 bg-background/60 backdrop-blur-sm rounded-md p-2 border border-border/50">
-                    <div className="text-xs text-muted-foreground">Realized</div>
-                    <div className={`text-base md:text-lg font-mono font-semibold ${performance.totalRealizedPnl >= 0 ? 'text-green-500' : 'text-red-500'}`} data-testid="text-realized-pnl-overlay">
-                      {formatCurrency(performance.totalRealizedPnl)}
-                    </div>
-                  </div>
-
-                  <div className="space-y-0.5 bg-background/60 backdrop-blur-sm rounded-md p-2 border border-border/50">
-                    <div className="text-xs text-muted-foreground">Unrealized</div>
-                    <div className={`text-base md:text-lg font-mono font-semibold ${performance.totalUnrealizedPnl >= 0 ? 'text-green-500' : 'text-red-500'}`} data-testid="text-unrealized-pnl-overlay">
-                      {formatCurrency(performance.totalUnrealizedPnl)}
-                    </div>
-                  </div>
-
-                  <div className="space-y-0.5 bg-background/60 backdrop-blur-sm rounded-md p-2 border border-border/50">
-                    <div className="text-xs text-muted-foreground flex items-center gap-1">
-                      <TrendingDown className="h-3 w-3" />
-                      Max Drawdown
-                    </div>
-                    <div className="text-base md:text-lg font-mono font-semibold text-red-500" data-testid="text-max-drawdown-overlay">
-                      {formatCurrency(performance.maxDrawdown ?? 0)}
-                    </div>
-                    <div className="text-xs font-mono text-muted-foreground">
-                      {(performance.maxDrawdownPercent ?? 0).toFixed(2)}%
-                    </div>
-                  </div>
-
-                  <div className="space-y-0.5 bg-background/60 backdrop-blur-sm rounded-md p-2 border border-border/50">
-                    <div className="text-xs text-muted-foreground">Avg Time</div>
-                    <div className="text-base md:text-lg font-mono font-semibold" data-testid="text-avg-trade-time-overlay">
-                      {formatTradeTime(performance.averageTradeTimeMs)}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Full Width Chart */}
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
