@@ -386,40 +386,47 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
               </div>
             </div>
 
-            {/* Price data grid (2 columns) */}
-            <div className="px-3 py-3 grid grid-cols-2 gap-3 border-t border-border/30 bg-background/30">
-              <div>
-                <div className="text-xs text-muted-foreground mb-1">Avg Entry</div>
-                <div className="text-sm font-medium text-foreground">{formatCurrency(avgEntry)}</div>
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground mb-1">Current</div>
-                <div className="text-sm font-semibold text-foreground" data-testid={`current-price-${position.symbol}`}>
-                  {formatCurrency(currentPrice)}
+            {/* Price data with centered P&L (3 columns) */}
+            <div className="px-3 py-3 grid grid-cols-[1fr_auto_1fr] gap-4 items-center border-t border-border/30 bg-background/30">
+              {/* Left column: Avg and SL */}
+              <div className="space-y-3">
+                <div>
+                  <div className="text-xs text-muted-foreground mb-1">Avg:</div>
+                  <div className="text-base font-medium text-foreground">{formatCurrency(avgEntry)}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground mb-1">SL:</div>
+                  <div className="text-base text-red-700 dark:text-red-500">{formatCurrency(stopLossPrice)}</div>
                 </div>
               </div>
-              <div>
-                <div className="text-xs text-muted-foreground mb-1">Stop Loss</div>
-                <div className="text-sm text-red-700 dark:text-red-500">{formatCurrency(stopLossPrice)}</div>
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground mb-1">Take Profit</div>
-                <div className="text-sm text-lime-600 dark:text-lime-400">{formatCurrency(takeProfitPrice)}</div>
-              </div>
-            </div>
 
-            {/* P&L, Liquidation, and Actions row */}
-            <div className="px-3 py-3 flex items-center justify-between gap-3 border-t border-border/30 bg-background/50">
-              {/* P&L */}
-              <div>
-                <div className={`text-lg font-bold ${getPnlColor(unrealizedPnlDollar)}`}>
+              {/* Center: P&L (bigger) */}
+              <div className="flex flex-col items-center px-4 border-x border-border/30">
+                <div className={`text-2xl font-bold font-mono ${getPnlColor(unrealizedPnlDollar)}`}>
                   {unrealizedPnlDollar >= 0 ? '+' : ''}{formatCurrency(unrealizedPnlDollar)}
                 </div>
-                <div className={`text-sm ${getPnlColor(unrealizedPnlPercent)}`}>
+                <div className={`text-lg font-mono ${getPnlColor(unrealizedPnlPercent)}`}>
                   {unrealizedPnlPercent >= 0 ? '+' : ''}{unrealizedPnlPercent.toFixed(2)}%
                 </div>
               </div>
 
+              {/* Right column: Current and TP */}
+              <div className="space-y-3">
+                <div>
+                  <div className="text-xs text-muted-foreground mb-1">Current:</div>
+                  <div className="text-base font-semibold text-foreground" data-testid={`current-price-${position.symbol}`}>
+                    {formatCurrency(currentPrice)}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground mb-1">TP:</div>
+                  <div className="text-base text-lime-600 dark:text-lime-400">{formatCurrency(takeProfitPrice)}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Liquidation and Actions row */}
+            <div className="px-3 py-3 flex items-center justify-between gap-3 border-t border-border/30 bg-background/50">
               {/* Liquidation donut (if applicable) */}
               {liquidationPrice !== null && distanceToLiquidation !== null && (
                 <div className="flex flex-col items-center">
@@ -455,7 +462,7 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
               )}
 
               {/* Actions */}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 ml-auto">
                 <button
                   className="rounded-xl flex items-center justify-center px-4 py-2 border-4 border-destructive bg-transparent text-destructive transition-all hover:brightness-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                   data-testid={`button-close-position-${position.symbol}`}
