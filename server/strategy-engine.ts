@@ -578,13 +578,17 @@ export class StrategyEngine extends EventEmitter {
     // Update order status
     await storage.updateOrderStatus(order.id, 'filled', new Date());
 
-    // Create fill record with Aster DEX taker fee
+    // FIRST: Ensure position exists and get its ID
+    const position = await this.ensurePositionForFill(order, fillPrice, fillQuantity);
+
+    // Create fill record with Aster DEX taker fee AND position_id
     const fillValue = fillPrice * fillQuantity;
     const fee = (fillValue * ASTER_TAKER_FEE_PERCENT) / 100; // 0.035% taker fee
     
     await storage.applyFill({
       orderId: order.id,
       sessionId: order.sessionId,
+      positionId: position.id, // Link fill to position
       symbol: order.symbol,
       side: order.side,
       quantity: fillQuantity.toString(),
@@ -607,13 +611,11 @@ export class StrategyEngine extends EventEmitter {
       session.currentBalance = newBalance.toString();
       console.log(`💸 Entry fee applied: $${fee.toFixed(4)} (${ASTER_TAKER_FEE_PERCENT}% of $${fillValue.toFixed(2)})`);
     }
-
-    // Create or update position
-    await this.createOrUpdatePosition(order, fillPrice, fillQuantity);
   }
 
-  // Create new position or update existing one after fill
-  private async createOrUpdatePosition(order: Order, fillPrice: number, fillQuantity: number) {
+  // Ensure position exists and return it (create or update as needed)
+  // This must be called BEFORE creating fills so we have the position ID
+  private async ensurePositionForFill(order: Order, fillPrice: number, fillQuantity: number): Promise<Position> {
     let position = await storage.getPositionBySymbol(order.sessionId, order.symbol);
     
     if (!position) {
@@ -641,7 +643,14 @@ export class StrategyEngine extends EventEmitter {
     } else {
       // Update existing position with new layer
       await this.updatePositionAfterFill(position, fillPrice, fillQuantity);
+      // Fetch the updated position to return
+      const updatedPosition = await storage.getPosition(position.id);
+      if (updatedPosition) {
+        position = updatedPosition;
+      }
     }
+    
+    return position;
   }
 
   // Update position after adding a layer
@@ -846,6 +855,7 @@ export class StrategyEngine extends EventEmitter {
       await storage.applyFill({
         orderId: `exit-${position.id}`, // Synthetic order ID for exit
         sessionId: position.sessionId,
+        positionId: position.id, // Link exit fill to position
         symbol: position.symbol,
         side: position.side === 'long' ? 'sell' : 'buy', // Opposite side to close
         quantity: position.totalQuantity,

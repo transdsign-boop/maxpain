@@ -1312,19 +1312,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: 'Position not found' });
       }
 
-      // Get all fills for this position's session and symbol
+      // Get all fills directly linked to this position via position_id
+      // New fills will have position_id set; legacy fills will use time-range fallback
       const sessionFills = await storage.getFillsBySession(position.sessionId);
       
-      // Filter fills to ONLY those for this specific position (by time range)
-      // This prevents showing fills from previous positions for the same symbol
-      const positionOpenTime = new Date(position.openedAt).getTime();
-      const positionCloseTime = position.closedAt ? new Date(position.closedAt).getTime() : Date.now();
-      
-      const positionFills = sessionFills.filter(fill => 
-        fill.symbol === position.symbol && 
-        new Date(fill.filledAt).getTime() >= positionOpenTime &&
-        new Date(fill.filledAt).getTime() <= positionCloseTime
-      );
+      const positionFills = sessionFills.filter(fill => {
+        // Primary: Use position_id if available (new data model)
+        if (fill.positionId) {
+          return fill.positionId === positionId;
+        }
+        
+        // Fallback: Use time-range filtering for legacy fills without position_id
+        const positionOpenTime = new Date(position.openedAt).getTime();
+        const positionCloseTime = position.closedAt ? new Date(position.closedAt).getTime() : Date.now();
+        
+        return fill.symbol === position.symbol && 
+          new Date(fill.filledAt).getTime() >= positionOpenTime &&
+          new Date(fill.filledAt).getTime() <= positionCloseTime;
+      });
 
       res.json(positionFills);
     } catch (error) {
@@ -1523,6 +1528,16 @@ async function connectToAsterDEX(clients: Set<WebSocket>) {
           const signature = `${liquidationData.symbol}-${liquidationData.side}-${liquidationData.size}-${liquidationData.price}-${liquidationData.value}`;
           const now = Date.now();
           
+          // Check in-memory deduplication FIRST (before queue)
+          const lastSeen = recentLiquidations.get(signature);
+          if (lastSeen && (now - lastSeen) < DEDUP_WINDOW_MS) {
+            console.log(`🔄 Skipping duplicate liquidation (in-memory): ${liquidationData.symbol} ${liquidationData.side} $${liquidationData.value}`);
+            return;
+          }
+          
+          // Mark as seen IMMEDIATELY to block other duplicates
+          recentLiquidations.set(signature, now);
+          
           // Wait for any pending processing of this signature to complete (queue-based dedup)
           const existingProcess = processingQueue.get(signature);
           if (existingProcess) {
@@ -1539,15 +1554,6 @@ async function connectToAsterDEX(clients: Set<WebSocket>) {
           processingQueue.set(signature, processingPromise);
           
           try {
-            // Check if we've seen this exact liquidation recently  
-            const lastSeen = recentLiquidations.get(signature);
-            if (lastSeen && (now - lastSeen) < DEDUP_WINDOW_MS) {
-              console.log(`🔄 Skipping duplicate liquidation: ${liquidationData.symbol} ${liquidationData.side} $${liquidationData.value}`);
-              // Don't return - let finally block execute
-            } else {
-              // Record this liquidation
-              recentLiquidations.set(signature, now);
-              
               // Clean up old entries periodically (keep map size bounded)
               if (recentLiquidations.size > 100) {
                 const cutoff = now - DEDUP_WINDOW_MS;
@@ -1607,7 +1613,6 @@ async function connectToAsterDEX(clients: Set<WebSocket>) {
                   console.log(`🚨 REAL Liquidation: ${liquidationData.symbol} ${liquidationData.side} $${(parseFloat(liquidationData.value)).toFixed(2)}`);
                 }
               }
-            }
           } finally {
             // ALWAYS resolve the processing promise and clean up
             resolveProcessing!();
