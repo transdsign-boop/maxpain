@@ -10,6 +10,7 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+- **Fixed Race Condition in Liquidation Deduplication (2025-10-01):** Resolved critical race condition causing duplicate liquidations to appear in UI and database. When duplicate WebSocket messages arrived milliseconds apart, they both bypassed deduplication checks. Fixed by reordering logic to check processingQueue first, creating an atomic lock per signature. Deleted 14 existing duplicates from database. System now properly handles Aster DEX's duplicate message broadcasts
 - **Comprehensive Data Validation & Integrity Fixes (2025-10-01):** Performed full database audit and fixed critical data integrity issues:
   - Deleted 1,281 duplicate liquidations from database (Aster WebSocket occasionally sends duplicates milliseconds apart)
   - Fixed duplicate exit fills bug - deleted 293 duplicates and added position.isOpen guard to prevent future re-closings
