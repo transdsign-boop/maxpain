@@ -1100,6 +1100,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
+  // Connect strategy engine with WebSocket clients for trade notifications
+  strategyEngine.setWebSocketClients(clients);
+  
   // Connect to Aster DEX WebSocket and relay data
   connectToAsterDEX(clients);
 
