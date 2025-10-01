@@ -45,12 +45,12 @@ Preferred communication style: Simple, everyday language.
 - Robust handling of duplicate liquidations and race conditions through atomic locking and queue-based processing.
 
 ### Trading System
-- **Live Trading**: Implemented HMAC-SHA256 signature authentication for Aster DEX with comprehensive safety checks, including API credential validation, order parameter checks, receive window for clock sync, and "REAL MONEY" warnings. Exit orders automatically placed on Aster DEX using correct order types (limit for TP, stop market for SL).
+- **Live Trading**: Implemented HMAC-SHA256 signature authentication for Aster DEX with comprehensive safety checks, including API credential validation, order parameter checks, receive window for clock sync, and "REAL MONEY" warnings. Exit orders automatically placed on Aster DEX using correct order types (limit for TP, stop market for SL). Session-based tracking with `liveSessionStartedAt` timestamp ensures each live mode session starts fresh, showing only trades from the current session (similar to paper trading behavior).
 - **Paper Trading**: Realistic simulation of limit order behavior, including dynamic price chasing and automatic cancellation. Uses correct Aster DEX fee schedule: 0.01% maker fee for limit orders (take profit exits), 0.035% taker fee for market orders (stop loss exits). Entry orders use 0.035% taker fee.
-- **Strategy Management**: Singleton session model with one continuous trading session per user; strategy parameters are adjustable settings. Configurable liquidation lookback window for percentile-based trade signals.
+- **Strategy Management**: Singleton session model with one continuous trading session per user; strategy parameters are adjustable settings. Configurable liquidation lookback window for percentile-based trade signals. Live mode sessions tracked via timestamp - toggling to live mode creates a new session boundary, toggling back to paper clears it.
 - **Exit Order Types**: Take profit exits use LIMIT orders (0.01% maker fee), stop loss exits use STOP_MARKET orders (0.035% taker fee), manual closes use LIMIT orders (0.01% maker fee). All fees correctly applied in both paper and live modes.
 - **Data Integrity**: Comprehensive data validation and integrity fixes, including removal of duplicate liquidations and fills, correct session update logic, and recalculated session statistics.
-- **Features**: Live/Paper Trading Toggle; real-time price data directly from Aster DEX API for all calculations; cross-browser settings persistence to database.
+- **Features**: Live/Paper Trading Toggle with session-based tracking; real-time price data directly from Aster DEX API for all calculations; cross-browser settings persistence to database; live mode displays only current session trades and metrics.
 
 ## External Dependencies
 
