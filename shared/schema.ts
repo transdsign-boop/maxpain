@@ -88,6 +88,7 @@ export const strategies = pgTable("strategies", {
   maxRetryDurationMs: integer("max_retry_duration_ms").notNull().default(30000), // How long to chase price before giving up (milliseconds)
   marginAmount: decimal("margin_amount", { precision: 5, scale: 2 }).notNull().default("10.0"), // Percentage of account to use for trading
   tradingMode: text("trading_mode").notNull().default("paper"), // "paper" or "live"
+  paperAccountSize: decimal("paper_account_size", { precision: 18, scale: 2 }).notNull().default("10000.0"), // Starting balance for paper trading
   isActive: boolean("is_active").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -214,6 +215,11 @@ export const frontendStrategySchema = z.object({
     const num = parseFloat(val);
     return num >= 1 && num <= 100;
   }, "Account usage must be between 1% and 100%").default("10.0"),
+  tradingMode: z.enum(["paper", "live"]).default("paper"),
+  paperAccountSize: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 100 && num <= 1000000;
+  }, "Paper account size must be between $100 and $1,000,000").default("10000.0"),
   isActive: z.boolean().optional().default(false),
 });
 
