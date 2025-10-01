@@ -549,22 +549,16 @@ export default function Dashboard() {
             {activeStrategy && (
               <Button
                 variant={activeStrategy.paused ? "default" : "outline"}
-                size="sm"
+                size="icon"
                 onClick={() => activeStrategy.paused ? resumeMutation.mutate() : pauseMutation.mutate()}
                 disabled={!activeStrategy.isActive || pauseMutation.isPending || resumeMutation.isPending}
                 data-testid="button-pause-resume"
-                className="gap-2"
+                title={activeStrategy.paused ? "Resume Trading" : "Pause Trading"}
               >
                 {activeStrategy.paused ? (
-                  <>
-                    <Play className="h-4 w-4" />
-                    Resume
-                  </>
+                  <Play className="h-4 w-4" />
                 ) : (
-                  <>
-                    <Pause className="h-4 w-4" />
-                    Pause
-                  </>
+                  <Pause className="h-4 w-4" />
                 )}
               </Button>
             )}
@@ -573,33 +567,31 @@ export default function Dashboard() {
             {activeStrategy && positionSummary && positionSummary.activePositions > 0 && (
               <Button
                 variant="destructive"
-                size="sm"
+                size="icon"
                 onClick={() => setIsEmergencyStopDialogOpen(true)}
                 disabled={!activeStrategy.isActive}
                 data-testid="button-emergency-stop"
-                className="gap-2"
+                title="Emergency Stop - Close All Positions"
               >
                 <AlertTriangle className="h-4 w-4" />
-                Emergency Stop
               </Button>
             )}
             
             {/* Trading Strategy Button */}
             <Button 
               variant="default" 
-              size="sm"
+              size="icon"
               onClick={() => setIsStrategyDialogOpen(true)}
               data-testid="button-trading-strategy"
-              className="gap-2"
+              title="Trading Strategy Settings"
             >
               <Settings2 className="h-4 w-4" />
-              Trading Strategy
             </Button>
             
             {/* Settings Menu */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon" data-testid="button-settings">
+                <Button variant="outline" size="icon" data-testid="button-settings" title="Settings">
                   <Settings className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
