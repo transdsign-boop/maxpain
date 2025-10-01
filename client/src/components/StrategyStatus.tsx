@@ -517,45 +517,52 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
               </div>
             </div>
 
-            {/* Middle: price data and P&L */}
-            <div className="px-3 py-2 flex flex-col justify-between">
-              <div className="grid grid-cols-2 gap-x-3 text-sm">
+            {/* Middle: price data with large centered P&L */}
+            <div className="px-3 py-2 grid grid-cols-[1fr_auto_1fr] gap-3 items-center">
+              {/* Left column: Avg and SL */}
+              <div className="space-y-1.5">
                 <div className="min-w-0">
                   <div className="text-[10px] text-muted-foreground truncate">Avg:</div>
                   <div className="text-[13px] text-foreground/90 truncate">{formatCurrency(avgEntry)}</div>
                 </div>
+                <div className="min-w-0">
+                  <div className="text-[10px] text-muted-foreground truncate">SL:</div>
+                  <div className="text-[13px] text-red-700 dark:text-red-500 truncate">{formatCurrency(stopLossPrice)}</div>
+                </div>
+              </div>
+
+              {/* Center: Large P&L */}
+              <div className="flex flex-col items-center justify-center min-w-[120px]">
+                <div className={`text-3xl font-black font-mono leading-none ${getPnlColor(unrealizedPnlDollar)}`}>
+                  {unrealizedPnlDollar >= 0 ? '+' : ''}{formatCurrency(unrealizedPnlDollar)}
+                </div>
+                <div className={`text-lg font-bold font-mono mt-0.5 ${getPnlColor(unrealizedPnlPercent)}`}>
+                  {unrealizedPnlPercent >= 0 ? '+' : ''}{unrealizedPnlPercent.toFixed(2)}%
+                </div>
+              </div>
+
+              {/* Right column: Current and TP */}
+              <div className="space-y-1.5">
                 <div className="min-w-0">
                   <div className="text-[10px] text-muted-foreground truncate">Current:</div>
                   <div className="text-[14px] font-semibold text-foreground truncate" data-testid={`current-price-${position.symbol}`}>
                     {formatCurrency(currentPrice)}
                   </div>
                 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-x-3 text-sm">
-                <div className="min-w-0">
-                  <div className="text-[10px] text-muted-foreground truncate">SL:</div>
-                  <div className="text-[13px] text-red-700 dark:text-red-500 truncate">{formatCurrency(stopLossPrice)}</div>
-                </div>
                 <div className="min-w-0">
                   <div className="text-[10px] text-muted-foreground truncate">TP:</div>
                   <div className="text-[13px] text-lime-600 dark:text-lime-400 truncate">{formatCurrency(takeProfitPrice)}</div>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="text-right">
-                  <div className={`text-sm font-semibold ${getPnlColor(unrealizedPnlDollar)}`}>
-                    {unrealizedPnlDollar >= 0 ? '+' : ''}{formatCurrency(unrealizedPnlDollar)}
-                  </div>
-                  <div className={`text-xs ${getPnlColor(unrealizedPnlPercent)}`}>
-                    {unrealizedPnlPercent >= 0 ? '+' : ''}{unrealizedPnlPercent.toFixed(2)}%
-                  </div>
-                </div>
-                <CollapsibleTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 ml-auto" data-testid="button-toggle-layers">
-                    {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                  </Button>
-                </CollapsibleTrigger>
-              </div>
+            </div>
+
+            {/* Expand button in its own row */}
+            <div className="px-3 pb-2">
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8" data-testid="button-toggle-layers">
+                  {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                </Button>
+              </CollapsibleTrigger>
             </div>
 
             {/* Liquidation Risk Donut */}
