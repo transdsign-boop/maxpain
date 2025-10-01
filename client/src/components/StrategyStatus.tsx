@@ -266,6 +266,24 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
   const leverage = strategy ? strategy.leverage : 1;
   const totalMargin = totalCost / leverage;
 
+  // Calculate liquidation price based on leverage (isolated margin)
+  // Liquidation occurs when loss reaches 100% of margin (excluding fees/maintenance)
+  const liquidationPrice = position.side === 'long'
+    ? avgEntry * (1 - (1 / leverage) * 0.95) // 95% of theoretical (accounting for maintenance margin)
+    : avgEntry * (1 + (1 / leverage) * 0.95);
+  
+  // Calculate distance to liquidation as a percentage
+  const distanceToLiquidation = position.side === 'long'
+    ? ((currentPrice - liquidationPrice) / currentPrice) * 100
+    : ((liquidationPrice - currentPrice) / currentPrice) * 100;
+  
+  // Calculate position pressure for visual indicator
+  // Maps unrealizedPnl to a 0-100 scale where:
+  // -100% (complete loss) = 0, 0% = 50, +100% = 100
+  const maxPnl = 10; // Cap at ±10% for visual scaling
+  const normalizedPnl = Math.max(-maxPnl, Math.min(maxPnl, unrealizedPnlPercent));
+  const pressureValue = 50 + (normalizedPnl / maxPnl) * 50; // 0-100 scale
+
   return (
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
       <div className="rounded-lg border bg-card" data-testid={`position-${position.symbol}`}>
@@ -302,6 +320,58 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
                 </span>
                 <span className="text-red-600 dark:text-red-400">SL: {formatCurrency(stopLossPrice)}</span>
                 <span className="text-emerald-600 dark:text-emerald-400">TP: {formatCurrency(takeProfitPrice)}</span>
+              </div>
+              
+              {/* Liquidation Distance Indicator */}
+              <div className="flex items-center gap-2 text-xs mt-2">
+                <span className={`font-medium ${distanceToLiquidation < 10 ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}>
+                  Liq: {formatCurrency(liquidationPrice)}
+                </span>
+                <span className={`${distanceToLiquidation < 10 ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}>
+                  ({distanceToLiquidation.toFixed(2)}% away)
+                </span>
+              </div>
+              
+              {/* Position Pressure Visual Indicator */}
+              <div className="mt-2">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-xs text-muted-foreground">Position Pressure:</span>
+                  <span className={`text-xs font-medium ${getPnlColor(unrealizedPnlPercent)}`}>
+                    {unrealizedPnlPercent > 0 ? 'Profit' : unrealizedPnlPercent < 0 ? 'Loss' : 'Neutral'}
+                  </span>
+                </div>
+                <div className="relative h-2 bg-muted rounded-full overflow-hidden">
+                  {/* Background gradient showing pressure zones */}
+                  <div className="absolute inset-0 bg-gradient-to-r from-red-500/20 via-muted to-green-500/20" />
+                  
+                  {/* Position indicator */}
+                  <div 
+                    className="absolute top-0 bottom-0 w-1 transition-all duration-300"
+                    style={{ 
+                      left: `${pressureValue}%`,
+                      backgroundColor: unrealizedPnlPercent > 0 
+                        ? 'rgb(34, 197, 94)' // green
+                        : unrealizedPnlPercent < 0 
+                        ? 'rgb(239, 68, 68)' // red
+                        : 'rgb(156, 163, 175)' // gray
+                    }}
+                    data-testid={`pressure-indicator-${position.symbol}`}
+                  />
+                  
+                  {/* Fill showing intensity */}
+                  <div 
+                    className="absolute top-0 bottom-0 transition-all duration-300"
+                    style={{ 
+                      left: pressureValue > 50 ? '50%' : `${pressureValue}%`,
+                      right: pressureValue < 50 ? '50%' : `${100 - pressureValue}%`,
+                      backgroundColor: unrealizedPnlPercent > 0 
+                        ? 'rgba(34, 197, 94, 0.5)' // green with transparency
+                        : unrealizedPnlPercent < 0 
+                        ? 'rgba(239, 68, 68, 0.5)' // red with transparency
+                        : 'rgba(156, 163, 175, 0.3)' // gray with transparency
+                    }}
+                  />
+                </div>
               </div>
             </div>
           </div>
