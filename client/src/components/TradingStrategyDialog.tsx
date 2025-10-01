@@ -16,7 +16,7 @@ import { Switch } from "@/components/ui/switch";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Play, Square, TrendingUp, DollarSign, Layers, Target, Trash2, RotateCcw } from "lucide-react";
+import { Play, Square, TrendingUp, DollarSign, Layers, Target, Trash2, RotateCcw, Key, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -98,6 +98,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
   const { toast } = useToast();
   const [activeStrategy, setActiveStrategy] = useState<Strategy | null>(null);
   const [isStrategyRunning, setIsStrategyRunning] = useState(false);
+  const [apiTestResult, setApiTestResult] = useState<{ success: boolean; message: string; accountInfo?: any } | null>(null);
 
   // Fetch available assets for selection
   const { data: availableAssets, isLoading: assetsLoading } = useQuery({
@@ -302,6 +303,40 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
       toast({
         title: "Error",
         description: "Failed to clear paper trades. Please try again.",
+        variant: "destructive",
+      });
+    }
+  });
+
+  // Test API connection mutation
+  const testConnectionMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest('POST', '/api/settings/test-connection', {});
+      return await response.json();
+    },
+    onSuccess: (data) => {
+      setApiTestResult(data);
+      if (data.success) {
+        toast({
+          title: "Connection Successful",
+          description: "Your Aster DEX API credentials are working correctly!",
+        });
+      } else {
+        toast({
+          title: "Connection Failed",
+          description: data.error || "Failed to connect to Aster DEX API.",
+          variant: "destructive",
+        });
+      }
+    },
+    onError: (error: any) => {
+      setApiTestResult({
+        success: false,
+        message: error?.message || "Unknown error occurred"
+      });
+      toast({
+        title: "Connection Test Failed",
+        description: error?.message || "Failed to test API connection. Please try again.",
         variant: "destructive",
       });
     }
@@ -1015,6 +1050,86 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                       </FormItem>
                     )}
                   />
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* API Connection */}
+              <div className="space-y-4">
+                <Label className="text-base font-medium flex items-center gap-2">
+                  <Key className="h-4 w-4" />
+                  API Connection
+                </Label>
+                
+                <div className="space-y-3">
+                  <div className="text-sm text-muted-foreground">
+                    Test your Aster DEX API connection to ensure live trading will work correctly. Your API credentials are securely stored as environment variables.
+                  </div>
+                  
+                  <div className="flex items-center gap-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => testConnectionMutation.mutate()}
+                      disabled={testConnectionMutation.isPending}
+                      data-testid="button-test-api-connection"
+                    >
+                      {testConnectionMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Key className="h-4 w-4 mr-2" />
+                      )}
+                      Test Connection
+                    </Button>
+                    
+                    {apiTestResult && (
+                      <div className="flex items-center gap-2">
+                        {apiTestResult.success ? (
+                          <>
+                            <CheckCircle2 className="h-5 w-5 text-lime-600 dark:text-lime-400" />
+                            <span className="text-sm font-medium text-lime-600 dark:text-lime-400">
+                              Connected
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <XCircle className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+                            <span className="text-sm font-medium text-orange-600 dark:text-orange-400">
+                              Failed
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  
+                  {apiTestResult && !apiTestResult.success && apiTestResult.message && (
+                    <div className="text-sm text-orange-600 dark:text-orange-400 bg-orange-100 dark:bg-orange-950/30 p-3 rounded-md">
+                      {apiTestResult.message}
+                    </div>
+                  )}
+                  
+                  {apiTestResult && apiTestResult.success && apiTestResult.accountInfo && (
+                    <div className="text-sm space-y-1 bg-lime-100 dark:bg-lime-950/30 p-3 rounded-md">
+                      <div className="font-medium text-lime-900 dark:text-lime-100">Account Status:</div>
+                      <div className="grid grid-cols-3 gap-2 text-xs text-lime-800 dark:text-lime-200">
+                        <div>
+                          <span className="font-medium">Trading:</span>{' '}
+                          {apiTestResult.accountInfo.canTrade ? '✓' : '✗'}
+                        </div>
+                        <div>
+                          <span className="font-medium">Deposit:</span>{' '}
+                          {apiTestResult.accountInfo.canDeposit ? '✓' : '✗'}
+                        </div>
+                        <div>
+                          <span className="font-medium">Withdraw:</span>{' '}
+                          {apiTestResult.accountInfo.canWithdraw ? '✓' : '✗'}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 

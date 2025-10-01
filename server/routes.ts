@@ -164,11 +164,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       console.log('🧪 Testing Aster DEX API connection...');
       
-      // Make request to Aster DEX API
-      const response = await fetch(`https://api.aster.cx/api/v3/account?${signedParams}`, {
+      // Make request to Aster DEX API (futures endpoint)
+      const response = await fetch(`https://fapi.asterdex.com/fapi/v2/account?${signedParams}`, {
         method: 'GET',
         headers: {
-          'X-ASTER-APIKEY': apiKey,
+          'X-MBX-APIKEY': apiKey,
           'Content-Type': 'application/json'
         }
       });
