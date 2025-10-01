@@ -1538,22 +1538,24 @@ async function connectToAsterDEX(clients: Set<WebSocket>) {
             return; // Skip this duplicate
           }
           
-          // Check in-memory deduplication
-          const lastSeen = recentLiquidations.get(signature);
-          if (lastSeen && (now - lastSeen) < DEDUP_WINDOW_MS) {
-            console.log(`🔄 Skipping duplicate liquidation (in-memory): ${liquidationData.symbol} ${liquidationData.side} $${liquidationData.value}`);
-            return;
-          }
-          
-          // Mark as seen IMMEDIATELY and add to processingQueue ATOMICALLY
-          recentLiquidations.set(signature, now);
-          
-          // Create a promise for this processing
+          // Create and set processing promise IMMEDIATELY to lock this signature atomically
           let resolveProcessing: () => void;
           const processingPromise = new Promise<void>((resolve) => {
             resolveProcessing = resolve;
           });
           processingQueue.set(signature, processingPromise);
+          
+          // Check in-memory deduplication
+          const lastSeen = recentLiquidations.get(signature);
+          if (lastSeen && (now - lastSeen) < DEDUP_WINDOW_MS) {
+            console.log(`🔄 Skipping duplicate liquidation (in-memory): ${liquidationData.symbol} ${liquidationData.side} $${liquidationData.value}`);
+            resolveProcessing!();
+            setTimeout(() => processingQueue.delete(signature), 100);
+            return;
+          }
+          
+          // Mark as seen IMMEDIATELY
+          recentLiquidations.set(signature, now);
           
           try {
               // Clean up old entries periodically (keep map size bounded)
