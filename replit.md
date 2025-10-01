@@ -10,6 +10,14 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+- **Comprehensive Data Validation & Integrity Fixes (2025-10-01):** Performed full database audit and fixed critical data integrity issues:
+  - Deleted 1,281 duplicate liquidations from database (Aster WebSocket occasionally sends duplicates milliseconds apart)
+  - Fixed duplicate exit fills bug - deleted 293 duplicates and added position.isOpen guard to prevent future re-closings
+  - Fixed session update logic to fetch from database instead of stale in-memory cache, preventing incorrect balance calculations after server restarts
+  - Recalculated session statistics from actual data: balance $11,524.21 (was $9,990.66), P&L +$1,524.21 (was -$6.22), trades 196 (was 6)
+  - Fixed performance overview endpoint to count only closed positions as totalTrades (was incorrectly counting all positions including open ones)
+  - Verified all 227 positions have valid layer structure (≤5 layers, no duplicates)
+  - Confirmed all new fills have correct 0.035% fees; 81 historical fills with $0 fees are from before fee system was implemented
 - **Fixed Exit Fee Calculation Bug:** Resolved issue where exit fees were always $0 due to session lookup mismatch. The strategy engine now stores sessions by both strategy ID and session ID, ensuring exit fees are properly calculated at 0.035% for paper trading mode. This fix applies to all future position closings
 - **Enhanced Completed Trade Details:** Completed trades now display comprehensive layer-by-layer information in a collapsible interface. When expanded, each trade shows all entry layers (quantity, price, timestamp, and individual fee) grouped together, followed by the exit fill with its details. Fees are now separated into "Entry Fees" and "Exit Fees" for precise cost tracking. The collapsible design keeps the UI clean while providing detailed insights when needed
 - **Live Strategy Editing with Change Tracking:** Trading strategies can now be edited while actively running, with all changes automatically tracked and visualized. Strategy modifications are recorded in the database with before/after field values and displayed as blue change cards interspersed chronologically with completed trades. Performance chart includes vertical reference lines marking exact timestamps when strategy parameters were updated, providing complete visibility into how strategy adjustments affect trading performance
