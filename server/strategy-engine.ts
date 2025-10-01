@@ -155,14 +155,36 @@ export class StrategyEngine extends EventEmitter {
   // Unregister a strategy
   async unregisterStrategy(strategyId: string) {
     console.log(`📤 Unregistering strategy: ${strategyId}`);
-    this.activeStrategies.delete(strategyId);
     
-    // Delete session from both strategy ID and session ID keys
+    // CRITICAL: Capture session BEFORE removing from maps
     const session = this.activeSessions.get(strategyId);
+    
+    // CRITICAL: Remove from maps IMMEDIATELY to prevent race condition
+    // This makes the strategy invisible to handleLiquidation before any awaits
+    this.activeStrategies.delete(strategyId);
     if (session) {
       this.activeSessions.delete(session.id);
     }
     this.activeSessions.delete(strategyId);
+    
+    // Now safe to cancel pending orders using captured session - strategy is already invisible
+    if (session) {
+      const ordersToCancel: string[] = [];
+      const pendingEntries = Array.from(this.pendingPaperOrders.entries());
+      for (const [orderId, orderData] of pendingEntries) {
+        if (orderData.order.sessionId === session.id) {
+          ordersToCancel.push(orderId);
+        }
+      }
+      
+      if (ordersToCancel.length > 0) {
+        console.log(`🚫 Cancelling ${ordersToCancel.length} pending orders for session ${session.id}`);
+        for (const orderId of ordersToCancel) {
+          await storage.updateOrderStatus(orderId, 'cancelled');
+          this.pendingPaperOrders.delete(orderId);
+        }
+      }
+    }
     
     // Note: We do NOT end the trade session here to preserve open positions
     // The session stays active so positions remain visible when strategy is restarted
@@ -200,6 +222,9 @@ export class StrategyEngine extends EventEmitter {
 
   // Evaluate if a liquidation triggers a trading signal for a strategy
   private async evaluateStrategySignal(strategy: Strategy, liquidation: Liquidation) {
+    // Double-check strategy is still active (prevents race condition during unregister)
+    if (!this.activeStrategies.has(strategy.id)) return;
+    
     const session = this.activeSessions.get(strategy.id);
     if (!session || !session.isActive) return;
 
