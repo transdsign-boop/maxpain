@@ -148,10 +148,10 @@ export default function PerformanceOverview() {
           <p className="text-sm font-semibold mb-1">Trade #{data.tradeNumber}</p>
           <p className="text-xs text-muted-foreground mb-2">{format(new Date(data.timestamp), "MMM d, h:mm a")}</p>
           <p className="text-xs mb-1"><span className="font-medium">{data.symbol}</span> {data.side}</p>
-          <p className={`text-sm font-mono font-semibold ${data.pnl >= 0 ? 'text-lime-500' : 'text-red-600'}`}>
+          <p className={`text-sm font-mono font-semibold ${data.pnl >= 0 ? 'text-lime-500' : 'text-orange-500'}`}>
             P&L: {data.pnl >= 0 ? '+' : ''}${Math.abs(data.pnl).toFixed(2)}
           </p>
-          <p className={`text-sm font-mono font-semibold ${data.cumulativePnl >= 0 ? 'text-lime-500' : 'text-red-600'}`}>
+          <p className={`text-sm font-mono font-semibold ${data.cumulativePnl >= 0 ? 'text-lime-500' : 'text-orange-500'}`}>
             Cumulative: {data.cumulativePnl >= 0 ? '+' : ''}${Math.abs(data.cumulativePnl).toFixed(2)}
           </p>
         </div>
@@ -173,10 +173,10 @@ export default function PerformanceOverview() {
           {/* Main P&L - Hero Size */}
           <div className="space-y-1 md:space-y-2">
             <div className="text-xs text-muted-foreground uppercase tracking-wider">Total P&L</div>
-            <div className={`text-4xl md:text-6xl font-mono font-bold ${isProfitable ? 'text-primary' : 'text-red-600'}`} data-testid="text-total-pnl">
+            <div className={`text-4xl md:text-6xl font-mono font-bold ${isProfitable ? 'text-primary' : 'text-orange-500'}`} data-testid="text-total-pnl">
               {formatCurrency(performance.totalPnl)}
             </div>
-            <div className={`text-lg md:text-xl font-mono ${isProfitable ? 'text-primary/80' : 'text-red-600/80'}`}>
+            <div className={`text-lg md:text-xl font-mono ${isProfitable ? 'text-primary/80' : 'text-orange-500/80'}`}>
               {(performance.totalPnlPercent ?? 0) >= 0 ? '+' : ''}{(performance.totalPnlPercent ?? 0).toFixed(2)}%
             </div>
           </div>
@@ -208,7 +208,7 @@ export default function PerformanceOverview() {
 
             <div className="space-y-1 md:space-y-2">
               <div className="text-xs text-muted-foreground uppercase tracking-wider">Profit Factor</div>
-              <div className={`text-3xl md:text-4xl font-mono font-bold ${(performance.profitFactor ?? 0) >= 1 ? 'text-primary' : 'text-red-600'}`} data-testid="text-profit-factor">
+              <div className={`text-3xl md:text-4xl font-mono font-bold ${(performance.profitFactor ?? 0) >= 1 ? 'text-primary' : 'text-orange-500'}`} data-testid="text-profit-factor">
                 {(performance.profitFactor ?? 0) >= 999 ? '∞' : (performance.profitFactor ?? 0).toFixed(2)}
               </div>
               <div className="text-xs md:text-sm text-muted-foreground">
@@ -276,8 +276,8 @@ export default function PerformanceOverview() {
                     <stop offset="100%" stopColor="rgb(190, 242, 100)" stopOpacity={0.05}/>
                   </linearGradient>
                   <linearGradient id="negativePnlGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="rgb(220, 38, 38)" stopOpacity={0.05}/>
-                    <stop offset="100%" stopColor="rgb(220, 38, 38)" stopOpacity={0.3}/>
+                    <stop offset="0%" stopColor="rgb(251, 146, 60)" stopOpacity={0.05}/>
+                    <stop offset="100%" stopColor="rgb(251, 146, 60)" stopOpacity={0.3}/>
                   </linearGradient>
                 </defs>
                 <Bar 
@@ -290,7 +290,7 @@ export default function PerformanceOverview() {
                   {chartData.map((entry, index) => (
                     <Cell 
                       key={`cell-${index}`} 
-                      fill={entry.pnl >= 0 ? 'rgba(190, 242, 100, 0.7)' : 'rgba(220, 38, 38, 0.7)'} 
+                      fill={entry.pnl >= 0 ? 'rgba(190, 242, 100, 0.7)' : 'rgba(251, 146, 60, 0.7)'} 
                     />
                   ))}
                 </Bar>
@@ -311,7 +311,7 @@ export default function PerformanceOverview() {
                   yAxisId="right"
                   type="monotone"
                   dataKey={(entry: any) => entry.cumulativePnl <= 0 ? entry.cumulativePnl : null}
-                  stroke="rgb(220, 38, 38)"
+                  stroke="rgb(251, 146, 60)"
                   strokeWidth={2}
                   dot={false}
                   connectNulls={false}
@@ -398,7 +398,7 @@ export default function PerformanceOverview() {
                 <TrendingDown className="h-3 w-3" />
                 Avg Loss
               </div>
-              <div className="text-lg font-mono font-semibold text-red-600" data-testid="text-avg-loss">
+              <div className="text-lg font-mono font-semibold text-orange-500" data-testid="text-avg-loss">
                 {formatCurrency(-Math.abs(performance.averageLoss))}
               </div>
             </div>
@@ -415,7 +415,7 @@ export default function PerformanceOverview() {
 
             <div className="space-y-1">
               <div className="text-xs text-muted-foreground">Worst</div>
-              <div className="text-lg font-mono font-semibold text-red-600" data-testid="text-worst-trade">
+              <div className="text-lg font-mono font-semibold text-orange-500" data-testid="text-worst-trade">
                 {formatCurrency(-Math.abs(performance.worstTrade))}
               </div>
             </div>
@@ -429,14 +429,14 @@ export default function PerformanceOverview() {
 
             <div className="space-y-1">
               <div className="text-xs text-muted-foreground">Realized</div>
-              <div className={`text-lg font-mono font-semibold ${performance.totalRealizedPnl >= 0 ? 'text-lime-500' : 'text-red-600'}`}>
+              <div className={`text-lg font-mono font-semibold ${performance.totalRealizedPnl >= 0 ? 'text-lime-500' : 'text-orange-500'}`}>
                 {formatCurrency(performance.totalRealizedPnl)}
               </div>
             </div>
 
             <div className="space-y-1">
               <div className="text-xs text-muted-foreground">Unrealized</div>
-              <div className={`text-lg font-mono font-semibold ${performance.totalUnrealizedPnl >= 0 ? 'text-lime-500' : 'text-red-600'}`}>
+              <div className={`text-lg font-mono font-semibold ${performance.totalUnrealizedPnl >= 0 ? 'text-lime-500' : 'text-orange-500'}`}>
                 {formatCurrency(performance.totalUnrealizedPnl)}
               </div>
             </div>
@@ -446,7 +446,7 @@ export default function PerformanceOverview() {
                 <TrendingDown className="h-3 w-3" />
                 Max Drawdown
               </div>
-              <div className="text-lg font-mono font-semibold text-red-600">
+              <div className="text-lg font-mono font-semibold text-orange-500">
                 {formatCurrency(performance.maxDrawdown ?? 0)}
               </div>
             </div>
