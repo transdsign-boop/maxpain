@@ -111,9 +111,9 @@ export default function LiquidationTable({
           </div>
 
           <div className="flex items-center gap-2 p-3 bg-muted/20 rounded-md">
-            <TrendingDown className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+            <TrendingDown className="h-4 w-4 text-red-700 dark:text-red-500" />
             <div>
-              <div className="text-lg font-bold text-orange-600 dark:text-orange-400" data-testid="text-short-count">
+              <div className="text-lg font-bold text-red-700 dark:text-red-500" data-testid="text-short-count">
                 {stats.shortLiquidations}
               </div>
               <div className="text-xs text-muted-foreground">Short ({shortPercentage}%)</div>

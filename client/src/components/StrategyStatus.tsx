@@ -114,7 +114,7 @@ function CompletedTradeCard({ position, formatCurrency, formatPercentage, getPnl
               </CollapsibleTrigger>
               <span className="font-semibold text-sm">{position.symbol}</span>
               <Badge 
-                className={`text-xs ${position.side === 'long' ? 'bg-lime-600 text-white' : 'bg-orange-600 text-white'}`}
+                className={`text-xs ${position.side === 'long' ? 'bg-lime-600 text-white' : 'bg-red-700 text-white'}`}
               >
                 {position.side.toUpperCase()}
               </Badge>
@@ -314,7 +314,7 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
         className="relative rounded-2xl overflow-hidden ring-1 ring-border shadow-lg transition-all duration-300" 
         data-testid={`position-${position.symbol}`}
         style={{
-          background: `linear-gradient(to right, rgb(251 146 60 / 0.12) 0%, rgb(156 163 175 / 0.06) ${neutralPoint}%, rgb(190 242 100 / 0.12) 100%)`
+          background: `linear-gradient(to right, rgb(220 38 38 / 0.12) 0%, rgb(156 163 175 / 0.06) ${neutralPoint}%, rgb(190 242 100 / 0.12) 100%)`
         }}
       >
         {/* Position pressure indicator line */}
@@ -325,7 +325,7 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
             backgroundColor: unrealizedPnlPercent > 0 
               ? 'rgb(190, 242, 100)'
               : unrealizedPnlPercent < 0 
-              ? 'rgb(251, 146, 60)'
+              ? 'rgb(220, 38, 38)'
               : 'rgb(156, 163, 175)'
           }}
           data-testid={`pressure-indicator-${position.symbol}`}
@@ -340,7 +340,7 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
             backgroundColor: unrealizedPnlPercent > 0 
               ? 'rgba(190, 242, 100, 0.15)'
               : unrealizedPnlPercent < 0 
-              ? 'rgba(251, 146, 60, 0.15)'
+              ? 'rgba(220, 38, 38, 0.15)'
               : 'rgba(156, 163, 175, 0.08)'
           }}
         />
@@ -349,18 +349,18 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
           {/* Left: Asset label with edge-bleed */}
           <div className="relative isolate overflow-hidden">
             {/* Gradient background */}
-            <div className={`absolute inset-0 ${isLong ? 'bg-gradient-to-br from-lime-600/25 via-lime-500/10 to-transparent' : 'bg-gradient-to-br from-orange-600/25 via-orange-500/10 to-transparent'}`} />
+            <div className={`absolute inset-0 ${isLong ? 'bg-gradient-to-br from-lime-600/25 via-lime-500/10 to-transparent' : 'bg-gradient-to-br from-red-700/25 via-red-600/10 to-transparent'}`} />
             
             {/* Large background asset text */}
             <div className="absolute -left-2 top-1/2 -translate-y-1/2 select-none pointer-events-none">
-              <span className={`font-black tracking-tight text-5xl sm:text-6xl md:text-7xl leading-none whitespace-nowrap ${isLong ? 'text-lime-400/15' : 'text-orange-400/15'}`}>
+              <span className={`font-black tracking-tight text-5xl sm:text-6xl md:text-7xl leading-none whitespace-nowrap ${isLong ? 'text-lime-400/15' : 'text-red-500/15'}`}>
                 {position.symbol}
               </span>
             </div>
 
             {/* Top row: compact chips */}
             <div className="relative p-2 flex items-center gap-2 flex-wrap">
-              <Badge className={`text-xs px-1.5 py-0.5 ${isLong ? 'bg-lime-500/15 text-lime-300 border-lime-400/30' : 'bg-orange-500/15 text-orange-300 border-orange-400/30'}`}>
+              <Badge className={`text-xs px-1.5 py-0.5 ${isLong ? 'bg-lime-500/15 text-lime-300 border-lime-400/30' : 'bg-red-600/15 text-red-400 border-red-500/30'}`}>
                 {isLong ? <TrendingUp className="h-3 w-3 mr-1" /> : <TrendingDown className="h-3 w-3 mr-1" />}
                 {position.side.toUpperCase()}
               </Badge>
@@ -397,7 +397,7 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
               {liquidationPrice !== null && distanceToLiquidation !== null && (
                 <div className="min-w-0">
                   <div className="text-[10px] text-muted-foreground truncate">Liq:</div>
-                  <div className={`text-[13px] truncate ${distanceToLiquidation < 10 ? 'text-orange-600 dark:text-orange-400' : 'text-foreground/90'}`} data-testid={`liquidation-info-${position.symbol}`}>
+                  <div className={`text-[13px] truncate ${distanceToLiquidation < 10 ? 'text-red-700 dark:text-red-500' : 'text-foreground/90'}`} data-testid={`liquidation-info-${position.symbol}`}>
                     {formatCurrency(liquidationPrice)} ({distanceToLiquidation.toFixed(1)}%)
                   </div>
                 </div>
@@ -406,7 +406,7 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
             <div className="grid grid-cols-3 gap-x-3 text-sm">
               <div className="min-w-0">
                 <div className="text-[10px] text-muted-foreground truncate">SL:</div>
-                <div className="text-[13px] text-orange-600 dark:text-orange-400 truncate">{formatCurrency(stopLossPrice)}</div>
+                <div className="text-[13px] text-red-700 dark:text-red-500 truncate">{formatCurrency(stopLossPrice)}</div>
               </div>
               <div className="min-w-0">
                 <div className="text-[10px] text-muted-foreground truncate">TP:</div>
@@ -731,7 +731,7 @@ export function StrategyStatus() {
 
   const getPnlColor = (pnl: number) => {
     if (pnl > 0) return "text-lime-600 dark:text-lime-400";
-    if (pnl < 0) return "text-orange-600 dark:text-orange-400";
+    if (pnl < 0) return "text-red-700 dark:text-red-500";
     return "text-muted-foreground";
   };
 
