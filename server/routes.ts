@@ -1643,22 +1643,32 @@ async function connectToAsterDEX(clients: Set<WebSocket>) {
             // Validate and store in database
             const validatedData = insertLiquidationSchema.parse(liquidationData);
             let storedLiquidation;
-            let isDuplicate = false;
+            let wasAlreadyInDatabase = false;
             try {
               storedLiquidation = await storage.insertLiquidation(validatedData);
+              console.log(`✅ New liquidation stored: ${liquidationData.symbol} ${liquidationData.side} $${(parseFloat(liquidationData.value)).toFixed(2)} [Event: ${eventTimestamp}]`);
             } catch (dbError: any) {
-              // If this fails due to unique constraint, it's a duplicate from Aster DEX
+              // If this fails due to unique constraint, fetch existing row from database
+              // This liquidation already exists in DB (from previous session), but this is
+              // the FIRST time we're seeing it in the current session (passed the memory check)
               if (dbError.code === '23505' || dbError.constraint?.includes('event_timestamp')) {
-                isDuplicate = true;
-                console.log(`🔄 Duplicate liquidation skipped (Aster event ${eventTimestamp})`);
+                wasAlreadyInDatabase = true;
+                // Fetch the existing liquidation from database so we can process it
+                const existing = await storage.getLiquidationsByEventTimestamp(eventTimestamp);
+                if (existing.length > 0) {
+                  storedLiquidation = existing[0];
+                  console.log(`📦 Fetched existing liquidation from DB (first time in current session): ${liquidationData.symbol} ${liquidationData.side} $${(parseFloat(liquidationData.value)).toFixed(2)} [Event: ${eventTimestamp}]`);
+                } else {
+                  console.error('❌ Unique constraint error but no existing row found');
+                }
               } else {
                 console.error('❌ Database insert error:', dbError);
               }
-              // Don't return - let finally block execute
             }
             
-            // Only process NEW liquidations (not duplicates) for trading and display
-            if (storedLiquidation && !isDuplicate) {
+            // ALWAYS process liquidations that pass the memory check (recentLiquidations)
+            // because this is the FIRST time seeing them in the current session
+            if (storedLiquidation) {
               // Emit to strategy engine for trade execution
               try {
                 strategyEngine.emit('liquidation', storedLiquidation);
@@ -1678,7 +1688,7 @@ async function connectToAsterDEX(clients: Set<WebSocket>) {
                 }
               });
 
-              console.log(`🚨 REAL Liquidation: ${liquidationData.symbol} ${liquidationData.side} $${(parseFloat(liquidationData.value)).toFixed(2)} [Event: ${eventTimestamp}]`);
+              console.log(`🚨 REAL Liquidation processed: ${liquidationData.symbol} ${liquidationData.side} $${(parseFloat(liquidationData.value)).toFixed(2)} [Event: ${eventTimestamp}] ${wasAlreadyInDatabase ? '(from previous session)' : '(new)'}`);
             }
           } finally {
             // ALWAYS resolve the processing promise and clean up
