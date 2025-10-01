@@ -391,9 +391,10 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
+      {/* Header - Optimized for Mobile */}
       <header className="fixed top-0 left-0 right-0 z-50 border-b bg-card">
-        <div className="flex items-center justify-between px-6 py-3">
+        {/* Desktop Layout */}
+        <div className="hidden lg:flex items-center justify-between px-6 py-3">
           <AsterLogo data-testid="app-logo" />
 
           <div className="flex items-center gap-8">
@@ -484,11 +485,75 @@ export default function Dashboard() {
             <ThemeToggle />
           </div>
         </div>
+
+        {/* Mobile Layout */}
+        <div className="lg:hidden px-4 py-2 space-y-2">
+          {/* Top Row: Logo and Controls */}
+          <div className="flex items-center justify-between">
+            <div className="scale-75 origin-left">
+              <AsterLogo data-testid="app-logo" />
+            </div>
+
+            <div className="flex items-center gap-2">
+              <ConnectionStatus isConnected={isConnected} />
+              <Button 
+                variant="default" 
+                size="icon"
+                onClick={() => setIsStrategyDialogOpen(true)}
+                data-testid="button-trading-strategy"
+              >
+                <Settings2 className="h-4 w-4" />
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon" data-testid="button-settings">
+                    <Settings className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={exportSettings} data-testid="button-export-settings">
+                    <Download className="mr-2 h-4 w-4" />
+                    Export Settings
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => fileInputRef.current?.click()} data-testid="button-import-settings">
+                    <Upload className="mr-2 h-4 w-4" />
+                    Import Settings
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <ThemeToggle />
+            </div>
+          </div>
+
+          {/* Bottom Row: Key Metrics Only (Mobile) */}
+          {positionSummary && (
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <div className="flex flex-col">
+                <div className="text-muted-foreground">Balance</div>
+                <div className="text-lg font-mono font-bold" data-testid="text-current-balance-mobile">
+                  {formatCurrency(currentBalanceWithUnrealized)}
+                </div>
+              </div>
+              <div className="flex flex-col">
+                <div className="text-muted-foreground">Available</div>
+                <div className="text-sm font-mono font-semibold text-emerald-600 dark:text-emerald-400" data-testid="text-available-margin-mobile">
+                  {formatCurrency(availableMargin)}
+                </div>
+              </div>
+              <div className="flex flex-col">
+                <div className="text-muted-foreground">Positions</div>
+                <div className="text-sm font-mono font-semibold" data-testid="text-active-positions-mobile">
+                  {positionSummary.activePositions}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </header>
 
       {/* Main Content with Trading Controls */}
       <main 
-        className={`p-6 space-y-6 transition-all duration-300 ${
+        className={`p-3 md:p-6 space-y-4 md:space-y-6 transition-all duration-300 ${
           isSidebarCollapsed ? 'md:mr-12' : 'md:mr-80'
         }`}
         style={{ paddingTop: 'calc(73px + 1.5rem)' }}
