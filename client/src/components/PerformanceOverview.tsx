@@ -1,11 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Button } from "@/components/ui/button";
-import { TrendingUp, TrendingDown, Target, Award, Activity, LineChart, ChevronDown } from "lucide-react";
+import { TrendingUp, TrendingDown, Target, Award, Activity, LineChart } from "lucide-react";
 import { ComposedChart, Line, Area, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, Label } from "recharts";
 import { format } from "date-fns";
-import { useState } from "react";
 
 interface PerformanceMetrics {
   totalTrades: number;
@@ -41,7 +38,6 @@ interface TradeDataPoint {
 }
 
 export default function PerformanceOverview() {
-  const [isStatsOpen, setIsStatsOpen] = useState(false);
   
   const { data: performance, isLoading } = useQuery<PerformanceMetrics>({
     queryKey: ['/api/performance/overview'],
@@ -416,98 +412,113 @@ export default function PerformanceOverview() {
           )}
         </div>
 
-        {/* Trade Statistics Section */}
-        <Collapsible open={isStatsOpen} onOpenChange={setIsStatsOpen} className="pt-4 border-t border-border">
-          <CollapsibleTrigger asChild>
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              className="w-full justify-between p-0 h-auto hover:bg-transparent"
-              data-testid="button-toggle-trade-stats"
-            >
-              <div className="text-xs text-muted-foreground uppercase tracking-wider">Trade Statistics</div>
-              <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${isStatsOpen ? 'rotate-180' : ''}`} />
-            </Button>
-          </CollapsibleTrigger>
-          <CollapsibleContent className="mt-4">
-            <div className="grid grid-cols-3 md:grid-cols-6 gap-4">
-            <div className="space-y-1">
-              <div className="text-xs text-muted-foreground flex items-center gap-1">
-                <TrendingUp className="h-3 w-3" />
-                Avg Win
+        {/* Moving Ticker - Trade Statistics */}
+        <div className="-mx-6 overflow-hidden bg-muted/30 border-y border-border py-3">
+          <div className="ticker-wrapper">
+            <div className="ticker-content">
+              {/* First set of stats */}
+              <div className="ticker-item">
+                <TrendingUp className="h-3 w-3 text-lime-500" />
+                <span className="text-xs text-muted-foreground">Avg Win</span>
+                <span className="text-sm font-mono font-semibold text-lime-500" data-testid="text-avg-win">{formatCurrency(performance.averageWin)}</span>
               </div>
-              <div className="text-lg font-mono font-semibold text-lime-500" data-testid="text-avg-win">
-                {formatCurrency(performance.averageWin)}
+              <div className="ticker-separator" />
+              <div className="ticker-item">
+                <TrendingDown className="h-3 w-3 text-red-600" />
+                <span className="text-xs text-muted-foreground">Avg Loss</span>
+                <span className="text-sm font-mono font-semibold text-red-600" data-testid="text-avg-loss">{formatCurrency(-Math.abs(performance.averageLoss))}</span>
               </div>
-            </div>
-
-            <div className="space-y-1">
-              <div className="text-xs text-muted-foreground flex items-center gap-1">
-                <TrendingDown className="h-3 w-3" />
-                Avg Loss
+              <div className="ticker-separator" />
+              <div className="ticker-item">
+                <Award className="h-3 w-3 text-lime-500" />
+                <span className="text-xs text-muted-foreground">Best</span>
+                <span className="text-sm font-mono font-semibold text-lime-500" data-testid="text-best-trade">{formatCurrency(performance.bestTrade)}</span>
               </div>
-              <div className="text-lg font-mono font-semibold text-red-600" data-testid="text-avg-loss">
-                {formatCurrency(-Math.abs(performance.averageLoss))}
+              <div className="ticker-separator" />
+              <div className="ticker-item">
+                <span className="text-xs text-muted-foreground">Worst</span>
+                <span className="text-sm font-mono font-semibold text-red-600" data-testid="text-worst-trade">{formatCurrency(-Math.abs(performance.worstTrade))}</span>
               </div>
-            </div>
-
-            <div className="space-y-1">
-              <div className="text-xs text-muted-foreground flex items-center gap-1">
-                <Award className="h-3 w-3" />
-                Best
+              <div className="ticker-separator" />
+              <div className="ticker-item">
+                <span className="text-xs text-muted-foreground">Fees Paid</span>
+                <span className="text-sm font-mono font-semibold text-muted-foreground" data-testid="text-total-fees">-${(performance.totalFees ?? 0).toFixed(2)}</span>
               </div>
-              <div className="text-lg font-mono font-semibold text-lime-500" data-testid="text-best-trade">
-                {formatCurrency(performance.bestTrade)}
+              <div className="ticker-separator" />
+              <div className="ticker-item">
+                <span className="text-xs text-muted-foreground">Realized</span>
+                <span className={`text-sm font-mono font-semibold ${performance.totalRealizedPnl >= 0 ? 'text-lime-500' : 'text-red-600'}`}>{formatCurrency(performance.totalRealizedPnl)}</span>
               </div>
-            </div>
-
-            <div className="space-y-1">
-              <div className="text-xs text-muted-foreground">Worst</div>
-              <div className="text-lg font-mono font-semibold text-red-600" data-testid="text-worst-trade">
-                {formatCurrency(-Math.abs(performance.worstTrade))}
+              <div className="ticker-separator" />
+              <div className="ticker-item">
+                <span className="text-xs text-muted-foreground">Unrealized</span>
+                <span className={`text-sm font-mono font-semibold ${performance.totalUnrealizedPnl >= 0 ? 'text-lime-500' : 'text-red-600'}`}>{formatCurrency(performance.totalUnrealizedPnl)}</span>
               </div>
-            </div>
-
-            <div className="space-y-1">
-              <div className="text-xs text-muted-foreground">Fees Paid</div>
-              <div className="text-lg font-mono font-semibold text-muted-foreground" data-testid="text-total-fees">
-                -${(performance.totalFees ?? 0).toFixed(2)}
+              <div className="ticker-separator" />
+              <div className="ticker-item">
+                <TrendingDown className="h-3 w-3 text-red-600" />
+                <span className="text-xs text-muted-foreground">Max Drawdown</span>
+                <span className="text-sm font-mono font-semibold text-red-600">{formatCurrency(performance.maxDrawdown ?? 0)}</span>
               </div>
-            </div>
-
-            <div className="space-y-1">
-              <div className="text-xs text-muted-foreground">Realized</div>
-              <div className={`text-lg font-mono font-semibold ${performance.totalRealizedPnl >= 0 ? 'text-lime-500' : 'text-red-600'}`}>
-                {formatCurrency(performance.totalRealizedPnl)}
+              <div className="ticker-separator" />
+              <div className="ticker-item">
+                <span className="text-xs text-muted-foreground">Avg Time</span>
+                <span className="text-sm font-mono font-semibold">{formatTradeTime(performance.averageTradeTimeMs)}</span>
               </div>
-            </div>
-
-            <div className="space-y-1">
-              <div className="text-xs text-muted-foreground">Unrealized</div>
-              <div className={`text-lg font-mono font-semibold ${performance.totalUnrealizedPnl >= 0 ? 'text-lime-500' : 'text-red-600'}`}>
-                {formatCurrency(performance.totalUnrealizedPnl)}
+              
+              {/* Duplicate set for seamless loop */}
+              <div className="ticker-separator" />
+              <div className="ticker-item">
+                <TrendingUp className="h-3 w-3 text-lime-500" />
+                <span className="text-xs text-muted-foreground">Avg Win</span>
+                <span className="text-sm font-mono font-semibold text-lime-500">{formatCurrency(performance.averageWin)}</span>
               </div>
-            </div>
-
-            <div className="space-y-1">
-              <div className="text-xs text-muted-foreground flex items-center gap-1">
-                <TrendingDown className="h-3 w-3" />
-                Max Drawdown
+              <div className="ticker-separator" />
+              <div className="ticker-item">
+                <TrendingDown className="h-3 w-3 text-red-600" />
+                <span className="text-xs text-muted-foreground">Avg Loss</span>
+                <span className="text-sm font-mono font-semibold text-red-600">{formatCurrency(-Math.abs(performance.averageLoss))}</span>
               </div>
-              <div className="text-lg font-mono font-semibold text-red-600">
-                {formatCurrency(performance.maxDrawdown ?? 0)}
+              <div className="ticker-separator" />
+              <div className="ticker-item">
+                <Award className="h-3 w-3 text-lime-500" />
+                <span className="text-xs text-muted-foreground">Best</span>
+                <span className="text-sm font-mono font-semibold text-lime-500">{formatCurrency(performance.bestTrade)}</span>
               </div>
-            </div>
-
-            <div className="space-y-1">
-              <div className="text-xs text-muted-foreground">Avg Time</div>
-              <div className="text-lg font-mono font-semibold">
-                {formatTradeTime(performance.averageTradeTimeMs)}
+              <div className="ticker-separator" />
+              <div className="ticker-item">
+                <span className="text-xs text-muted-foreground">Worst</span>
+                <span className="text-sm font-mono font-semibold text-red-600">{formatCurrency(-Math.abs(performance.worstTrade))}</span>
+              </div>
+              <div className="ticker-separator" />
+              <div className="ticker-item">
+                <span className="text-xs text-muted-foreground">Fees Paid</span>
+                <span className="text-sm font-mono font-semibold text-muted-foreground">-${(performance.totalFees ?? 0).toFixed(2)}</span>
+              </div>
+              <div className="ticker-separator" />
+              <div className="ticker-item">
+                <span className="text-xs text-muted-foreground">Realized</span>
+                <span className={`text-sm font-mono font-semibold ${performance.totalRealizedPnl >= 0 ? 'text-lime-500' : 'text-red-600'}`}>{formatCurrency(performance.totalRealizedPnl)}</span>
+              </div>
+              <div className="ticker-separator" />
+              <div className="ticker-item">
+                <span className="text-xs text-muted-foreground">Unrealized</span>
+                <span className={`text-sm font-mono font-semibold ${performance.totalUnrealizedPnl >= 0 ? 'text-lime-500' : 'text-red-600'}`}>{formatCurrency(performance.totalUnrealizedPnl)}</span>
+              </div>
+              <div className="ticker-separator" />
+              <div className="ticker-item">
+                <TrendingDown className="h-3 w-3 text-red-600" />
+                <span className="text-xs text-muted-foreground">Max Drawdown</span>
+                <span className="text-sm font-mono font-semibold text-red-600">{formatCurrency(performance.maxDrawdown ?? 0)}</span>
+              </div>
+              <div className="ticker-separator" />
+              <div className="ticker-item">
+                <span className="text-xs text-muted-foreground">Avg Time</span>
+                <span className="text-sm font-mono font-semibold">{formatTradeTime(performance.averageTradeTimeMs)}</span>
               </div>
             </div>
           </div>
-          </CollapsibleContent>
-        </Collapsible>
+        </div>
       </CardContent>
     </Card>
   );
