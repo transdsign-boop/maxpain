@@ -708,17 +708,6 @@ export default function Dashboard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Debug Controls */}
-      <div className="fixed bottom-4 left-4 space-y-2 z-30">
-        <button
-          onClick={() => setIsConnected(!isConnected)}
-          className="bg-primary text-primary-foreground px-3 py-1 rounded text-xs hover-elevate"
-          data-testid="button-debug-connection"
-        >
-          Debug: Toggle Connection
-        </button>
-      </div>
     </div>
   );
 }
