@@ -679,7 +679,7 @@ export function StrategyStatus() {
   const activeStrategy = strategies?.find(s => s.isActive);
 
   // Then fetch positions using the strategy ID
-  const isLiveMode = activeStrategy?.isLiveTradingEnabled || false;
+  const isLiveMode = activeStrategy?.tradingMode === 'live';
 
   // Fetch live positions when in live mode
   const { data: livePositions } = useQuery<LivePosition[]>({
