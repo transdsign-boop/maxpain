@@ -944,7 +944,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (paperAccountSizeChanged) {
         const activeSession = await storage.getActiveTradeSession(strategyId);
         if (activeSession) {
-          const newBalance = validatedUpdates.paperAccountSize!;
+          const newBalance = parseFloat(validatedUpdates.paperAccountSize!);
           console.log(`💰 Paper account size changed from ${existingStrategy.paperAccountSize} to ${newBalance} - updating session balance in-place`);
           
           // Cancel any pending orders
@@ -963,10 +963,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Update the session balance in-place
           await storage.updateSessionBalance(activeSession.id, newBalance);
           console.log(`✅ Updated session ${activeSession.id} balance to ${newBalance} (positions and history preserved)`);
-          
-          // Reload strategy settings in the engine without unregistering
-          strategyEngine.reloadStrategy(strategyId);
         }
+      }
+      
+      // CRITICAL: Reload strategy in engine whenever ANY settings change
+      // This ensures position sizing and all other settings are applied immediately
+      if (Object.keys(changes).length > 0 || paperAccountSizeChanged) {
+        console.log(`🔄 Reloading strategy in engine to apply updated settings...`);
+        await strategyEngine.reloadStrategy(strategyId);
       }
       
       // If there are changes and strategy has an active session, record the change
