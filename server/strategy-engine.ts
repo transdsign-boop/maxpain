@@ -125,25 +125,17 @@ export class StrategyEngine extends EventEmitter {
     console.log(`📝 Registering strategy: ${strategy.name} (${strategy.id})`);
     this.activeStrategies.set(strategy.id, strategy);
     
-    // Create or get active session for this strategy
-    let session = await storage.getActiveTradeSession(strategy.id);
-    if (!session) {
-      const accountSize = strategy.paperAccountSize || '10000.0';
-      session = await storage.createTradeSession({
-        strategyId: strategy.id,
+    // Get or create the singleton session for this user
+    // This ensures there's always exactly one persistent session
+    const session = await storage.getOrCreateActiveSession(strategy.userId);
+    
+    // Update session mode if strategy trading mode has changed
+    if (session.mode !== strategy.tradingMode) {
+      await storage.updateTradeSession(session.id, {
         mode: strategy.tradingMode || 'paper',
-        startingBalance: accountSize, // Set starting balance for resets
-        currentBalance: accountSize, // Set current balance to same value
       });
-    } else {
-      // Update session mode if strategy trading mode has changed
-      if (session.mode !== strategy.tradingMode) {
-        await storage.updateTradeSession(session.id, {
-          mode: strategy.tradingMode || 'paper',
-        });
-        session.mode = strategy.tradingMode || 'paper';
-        console.log(`🔄 Updated session mode to: ${session.mode}`);
-      }
+      session.mode = strategy.tradingMode || 'paper';
+      console.log(`🔄 Updated session mode to: ${session.mode}`);
     }
     
     // Store by both strategy ID and session ID for easy lookup
