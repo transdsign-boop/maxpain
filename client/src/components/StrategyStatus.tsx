@@ -481,7 +481,7 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
           </div>
 
           {/* Desktop: Grid layout */}
-          <div className="hidden lg:grid lg:grid-cols-[minmax(180px,240px)_1fr_auto_140px]">
+          <div className="hidden lg:grid lg:grid-cols-[minmax(180px,240px)_1fr_auto]">
             {/* Left: Asset label with edge-bleed */}
             <div className="relative isolate overflow-hidden">
               {/* Gradient background */}
@@ -511,16 +511,30 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
                 )}
               </div>
 
-              {/* Bottom: large asset label */}
-              <div className="relative px-2 pb-2">
+              {/* Bottom: large asset label with close button */}
+              <div className="relative px-2 pb-2 flex items-center gap-2">
                 <div className="font-extrabold text-foreground text-2xl tracking-tight">{position.symbol}</div>
+                <button
+                  className="rounded-full flex items-center justify-center h-7 w-7 border-2 border-destructive bg-transparent text-destructive transition-all hover:brightness-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                  data-testid={`button-close-position-${position.symbol}`}
+                  onClick={onClose}
+                  disabled={isClosing}
+                  title="Close Position"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+                <CollapsibleTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 ml-auto" data-testid="button-toggle-layers">
+                    {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                  </Button>
+                </CollapsibleTrigger>
               </div>
             </div>
 
             {/* Middle: price data with large centered P&L */}
-            <div className="px-3 py-2 grid grid-cols-[1fr_auto_1fr] gap-3 items-center">
+            <div className="px-3 py-2 flex items-center justify-between gap-3">
               {/* Left column: Avg and SL */}
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 flex-shrink-0">
                 <div className="min-w-0">
                   <div className="text-[10px] text-muted-foreground truncate">Avg:</div>
                   <div className="text-[13px] text-foreground/90 truncate">{formatCurrency(avgEntry)}</div>
@@ -532,7 +546,7 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
               </div>
 
               {/* Center: Large P&L */}
-              <div className="flex flex-col items-center justify-center min-w-[120px]">
+              <div className="flex flex-col items-center justify-center flex-1">
                 <div className={`text-3xl font-black font-mono leading-none ${getPnlColor(unrealizedPnlDollar)}`}>
                   {unrealizedPnlDollar >= 0 ? '+' : ''}{formatCurrency(unrealizedPnlDollar)}
                 </div>
@@ -542,7 +556,7 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
               </div>
 
               {/* Right column: Current and TP */}
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 flex-shrink-0">
                 <div className="min-w-0">
                   <div className="text-[10px] text-muted-foreground truncate">Current:</div>
                   <div className="text-[14px] font-semibold text-foreground truncate" data-testid={`current-price-${position.symbol}`}>
@@ -554,15 +568,6 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
                   <div className="text-[13px] text-lime-600 dark:text-lime-400 truncate">{formatCurrency(takeProfitPrice)}</div>
                 </div>
               </div>
-            </div>
-
-            {/* Expand button in its own row */}
-            <div className="px-3 pb-2">
-              <CollapsibleTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8" data-testid="button-toggle-layers">
-                  {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                </Button>
-              </CollapsibleTrigger>
             </div>
 
             {/* Liquidation Risk Donut */}
@@ -603,16 +608,6 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
                 </div>
               </div>
             )}
-
-            {/* Right: Full-height Close Position button */}
-            <button
-              className="h-full rounded-l-none rounded-r-2xl flex items-center justify-center px-3 border-[6px] border-destructive bg-transparent text-destructive transition-all hover:brightness-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-              data-testid={`button-close-position-${position.symbol}`}
-              onClick={onClose}
-              disabled={isClosing}
-            >
-              <span className="text-xs font-semibold whitespace-nowrap">Close Position</span>
-            </button>
           </div>
         </div>
 
