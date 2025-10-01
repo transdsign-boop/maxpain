@@ -460,7 +460,7 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
 
           {/* Right: Full-height Close Position button */}
           <button
-            className="h-full rounded-l-none rounded-r-2xl flex items-center justify-center px-3 border-[6px] border-red-600 bg-transparent text-red-600 dark:text-red-500 dark:border-red-500 transition-all hover:border-red-700 hover:text-red-700 dark:hover:border-red-400 dark:hover:text-red-400 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="h-full rounded-l-none rounded-r-2xl flex items-center justify-center px-3 border-[6px] border-destructive bg-transparent text-destructive transition-all hover:brightness-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
             data-testid={`button-close-position-${position.symbol}`}
             onClick={onClose}
             disabled={isClosing}
