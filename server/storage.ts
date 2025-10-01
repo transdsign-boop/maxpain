@@ -45,6 +45,11 @@ export interface IStorage {
   getAllActiveStrategies(): Promise<Strategy[]>;
   updateStrategy(id: string, updates: Partial<InsertStrategy>): Promise<Strategy>;
   deleteStrategy(id: string): Promise<void>;
+  
+  // Singleton strategy and session
+  getOrCreateDefaultStrategy(userId: string): Promise<Strategy>;
+  getOrCreateActiveSession(userId: string): Promise<TradeSession>;
+  updateSessionBalance(sessionId: string, newBalance: number): Promise<TradeSession>;
 
   // Trade Session operations
   createTradeSession(session: InsertTradeSession): Promise<TradeSession>;
@@ -245,6 +250,81 @@ export class DatabaseStorage implements IStorage {
 
   async deleteStrategy(id: string): Promise<void> {
     await db.delete(strategies).where(eq(strategies.id, id));
+  }
+
+  // Singleton strategy and session operations
+  async getOrCreateDefaultStrategy(userId: string): Promise<Strategy> {
+    // Try to get existing active strategy for this user
+    const existing = await db.select().from(strategies)
+      .where(and(eq(strategies.userId, userId), eq(strategies.isActive, true)))
+      .limit(1);
+    
+    if (existing.length > 0) {
+      return existing[0];
+    }
+
+    // Create default strategy if doesn't exist
+    const defaultStrategy: InsertStrategy = {
+      id: randomUUID(),
+      userId,
+      name: "Liquidation Counter-Trade",
+      description: "Automated counter-trend trading on liquidation spikes",
+      isActive: true,
+      mode: "paper",
+      paperAccountSize: 10000,
+      positionSizePercent: 10,
+      percentileThreshold: 90,
+      liquidationLookbackHours: 1,
+      stopLossPercent: 2,
+      takeProfitPercent: 3,
+      maxPositionLayers: 5,
+      layerSizeMultiplier: 1.5,
+      orderType: "market",
+      maxRetryDurationMs: 30000,
+      slippageTolerancePercent: 0.5
+    };
+
+    const result = await db.insert(strategies).values(defaultStrategy).returning();
+    return result[0];
+  }
+
+  async getOrCreateActiveSession(userId: string): Promise<TradeSession> {
+    // Get the user's default strategy
+    const strategy = await this.getOrCreateDefaultStrategy(userId);
+
+    // Try to get existing active session for this strategy
+    const existing = await db.select().from(tradeSessions)
+      .where(and(eq(tradeSessions.strategyId, strategy.id), eq(tradeSessions.isActive, true)))
+      .limit(1);
+    
+    if (existing.length > 0) {
+      return existing[0];
+    }
+
+    // Create new session if doesn't exist
+    const newSession: InsertTradeSession = {
+      id: randomUUID(),
+      strategyId: strategy.id,
+      mode: strategy.mode,
+      startingBalance: strategy.paperAccountSize,
+      currentBalance: strategy.paperAccountSize,
+      isActive: true,
+      startedAt: new Date()
+    };
+
+    const result = await db.insert(tradeSessions).values(newSession).returning();
+    return result[0];
+  }
+
+  async updateSessionBalance(sessionId: string, newBalance: number): Promise<TradeSession> {
+    const result = await db.update(tradeSessions)
+      .set({ 
+        startingBalance: newBalance,
+        currentBalance: newBalance
+      })
+      .where(eq(tradeSessions.id, sessionId))
+      .returning();
+    return result[0];
   }
 
   // Trade Session operations
