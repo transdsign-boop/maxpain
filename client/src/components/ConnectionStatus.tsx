@@ -1,5 +1,3 @@
-import { Badge } from "@/components/ui/badge";
-import { Wifi, WifiOff } from "lucide-react";
 import { useState, useEffect } from "react";
 
 interface ConnectionStatusProps {
@@ -7,33 +5,61 @@ interface ConnectionStatusProps {
 }
 
 export default function ConnectionStatus({ isConnected }: ConnectionStatusProps) {
-  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+  const [apiConnected, setApiConnected] = useState(true);
 
+  // Check API connection health
   useEffect(() => {
-    if (isConnected) {
-      setLastUpdate(new Date());
-    }
-  }, [isConnected]);
+    const checkApiHealth = async () => {
+      try {
+        const response = await fetch('/api/strategies', { method: 'HEAD' });
+        setApiConnected(response.ok);
+      } catch {
+        setApiConnected(false);
+      }
+    };
+
+    checkApiHealth();
+    const interval = setInterval(checkApiHealth, 10000); // Check every 10s
+    return () => clearInterval(interval);
+  }, []);
 
   return (
-    <div className="flex items-center gap-2">
-      <div className="flex items-center gap-1">
-        {isConnected ? (
-          <Wifi className="h-4 w-4 text-chart-1" />
-        ) : (
-          <WifiOff className="h-4 w-4 text-chart-2" />
+    <div className="flex items-center gap-2" data-testid="connection-status">
+      {/* WebSocket Connection */}
+      <div 
+        className="relative"
+        title={isConnected ? "WebSocket: Connected" : "WebSocket: Disconnected"}
+      >
+        <div 
+          className={`w-2.5 h-2.5 rounded-full ${
+            isConnected 
+              ? 'bg-emerald-500' 
+              : 'bg-red-500'
+          }`}
+          data-testid="dot-websocket-status"
+        />
+        {isConnected && (
+          <div className="absolute inset-0 w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping opacity-75" />
         )}
-        <Badge 
-          variant={isConnected ? "default" : "destructive"}
-          className="text-xs"
-          data-testid="badge-connection-status"
-        >
-          {isConnected ? "Connected" : "Disconnected"}
-        </Badge>
       </div>
-      <span className="text-xs text-muted-foreground font-mono" data-testid="text-last-update">
-        Last: {lastUpdate.toLocaleTimeString()}
-      </span>
+
+      {/* API Connection */}
+      <div 
+        className="relative"
+        title={apiConnected ? "API: Connected" : "API: Disconnected"}
+      >
+        <div 
+          className={`w-2.5 h-2.5 rounded-full ${
+            apiConnected 
+              ? 'bg-emerald-500' 
+              : 'bg-red-500'
+          }`}
+          data-testid="dot-api-status"
+        />
+        {apiConnected && (
+          <div className="absolute inset-0 w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping opacity-75" />
+        )}
+      </div>
     </div>
   );
 }
