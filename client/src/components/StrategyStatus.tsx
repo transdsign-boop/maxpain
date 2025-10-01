@@ -405,16 +405,11 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
               )}
               
               {/* Position Pressure Label */}
-              <div className="flex items-center justify-between mt-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground">Position Pressure:</span>
-                  <span className={`text-xs font-medium ${getPnlColor(unrealizedPnlPercent)}`}>
-                    {unrealizedPnlPercent > 0 ? 'Profit' : unrealizedPnlPercent < 0 ? 'Loss' : 'Neutral'}
-                  </span>
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  {pressureValue.toFixed(0)}%
-                </div>
+              <div className="flex items-center gap-2 mt-2">
+                <span className="text-xs text-muted-foreground">Position Pressure:</span>
+                <span className={`text-xs font-medium ${getPnlColor(unrealizedPnlPercent)}`}>
+                  {unrealizedPnlPercent > 0 ? 'Profit' : unrealizedPnlPercent < 0 ? 'Loss' : 'Neutral'}
+                </span>
               </div>
             </div>
           </div>
