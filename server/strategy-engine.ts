@@ -209,12 +209,12 @@ export class StrategyEngine extends EventEmitter {
       history.shift();
     }
 
-    // Check all active strategies for this symbol
-    this.activeStrategies.forEach(async (strategy, strategyId) => {
+    // Check all active strategies for this symbol (sequentially to avoid race conditions)
+    for (const [strategyId, strategy] of this.activeStrategies.entries()) {
       if (strategy.selectedAssets.includes(liquidation.symbol)) {
         await this.evaluateStrategySignal(strategy, liquidation);
       }
-    });
+    }
   }
 
   // Evaluate if a liquidation triggers a trading signal for a strategy
