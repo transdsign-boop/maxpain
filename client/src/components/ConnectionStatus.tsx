@@ -35,7 +35,7 @@ export default function ConnectionStatus({ isConnected }: ConnectionStatusProps)
             className={`w-2.5 h-2.5 rounded-full ${
               isConnected 
                 ? 'bg-lime-500' 
-                : 'bg-orange-500'
+                : 'bg-red-600'
             }`}
             data-testid="dot-websocket-status"
           />
@@ -56,7 +56,7 @@ export default function ConnectionStatus({ isConnected }: ConnectionStatusProps)
             className={`w-2.5 h-2.5 rounded-full ${
               apiConnected 
                 ? 'bg-lime-500' 
-                : 'bg-orange-500'
+                : 'bg-red-600'
             }`}
             data-testid="dot-api-status"
           />

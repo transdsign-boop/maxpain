@@ -135,8 +135,8 @@ export default function LiveLiquidationsSidebar({
   const getPercentileLabel = (percentile: number) => {
     const ordinal = getOrdinalSuffix(percentile);
     
-    if (percentile >= 95) return { text: ordinal, color: 'bg-orange-500 text-white' };
-    if (percentile >= 90) return { text: ordinal, color: 'bg-orange-500 text-white' };
+    if (percentile >= 95) return { text: ordinal, color: 'bg-red-600 text-white' };
+    if (percentile >= 90) return { text: ordinal, color: 'bg-red-600 text-white' };
     if (percentile >= 75) return { text: ordinal, color: 'bg-yellow-500 text-black' };
     if (percentile >= 50) return { text: ordinal, color: 'bg-blue-500 text-white' };
     return { text: ordinal, color: 'bg-gray-500 text-white' };
@@ -225,7 +225,7 @@ export default function LiveLiquidationsSidebar({
                           className={`text-xs px-2 py-0.5 font-medium ${
                             liquidation.side === 'long' 
                               ? 'bg-lime-500/10 text-lime-600 border-lime-500/20' 
-                              : 'bg-orange-500/10 text-orange-600 border-orange-500/20'
+                              : 'bg-red-600/10 text-red-700 border-red-600/20'
                           }`}
                         >
                           {liquidation.side.toUpperCase()}
@@ -246,7 +246,7 @@ export default function LiveLiquidationsSidebar({
                       </div>
                       <div className="flex items-center gap-2">
                         <div className={`font-bold text-sm ${
-                          parseFloat(liquidation.value) > 10000 ? 'text-orange-500' : 
+                          parseFloat(liquidation.value) > 10000 ? 'text-red-600' : 
                           parseFloat(liquidation.value) > 1000 ? 'text-yellow-600' : 'text-foreground'
                         }`}>
                           {formatValue(parseFloat(liquidation.value))}
@@ -388,7 +388,7 @@ export default function LiveLiquidationsSidebar({
                             className={`text-xs px-2 py-0.5 font-medium ${
                               liquidation.side === 'long' 
                                 ? 'bg-lime-500 text-white' 
-                                : 'bg-orange-500 text-white'
+                                : 'bg-red-600 text-white'
                             }`}
                           >
                             {liquidation.side.toUpperCase()}

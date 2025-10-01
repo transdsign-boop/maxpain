@@ -295,7 +295,7 @@ export default function LiquidationPriceChart({ symbol, hours }: LiquidationPric
                               <div>Time: {data.fullDate}</div>
                               <div>Open: <span className="font-mono">{formatPrice(data.open)}</span></div>
                               <div>High: <span className="font-mono text-lime-600">{formatPrice(data.high)}</span></div>
-                              <div>Low: <span className="font-mono text-orange-600">{formatPrice(data.low)}</span></div>
+                              <div>Low: <span className="font-mono text-red-700">{formatPrice(data.low)}</span></div>
                               <div>Close: <span className="font-mono">{formatPrice(data.close)}</span></div>
                               <div>Volume: <span className="font-mono">{data.volume}</span></div>
                             </div>

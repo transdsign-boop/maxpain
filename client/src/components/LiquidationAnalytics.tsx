@@ -259,7 +259,7 @@ export default function LiquidationAnalytics({ selectedAssets, specificSymbol, a
                 {dominantDirection.direction === 'bullish' ? (
                   <TrendingUp className="h-8 w-8 text-lime-500" />
                 ) : dominantDirection.direction === 'bearish' ? (
-                  <TrendingDown className="h-8 w-8 text-orange-500" />
+                  <TrendingDown className="h-8 w-8 text-red-600" />
                 ) : (
                   <Activity className="h-8 w-8 text-muted-foreground" />
                 )}
@@ -436,12 +436,12 @@ export default function LiquidationAnalytics({ selectedAssets, specificSymbol, a
                     {formatCurrency(displayData.breakdown.minValue)}
                   </div>
                 </div>
-                <div className="p-4 bg-orange-50 dark:bg-orange-950 border border-orange-200 dark:border-orange-800 rounded-lg" data-testid="stat-max-value">
+                <div className="p-4 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg" data-testid="stat-max-value">
                   <div className="flex items-center gap-2 mb-2">
-                    <DollarSign className="h-4 w-4 text-orange-600" />
-                    <span className="text-sm font-medium text-orange-800 dark:text-orange-200">Largest Liquidation</span>
+                    <DollarSign className="h-4 w-4 text-red-700" />
+                    <span className="text-sm font-medium text-red-800 dark:text-red-200">Largest Liquidation</span>
                   </div>
-                  <div className="text-2xl font-bold text-orange-900 dark:text-orange-100">
+                  <div className="text-2xl font-bold text-red-900 dark:text-red-100">
                     {formatCurrency(displayData.breakdown.maxValue)}
                   </div>
                 </div>
@@ -459,7 +459,7 @@ export default function LiquidationAnalytics({ selectedAssets, specificSymbol, a
                   </div>
                   <div>
                     <span className="text-muted-foreground">Side:</span>{" "}
-                    <Badge className={`${percentileData.latestLiquidation.side === 'long' ? 'bg-lime-600 text-white' : 'bg-orange-600 text-white'}`}>
+                    <Badge className={`${percentileData.latestLiquidation.side === 'long' ? 'bg-lime-600 text-white' : 'bg-red-700 text-white'}`}>
                       {percentileData.latestLiquidation.side}
                     </Badge>
                   </div>

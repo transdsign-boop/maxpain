@@ -1095,8 +1095,8 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                           </>
                         ) : (
                           <>
-                            <XCircle className="h-5 w-5 text-orange-600 dark:text-orange-400" />
-                            <span className="text-sm font-medium text-orange-600 dark:text-orange-400">
+                            <XCircle className="h-5 w-5 text-red-700 dark:text-red-500" />
+                            <span className="text-sm font-medium text-red-700 dark:text-red-500">
                               Failed
                             </span>
                           </>
@@ -1106,7 +1106,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                   </div>
                   
                   {apiTestResult && !apiTestResult.success && apiTestResult.message && (
-                    <div className="text-sm text-orange-600 dark:text-orange-400 bg-orange-100 dark:bg-orange-950/30 p-3 rounded-md">
+                    <div className="text-sm text-red-700 dark:text-red-500 bg-red-100 dark:bg-red-950/30 p-3 rounded-md">
                       {apiTestResult.message}
                     </div>
                   )}
