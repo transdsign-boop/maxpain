@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -64,18 +65,119 @@ export default function PerformanceOverview() {
     retry: 2,
   });
 
+  // Fetch live trade history when in live mode
+  const { data: liveTrades, isLoading: liveTradesLoading } = useQuery<any[]>({
+    queryKey: ['/api/live/trades'],
+    refetchInterval: 5000,
+    enabled: !!isLiveMode && !!activeStrategy,
+    retry: 2,
+  });
+
+  // Calculate live performance metrics from trade history
+  const livePerformance = useMemo(() => {
+    // Sort trades by time (ascending) to ensure correct chronological processing
+    const sortedTrades = (liveTrades || []).slice().sort((a, b) => parseInt(a.time) - parseInt(b.time));
+    
+    let cumulativePnl = 0;
+    let totalFees = 0;
+    let peakPnl = 0;
+    let maxDrawdown = 0;
+    const chartData: TradeDataPoint[] = [];
+    
+    let totalWinPnl = 0;
+    let totalLossPnl = 0;
+    let bestTrade = sortedTrades.length > 0 ? -Infinity : 0;
+    let worstTrade = sortedTrades.length > 0 ? Infinity : 0;
+
+    sortedTrades.forEach((trade, index) => {
+      const pnl = parseFloat(trade.realizedPnl || '0');
+      const fee = parseFloat(trade.commission || '0');
+      
+      cumulativePnl += pnl;
+      totalFees += fee;
+      
+      // Track best/worst trades
+      if (pnl > bestTrade || bestTrade === -Infinity) bestTrade = pnl;
+      if (pnl < worstTrade || worstTrade === Infinity) worstTrade = pnl;
+      
+      // Track win/loss totals for profit factor
+      if (pnl > 0) {
+        totalWinPnl += pnl;
+      } else if (pnl < 0) {
+        totalLossPnl += Math.abs(pnl);
+      }
+      
+      // Track drawdown
+      if (cumulativePnl > peakPnl) {
+        peakPnl = cumulativePnl;
+      }
+      const currentDrawdown = peakPnl - cumulativePnl;
+      if (currentDrawdown > maxDrawdown) {
+        maxDrawdown = currentDrawdown;
+      }
+
+      chartData.push({
+        tradeNumber: index + 1,
+        timestamp: parseInt(trade.time),
+        symbol: trade.symbol,
+        side: trade.side,
+        pnl: pnl,
+        cumulativePnl: cumulativePnl,
+        entryPrice: parseFloat(trade.price),
+        quantity: Math.abs(parseFloat(trade.qty)),
+      });
+    });
+
+    const winningTrades = sortedTrades.filter(t => parseFloat(t.realizedPnl || '0') > 0).length;
+    const losingTrades = sortedTrades.filter(t => parseFloat(t.realizedPnl || '0') < 0).length;
+    const winRate = sortedTrades.length > 0 ? (winningTrades / sortedTrades.length) * 100 : 0;
+    
+    const averageWin = winningTrades > 0 ? totalWinPnl / winningTrades : 0;
+    const averageLoss = losingTrades > 0 ? totalLossPnl / losingTrades : 0;
+    const profitFactor = totalLossPnl > 0 ? totalWinPnl / totalLossPnl : (totalWinPnl > 0 ? 999 : 0);
+
+    // Always return full PerformanceMetrics object, even with zero trades
+    return {
+      totalTrades: sortedTrades.length,
+      openTrades: 0,
+      closedTrades: sortedTrades.length,
+      winningTrades,
+      losingTrades,
+      winRate,
+      totalRealizedPnl: cumulativePnl,
+      totalUnrealizedPnl: 0, // Live trades are all realized
+      totalPnl: cumulativePnl,
+      totalPnlPercent: 0, // Would need initial balance to calculate
+      averageWin,
+      averageLoss,
+      bestTrade: sortedTrades.length > 0 ? (bestTrade === -Infinity ? 0 : bestTrade) : 0,
+      worstTrade: sortedTrades.length > 0 ? (worstTrade === Infinity ? 0 : worstTrade) : 0,
+      profitFactor,
+      totalFees,
+      averageTradeTimeMs: 0,
+      maxDrawdown,
+      maxDrawdownPercent: peakPnl > 0 ? (maxDrawdown / peakPnl) * 100 : 0,
+      chartData,
+    } as PerformanceMetrics & { chartData: TradeDataPoint[] };
+  }, [liveTrades]);
+
   const { data: performance, isLoading } = useQuery<PerformanceMetrics>({
     queryKey: ['/api/performance/overview'],
     refetchInterval: 5000,
+    enabled: !isLiveMode, // Only fetch paper trading data when not in live mode
   });
 
   const { data: rawChartData, isLoading: chartLoading } = useQuery<TradeDataPoint[]>({
     queryKey: ['/api/performance/chart'],
     refetchInterval: 5000,
+    enabled: !isLiveMode, // Only fetch paper trading data when not in live mode
   });
 
+  // Use live chart data if in live mode, otherwise use paper trading data
+  const sourceChartData = isLiveMode ? (livePerformance?.chartData || []) : (rawChartData || []);
+  
   // Add interpolated points at zero crossings for smooth color transitions
-  const chartData = rawChartData ? rawChartData.flatMap((point, index, arr) => {
+  const chartData = sourceChartData.flatMap((point, index, arr) => {
     if (index === 0) return [point];
     
     const prev = arr[index - 1];
@@ -109,7 +211,7 @@ export default function PerformanceOverview() {
     }
     
     return [curr];
-  }) : [];
+  });
 
   // Fetch strategy changes for vertical lines
   const { data: strategyChanges } = useQuery<any[]>({
@@ -118,89 +220,28 @@ export default function PerformanceOverview() {
     refetchInterval: 10000,
   });
 
-  // Show live mode UI if in live mode
-  if (isLiveMode) {
-    // Show loading state while fetching live account data
-    if (liveAccountLoading) {
-      return (
-        <Card data-testid="performance-overview-live-loading">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2">
-                <LineChart className="h-5 w-5" />
-                Account Performance
-              </CardTitle>
-              <Badge 
-                variant="default" 
-                className="bg-[rgb(190,242,100)] text-black hover:bg-[rgb(190,242,100)] font-semibold"
-              >
-                LIVE MODE
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-center py-8">
-              <div className="text-sm text-muted-foreground">Loading live account data...</div>
-            </div>
-          </CardContent>
-        </Card>
-      );
-    }
-    
-    // Show live account data once loaded
-    if (liveAccount) {
-      const totalBalance = parseFloat(liveAccount.totalWalletBalance);
-      const unrealizedPnl = parseFloat(liveAccount.totalUnrealizedProfit);
-      
-      return (
-        <Card data-testid="performance-overview-live">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2">
-                <LineChart className="h-5 w-5" />
-                Account Performance
-              </CardTitle>
-              <Badge 
-                variant="default" 
-                className="bg-[rgb(190,242,100)] text-black hover:bg-[rgb(190,242,100)] font-semibold"
-                data-testid="badge-live-performance"
-              >
-                LIVE MODE
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-6">
-              <div className="text-center py-8">
-                <div className="text-sm text-muted-foreground mb-2">Total Account Value</div>
-                <div className="text-4xl font-mono font-bold mb-4" data-testid="text-live-total-balance">
-                  ${totalBalance.toFixed(2)}
-                </div>
-                {unrealizedPnl !== 0 && (
-                  <div className={`text-lg font-mono ${unrealizedPnl >= 0 ? 'text-lime-600 dark:text-lime-400' : 'text-red-600 dark:text-red-400'}`}>
-                    Unrealized P&L: {unrealizedPnl >= 0 ? '+' : ''}${unrealizedPnl.toFixed(2)}
-                  </div>
-                )}
-              </div>
-              
-              <div className="bg-muted/50 rounded-lg p-4 text-center">
-                <p className="text-sm text-muted-foreground">
-                  You're trading with real money on Aster DEX. For detailed performance history and analytics, 
-                  visit your <a href="https://asterdex.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Aster DEX account</a>.
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      );
-    }
-  }
+  // Use live performance data if in live mode, otherwise use paper trading data
+  const displayPerformance = isLiveMode ? livePerformance : performance;
+  const displayLoading = isLiveMode ? (liveAccountLoading || liveTradesLoading) : isLoading;
 
-  if (isLoading || !performance) {
+  if (displayLoading || !displayPerformance) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Performance Overview</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <LineChart className="h-5 w-5" />
+              Performance Overview
+            </CardTitle>
+            {isLiveMode && (
+              <Badge 
+                variant="default" 
+                className="bg-[rgb(190,242,100)] text-black hover:bg-[rgb(190,242,100)] font-semibold"
+              >
+                LIVE MODE
+              </Badge>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           <div className="text-sm text-muted-foreground">Loading performance metrics...</div>
@@ -251,7 +292,7 @@ export default function PerformanceOverview() {
     return `${seconds}s`;
   };
 
-  const isProfitable = performance.totalPnl >= 0;
+  const isProfitable = displayPerformance.totalPnl >= 0;
 
   // Calculate symmetric domain for 1:1 scale
   const calculateSymmetricDomain = (data: TradeDataPoint[] | undefined, key: 'pnl' | 'cumulativePnl') => {
@@ -299,11 +340,15 @@ export default function PerformanceOverview() {
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
-            {isLiveMode ? 'Live Account Balance' : 'Performance Overview'}
+            {isLiveMode ? 'Account Performance' : 'Performance Overview'}
           </CardTitle>
           {isLiveMode && (
-            <Badge variant="default" className="bg-lime-500/20 text-lime-500 hover:bg-lime-500/30">
-              LIVE DATA
+            <Badge 
+              variant="default" 
+              className="bg-[rgb(190,242,100)] text-black hover:bg-[rgb(190,242,100)] font-semibold"
+              data-testid="badge-live-mode-performance"
+            >
+              LIVE MODE
             </Badge>
           )}
         </div>
@@ -337,12 +382,12 @@ export default function PerformanceOverview() {
                 </div>
 
                 <div className="space-y-1 md:space-y-2">
-                  <div className="text-xs text-muted-foreground uppercase tracking-wider">Paper P&L</div>
+                  <div className="text-xs text-muted-foreground uppercase tracking-wider">Realized P&L</div>
                   <div className={`text-3xl md:text-4xl font-mono font-bold ${isProfitable ? 'text-primary' : 'text-red-600'}`}>
-                    {formatCurrency(performance.totalPnl)}
+                    {formatCurrency(displayPerformance.totalPnl)}
                   </div>
                   <div className="text-xs md:text-sm text-muted-foreground">
-                    {performance.totalTrades} trades
+                    {displayPerformance.totalTrades} trades
                   </div>
                 </div>
               </div>
@@ -356,10 +401,10 @@ export default function PerformanceOverview() {
               <div className="space-y-1 md:space-y-2">
                 <div className="text-xs text-muted-foreground uppercase tracking-wider">Total P&L</div>
                 <div className={`text-4xl md:text-6xl font-mono font-bold ${isProfitable ? 'text-primary' : 'text-red-600'}`} data-testid="text-total-pnl">
-                  {formatCurrency(performance.totalPnl)}
+                  {formatCurrency(displayPerformance.totalPnl)}
                 </div>
                 <div className={`text-lg md:text-xl font-mono ${isProfitable ? 'text-primary/80' : 'text-red-600/80'}`}>
-                  {(performance.totalPnlPercent ?? 0) >= 0 ? '+' : ''}{(performance.totalPnlPercent ?? 0).toFixed(2)}%
+                  {(displayPerformance.totalPnlPercent ?? 0) >= 0 ? '+' : ''}{(displayPerformance.totalPnlPercent ?? 0).toFixed(2)}%
                 </div>
               </div>
 
@@ -371,30 +416,30 @@ export default function PerformanceOverview() {
                     Win Rate
                   </div>
                   <div className="text-3xl md:text-4xl font-mono font-bold" data-testid="text-win-rate">
-                    {formatPercent(performance.winRate)}
+                    {formatPercent(displayPerformance.winRate)}
                   </div>
                   <div className="text-xs md:text-sm text-muted-foreground">
-                    {performance.winningTrades}W · {performance.losingTrades}L
+                    {displayPerformance.winningTrades}W · {displayPerformance.losingTrades}L
                   </div>
                 </div>
 
                 <div className="space-y-1 md:space-y-2">
                   <div className="text-xs text-muted-foreground uppercase tracking-wider">Trades</div>
                   <div className="text-3xl md:text-4xl font-mono font-bold" data-testid="text-total-trades">
-                    {performance.totalTrades}
+                    {displayPerformance.totalTrades}
                   </div>
                   <div className="text-xs md:text-sm text-muted-foreground">
-                    {performance.openTrades} open · {performance.closedTrades} closed
+                    {displayPerformance.openTrades} open · {displayPerformance.closedTrades} closed
                   </div>
                 </div>
 
                 <div className="space-y-1 md:space-y-2">
                   <div className="text-xs text-muted-foreground uppercase tracking-wider">Profit Factor</div>
-                  <div className={`text-3xl md:text-4xl font-mono font-bold ${(performance.profitFactor ?? 0) >= 1 ? 'text-primary' : 'text-red-600'}`} data-testid="text-profit-factor">
-                    {(performance.profitFactor ?? 0) >= 999 ? '∞' : (performance.profitFactor ?? 0).toFixed(2)}
+                  <div className={`text-3xl md:text-4xl font-mono font-bold ${(displayPerformance.profitFactor ?? 0) >= 1 ? 'text-primary' : 'text-red-600'}`} data-testid="text-profit-factor">
+                    {(displayPerformance.profitFactor ?? 0) >= 999 ? '∞' : (displayPerformance.profitFactor ?? 0).toFixed(2)}
                   </div>
                   <div className="text-xs md:text-sm text-muted-foreground">
-                    {(performance.profitFactor ?? 0) >= 1 ? 'Profitable' : 'Unprofitable'}
+                    {(displayPerformance.profitFactor ?? 0) >= 1 ? 'Profitable' : 'Unprofitable'}
                   </div>
                 </div>
               </div>
@@ -571,50 +616,50 @@ export default function PerformanceOverview() {
               <div className="ticker-item">
                 <TrendingUp className="h-3 w-3 text-lime-500" />
                 <span className="text-xs text-muted-foreground">Avg Win</span>
-                <span className="text-sm font-mono font-semibold text-lime-500" data-testid="text-avg-win">{formatCurrency(performance.averageWin)}</span>
+                <span className="text-sm font-mono font-semibold text-lime-500" data-testid="text-avg-win">{formatCurrency(displayPerformance.averageWin)}</span>
               </div>
               <div className="ticker-separator" />
               <div className="ticker-item">
                 <TrendingDown className="h-3 w-3 text-red-600" />
                 <span className="text-xs text-muted-foreground">Avg Loss</span>
-                <span className="text-sm font-mono font-semibold text-red-600" data-testid="text-avg-loss">{formatCurrency(-Math.abs(performance.averageLoss))}</span>
+                <span className="text-sm font-mono font-semibold text-red-600" data-testid="text-avg-loss">{formatCurrency(-Math.abs(displayPerformance.averageLoss))}</span>
               </div>
               <div className="ticker-separator" />
               <div className="ticker-item">
                 <Award className="h-3 w-3 text-lime-500" />
                 <span className="text-xs text-muted-foreground">Best</span>
-                <span className="text-sm font-mono font-semibold text-lime-500" data-testid="text-best-trade">{formatCurrency(performance.bestTrade)}</span>
+                <span className="text-sm font-mono font-semibold text-lime-500" data-testid="text-best-trade">{formatCurrency(displayPerformance.bestTrade)}</span>
               </div>
               <div className="ticker-separator" />
               <div className="ticker-item">
                 <span className="text-xs text-muted-foreground">Worst</span>
-                <span className="text-sm font-mono font-semibold text-red-600" data-testid="text-worst-trade">{formatCurrency(-Math.abs(performance.worstTrade))}</span>
+                <span className="text-sm font-mono font-semibold text-red-600" data-testid="text-worst-trade">{formatCurrency(-Math.abs(displayPerformance.worstTrade))}</span>
               </div>
               <div className="ticker-separator" />
               <div className="ticker-item">
                 <span className="text-xs text-muted-foreground">Fees Paid</span>
-                <span className="text-sm font-mono font-semibold text-muted-foreground" data-testid="text-total-fees">-${(performance.totalFees ?? 0).toFixed(2)}</span>
+                <span className="text-sm font-mono font-semibold text-muted-foreground" data-testid="text-total-fees">-${(displayPerformance.totalFees ?? 0).toFixed(2)}</span>
               </div>
               <div className="ticker-separator" />
               <div className="ticker-item">
                 <span className="text-xs text-muted-foreground">Realized</span>
-                <span className={`text-sm font-mono font-semibold ${performance.totalRealizedPnl >= 0 ? 'text-lime-500' : 'text-red-600'}`}>{formatCurrency(performance.totalRealizedPnl)}</span>
+                <span className={`text-sm font-mono font-semibold ${displayPerformance.totalRealizedPnl >= 0 ? 'text-lime-500' : 'text-red-600'}`}>{formatCurrency(displayPerformance.totalRealizedPnl)}</span>
               </div>
               <div className="ticker-separator" />
               <div className="ticker-item">
                 <span className="text-xs text-muted-foreground">Unrealized</span>
-                <span className={`text-sm font-mono font-semibold ${performance.totalUnrealizedPnl >= 0 ? 'text-lime-500' : 'text-red-600'}`}>{formatCurrency(performance.totalUnrealizedPnl)}</span>
+                <span className={`text-sm font-mono font-semibold ${displayPerformance.totalUnrealizedPnl >= 0 ? 'text-lime-500' : 'text-red-600'}`}>{formatCurrency(displayPerformance.totalUnrealizedPnl)}</span>
               </div>
               <div className="ticker-separator" />
               <div className="ticker-item">
                 <TrendingDown className="h-3 w-3 text-red-600" />
                 <span className="text-xs text-muted-foreground">Max Drawdown</span>
-                <span className="text-sm font-mono font-semibold text-red-600">{formatCurrency(performance.maxDrawdown ?? 0)}</span>
+                <span className="text-sm font-mono font-semibold text-red-600">{formatCurrency(displayPerformance.maxDrawdown ?? 0)}</span>
               </div>
               <div className="ticker-separator" />
               <div className="ticker-item">
                 <span className="text-xs text-muted-foreground">Avg Time</span>
-                <span className="text-sm font-mono font-semibold">{formatTradeTime(performance.averageTradeTimeMs)}</span>
+                <span className="text-sm font-mono font-semibold">{formatTradeTime(displayPerformance.averageTradeTimeMs)}</span>
               </div>
               
               {/* Duplicate set for seamless loop */}
@@ -649,23 +694,23 @@ export default function PerformanceOverview() {
               <div className="ticker-separator" />
               <div className="ticker-item">
                 <span className="text-xs text-muted-foreground">Realized</span>
-                <span className={`text-sm font-mono font-semibold ${performance.totalRealizedPnl >= 0 ? 'text-lime-500' : 'text-red-600'}`}>{formatCurrency(performance.totalRealizedPnl)}</span>
+                <span className={`text-sm font-mono font-semibold ${displayPerformance.totalRealizedPnl >= 0 ? 'text-lime-500' : 'text-red-600'}`}>{formatCurrency(displayPerformance.totalRealizedPnl)}</span>
               </div>
               <div className="ticker-separator" />
               <div className="ticker-item">
                 <span className="text-xs text-muted-foreground">Unrealized</span>
-                <span className={`text-sm font-mono font-semibold ${performance.totalUnrealizedPnl >= 0 ? 'text-lime-500' : 'text-red-600'}`}>{formatCurrency(performance.totalUnrealizedPnl)}</span>
+                <span className={`text-sm font-mono font-semibold ${displayPerformance.totalUnrealizedPnl >= 0 ? 'text-lime-500' : 'text-red-600'}`}>{formatCurrency(displayPerformance.totalUnrealizedPnl)}</span>
               </div>
               <div className="ticker-separator" />
               <div className="ticker-item">
                 <TrendingDown className="h-3 w-3 text-red-600" />
                 <span className="text-xs text-muted-foreground">Max Drawdown</span>
-                <span className="text-sm font-mono font-semibold text-red-600">{formatCurrency(performance.maxDrawdown ?? 0)}</span>
+                <span className="text-sm font-mono font-semibold text-red-600">{formatCurrency(displayPerformance.maxDrawdown ?? 0)}</span>
               </div>
               <div className="ticker-separator" />
               <div className="ticker-item">
                 <span className="text-xs text-muted-foreground">Avg Time</span>
-                <span className="text-sm font-mono font-semibold">{formatTradeTime(performance.averageTradeTimeMs)}</span>
+                <span className="text-sm font-mono font-semibold">{formatTradeTime(displayPerformance.averageTradeTimeMs)}</span>
               </div>
             </div>
           </div>
