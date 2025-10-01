@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { TrendingUp, TrendingDown, DollarSign, Target, Layers, X, ChevronDown, ChevronUp, CheckCircle2 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -502,6 +503,8 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
 export function StrategyStatus() {
   const { toast } = useToast();
   const [showClosedTrades, setShowClosedTrades] = useState(false);
+  const [isCloseConfirmOpen, setIsCloseConfirmOpen] = useState(false);
+  const [positionToClose, setPositionToClose] = useState<Position | null>(null);
 
   // First, get active strategies
   const { data: strategies } = useQuery<any[]>({
@@ -785,7 +788,10 @@ export function StrategyStatus() {
                   key={position.id}
                   position={position}
                   strategy={activeStrategy}
-                  onClose={() => closePositionMutation.mutate(position.id)}
+                  onClose={() => {
+                    setPositionToClose(position);
+                    setIsCloseConfirmOpen(true);
+                  }}
                   isClosing={closePositionMutation.isPending}
                   formatCurrency={formatCurrency}
                   formatPercentage={formatPercentage}
@@ -880,5 +886,67 @@ export function StrategyStatus() {
         </Collapsible>
       </CardContent>
     </Card>
+
+    {/* Close Position Confirmation Dialog */}
+    <Dialog open={isCloseConfirmOpen} onOpenChange={setIsCloseConfirmOpen}>
+      <DialogContent data-testid="dialog-close-position-confirm">
+        <DialogHeader>
+          <DialogTitle>Close Position</DialogTitle>
+          <DialogDescription>
+            Are you sure you want to close this position?
+            {positionToClose && (
+              <div className="mt-4 p-3 rounded-lg bg-muted/50 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-semibold text-foreground">{positionToClose.symbol}</span>
+                  <Badge className={positionToClose.side === 'long' ? 'bg-lime-500/15 text-lime-300 border-lime-400/30' : 'bg-red-600/15 text-red-400 border-red-500/30'}>
+                    {positionToClose.side.toUpperCase()}
+                  </Badge>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Quantity</span>
+                  <span className="text-foreground">{parseFloat(positionToClose.totalQuantity).toFixed(4)}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Avg Entry</span>
+                  <span className="text-foreground">{formatCurrency(parseFloat(positionToClose.avgEntryPrice))}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Unrealized P&L</span>
+                  <span className={getPnlColor(parseFloat(positionToClose.unrealizedPnl))}>
+                    {parseFloat(positionToClose.unrealizedPnl) >= 0 ? '+' : ''}{parseFloat(positionToClose.unrealizedPnl).toFixed(2)}%
+                  </span>
+                </div>
+              </div>
+            )}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setIsCloseConfirmOpen(false);
+              setPositionToClose(null);
+            }}
+            data-testid="button-cancel-close-position"
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={() => {
+              if (positionToClose) {
+                closePositionMutation.mutate(positionToClose.id);
+                setIsCloseConfirmOpen(false);
+                setPositionToClose(null);
+              }
+            }}
+            disabled={closePositionMutation.isPending}
+            data-testid="button-confirm-close-position"
+          >
+            {closePositionMutation.isPending ? "Closing..." : "Close Position"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
