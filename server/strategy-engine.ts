@@ -1047,6 +1047,11 @@ export class StrategyEngine extends EventEmitter {
       console.error(`❌ Error reloading strategy ${strategyId}:`, error);
     }
   }
+
+  // Remove a pending paper order from tracking
+  removePendingOrder(orderId: string) {
+    this.pendingPaperOrders.delete(orderId);
+  }
 }
 
 // Export singleton instance
