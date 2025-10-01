@@ -844,6 +844,12 @@ export class StrategyEngine extends EventEmitter {
   // Close a position at current market price
   private async closePosition(position: Position, exitPrice: number, realizedPnlPercent: number) {
     try {
+      // Guard: Check if position is already closed (prevent duplicate exit fills)
+      if (!position.isOpen) {
+        console.log(`⚠️ Position ${position.symbol} already closed, skipping...`);
+        return;
+      }
+
       // Calculate dollar P&L from percentage
       const totalCost = parseFloat(position.totalCost);
       const dollarPnl = (realizedPnlPercent / 100) * totalCost;
@@ -876,29 +882,32 @@ export class StrategyEngine extends EventEmitter {
       // Close position in database
       await storage.closePosition(position.id, new Date(), realizedPnlPercent);
 
-      // Update session statistics and balance
-      if (session) {
-        const newTotalTrades = session.totalTrades + 1;
-        const oldTotalPnl = parseFloat(session.totalPnl);
+      // Always fetch latest session from database (not memory) to update stats
+      const latestSession = await storage.getTradeSession(position.sessionId);
+      if (latestSession) {
+        const newTotalTrades = latestSession.totalTrades + 1;
+        const oldTotalPnl = parseFloat(latestSession.totalPnl);
         
         // Subtract exit fee from realized P&L for paper trading
         const netDollarPnl = isPaperTrading ? dollarPnl - exitFee : dollarPnl;
         const newTotalPnl = oldTotalPnl + netDollarPnl;
         
         // Update current balance with net realized P&L
-        const oldBalance = parseFloat(session.currentBalance);
+        const oldBalance = parseFloat(latestSession.currentBalance);
         const newBalance = oldBalance + netDollarPnl;
         
-        await storage.updateTradeSession(session.id, {
+        await storage.updateTradeSession(latestSession.id, {
           totalTrades: newTotalTrades,
           totalPnl: newTotalPnl.toString(),
           currentBalance: newBalance.toString(),
         });
         
-        // Update local session cache
-        session.totalTrades = newTotalTrades;
-        session.totalPnl = newTotalPnl.toString();
-        session.currentBalance = newBalance.toString();
+        // Update local session cache if it exists
+        if (session) {
+          session.totalTrades = newTotalTrades;
+          session.totalPnl = newTotalPnl.toString();
+          session.currentBalance = newBalance.toString();
+        }
         
         if (isPaperTrading) {
           console.log(`💸 Exit fee applied: $${exitFee.toFixed(4)} (${ASTER_TAKER_FEE_PERCENT}% of $${exitValue.toFixed(2)})`);
@@ -906,6 +915,8 @@ export class StrategyEngine extends EventEmitter {
         } else {
           console.log(`💰 Balance updated: $${oldBalance.toFixed(2)} → $${newBalance.toFixed(2)} (${dollarPnl >= 0 ? '+' : ''}$${dollarPnl.toFixed(2)})`);
         }
+      } else {
+        console.warn(`⚠️ Could not update session stats - session ${position.sessionId} not found in database`);
       }
 
       console.log(`✅ Position closed: ${position.symbol} - P&L: ${realizedPnlPercent.toFixed(2)}% ($${dollarPnl.toFixed(2)}${isPaperTrading ? `, Fee: $${exitFee.toFixed(4)}` : ''})`);
