@@ -313,9 +313,6 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
       <div 
         className="relative rounded-2xl overflow-hidden ring-1 ring-border shadow-lg transition-all duration-300" 
         data-testid={`position-${position.symbol}`}
-        style={{
-          background: `linear-gradient(to right, rgb(220 38 38 / 0.25) 0%, rgb(156 163 175 / 0.06) ${neutralPoint}%, rgb(190 242 100 / 0.25) 100%)`
-        }}
       >
         {/* Position pressure indicator line */}
         <div 
