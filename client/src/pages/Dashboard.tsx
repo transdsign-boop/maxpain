@@ -10,9 +10,10 @@ import ThemeToggle from "@/components/ThemeToggle";
 import AsterLogo from "@/components/AsterLogo";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Settings2, Pause, Play, AlertTriangle } from "lucide-react";
+import { Settings2, Pause, Play, AlertTriangle, BarChart3 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 
@@ -34,6 +35,7 @@ export default function Dashboard() {
   const [selectedAssets, setSelectedAssets] = useState<string[]>([]);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   
   // Modal state for liquidation analytics
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -623,7 +625,7 @@ export default function Dashboard() {
       {/* Main Content with Trading Controls */}
       <main 
         className={`p-3 md:p-6 space-y-4 md:space-y-6 transition-all duration-300 ${
-          isSidebarCollapsed ? 'md:mr-12' : 'md:mr-80'
+          isSidebarCollapsed ? 'lg:mr-12' : 'lg:mr-80'
         }`}
         style={{ paddingTop: 'calc(73px + 1.5rem)' }}
       >
@@ -634,15 +636,49 @@ export default function Dashboard() {
         <StrategyStatus />
       </main>
 
-      {/* Live Liquidations Sidebar */}
-      <LiveLiquidationsSidebar 
-        liquidations={liquidations}
-        isConnected={isConnected}
-        selectedAssets={selectedAssets}
-        isCollapsed={isSidebarCollapsed}
-        onToggleCollapse={setIsSidebarCollapsed}
-        onLiquidationClick={handleLiquidationClick}
-      />
+      {/* Live Liquidations Sidebar - Desktop only */}
+      <div className="hidden lg:block">
+        <LiveLiquidationsSidebar 
+          liquidations={liquidations}
+          isConnected={isConnected}
+          selectedAssets={selectedAssets}
+          isCollapsed={isSidebarCollapsed}
+          onToggleCollapse={setIsSidebarCollapsed}
+          onLiquidationClick={handleLiquidationClick}
+        />
+      </div>
+
+      {/* Floating Action Button - Mobile/Tablet only */}
+      <button
+        onClick={() => setIsMobileSidebarOpen(true)}
+        className="lg:hidden fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-lg hover:brightness-110 active:scale-95 transition-all flex items-center justify-center"
+        data-testid="button-fab-liquidations"
+        aria-label="View liquidations"
+      >
+        <BarChart3 className="h-6 w-6" />
+      </button>
+
+      {/* Mobile Liquidations Sheet */}
+      <Sheet open={isMobileSidebarOpen} onOpenChange={setIsMobileSidebarOpen}>
+        <SheetContent side="right" className="w-full sm:w-96 p-0">
+          <SheetHeader className="px-4 pt-4 pb-2">
+            <SheetTitle>Live Liquidations</SheetTitle>
+          </SheetHeader>
+          <div className="h-[calc(100vh-80px)]">
+            <LiveLiquidationsSidebar 
+              liquidations={liquidations}
+              isConnected={isConnected}
+              selectedAssets={selectedAssets}
+              isCollapsed={false}
+              onToggleCollapse={() => {}}
+              onLiquidationClick={(liq) => {
+                handleLiquidationClick(liq);
+                setIsMobileSidebarOpen(false);
+              }}
+            />
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {/* Liquidation Analytics Modal */}
       <LiquidationAnalyticsModal

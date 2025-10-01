@@ -343,131 +343,263 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
           }}
         />
         
-        <div className="relative z-10 grid grid-cols-[minmax(140px,220px)_1fr_auto_120px]">
-          {/* Left: Asset label with edge-bleed */}
-          <div className="relative isolate overflow-hidden">
-            {/* Gradient background */}
-            <div className={`absolute inset-0 ${isLong ? 'bg-gradient-to-br from-lime-600/25 via-lime-500/10 to-transparent' : 'bg-gradient-to-br from-red-700/25 via-red-600/10 to-transparent'}`} />
-            
-            {/* Large background asset text */}
-            <div className="absolute -left-2 top-1/2 -translate-y-1/2 select-none pointer-events-none">
-              <span className={`font-black tracking-tight text-5xl sm:text-6xl md:text-7xl leading-none whitespace-nowrap ${isLong ? 'text-lime-400/15' : 'text-red-500/15'}`}>
-                {position.symbol}
-              </span>
-            </div>
-
-            {/* Top row: compact chips */}
-            <div className="relative p-2 flex items-center gap-2 flex-wrap">
-              <Badge className={`text-xs px-1.5 py-0.5 ${isLong ? 'bg-lime-500/15 text-lime-300 border-lime-400/30' : 'bg-red-600/15 text-red-400 border-red-500/30'}`}>
-                {isLong ? <TrendingUp className="h-3 w-3 mr-1" /> : <TrendingDown className="h-3 w-3 mr-1" />}
-                {position.side.toUpperCase()}
-              </Badge>
-              <span className="px-1.5 py-0.5 rounded-lg text-[10px] text-muted-foreground bg-muted/50 border border-border/50">
-                {position.layersFilled}/{position.maxLayers}
-              </span>
-              <span className="px-1.5 py-0.5 rounded-lg text-[10px] text-muted-foreground bg-muted/50 border border-border/50">
-                {leverage}× • {formatCurrency(totalMargin)}
-              </span>
-              {isHedge && (
-                <Badge variant="secondary" className="text-xs">HEDGE</Badge>
-              )}
-            </div>
-
-            {/* Bottom: large asset label */}
-            <div className="relative px-2 pb-2">
-              <div className="font-extrabold text-foreground text-2xl tracking-tight">{position.symbol}</div>
-            </div>
-          </div>
-
-          {/* Middle: price data and P&L */}
-          <div className="px-3 py-2 flex flex-col justify-between">
-            <div className="grid grid-cols-2 gap-x-3 text-sm">
-              <div className="min-w-0">
-                <div className="text-[10px] text-muted-foreground truncate">Avg:</div>
-                <div className="text-[13px] text-foreground/90 truncate">{formatCurrency(avgEntry)}</div>
+        {/* Mobile layout (stacked) and Desktop layout (grid) */}
+        <div className="relative z-10">
+          {/* Mobile: Stacked layout */}
+          <div className="lg:hidden">
+            {/* Header row: Symbol, badges, and info */}
+            <div className="relative isolate overflow-hidden">
+              {/* Gradient background */}
+              <div className={`absolute inset-0 ${isLong ? 'bg-gradient-to-br from-lime-600/25 via-lime-500/10 to-transparent' : 'bg-gradient-to-br from-red-700/25 via-red-600/10 to-transparent'}`} />
+              
+              {/* Large background asset text */}
+              <div className="absolute -left-2 top-1/2 -translate-y-1/2 select-none pointer-events-none">
+                <span className={`font-black tracking-tight text-5xl leading-none whitespace-nowrap ${isLong ? 'text-lime-400/15' : 'text-red-500/15'}`}>
+                  {position.symbol}
+                </span>
               </div>
-              <div className="min-w-0">
-                <div className="text-[10px] text-muted-foreground truncate">Current:</div>
-                <div className="text-[14px] font-semibold text-foreground truncate" data-testid={`current-price-${position.symbol}`}>
+
+              <div className="relative p-3 space-y-2">
+                {/* Symbol and badges row */}
+                <div className="flex items-center justify-between">
+                  <div className="font-extrabold text-foreground text-2xl tracking-tight">{position.symbol}</div>
+                  <div className="flex items-center gap-2">
+                    <Badge className={`text-xs px-2 py-0.5 ${isLong ? 'bg-lime-500/15 text-lime-300 border-lime-400/30' : 'bg-red-600/15 text-red-400 border-red-500/30'}`}>
+                      {isLong ? <TrendingUp className="h-3 w-3 mr-1" /> : <TrendingDown className="h-3 w-3 mr-1" />}
+                      {position.side.toUpperCase()}
+                    </Badge>
+                    {isHedge && (
+                      <Badge variant="secondary" className="text-xs">HEDGE</Badge>
+                    )}
+                  </div>
+                </div>
+
+                {/* Layers and leverage info */}
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-1 rounded-lg text-xs text-muted-foreground bg-muted/50 border border-border/50">
+                    {position.layersFilled}/{position.maxLayers} Layers
+                  </span>
+                  <span className="px-2 py-1 rounded-lg text-xs text-muted-foreground bg-muted/50 border border-border/50">
+                    {leverage}× • {formatCurrency(totalMargin)}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Price data grid (2 columns) */}
+            <div className="px-3 py-3 grid grid-cols-2 gap-3 border-t border-border/30 bg-background/30">
+              <div>
+                <div className="text-xs text-muted-foreground mb-1">Avg Entry</div>
+                <div className="text-sm font-medium text-foreground">{formatCurrency(avgEntry)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground mb-1">Current</div>
+                <div className="text-sm font-semibold text-foreground" data-testid={`current-price-${position.symbol}`}>
                   {formatCurrency(currentPrice)}
                 </div>
               </div>
-            </div>
-            <div className="grid grid-cols-2 gap-x-3 text-sm">
-              <div className="min-w-0">
-                <div className="text-[10px] text-muted-foreground truncate">SL:</div>
-                <div className="text-[13px] text-red-700 dark:text-red-500 truncate">{formatCurrency(stopLossPrice)}</div>
+              <div>
+                <div className="text-xs text-muted-foreground mb-1">Stop Loss</div>
+                <div className="text-sm text-red-700 dark:text-red-500">{formatCurrency(stopLossPrice)}</div>
               </div>
-              <div className="min-w-0">
-                <div className="text-[10px] text-muted-foreground truncate">TP:</div>
-                <div className="text-[13px] text-lime-600 dark:text-lime-400 truncate">{formatCurrency(takeProfitPrice)}</div>
+              <div>
+                <div className="text-xs text-muted-foreground mb-1">Take Profit</div>
+                <div className="text-sm text-lime-600 dark:text-lime-400">{formatCurrency(takeProfitPrice)}</div>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="text-right">
-                <div className={`text-sm font-semibold ${getPnlColor(unrealizedPnlDollar)}`}>
+
+            {/* P&L, Liquidation, and Actions row */}
+            <div className="px-3 py-3 flex items-center justify-between gap-3 border-t border-border/30 bg-background/50">
+              {/* P&L */}
+              <div>
+                <div className={`text-lg font-bold ${getPnlColor(unrealizedPnlDollar)}`}>
                   {unrealizedPnlDollar >= 0 ? '+' : ''}{formatCurrency(unrealizedPnlDollar)}
                 </div>
-                <div className={`text-xs ${getPnlColor(unrealizedPnlPercent)}`}>
+                <div className={`text-sm ${getPnlColor(unrealizedPnlPercent)}`}>
                   {unrealizedPnlPercent >= 0 ? '+' : ''}{unrealizedPnlPercent.toFixed(2)}%
                 </div>
               </div>
-              <CollapsibleTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8 ml-auto" data-testid="button-toggle-layers">
-                  {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                </Button>
-              </CollapsibleTrigger>
+
+              {/* Liquidation donut (if applicable) */}
+              {liquidationPrice !== null && distanceToLiquidation !== null && (
+                <div className="flex flex-col items-center">
+                  <div className="relative" style={{ width: '60px', height: '60px' }}>
+                    <svg viewBox="0 0 100 100" className="transform -rotate-90">
+                      <circle
+                        cx="50"
+                        cy="50"
+                        r="40"
+                        fill="none"
+                        stroke="hsl(var(--muted))"
+                        strokeWidth="8"
+                      />
+                      <circle
+                        cx="50"
+                        cy="50"
+                        r="40"
+                        fill="none"
+                        stroke={distanceToLiquidation < 5 ? 'rgb(220, 38, 38)' : distanceToLiquidation < 15 ? 'rgb(251, 146, 60)' : 'rgb(190, 242, 100)'}
+                        strokeWidth="8"
+                        strokeDasharray={`${Math.min(100, distanceToLiquidation * 2.5)} ${251.2 - Math.min(100, distanceToLiquidation * 2.5)}`}
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <div className={`text-xs font-bold ${distanceToLiquidation < 5 ? 'text-red-700' : distanceToLiquidation < 15 ? 'text-orange-500' : 'text-lime-600'}`}>
+                        {distanceToLiquidation.toFixed(0)}%
+                      </div>
+                      <div className="text-[8px] text-muted-foreground">liq</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex items-center gap-2">
+                <button
+                  className="rounded-xl flex items-center justify-center px-4 py-2 border-4 border-destructive bg-transparent text-destructive transition-all hover:brightness-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                  data-testid={`button-close-position-${position.symbol}`}
+                  onClick={onClose}
+                  disabled={isClosing}
+                >
+                  <span className="text-xs font-semibold">Close</span>
+                </button>
+                <CollapsibleTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-10 w-10" data-testid="button-toggle-layers">
+                    {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </Button>
+                </CollapsibleTrigger>
+              </div>
             </div>
           </div>
 
-          {/* Liquidation Risk Donut */}
-          {liquidationPrice !== null && distanceToLiquidation !== null && (
-            <div className="flex flex-col items-center justify-center py-2 px-2 border-l border-border/30">
-              <div className="relative" style={{ width: '80px', height: '80px' }}>
-                <svg viewBox="0 0 100 100" className="transform -rotate-90">
-                  {/* Background circle */}
-                  <circle
-                    cx="50"
-                    cy="50"
-                    r="40"
-                    fill="none"
-                    stroke="hsl(var(--muted))"
-                    strokeWidth="8"
-                  />
-                  {/* Progress circle */}
-                  <circle
-                    cx="50"
-                    cy="50"
-                    r="40"
-                    fill="none"
-                    stroke={distanceToLiquidation < 5 ? 'rgb(220, 38, 38)' : distanceToLiquidation < 15 ? 'rgb(251, 146, 60)' : 'rgb(190, 242, 100)'}
-                    strokeWidth="8"
-                    strokeDasharray={`${Math.min(100, distanceToLiquidation * 2.5)} ${251.2 - Math.min(100, distanceToLiquidation * 2.5)}`}
-                    strokeLinecap="round"
-                  />
-                </svg>
-                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <div className={`text-xs font-bold ${distanceToLiquidation < 5 ? 'text-red-700' : distanceToLiquidation < 15 ? 'text-orange-500' : 'text-lime-600'}`}>
-                    {distanceToLiquidation.toFixed(0)}%
-                  </div>
-                  <div className="text-[8px] text-muted-foreground">to liq</div>
-                </div>
+          {/* Desktop: Grid layout */}
+          <div className="hidden lg:grid lg:grid-cols-[minmax(180px,240px)_1fr_auto_140px]">
+            {/* Left: Asset label with edge-bleed */}
+            <div className="relative isolate overflow-hidden">
+              {/* Gradient background */}
+              <div className={`absolute inset-0 ${isLong ? 'bg-gradient-to-br from-lime-600/25 via-lime-500/10 to-transparent' : 'bg-gradient-to-br from-red-700/25 via-red-600/10 to-transparent'}`} />
+              
+              {/* Large background asset text */}
+              <div className="absolute -left-2 top-1/2 -translate-y-1/2 select-none pointer-events-none">
+                <span className={`font-black tracking-tight text-5xl sm:text-6xl md:text-7xl leading-none whitespace-nowrap ${isLong ? 'text-lime-400/15' : 'text-red-500/15'}`}>
+                  {position.symbol}
+                </span>
               </div>
-              <div className="text-[10px] text-center text-muted-foreground mt-1">
-                {formatCurrency(liquidationPrice)}
+
+              {/* Top row: compact chips */}
+              <div className="relative p-2 flex items-center gap-2 flex-wrap">
+                <Badge className={`text-xs px-1.5 py-0.5 ${isLong ? 'bg-lime-500/15 text-lime-300 border-lime-400/30' : 'bg-red-600/15 text-red-400 border-red-500/30'}`}>
+                  {isLong ? <TrendingUp className="h-3 w-3 mr-1" /> : <TrendingDown className="h-3 w-3 mr-1" />}
+                  {position.side.toUpperCase()}
+                </Badge>
+                <span className="px-1.5 py-0.5 rounded-lg text-[10px] text-muted-foreground bg-muted/50 border border-border/50">
+                  {position.layersFilled}/{position.maxLayers}
+                </span>
+                <span className="px-1.5 py-0.5 rounded-lg text-[10px] text-muted-foreground bg-muted/50 border border-border/50">
+                  {leverage}× • {formatCurrency(totalMargin)}
+                </span>
+                {isHedge && (
+                  <Badge variant="secondary" className="text-xs">HEDGE</Badge>
+                )}
+              </div>
+
+              {/* Bottom: large asset label */}
+              <div className="relative px-2 pb-2">
+                <div className="font-extrabold text-foreground text-2xl tracking-tight">{position.symbol}</div>
               </div>
             </div>
-          )}
 
-          {/* Right: Full-height Close Position button */}
-          <button
-            className="h-full rounded-l-none rounded-r-2xl flex items-center justify-center px-3 border-[6px] border-destructive bg-transparent text-destructive transition-all hover:brightness-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-            data-testid={`button-close-position-${position.symbol}`}
-            onClick={onClose}
-            disabled={isClosing}
-          >
-            <span className="text-xs font-semibold whitespace-nowrap">Close Position</span>
-          </button>
+            {/* Middle: price data and P&L */}
+            <div className="px-3 py-2 flex flex-col justify-between">
+              <div className="grid grid-cols-2 gap-x-3 text-sm">
+                <div className="min-w-0">
+                  <div className="text-[10px] text-muted-foreground truncate">Avg:</div>
+                  <div className="text-[13px] text-foreground/90 truncate">{formatCurrency(avgEntry)}</div>
+                </div>
+                <div className="min-w-0">
+                  <div className="text-[10px] text-muted-foreground truncate">Current:</div>
+                  <div className="text-[14px] font-semibold text-foreground truncate" data-testid={`current-price-${position.symbol}`}>
+                    {formatCurrency(currentPrice)}
+                  </div>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-x-3 text-sm">
+                <div className="min-w-0">
+                  <div className="text-[10px] text-muted-foreground truncate">SL:</div>
+                  <div className="text-[13px] text-red-700 dark:text-red-500 truncate">{formatCurrency(stopLossPrice)}</div>
+                </div>
+                <div className="min-w-0">
+                  <div className="text-[10px] text-muted-foreground truncate">TP:</div>
+                  <div className="text-[13px] text-lime-600 dark:text-lime-400 truncate">{formatCurrency(takeProfitPrice)}</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="text-right">
+                  <div className={`text-sm font-semibold ${getPnlColor(unrealizedPnlDollar)}`}>
+                    {unrealizedPnlDollar >= 0 ? '+' : ''}{formatCurrency(unrealizedPnlDollar)}
+                  </div>
+                  <div className={`text-xs ${getPnlColor(unrealizedPnlPercent)}`}>
+                    {unrealizedPnlPercent >= 0 ? '+' : ''}{unrealizedPnlPercent.toFixed(2)}%
+                  </div>
+                </div>
+                <CollapsibleTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 ml-auto" data-testid="button-toggle-layers">
+                    {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </Button>
+                </CollapsibleTrigger>
+              </div>
+            </div>
+
+            {/* Liquidation Risk Donut */}
+            {liquidationPrice !== null && distanceToLiquidation !== null && (
+              <div className="flex flex-col items-center justify-center py-2 px-2 border-l border-border/30">
+                <div className="relative" style={{ width: '80px', height: '80px' }}>
+                  <svg viewBox="0 0 100 100" className="transform -rotate-90">
+                    {/* Background circle */}
+                    <circle
+                      cx="50"
+                      cy="50"
+                      r="40"
+                      fill="none"
+                      stroke="hsl(var(--muted))"
+                      strokeWidth="8"
+                    />
+                    {/* Progress circle */}
+                    <circle
+                      cx="50"
+                      cy="50"
+                      r="40"
+                      fill="none"
+                      stroke={distanceToLiquidation < 5 ? 'rgb(220, 38, 38)' : distanceToLiquidation < 15 ? 'rgb(251, 146, 60)' : 'rgb(190, 242, 100)'}
+                      strokeWidth="8"
+                      strokeDasharray={`${Math.min(100, distanceToLiquidation * 2.5)} ${251.2 - Math.min(100, distanceToLiquidation * 2.5)}`}
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <div className={`text-xs font-bold ${distanceToLiquidation < 5 ? 'text-red-700' : distanceToLiquidation < 15 ? 'text-orange-500' : 'text-lime-600'}`}>
+                      {distanceToLiquidation.toFixed(0)}%
+                    </div>
+                    <div className="text-[8px] text-muted-foreground">to liq</div>
+                  </div>
+                </div>
+                <div className="text-[10px] text-center text-muted-foreground mt-1">
+                  {formatCurrency(liquidationPrice)}
+                </div>
+              </div>
+            )}
+
+            {/* Right: Full-height Close Position button */}
+            <button
+              className="h-full rounded-l-none rounded-r-2xl flex items-center justify-center px-3 border-[6px] border-destructive bg-transparent text-destructive transition-all hover:brightness-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              data-testid={`button-close-position-${position.symbol}`}
+              onClick={onClose}
+              disabled={isClosing}
+            >
+              <span className="text-xs font-semibold whitespace-nowrap">Close Position</span>
+            </button>
+          </div>
         </div>
 
         <CollapsibleContent>
