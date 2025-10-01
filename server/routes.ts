@@ -940,21 +940,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('💾 Sending to database:', JSON.stringify(updateData, null, 2));
       await storage.updateStrategy(strategyId, updateData);
       
-      // If paper account size changed and strategy is not active, reset the trade session
-      if (paperAccountSizeChanged && !existingStrategy.isActive) {
+      // If paper account size changed, reset the trade session (works even if strategy is active)
+      if (paperAccountSizeChanged) {
         const activeSession = await storage.getActiveTradeSession(strategyId);
         if (activeSession) {
           const newBalance = validatedUpdates.paperAccountSize!;
           console.log(`💰 Paper account size changed from ${existingStrategy.paperAccountSize} to ${newBalance} - resetting trade session`);
           
-          // Close all open positions before resetting balance
-          const openPositions = await storage.getOpenPositions(activeSession.id);
-          if (openPositions.length > 0) {
-            console.log(`🔄 Closing ${openPositions.length} open positions before balance reset`);
-            for (const position of openPositions) {
-              await storage.updatePosition(position.id, { isOpen: false });
-            }
-          }
+          // Delete ALL positions and fills to get a fresh start
+          const allPositions = await storage.getPositionsBySession(activeSession.id);
+          const allFills = await storage.getFillsBySession(activeSession.id);
+          
+          console.log(`🗑️ Clearing ${allPositions.length} positions and ${allFills.length} fills for fresh balance reset`);
+          
+          // Clear all positions and fills
+          await storage.clearPositionsBySession(activeSession.id);
+          await storage.clearFillsBySession(activeSession.id);
           
           // Update the session with new balance
           await storage.updateTradeSession(activeSession.id, {
@@ -965,7 +966,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             winRate: '0',
           });
           
-          console.log(`✅ Trade session ${activeSession.id} reset to new balance: ${newBalance}`);
+          console.log(`✅ Trade session ${activeSession.id} reset to new balance: ${newBalance} (cleared all historical data)`);
         }
       }
       
