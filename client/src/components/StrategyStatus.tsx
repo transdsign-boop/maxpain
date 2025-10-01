@@ -345,7 +345,7 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
           }}
         />
         
-        <div className="relative z-10 grid grid-cols-[minmax(140px,220px)_1fr_auto]">
+        <div className="relative z-10 grid grid-cols-[minmax(140px,220px)_1fr_auto_120px]">
           {/* Left: Asset label with edge-bleed */}
           <div className="relative isolate overflow-hidden">
             {/* Gradient background */}
@@ -381,9 +381,9 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
             </div>
           </div>
 
-          {/* Middle: price data in compact grid */}
-          <div className="px-3 py-2 flex flex-col gap-1">
-            <div className="grid grid-cols-3 gap-x-3 text-sm">
+          {/* Middle: price data and P&L */}
+          <div className="px-3 py-2 flex flex-col justify-between">
+            <div className="grid grid-cols-2 gap-x-3 text-sm">
               <div className="min-w-0">
                 <div className="text-[10px] text-muted-foreground truncate">Avg:</div>
                 <div className="text-[13px] text-foreground/90 truncate">{formatCurrency(avgEntry)}</div>
@@ -394,16 +394,8 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
                   {formatCurrency(currentPrice)}
                 </div>
               </div>
-              {liquidationPrice !== null && distanceToLiquidation !== null && (
-                <div className="min-w-0">
-                  <div className="text-[10px] text-muted-foreground truncate">Liq:</div>
-                  <div className={`text-[13px] truncate ${distanceToLiquidation < 10 ? 'text-red-700 dark:text-red-500' : 'text-foreground/90'}`} data-testid={`liquidation-info-${position.symbol}`}>
-                    {formatCurrency(liquidationPrice)} ({distanceToLiquidation.toFixed(1)}%)
-                  </div>
-                </div>
-              )}
             </div>
-            <div className="grid grid-cols-3 gap-x-3 text-sm">
+            <div className="grid grid-cols-2 gap-x-3 text-sm">
               <div className="min-w-0">
                 <div className="text-[10px] text-muted-foreground truncate">SL:</div>
                 <div className="text-[13px] text-red-700 dark:text-red-500 truncate">{formatCurrency(stopLossPrice)}</div>
@@ -412,43 +404,75 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
                 <div className="text-[10px] text-muted-foreground truncate">TP:</div>
                 <div className="text-[13px] text-lime-600 dark:text-lime-400 truncate">{formatCurrency(takeProfitPrice)}</div>
               </div>
-              <div className="min-w-0">
-                <div className="text-[10px] text-muted-foreground truncate">Pressure:</div>
-                <div className={`text-[13px] truncate ${getPnlColor(unrealizedPnlPercent)}`}>
-                  {unrealizedPnlPercent > 0 ? 'Profit' : unrealizedPnlPercent < 0 ? 'Loss' : 'Neutral'}
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="text-right">
+                <div className={`text-sm font-semibold ${getPnlColor(unrealizedPnlDollar)}`}>
+                  {unrealizedPnlDollar >= 0 ? '+' : ''}{formatCurrency(unrealizedPnlDollar)}
+                </div>
+                <div className={`text-xs ${getPnlColor(unrealizedPnlPercent)}`}>
+                  {unrealizedPnlPercent >= 0 ? '+' : ''}{unrealizedPnlPercent.toFixed(2)}%
                 </div>
               </div>
-            </div>
-          </div>
-
-          {/* Right: PnL and actions */}
-          <div className="px-3 py-2 flex items-center gap-3">
-            <div className="text-right">
-              <div className={`text-sm font-semibold ${getPnlColor(unrealizedPnlDollar)}`}>
-                {unrealizedPnlDollar >= 0 ? '+' : ''}{formatCurrency(unrealizedPnlDollar)}
-              </div>
-              <div className={`text-xs ${getPnlColor(unrealizedPnlPercent)}`}>
-                {unrealizedPnlPercent >= 0 ? '+' : ''}{unrealizedPnlPercent.toFixed(2)}%
-              </div>
-            </div>
-            <div className="flex flex-col gap-1">
               <CollapsibleTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-7 w-7" data-testid="button-toggle-layers">
+                <Button variant="ghost" size="icon" className="h-8 w-8 ml-auto" data-testid="button-toggle-layers">
                   {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                 </Button>
               </CollapsibleTrigger>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-7 w-7"
-                data-testid={`button-close-position-${position.symbol}`}
-                onClick={onClose}
-                disabled={isClosing}
-              >
-                <X className="h-4 w-4" />
-              </Button>
             </div>
           </div>
+
+          {/* Liquidation Risk Donut */}
+          {liquidationPrice !== null && distanceToLiquidation !== null && (
+            <div className="flex flex-col items-center justify-center py-2 px-2 border-l border-border/30">
+              <div className="relative" style={{ width: '80px', height: '80px' }}>
+                <svg viewBox="0 0 100 100" className="transform -rotate-90">
+                  {/* Background circle */}
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="40"
+                    fill="none"
+                    stroke="hsl(var(--muted))"
+                    strokeWidth="8"
+                  />
+                  {/* Progress circle */}
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="40"
+                    fill="none"
+                    stroke={distanceToLiquidation < 5 ? 'rgb(220, 38, 38)' : distanceToLiquidation < 15 ? 'rgb(251, 146, 60)' : 'rgb(190, 242, 100)'}
+                    strokeWidth="8"
+                    strokeDasharray={`${Math.min(100, distanceToLiquidation * 2.5)} ${251.2 - Math.min(100, distanceToLiquidation * 2.5)}`}
+                    strokeLinecap="round"
+                  />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <div className={`text-xs font-bold ${distanceToLiquidation < 5 ? 'text-red-700' : distanceToLiquidation < 15 ? 'text-orange-500' : 'text-lime-600'}`}>
+                    {distanceToLiquidation.toFixed(0)}%
+                  </div>
+                  <div className="text-[8px] text-muted-foreground">to liq</div>
+                </div>
+              </div>
+              <div className="text-[10px] text-center text-muted-foreground mt-1">
+                {formatCurrency(liquidationPrice)}
+              </div>
+            </div>
+          )}
+
+          {/* Right: Full-height Close Position button */}
+          <Button
+            variant="destructive"
+            className="h-full rounded-l-none rounded-r-2xl flex flex-col items-center justify-center gap-1 px-3 hover-elevate active-elevate-2"
+            data-testid={`button-close-position-${position.symbol}`}
+            onClick={onClose}
+            disabled={isClosing}
+          >
+            <X className="h-5 w-5" />
+            <span className="text-xs font-semibold whitespace-nowrap">Close</span>
+            <span className="text-xs font-semibold whitespace-nowrap">Position</span>
+          </Button>
         </div>
 
         <CollapsibleContent>
