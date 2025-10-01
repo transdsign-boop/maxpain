@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { strategyEngine } from "./strategy-engine";
-import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySchema, updateStrategySchema, type Position, positions } from "@shared/schema";
+import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySchema, updateStrategySchema, type Position, type Liquidation, positions } from "@shared/schema";
 import { db } from "./db";
 import { desc } from "drizzle-orm";
 
@@ -1643,12 +1643,21 @@ async function connectToAsterDEX(clients: Set<WebSocket>) {
             // Validate and store in database
             const validatedData = insertLiquidationSchema.parse(liquidationData);
             let storedLiquidation;
+            let isDuplicate = false;
             try {
               storedLiquidation = await storage.insertLiquidation(validatedData);
             } catch (dbError: any) {
               // If this fails due to unique constraint, it's a duplicate from Aster DEX
               if (dbError.code === '23505' || dbError.constraint?.includes('event_timestamp')) {
+                isDuplicate = true;
                 console.log(`🔄 Duplicate detected by database (Aster event ${eventTimestamp})`);
+                // Create a mock liquidation object from validatedData for strategy engine
+                // The strategy engine needs to evaluate ALL liquidations, not just new ones
+                storedLiquidation = {
+                  id: `temp-${eventTimestamp}`, // Temporary ID for duplicates
+                  ...validatedData,
+                  timestamp: new Date(eventTimestamp)
+                } as Liquidation;
               } else {
                 console.error('❌ Database insert error:', dbError);
               }
@@ -1656,26 +1665,30 @@ async function connectToAsterDEX(clients: Set<WebSocket>) {
             }
             
             if (storedLiquidation) {
-              // Emit to strategy engine for trade execution
+              // Emit to strategy engine for trade execution (even if duplicate)
+              // The strategy engine needs to evaluate ALL real-time liquidations
               try {
                 strategyEngine.emit('liquidation', storedLiquidation);
               } catch (error) {
                 console.error('❌ Error emitting liquidation to strategy engine:', error);
               }
               
-              // Broadcast to all connected clients
-              const broadcastMessage = JSON.stringify({
-                type: 'liquidation',
-                data: storedLiquidation
-              });
+              // Only broadcast to clients and log if it's a new liquidation (not duplicate)
+              if (!isDuplicate) {
+                // Broadcast to all connected clients
+                const broadcastMessage = JSON.stringify({
+                  type: 'liquidation',
+                  data: storedLiquidation
+                });
 
-              clients.forEach(client => {
-                if (client.readyState === WebSocket.OPEN) {
-                  client.send(broadcastMessage);
-                }
-              });
+                clients.forEach(client => {
+                  if (client.readyState === WebSocket.OPEN) {
+                    client.send(broadcastMessage);
+                  }
+                });
 
-              console.log(`🚨 REAL Liquidation: ${liquidationData.symbol} ${liquidationData.side} $${(parseFloat(liquidationData.value)).toFixed(2)} [Event: ${eventTimestamp}]`);
+                console.log(`🚨 REAL Liquidation: ${liquidationData.symbol} ${liquidationData.side} $${(parseFloat(liquidationData.value)).toFixed(2)} [Event: ${eventTimestamp}]`);
+              }
             }
           } finally {
             // ALWAYS resolve the processing promise and clean up
