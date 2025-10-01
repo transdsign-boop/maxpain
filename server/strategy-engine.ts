@@ -128,10 +128,12 @@ export class StrategyEngine extends EventEmitter {
     // Create or get active session for this strategy
     let session = await storage.getActiveTradeSession(strategy.id);
     if (!session) {
+      const accountSize = strategy.paperAccountSize || '10000.0';
       session = await storage.createTradeSession({
         strategyId: strategy.id,
         mode: strategy.tradingMode || 'paper',
-        currentBalance: '10000.0', // Default starting balance
+        startingBalance: accountSize, // Set starting balance for resets
+        currentBalance: accountSize, // Set current balance to same value
       });
     } else {
       // Update session mode if strategy trading mode has changed
