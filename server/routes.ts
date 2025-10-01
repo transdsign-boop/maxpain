@@ -1544,10 +1544,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   return httpServer;
 }
 
-// Global deduplication cache (persists across reconnections)
-const recentLiquidations = new Map<string, number>();
-const processingQueue = new Map<string, Promise<void>>(); // Queue to serialize duplicate signatures
-const DEDUP_WINDOW_MS = 5000; // 5 second window for deduplication
+// Global deduplication cache using Aster DEX event timestamps (persists across reconnections)
+const recentLiquidations = new Map<string, number>(); // Maps eventTimestamp -> last seen time
+const processingQueue = new Map<string, Promise<void>>(); // Maps eventTimestamp -> processing promise
+const DEDUP_WINDOW_MS = 5000; // 5 second window for in-memory cache cleanup
 
 async function connectToAsterDEX(clients: Set<WebSocket>) {
   try {
@@ -1568,27 +1568,19 @@ async function connectToAsterDEX(clients: Set<WebSocket>) {
         
         // Handle liquidation order events
         if (message.e === 'forceOrder') {
-          // Map BUY/SELL from Aster DEX to our side representation
-          // When exchange SELLS = long position being liquidated (price dropped)
-          // When exchange BUYS = short position being liquidated (price rose)
-          const side = message.o.S.toLowerCase() === 'buy' ? 'short' : 'long';
+          // Extract Aster DEX event timestamp (E field) - this is the unique identifier per event
+          const eventTimestamp = message.E.toString();
           
-          const liquidationData = {
-            symbol: message.o.s,
-            side: side,
-            size: message.o.q,
-            price: message.o.p,
-            value: (parseFloat(message.o.q) * parseFloat(message.o.p)).toFixed(8),
-          };
+          // Check in-memory cache first - fastest deduplication
+          if (recentLiquidations.has(eventTimestamp)) {
+            console.log(`🔄 Skipping duplicate (Aster event ${eventTimestamp} already processed)`);
+            return;
+          }
           
-          // Create unique signature for deduplication
-          const signature = `${liquidationData.symbol}-${liquidationData.side}-${liquidationData.size}-${liquidationData.price}-${liquidationData.value}`;
-          const now = Date.now();
-          
-          // Check if already processing - wait and skip if so
-          const existingProcess = processingQueue.get(signature);
+          // Check if already processing this event - wait and skip if so
+          const existingProcess = processingQueue.get(eventTimestamp);
           if (existingProcess) {
-            console.log(`🔄 Skipping duplicate (already processing): ${liquidationData.symbol} ${liquidationData.side} $${liquidationData.value}`);
+            console.log(`🔄 Skipping duplicate (Aster event ${eventTimestamp} already processing)`);
             await existingProcess; // Wait for it to finish
             return; // Skip this duplicate
           }
@@ -1598,93 +1590,80 @@ async function connectToAsterDEX(clients: Set<WebSocket>) {
           const processingPromise = new Promise<void>((resolve) => {
             resolveProcessing = resolve;
           });
-          
-          // Set lock immediately - no gap between check and set
-          if (processingQueue.has(signature)) {
-            // Another message set it between our check and now
-            console.log(`🔄 Skipping duplicate (race detected): ${liquidationData.symbol} ${liquidationData.side} $${liquidationData.value}`);
-            await processingQueue.get(signature)!;
-            return;
-          }
-          processingQueue.set(signature, processingPromise);
-          
-          // Check in-memory deduplication
-          const lastSeen = recentLiquidations.get(signature);
-          if (lastSeen && (now - lastSeen) < DEDUP_WINDOW_MS) {
-            console.log(`🔄 Skipping duplicate liquidation (in-memory): ${liquidationData.symbol} ${liquidationData.side} $${liquidationData.value}`);
-            resolveProcessing!();
-            setTimeout(() => processingQueue.delete(signature), 100);
-            return;
-          }
+          processingQueue.set(eventTimestamp, processingPromise);
           
           // Mark as seen IMMEDIATELY
-          recentLiquidations.set(signature, now);
+          const now = Date.now();
+          recentLiquidations.set(eventTimestamp, now);
           
           try {
-              // Clean up old entries periodically (keep map size bounded)
-              if (recentLiquidations.size > 100) {
-                const cutoff = now - DEDUP_WINDOW_MS;
-                const entries = Array.from(recentLiquidations.entries());
-                for (const [key, timestamp] of entries) {
-                  if (timestamp < cutoff) {
-                    recentLiquidations.delete(key);
-                  }
+            // Clean up old entries periodically (keep map size bounded)
+            if (recentLiquidations.size > 100) {
+              const cutoff = now - DEDUP_WINDOW_MS;
+              const entries = Array.from(recentLiquidations.entries());
+              for (const [key, timestamp] of entries) {
+                if (timestamp < cutoff) {
+                  recentLiquidations.delete(key);
                 }
               }
-              
-              // Database-level deduplication check
-              const fiveSecondsAgo = new Date(Date.now() - DEDUP_WINDOW_MS);
-              const recentDuplicates = await storage.getLiquidationsBySignature(
-                liquidationData.symbol,
-                liquidationData.side,
-                liquidationData.size,
-                liquidationData.price,
-                fiveSecondsAgo
-              );
-              
-              if (recentDuplicates.length > 0) {
-                console.log(`🔄 Skipping duplicate (database check): ${liquidationData.symbol} ${liquidationData.side} $${liquidationData.value}`);
-                // Skip inserting duplicates - exit early
+            }
+            
+            // Map BUY/SELL from Aster DEX to our side representation
+            // When exchange SELLS = long position being liquidated (price dropped)
+            // When exchange BUYS = short position being liquidated (price rose)
+            const side = message.o.S.toLowerCase() === 'buy' ? 'short' : 'long';
+            
+            const liquidationData = {
+              symbol: message.o.s,
+              side: side,
+              size: message.o.q,
+              price: message.o.p,
+              value: (parseFloat(message.o.q) * parseFloat(message.o.p)).toFixed(8),
+              eventTimestamp: eventTimestamp, // Store Aster DEX event timestamp
+            };
+            
+            // Validate and store in database
+            const validatedData = insertLiquidationSchema.parse(liquidationData);
+            let storedLiquidation;
+            try {
+              storedLiquidation = await storage.insertLiquidation(validatedData);
+            } catch (dbError: any) {
+              // If this fails due to unique constraint, it's a duplicate from Aster DEX
+              if (dbError.code === '23505' || dbError.constraint?.includes('event_timestamp')) {
+                console.log(`🔄 Duplicate detected by database (Aster event ${eventTimestamp})`);
               } else {
-                // Validate and store in database
-                const validatedData = insertLiquidationSchema.parse(liquidationData);
-                let storedLiquidation;
-                try {
-                  storedLiquidation = await storage.insertLiquidation(validatedData);
-                } catch (dbError: any) {
-                  // If this fails due to constraint or other DB error, it might be a duplicate
-                  console.log(`🔄 Database insert failed (likely duplicate): ${liquidationData.symbol} ${liquidationData.side}`);
-                  // Don't return - let finally block execute
-                }
-                
-                if (storedLiquidation) {
-                  // Emit to strategy engine for trade execution
-                  try {
-                    strategyEngine.emit('liquidation', storedLiquidation);
-                  } catch (error) {
-                    console.error('❌ Error emitting liquidation to strategy engine:', error);
-                  }
-                  
-                  // Broadcast to all connected clients
-                  const broadcastMessage = JSON.stringify({
-                    type: 'liquidation',
-                    data: storedLiquidation
-                  });
-
-                  clients.forEach(client => {
-                    if (client.readyState === WebSocket.OPEN) {
-                      client.send(broadcastMessage);
-                    }
-                  });
-
-                  console.log(`🚨 REAL Liquidation: ${liquidationData.symbol} ${liquidationData.side} $${(parseFloat(liquidationData.value)).toFixed(2)}`);
-                }
+                console.error('❌ Database insert error:', dbError);
               }
+              // Don't return - let finally block execute
+            }
+            
+            if (storedLiquidation) {
+              // Emit to strategy engine for trade execution
+              try {
+                strategyEngine.emit('liquidation', storedLiquidation);
+              } catch (error) {
+                console.error('❌ Error emitting liquidation to strategy engine:', error);
+              }
+              
+              // Broadcast to all connected clients
+              const broadcastMessage = JSON.stringify({
+                type: 'liquidation',
+                data: storedLiquidation
+              });
+
+              clients.forEach(client => {
+                if (client.readyState === WebSocket.OPEN) {
+                  client.send(broadcastMessage);
+                }
+              });
+
+              console.log(`🚨 REAL Liquidation: ${liquidationData.symbol} ${liquidationData.side} $${(parseFloat(liquidationData.value)).toFixed(2)} [Event: ${eventTimestamp}]`);
+            }
           } finally {
             // ALWAYS resolve the processing promise and clean up
             resolveProcessing!();
             // Clean up after a short delay to allow waiting duplicates to finish
-            setTimeout(() => processingQueue.delete(signature), 100);
+            setTimeout(() => processingQueue.delete(eventTimestamp), 100);
           }
         }
       } catch (error) {
