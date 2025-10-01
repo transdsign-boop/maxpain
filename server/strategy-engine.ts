@@ -285,19 +285,26 @@ export class StrategyEngine extends EventEmitter {
     // Calculate percentile threshold: current liquidation must exceed specified percentile
     const currentLiquidationValue = parseFloat(liquidation.value);
     
-    if (recentLiquidations.length === 0) return false;
+    // Require at least 2 liquidations to establish a meaningful percentile
+    if (recentLiquidations.length < 2) {
+      console.log(`📊 Insufficient data: Need at least 2 liquidations to calculate ${strategy.percentileThreshold}% threshold (found ${recentLiquidations.length})`);
+      return false;
+    }
     
     // Get all liquidation values within the 60-second window and sort them
     const liquidationValues = recentLiquidations.map(liq => parseFloat(liq.value)).sort((a, b) => a - b);
     
-    // Calculate the percentile position for the threshold
-    const percentileIndex = Math.floor((strategy.percentileThreshold / 100) * liquidationValues.length);
+    // Calculate the percentile value: find the value such that X% of liquidations are below it
+    // For 51% threshold with 10 liquidations, we want the value at position ceil(0.51 * 10) = 6
+    // This means 5 liquidations (50%) are strictly below it
+    const percentilePosition = Math.ceil((strategy.percentileThreshold / 100) * liquidationValues.length);
+    const percentileIndex = Math.max(0, percentilePosition - 1); // Convert to 0-based index
     const percentileValue = liquidationValues[Math.min(percentileIndex, liquidationValues.length - 1)];
     
     console.log(`📊 Percentile Analysis: Current liquidation $${currentLiquidationValue.toFixed(2)} vs ${strategy.percentileThreshold}% threshold $${percentileValue.toFixed(2)} (${liquidationValues.length} liquidations in 60s window)`);
     
-    // Only enter if current liquidation exceeds the percentile threshold
-    return currentLiquidationValue >= percentileValue;
+    // Only enter if current liquidation STRICTLY EXCEEDS the percentile threshold
+    return currentLiquidationValue > percentileValue;
   }
 
   // Determine if we should add a layer to existing position
@@ -313,16 +320,24 @@ export class StrategyEngine extends EventEmitter {
 
     // First check percentile threshold - same as entry logic
     const recentLiquidations = this.getRecentLiquidations(liquidation.symbol, LIQUIDATION_WINDOW_SECONDS);
-    if (recentLiquidations.length === 0) return false;
+    
+    // Require at least 2 liquidations to establish a meaningful percentile
+    if (recentLiquidations.length < 2) {
+      console.log(`📊 Layer blocked: Need at least 2 liquidations to calculate ${strategy.percentileThreshold}% threshold (found ${recentLiquidations.length})`);
+      return false;
+    }
 
     const currentLiquidationValue = parseFloat(liquidation.value);
     const liquidationValues = recentLiquidations.map(liq => parseFloat(liq.value)).sort((a, b) => a - b);
-    const percentileIndex = Math.floor((strategy.percentileThreshold / 100) * liquidationValues.length);
+    
+    // Calculate percentile using same logic as entry
+    const percentilePosition = Math.ceil((strategy.percentileThreshold / 100) * liquidationValues.length);
+    const percentileIndex = Math.max(0, percentilePosition - 1);
     const percentileValue = liquidationValues[Math.min(percentileIndex, liquidationValues.length - 1)];
 
-    // Only proceed with layering if liquidation exceeds percentile threshold
-    if (currentLiquidationValue < percentileValue) {
-      console.log(`📊 Layer blocked: Liquidation $${currentLiquidationValue.toFixed(2)} below ${strategy.percentileThreshold}% threshold $${percentileValue.toFixed(2)}`);
+    // Only proceed with layering if liquidation STRICTLY EXCEEDS percentile threshold
+    if (currentLiquidationValue <= percentileValue) {
+      console.log(`📊 Layer blocked: Liquidation $${currentLiquidationValue.toFixed(2)} does not exceed ${strategy.percentileThreshold}% threshold $${percentileValue.toFixed(2)}`);
       return false;
     }
 
