@@ -940,33 +940,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('💾 Sending to database:', JSON.stringify(updateData, null, 2));
       await storage.updateStrategy(strategyId, updateData);
       
-      // If paper account size changed, reset the trade session (works even if strategy is active)
+      // If paper account size changed, create a new trade session with the new balance
       if (paperAccountSizeChanged) {
         const activeSession = await storage.getActiveTradeSession(strategyId);
         if (activeSession) {
           const newBalance = validatedUpdates.paperAccountSize!;
-          console.log(`💰 Paper account size changed from ${existingStrategy.paperAccountSize} to ${newBalance} - resetting trade session`);
+          console.log(`💰 Paper account size changed from ${existingStrategy.paperAccountSize} to ${newBalance} - creating new trade session`);
           
-          // Delete ALL positions and fills to get a fresh start
-          const allPositions = await storage.getPositionsBySession(activeSession.id);
-          const allFills = await storage.getFillsBySession(activeSession.id);
+          const positionCount = (await storage.getPositionsBySession(activeSession.id)).length;
+          const fillCount = (await storage.getFillsBySession(activeSession.id)).length;
           
-          console.log(`🗑️ Clearing ${allPositions.length} positions and ${allFills.length} fills for fresh balance reset`);
+          // CRITICAL: Unregister strategy FIRST to prevent race condition
+          // This removes the strategy from the engine before we end the session
+          const wasActive = existingStrategy.isActive;
+          if (wasActive) {
+            await strategyEngine.unregisterStrategy(strategyId);
+            console.log(`⏸️ Unregistered strategy to prevent orders on old session`);
+          }
           
-          // Clear all positions and fills
-          await storage.clearPositionsBySession(activeSession.id);
-          await storage.clearFillsBySession(activeSession.id);
+          // Now safe to end the old session - no new orders can be placed on it
+          await storage.endTradeSession(activeSession.id);
+          console.log(`🔚 Ended old session ${activeSession.id} (preserved ${positionCount} positions, ${fillCount} fills for history)`);
           
-          // Update the session with new balance
-          await storage.updateTradeSession(activeSession.id, {
+          // Create a fresh session with the new balance
+          const newSession = await storage.createTradeSession({
+            strategyId: strategyId,
+            mode: existingStrategy.tradingMode || 'paper',
             startingBalance: newBalance,
             currentBalance: newBalance,
-            totalPnl: '0',
-            totalTrades: 0,
-            winRate: '0',
           });
           
-          console.log(`✅ Trade session ${activeSession.id} reset to new balance: ${newBalance} (cleared all historical data)`);
+          console.log(`✅ Created new session ${newSession.id} with balance: ${newBalance}`);
+          
+          // Re-register the strategy if it was active - it will pick up the new session
+          if (wasActive) {
+            const updatedStrategy = await storage.getStrategy(strategyId);
+            if (updatedStrategy) {
+              await strategyEngine.registerStrategy(updatedStrategy);
+              console.log(`▶️ Re-registered strategy with new session ${newSession.id}`);
+            }
+          }
         }
       }
       
