@@ -263,19 +263,31 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
     : avgEntry * (1 - profitTargetPercent / 100);
   
   // Calculate margin (totalCost is already the leveraged position value)
-  const leverage = strategy ? strategy.leverage : 1;
+  const leverage = strategy ? parseFloat(strategy.leverage.toString()) : 1;
   const totalMargin = totalCost / leverage;
 
   // Calculate liquidation price based on leverage (isolated margin)
-  // Liquidation occurs when loss reaches 100% of margin (excluding fees/maintenance)
-  const liquidationPrice = position.side === 'long'
-    ? avgEntry * (1 - (1 / leverage) * 0.95) // 95% of theoretical (accounting for maintenance margin)
-    : avgEntry * (1 + (1 / leverage) * 0.95);
+  // For isolated margin: liquidationPrice = entry * (1 ± 1/leverage)
+  // We apply 0.95 maintenance margin factor for conservative estimate
+  const maintenanceMarginFactor = 0.95;
+  const hasLiquidation = leverage > 1 && !isNaN(leverage) && isFinite(leverage);
+  
+  const liquidationPrice = hasLiquidation
+    ? position.side === 'long'
+      ? avgEntry * (1 - (1 / leverage) * maintenanceMarginFactor)
+      : avgEntry * (1 + (1 / leverage) * maintenanceMarginFactor)
+    : null;
   
   // Calculate distance to liquidation as a percentage
-  const distanceToLiquidation = position.side === 'long'
-    ? ((currentPrice - liquidationPrice) / currentPrice) * 100
-    : ((liquidationPrice - currentPrice) / currentPrice) * 100;
+  let distanceToLiquidation = null;
+  if (liquidationPrice && hasLiquidation && currentPrice > 0) {
+    const rawDistance = position.side === 'long'
+      ? ((currentPrice - liquidationPrice) / currentPrice) * 100
+      : ((liquidationPrice - currentPrice) / currentPrice) * 100;
+    
+    // Clamp to non-negative values and handle edge cases
+    distanceToLiquidation = Math.max(0, rawDistance);
+  }
   
   // Calculate position pressure for visual indicator
   // Maps unrealizedPnl to a 0-100 scale where:
@@ -323,14 +335,16 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
               </div>
               
               {/* Liquidation Distance Indicator */}
-              <div className="flex items-center gap-2 text-xs mt-2">
-                <span className={`font-medium ${distanceToLiquidation < 10 ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}>
-                  Liq: {formatCurrency(liquidationPrice)}
-                </span>
-                <span className={`${distanceToLiquidation < 10 ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}>
-                  ({distanceToLiquidation.toFixed(2)}% away)
-                </span>
-              </div>
+              {liquidationPrice !== null && distanceToLiquidation !== null && (
+                <div className="flex items-center gap-2 text-xs mt-2" data-testid={`liquidation-info-${position.symbol}`}>
+                  <span className={`font-medium ${distanceToLiquidation < 10 ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}>
+                    Liq: {formatCurrency(liquidationPrice)}
+                  </span>
+                  <span className={`${distanceToLiquidation < 10 ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}>
+                    ({distanceToLiquidation.toFixed(2)}% away)
+                  </span>
+                </div>
+              )}
               
               {/* Position Pressure Visual Indicator */}
               <div className="mt-2">
