@@ -1,8 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { TrendingUp, TrendingDown, Target, Award, Activity, LineChart } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Button } from "@/components/ui/button";
+import { TrendingUp, TrendingDown, Target, Award, Activity, LineChart, ChevronDown } from "lucide-react";
 import { ComposedChart, Line, Area, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, Label } from "recharts";
 import { format } from "date-fns";
+import { useState } from "react";
 
 interface PerformanceMetrics {
   totalTrades: number;
@@ -38,6 +41,8 @@ interface TradeDataPoint {
 }
 
 export default function PerformanceOverview() {
+  const [isStatsOpen, setIsStatsOpen] = useState(false);
+  
   const { data: performance, isLoading } = useQuery<PerformanceMetrics>({
     queryKey: ['/api/performance/overview'],
     refetchInterval: 5000,
@@ -318,9 +323,20 @@ export default function PerformanceOverview() {
         </div>
 
         {/* Trade Statistics Section */}
-        <div className="pt-4 border-t border-border">
-          <div className="text-xs text-muted-foreground uppercase tracking-wider mb-4">Trade Statistics</div>
-          <div className="grid grid-cols-3 md:grid-cols-6 gap-4">
+        <Collapsible open={isStatsOpen} onOpenChange={setIsStatsOpen} className="pt-4 border-t border-border">
+          <CollapsibleTrigger asChild>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="w-full justify-between p-0 h-auto hover:bg-transparent"
+              data-testid="button-toggle-trade-stats"
+            >
+              <div className="text-xs text-muted-foreground uppercase tracking-wider">Trade Statistics</div>
+              <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${isStatsOpen ? 'rotate-180' : ''}`} />
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="mt-4">
+            <div className="grid grid-cols-3 md:grid-cols-6 gap-4">
             <div className="space-y-1">
               <div className="text-xs text-muted-foreground flex items-center gap-1">
                 <TrendingUp className="h-3 w-3" />
@@ -396,7 +412,8 @@ export default function PerformanceOverview() {
               </div>
             </div>
           </div>
-        </div>
+          </CollapsibleContent>
+        </Collapsible>
       </CardContent>
     </Card>
   );
