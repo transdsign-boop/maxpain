@@ -742,6 +742,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get account trade history from Aster DEX
+  app.get("/api/live/trades", async (req, res) => {
+    try {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+
+      if (!apiKey || !secretKey) {
+        return res.status(400).json({ error: "Aster DEX API keys not configured" });
+      }
+
+      // Optional query parameters
+      const symbol = req.query.symbol as string | undefined;
+      const limit = Math.min(parseInt(req.query.limit as string) || 500, 1000); // Max 1000
+      const startTime = req.query.startTime as string | undefined;
+
+      // Create signed request to get trade history
+      const timestamp = Date.now();
+      let params = `timestamp=${timestamp}&limit=${limit}`;
+      if (symbol) params += `&symbol=${symbol}`;
+      if (startTime) params += `&startTime=${startTime}`;
+
+      const signature = crypto
+        .createHmac('sha256', secretKey)
+        .update(params)
+        .digest('hex');
+
+      const response = await fetch(
+        `https://fapi.asterdex.com/fapi/v1/userTrades?${params}&signature=${signature}`,
+        {
+          headers: {
+            'X-MBX-APIKEY': apiKey,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Failed to fetch Aster DEX trades:', errorText);
+        return res.status(response.status).json({ error: `Aster DEX API error: ${errorText}` });
+      }
+
+      const data = await response.json();
+      res.json(data);
+    } catch (error) {
+      console.error('Error fetching live trade history:', error);
+      res.status(500).json({ error: "Failed to fetch live trade history" });
+    }
+  });
+
   // Get overall trading performance metrics
   app.get("/api/performance/overview", async (req, res) => {
     try {

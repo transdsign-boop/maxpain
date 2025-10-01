@@ -57,10 +57,11 @@ export default function PerformanceOverview() {
   const isLiveMode = activeStrategy?.tradingMode === 'live';
 
   // Fetch live account data when in live mode
-  const { data: liveAccount } = useQuery<LiveAccountData>({
+  const { data: liveAccount, isLoading: liveAccountLoading } = useQuery<LiveAccountData>({
     queryKey: ['/api/live/account'],
     refetchInterval: 5000,
-    enabled: isLiveMode,
+    enabled: !!isLiveMode && !!activeStrategy,
+    retry: 2,
   });
 
   const { data: performance, isLoading } = useQuery<PerformanceMetrics>({
@@ -116,6 +117,84 @@ export default function PerformanceOverview() {
     enabled: !!activeStrategy?.id,
     refetchInterval: 10000,
   });
+
+  // Show live mode UI if in live mode
+  if (isLiveMode) {
+    // Show loading state while fetching live account data
+    if (liveAccountLoading) {
+      return (
+        <Card data-testid="performance-overview-live-loading">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <LineChart className="h-5 w-5" />
+                Account Performance
+              </CardTitle>
+              <Badge 
+                variant="default" 
+                className="bg-[rgb(190,242,100)] text-black hover:bg-[rgb(190,242,100)] font-semibold"
+              >
+                LIVE MODE
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-center py-8">
+              <div className="text-sm text-muted-foreground">Loading live account data...</div>
+            </div>
+          </CardContent>
+        </Card>
+      );
+    }
+    
+    // Show live account data once loaded
+    if (liveAccount) {
+      const totalBalance = parseFloat(liveAccount.totalWalletBalance);
+      const unrealizedPnl = parseFloat(liveAccount.totalUnrealizedProfit);
+      
+      return (
+        <Card data-testid="performance-overview-live">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <LineChart className="h-5 w-5" />
+                Account Performance
+              </CardTitle>
+              <Badge 
+                variant="default" 
+                className="bg-[rgb(190,242,100)] text-black hover:bg-[rgb(190,242,100)] font-semibold"
+                data-testid="badge-live-performance"
+              >
+                LIVE MODE
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-6">
+              <div className="text-center py-8">
+                <div className="text-sm text-muted-foreground mb-2">Total Account Value</div>
+                <div className="text-4xl font-mono font-bold mb-4" data-testid="text-live-total-balance">
+                  ${totalBalance.toFixed(2)}
+                </div>
+                {unrealizedPnl !== 0 && (
+                  <div className={`text-lg font-mono ${unrealizedPnl >= 0 ? 'text-lime-600 dark:text-lime-400' : 'text-red-600 dark:text-red-400'}`}>
+                    Unrealized P&L: {unrealizedPnl >= 0 ? '+' : ''}${unrealizedPnl.toFixed(2)}
+                  </div>
+                )}
+              </div>
+              
+              <div className="bg-muted/50 rounded-lg p-4 text-center">
+                <p className="text-sm text-muted-foreground">
+                  You're trading with real money on Aster DEX. For detailed performance history and analytics, 
+                  visit your <a href="https://asterdex.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Aster DEX account</a>.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      );
+    }
+  }
 
   if (isLoading || !performance) {
     return (
