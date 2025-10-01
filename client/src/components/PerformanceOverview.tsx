@@ -233,14 +233,12 @@ export default function PerformanceOverview() {
                 <YAxis 
                   yAxisId="left"
                   domain={pnlDomain}
-                  label={{ value: 'P&L ($)', angle: -90, position: 'insideLeft' }}
                   tick={false}
                 />
                 <YAxis 
                   yAxisId="right"
                   orientation="right"
                   domain={cumulativePnlDomain}
-                  label={{ value: 'Cumulative P&L ($)', angle: 90, position: 'insideRight' }}
                   tick={false}
                 />
                 <Tooltip content={<CustomTooltip />} />
