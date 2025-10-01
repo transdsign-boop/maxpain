@@ -265,12 +265,6 @@ export default function PerformanceOverview() {
                         stroke="hsl(var(--primary))"
                         strokeWidth={2}
                         strokeDasharray="5 5"
-                        label={{
-                          value: 'Strategy Updated',
-                          position: 'top',
-                          fill: 'hsl(var(--primary))',
-                          fontSize: 10,
-                        }}
                       />
                     );
                   }
@@ -289,9 +283,9 @@ export default function PerformanceOverview() {
                 <Bar 
                   yAxisId="left"
                   dataKey="pnl" 
-                  name="Trade P&L"
                   barSize={20}
                   data-testid="chart-bar-pnl"
+                  legendType="none"
                 >
                   {chartData.map((entry, index) => (
                     <Cell 
@@ -305,23 +299,35 @@ export default function PerformanceOverview() {
                   yAxisId="right"
                   type="monotone"
                   dataKey={(entry: any) => entry.cumulativePnl >= 0 ? entry.cumulativePnl : null}
-                  name="Cumulative P&L (Profit)"
+                  name="Cumulative P&L"
                   stroke="rgb(190, 242, 100)"
                   strokeWidth={2}
                   dot={false}
                   connectNulls={false}
                   isAnimationActive={false}
                 />
-                {/* Negative P&L line (below zero) */}
+                {/* Negative P&L line (below zero) - no legend entry */}
                 <Line
                   yAxisId="right"
                   type="monotone"
                   dataKey={(entry: any) => entry.cumulativePnl <= 0 ? entry.cumulativePnl : null}
-                  name="Cumulative P&L (Loss)"
                   stroke="rgb(251, 146, 60)"
                   strokeWidth={2}
                   dot={false}
                   connectNulls={false}
+                  isAnimationActive={false}
+                  legendType="none"
+                />
+                {/* Strategy Update indicator for legend only */}
+                <Line
+                  yAxisId="right"
+                  type="monotone"
+                  dataKey={() => null}
+                  name="Strategy Update"
+                  stroke="hsl(var(--primary))"
+                  strokeWidth={2}
+                  strokeDasharray="5 5"
+                  dot={false}
                   isAnimationActive={false}
                 />
                 {/* Positive P&L area (above zero) */}
