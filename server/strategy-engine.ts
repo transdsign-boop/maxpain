@@ -44,6 +44,7 @@ export class StrategyEngine extends EventEmitter {
     maxRetryDuration: number;
     slippageTolerance: number;
   }> = new Map(); // Track pending paper orders for limit order simulation
+  private positionCreationLocks: Map<string, Promise<void>> = new Map(); // sessionId-symbol -> lock to prevent duplicate positions
   private isRunning = false;
   private orderMonitorInterval?: NodeJS.Timeout;
 
@@ -94,6 +95,7 @@ export class StrategyEngine extends EventEmitter {
     this.activeSessions.clear();
     this.liquidationHistory.clear();
     this.pendingPaperOrders.clear();
+    this.positionCreationLocks.clear();
     console.log('✅ StrategyEngine stopped');
   }
 
@@ -211,21 +213,55 @@ export class StrategyEngine extends EventEmitter {
 
     if (recentLiquidations.length === 0) return;
 
-    // First check if we already have an open position for this symbol
-    const existingPosition = await storage.getPositionBySymbol(session.id, liquidation.symbol);
+    // Create lock key for this session + symbol combination to prevent duplicate positions
+    const lockKey = `${session.id}-${liquidation.symbol}`;
     
-    if (existingPosition && existingPosition.isOpen) {
-      // We have an open position - check if we should add a layer
-      const shouldLayer = await this.shouldAddLayer(strategy, existingPosition, liquidation);
-      if (shouldLayer) {
-        await this.executeLayer(strategy, session, existingPosition, liquidation);
+    // ATOMIC check-and-lock: Check if another liquidation is already processing this symbol
+    const existingLock = this.positionCreationLocks.get(lockKey);
+    if (existingLock) {
+      console.log(`🔄 Waiting for concurrent position processing: ${liquidation.symbol}`);
+      await existingLock; // Wait for it to finish
+      // After waiting, re-check if position was created
+      const positionAfterWait = await storage.getPositionBySymbol(session.id, liquidation.symbol);
+      if (positionAfterWait && positionAfterWait.isOpen) {
+        // Position was created by the concurrent process, check if we should layer
+        const shouldLayer = await this.shouldAddLayer(strategy, positionAfterWait, liquidation);
+        if (shouldLayer) {
+          await this.executeLayer(strategy, session, positionAfterWait, liquidation);
+        }
       }
-    } else {
-      // No open position - check if we should enter a new position
-      const shouldEnter = await this.shouldEnterPosition(strategy, liquidation, recentLiquidations);
-      if (shouldEnter) {
-        await this.executeEntry(strategy, session, liquidation);
+      return;
+    }
+    
+    // Create a lock promise for this symbol
+    let releaseLock: () => void;
+    const lockPromise = new Promise<void>((resolve) => {
+      releaseLock = resolve;
+    });
+    this.positionCreationLocks.set(lockKey, lockPromise);
+    
+    try {
+      // Now we have the lock, check if we have an open position for this symbol
+      const existingPosition = await storage.getPositionBySymbol(session.id, liquidation.symbol);
+      
+      if (existingPosition && existingPosition.isOpen) {
+        // We have an open position - check if we should add a layer
+        const shouldLayer = await this.shouldAddLayer(strategy, existingPosition, liquidation);
+        if (shouldLayer) {
+          await this.executeLayer(strategy, session, existingPosition, liquidation);
+        }
+      } else {
+        // No open position - check if we should enter a new position
+        const shouldEnter = await this.shouldEnterPosition(strategy, liquidation, recentLiquidations);
+        if (shouldEnter) {
+          await this.executeEntry(strategy, session, liquidation);
+        }
       }
+    } finally {
+      // ALWAYS release the lock and clean up
+      releaseLock!();
+      // Clean up after a short delay to allow waiting processes to finish
+      setTimeout(() => this.positionCreationLocks.delete(lockKey), 100);
     }
   }
 
