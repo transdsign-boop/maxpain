@@ -95,6 +95,7 @@ export const strategies = pgTable("strategies", {
   paperAccountSize: decimal("paper_account_size", { precision: 18, scale: 2 }).notNull().default("10000.0"), // Starting balance for paper trading
   hedgeMode: boolean("hedge_mode").notNull().default(false), // Allow simultaneous long and short positions on same asset
   isActive: boolean("is_active").notNull().default(false),
+  paused: boolean("paused").notNull().default(false), // Temporarily pause trading without deactivating strategy
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
