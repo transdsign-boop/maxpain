@@ -1538,7 +1538,7 @@ async function connectToAsterDEX(clients: Set<WebSocket>) {
           const signature = `${liquidationData.symbol}-${liquidationData.side}-${liquidationData.size}-${liquidationData.price}-${liquidationData.value}`;
           const now = Date.now();
           
-          // ATOMIC check-and-lock: Check processingQueue FIRST to prevent race conditions
+          // Check if already processing - wait and skip if so
           const existingProcess = processingQueue.get(signature);
           if (existingProcess) {
             console.log(`🔄 Skipping duplicate (already processing): ${liquidationData.symbol} ${liquidationData.side} $${liquidationData.value}`);
@@ -1546,11 +1546,19 @@ async function connectToAsterDEX(clients: Set<WebSocket>) {
             return; // Skip this duplicate
           }
           
-          // Create and set processing promise IMMEDIATELY to lock this signature atomically
+          // ATOMIC: Create and set lock IMMEDIATELY before any async operations
           let resolveProcessing: () => void;
           const processingPromise = new Promise<void>((resolve) => {
             resolveProcessing = resolve;
           });
+          
+          // Set lock immediately - no gap between check and set
+          if (processingQueue.has(signature)) {
+            // Another message set it between our check and now
+            console.log(`🔄 Skipping duplicate (race detected): ${liquidationData.symbol} ${liquidationData.side} $${liquidationData.value}`);
+            await processingQueue.get(signature)!;
+            return;
+          }
           processingQueue.set(signature, processingPromise);
           
           // Check in-memory deduplication
@@ -1589,7 +1597,7 @@ async function connectToAsterDEX(clients: Set<WebSocket>) {
               
               if (recentDuplicates.length > 0) {
                 console.log(`🔄 Skipping duplicate (database check): ${liquidationData.symbol} ${liquidationData.side} $${liquidationData.value}`);
-                // Don't return - let finally block execute
+                // Skip inserting duplicates - exit early
               } else {
                 // Validate and store in database
                 const validatedData = insertLiquidationSchema.parse(liquidationData);
