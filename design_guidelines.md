@@ -11,17 +11,18 @@
 ## Color Palette
 
 ### Dark Mode (Primary)
-- **Background**: 220 15% 8% (deep charcoal)
-- **Surface**: 220 12% 12% (elevated panels)
-- **Border**: 220 8% 18% (subtle dividers)
-- **Text Primary**: 220 5% 95% (high contrast white)
-- **Text Secondary**: 220 5% 70% (muted text)
+- **Background**: 0 0% 6% (near black, slightly lighter than pure black)
+- **Surface**: 0 0% 9% (elevated panels)
+- **Border**: 0 0% 15% (subtle dividers)
+- **Text Primary**: 0 0% 95% (high contrast white)
+- **Text Secondary**: 0 0% 65% (muted text)
 
 ### Accent Colors
-- **Success/Long**: 142 76% 36% (forest green)
+- **Primary/Highlight**: 67 100% 50% (bright yellow/lime - main accent)
+- **Success/Long**: 142 76% 55% (forest green)
 - **Danger/Short**: 0 84% 60% (vibrant red)
-- **Warning**: 45 93% 47% (amber for alerts)
-- **Info**: 217 91% 60% (blue for neutral data)
+- **Warning**: 67 100% 50% (bright yellow/lime)
+- **Info**: 217 91% 70% (blue for neutral data)
 
 ### Light Mode (Secondary)
 - **Background**: 220 15% 98%

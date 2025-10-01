@@ -2,37 +2,30 @@ export default function AsterLogo({ className = "" }: { className?: string }) {
   return (
     <div className={`flex items-center gap-3 ${className}`}>
       <svg 
-        width="40" 
-        height="40" 
-        viewBox="0 0 40 40" 
+        width="36" 
+        height="36" 
+        viewBox="0 0 36 36" 
         fill="none" 
         xmlns="http://www.w3.org/2000/svg"
       >
-        {/* Outer circle - representing DEX ecosystem */}
-        <circle 
-          cx="20" 
-          cy="20" 
-          r="18" 
-          stroke="currentColor" 
-          strokeWidth="2" 
-          className="text-primary"
-          opacity="0.3"
-        />
-        
-        {/* Star/Aster shape - 8 points */}
+        {/* Hexagon/Cube shape - sleek and minimal */}
         <path
-          d="M20 4 L22 14 L28 8 L24 16 L34 16 L26 20 L34 24 L24 24 L28 32 L22 26 L20 36 L18 26 L12 32 L16 24 L6 24 L14 20 L6 16 L16 16 L12 8 L18 14 Z"
-          fill="currentColor"
+          d="M18 2 L32 10 L32 26 L18 34 L4 26 L4 10 Z"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinejoin="miter"
           className="text-primary"
+          fill="none"
         />
         
-        {/* Center dot - representing focus/target */}
-        <circle 
-          cx="20" 
-          cy="20" 
-          r="3" 
-          fill="currentColor"
-          className="text-primary-foreground"
+        {/* Inner lines for depth */}
+        <path
+          d="M18 2 L18 18 M18 18 L4 10 M18 18 L32 10"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinejoin="miter"
+          className="text-primary"
+          opacity="0.6"
         />
       </svg>
       
