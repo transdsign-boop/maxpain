@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import ConnectionStatus from "@/components/ConnectionStatus";
 import LiveLiquidationsSidebar from "@/components/LiveLiquidationsSidebar";
 import LiquidationAnalyticsModal from "@/components/LiquidationAnalyticsModal";
@@ -10,8 +10,12 @@ import ThemeToggle from "@/components/ThemeToggle";
 import AsterLogo from "@/components/AsterLogo";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Settings, Download, Upload, Settings2 } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Settings, Download, Upload, Settings2, Pause, Play, AlertTriangle } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 
 interface Liquidation {
   id: string;
@@ -39,6 +43,10 @@ export default function Dashboard() {
   // Trading strategy dialog state
   const [isStrategyDialogOpen, setIsStrategyDialogOpen] = useState(false);
   
+  // Emergency stop dialog state
+  const [isEmergencyStopDialogOpen, setIsEmergencyStopDialogOpen] = useState(false);
+  const [emergencyStopPin, setEmergencyStopPin] = useState("");
+  
   // Real liquidation data from WebSocket and API
   const [liquidations, setLiquidations] = useState<Liquidation[]>([]);
   
@@ -63,6 +71,75 @@ export default function Dashboard() {
     },
     enabled: !!activeStrategy?.id,
     refetchInterval: 1000, // Refresh every second for real-time updates
+  });
+
+  // Pause strategy mutation
+  const pauseMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest('POST', `/api/strategies/${activeStrategy?.id}/pause`);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/strategies'] });
+      toast({
+        title: "Trading Paused",
+        description: "Strategy has been paused. No new trades will be opened.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to pause trading",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Resume strategy mutation
+  const resumeMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest('POST', `/api/strategies/${activeStrategy?.id}/resume`);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/strategies'] });
+      toast({
+        title: "Trading Resumed",
+        description: "Strategy is now active and will process new liquidations.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to resume trading",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Emergency stop mutation
+  const emergencyStopMutation = useMutation({
+    mutationFn: async (pin: string) => {
+      const response = await apiRequest('POST', `/api/strategies/${activeStrategy?.id}/emergency-stop`, { pin });
+      return response.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/strategies'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/strategies', activeStrategy?.id, 'positions'] });
+      toast({
+        title: "Emergency Stop Complete",
+        description: data.message,
+      });
+      setIsEmergencyStopDialogOpen(false);
+      setEmergencyStopPin("");
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to execute emergency stop",
+        variant: "destructive",
+      });
+    },
   });
 
   // Save settings to database
@@ -468,6 +545,45 @@ export default function Dashboard() {
 
             <ConnectionStatus isConnected={isConnected} />
             
+            {/* Pause/Resume Button */}
+            {activeStrategy && (
+              <Button
+                variant={activeStrategy.paused ? "default" : "outline"}
+                size="sm"
+                onClick={() => activeStrategy.paused ? resumeMutation.mutate() : pauseMutation.mutate()}
+                disabled={!activeStrategy.isActive || pauseMutation.isPending || resumeMutation.isPending}
+                data-testid="button-pause-resume"
+                className="gap-2"
+              >
+                {activeStrategy.paused ? (
+                  <>
+                    <Play className="h-4 w-4" />
+                    Resume
+                  </>
+                ) : (
+                  <>
+                    <Pause className="h-4 w-4" />
+                    Pause
+                  </>
+                )}
+              </Button>
+            )}
+            
+            {/* Emergency Stop Button */}
+            {activeStrategy && positionSummary && positionSummary.activePositions > 0 && (
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setIsEmergencyStopDialogOpen(true)}
+                disabled={!activeStrategy.isActive}
+                data-testid="button-emergency-stop"
+                className="gap-2"
+              >
+                <AlertTriangle className="h-4 w-4" />
+                Emergency Stop
+              </Button>
+            )}
+            
             {/* Trading Strategy Button */}
             <Button 
               variant="default" 
@@ -513,6 +629,34 @@ export default function Dashboard() {
 
             <div className="flex items-center gap-2">
               <ConnectionStatus isConnected={isConnected} />
+              {/* Pause/Resume Button */}
+              {activeStrategy && (
+                <Button
+                  variant={activeStrategy.paused ? "default" : "outline"}
+                  size="icon"
+                  onClick={() => activeStrategy.paused ? resumeMutation.mutate() : pauseMutation.mutate()}
+                  disabled={!activeStrategy.isActive || pauseMutation.isPending || resumeMutation.isPending}
+                  data-testid="button-pause-resume-mobile"
+                >
+                  {activeStrategy.paused ? (
+                    <Play className="h-4 w-4" />
+                  ) : (
+                    <Pause className="h-4 w-4" />
+                  )}
+                </Button>
+              )}
+              {/* Emergency Stop Button */}
+              {activeStrategy && positionSummary && positionSummary.activePositions > 0 && (
+                <Button
+                  variant="destructive"
+                  size="icon"
+                  onClick={() => setIsEmergencyStopDialogOpen(true)}
+                  disabled={!activeStrategy.isActive}
+                  data-testid="button-emergency-stop-mobile"
+                >
+                  <AlertTriangle className="h-4 w-4" />
+                </Button>
+              )}
               <Button 
                 variant="default" 
                 size="icon"
@@ -614,6 +758,58 @@ export default function Dashboard() {
         open={isStrategyDialogOpen}
         onOpenChange={setIsStrategyDialogOpen}
       />
+
+      {/* Emergency Stop Dialog */}
+      <Dialog open={isEmergencyStopDialogOpen} onOpenChange={setIsEmergencyStopDialogOpen}>
+        <DialogContent data-testid="dialog-emergency-stop">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              Emergency Stop
+            </DialogTitle>
+            <DialogDescription>
+              This will immediately close all open positions. This action cannot be undone.
+              <br /><br />
+              Enter PIN code <strong>2233</strong> to confirm.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="emergency-pin">PIN Code</Label>
+              <Input
+                id="emergency-pin"
+                type="password"
+                placeholder="Enter 4-digit PIN"
+                value={emergencyStopPin}
+                onChange={(e) => setEmergencyStopPin(e.target.value)}
+                maxLength={4}
+                data-testid="input-emergency-pin"
+                className="font-mono"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsEmergencyStopDialogOpen(false);
+                setEmergencyStopPin("");
+              }}
+              data-testid="button-cancel-emergency-stop"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => emergencyStopMutation.mutate(emergencyStopPin)}
+              disabled={emergencyStopPin.length !== 4 || emergencyStopMutation.isPending}
+              data-testid="button-confirm-emergency-stop"
+            >
+              {emergencyStopMutation.isPending ? "Closing Positions..." : "Confirm Emergency Stop"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Debug Controls */}
       <div className="fixed bottom-4 left-4 space-y-2 z-30">
