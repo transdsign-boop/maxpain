@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
+import { createHmac } from "crypto";
 import { storage } from "./storage";
 import { strategyEngine } from "./strategy-engine";
 import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySchema, updateStrategySchema, type Position, type Liquidation, positions } from "@shared/schema";
@@ -126,6 +127,81 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(settings);
     } catch (error) {
       res.status(500).json({ error: "Failed to save user settings" });
+    }
+  });
+
+  // Test API connection
+  app.post("/api/settings/test-connection", async (req, res) => {
+    try {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+
+      if (!apiKey || !secretKey) {
+        return res.status(400).json({ 
+          success: false, 
+          error: "API credentials not configured. Please set ASTER_API_KEY and ASTER_SECRET_KEY in your secrets." 
+        });
+      }
+
+      // Test the connection by getting account information
+      const timestamp = Date.now();
+      const recvWindow = 60000; // 60 seconds receive window
+      
+      // Create query string for signature
+      const params = new URLSearchParams({
+        timestamp: timestamp.toString(),
+        recvWindow: recvWindow.toString()
+      });
+      const queryString = params.toString();
+      
+      // Generate HMAC-SHA256 signature
+      const signature = createHmac('sha256', secretKey)
+        .update(queryString)
+        .digest('hex');
+      
+      // Add signature to parameters
+      const signedParams = `${queryString}&signature=${signature}`;
+      
+      console.log('🧪 Testing Aster DEX API connection...');
+      
+      // Make request to Aster DEX API
+      const response = await fetch(`https://api.aster.cx/api/v3/account?${signedParams}`, {
+        method: 'GET',
+        headers: {
+          'X-ASTER-APIKEY': apiKey,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ API test failed: ${response.status} ${errorText}`);
+        return res.json({ 
+          success: false, 
+          error: `API returned ${response.status}: ${errorText}`,
+          statusCode: response.status
+        });
+      }
+
+      const accountData = await response.json();
+      console.log('✅ API connection successful');
+      
+      res.json({ 
+        success: true, 
+        message: "API connection successful",
+        accountInfo: {
+          canTrade: accountData.canTrade || false,
+          canDeposit: accountData.canDeposit || false,
+          canWithdraw: accountData.canWithdraw || false,
+          updateTime: accountData.updateTime || timestamp
+        }
+      });
+    } catch (error: any) {
+      console.error('❌ API test error:', error);
+      res.json({ 
+        success: false, 
+        error: error?.message || "Unknown error occurred while testing API connection" 
+      });
     }
   });
 
