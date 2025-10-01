@@ -266,16 +266,24 @@ export class StrategyEngine extends EventEmitter {
 
     if (recentLiquidations.length === 0) return;
 
-    // Create lock key for this session + symbol combination to prevent duplicate positions
-    const lockKey = `${session.id}-${liquidation.symbol}`;
+    // Determine position side (opposite of liquidation side) for counter-trading
+    const positionSide = liquidation.side === "long" ? "short" : "long";
+
+    // Create lock key for this session + symbol (+ side if hedge mode enabled) to prevent duplicate positions
+    // In hedge mode, we allow both long and short positions on the same symbol, so include side in lock key
+    const lockKey = strategy.hedgeMode 
+      ? `${session.id}-${liquidation.symbol}-${positionSide}`
+      : `${session.id}-${liquidation.symbol}`;
     
-    // ATOMIC check-and-lock: Check if another liquidation is already processing this symbol
+    // ATOMIC check-and-lock: Check if another liquidation is already processing this symbol/side
     const existingLock = this.positionCreationLocks.get(lockKey);
     if (existingLock) {
-      console.log(`🔄 Waiting for concurrent position processing: ${liquidation.symbol}`);
+      console.log(`🔄 Waiting for concurrent position processing: ${liquidation.symbol} ${strategy.hedgeMode ? positionSide : ''}`);
       await existingLock; // Wait for it to finish
       // After waiting, re-check if position was created
-      const positionAfterWait = await storage.getPositionBySymbol(session.id, liquidation.symbol);
+      const positionAfterWait = strategy.hedgeMode
+        ? await storage.getPositionBySymbolAndSide(session.id, liquidation.symbol, positionSide)
+        : await storage.getPositionBySymbol(session.id, liquidation.symbol);
       if (positionAfterWait && positionAfterWait.isOpen) {
         // Position was created by the concurrent process, check if we should layer
         const shouldLayer = await this.shouldAddLayer(strategy, positionAfterWait, liquidation);
@@ -286,7 +294,7 @@ export class StrategyEngine extends EventEmitter {
       return;
     }
     
-    // Create a lock promise for this symbol
+    // Create a lock promise for this symbol/side
     let releaseLock: () => void;
     const lockPromise = new Promise<void>((resolve) => {
       releaseLock = resolve;
@@ -294,8 +302,10 @@ export class StrategyEngine extends EventEmitter {
     this.positionCreationLocks.set(lockKey, lockPromise);
     
     try {
-      // Now we have the lock, check if we have an open position for this symbol
-      const existingPosition = await storage.getPositionBySymbol(session.id, liquidation.symbol);
+      // Now we have the lock, check if we have an open position for this symbol (and side if hedge mode)
+      const existingPosition = strategy.hedgeMode
+        ? await storage.getPositionBySymbolAndSide(session.id, liquidation.symbol, positionSide)
+        : await storage.getPositionBySymbol(session.id, liquidation.symbol);
       
       if (existingPosition && existingPosition.isOpen) {
         // We have an open position - check if we should add a layer

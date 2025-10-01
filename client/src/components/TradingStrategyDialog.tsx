@@ -41,6 +41,7 @@ interface Strategy {
   marginAmount: string;
   tradingMode: "paper" | "live";
   paperAccountSize: string;
+  hedgeMode: boolean;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -83,6 +84,7 @@ const strategyFormSchema = z.object({
     const num = parseFloat(val);
     return !isNaN(num) && num >= 100 && num <= 1000000;
   }, "Paper account size must be between $100 and $1,000,000"),
+  hedgeMode: z.boolean(),
 });
 
 type StrategyFormData = z.infer<typeof strategyFormSchema>;
@@ -133,6 +135,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
       marginAmount: "10.0",
       tradingMode: "paper",
       paperAccountSize: "10000.0",
+      hedgeMode: false,
     }
   });
 
@@ -196,6 +199,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         marginAmount: strategy.marginAmount,
         tradingMode: strategy.tradingMode,
         paperAccountSize: strategy.paperAccountSize || "10000.0",
+        hedgeMode: strategy.hedgeMode,
       });
     },
     onError: () => {
@@ -400,6 +404,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         marginAmount: strategy.marginAmount,
         tradingMode: strategy.tradingMode,
         paperAccountSize: strategy.paperAccountSize || "10000.0",
+        hedgeMode: strategy.hedgeMode,
       });
     } else if (strategies && strategies.length === 0) {
       // No strategies available, clear active strategy
@@ -529,6 +534,30 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                   />
                 </>
               )}
+
+              {/* Hedge Mode Toggle */}
+              <FormField
+                control={form.control}
+                name="hedgeMode"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                    <div className="space-y-0.5">
+                      <FormLabel data-testid="label-hedge-mode">Hedge Mode</FormLabel>
+                      <FormDescription>
+                        Allow simultaneous long and short positions on the same asset when conditions are met
+                      </FormDescription>
+                    </div>
+                    <FormControl>
+                      <Switch
+                        data-testid="switch-hedge-mode"
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                        disabled={false}
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
 
               <Separator />
 
