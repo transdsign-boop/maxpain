@@ -143,29 +143,31 @@ export default function LiveLiquidationsSidebar({
   };
 
   return (
-    <div 
-      className={`fixed right-0 bg-background border-l transition-all duration-300 z-40 ${
-        isCollapsed ? 'w-12' : 'w-80'
-      } hidden md:block`}
-      style={{
-        top: '73px', // Position below the header
-        height: 'calc(100vh - 73px)' // Full height minus header
-      }}
-      data-testid="sidebar-live-liquidations"
-    >
-      {/* Collapse/Expand Button */}
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={() => onToggleCollapse(!isCollapsed)}
-        className="absolute -left-10 top-4 bg-background border shadow-md hover-elevate"
-        data-testid="button-toggle-sidebar"
+    <>
+      {/* Desktop Sidebar */}
+      <div 
+        className={`fixed right-0 bg-background border-l transition-all duration-300 z-40 ${
+          isCollapsed ? 'w-12' : 'w-80'
+        } hidden md:block`}
+        style={{
+          top: '73px', // Position below the header
+          height: 'calc(100vh - 73px)' // Full height minus header
+        }}
+        data-testid="sidebar-live-liquidations"
       >
-        {isCollapsed ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-      </Button>
+        {/* Collapse/Expand Button */}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => onToggleCollapse(!isCollapsed)}
+          className="absolute -left-10 top-4 bg-background border shadow-md hover-elevate"
+          data-testid="button-toggle-sidebar"
+        >
+          {isCollapsed ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+        </Button>
 
-      {/* Sidebar Content */}
-      <div className={`h-full flex flex-col ${isCollapsed ? 'hidden' : 'block'}`}>
+        {/* Sidebar Content */}
+        <div className={`h-full flex flex-col ${isCollapsed ? 'hidden' : 'block'}`}>
         {/* Header */}
         <div className="p-4 border-b">
           <div className="flex items-center gap-2 mb-2">
@@ -293,20 +295,143 @@ export default function LiveLiquidationsSidebar({
         </div>
       </div>
 
-      {/* Collapsed State Icon */}
-      {isCollapsed && (
-        <div className="flex flex-col items-center pt-4 space-y-2">
-          <Zap className="h-5 w-5 text-primary" />
-          <div className="writing-mode-vertical text-xs text-muted-foreground transform rotate-90 origin-center">
-            Live
+        {/* Collapsed State Icon */}
+        {isCollapsed && (
+          <div className="flex flex-col items-center pt-4 space-y-2">
+            <Zap className="h-5 w-5 text-primary" />
+            <div className="writing-mode-vertical text-xs text-muted-foreground transform rotate-90 origin-center">
+              Live
+            </div>
+            {recentLiquidations.length > 0 && (
+              <Badge variant="secondary" className="text-xs">
+                {recentLiquidations.length}
+              </Badge>
+            )}
           </div>
+        )}
+      </div>
+
+      {/* Mobile Sidebar - Full Screen Overlay */}
+      <div className="md:hidden">
+        {/* Mobile Toggle Button - Floating */}
+        <Button
+          variant="default"
+          size="icon"
+          onClick={() => onToggleCollapse(!isCollapsed)}
+          className="fixed bottom-4 right-4 z-50 shadow-lg h-14 w-14 rounded-full"
+          data-testid="button-toggle-sidebar-mobile"
+        >
+          <Zap className="h-6 w-6" />
           {recentLiquidations.length > 0 && (
-            <Badge variant="secondary" className="text-xs">
+            <Badge variant="destructive" className="absolute -top-1 -right-1 h-6 w-6 rounded-full p-0 flex items-center justify-center text-xs">
               {recentLiquidations.length}
             </Badge>
           )}
-        </div>
-      )}
-    </div>
+        </Button>
+
+        {/* Mobile Sidebar Overlay */}
+        {!isCollapsed && (
+          <div className="fixed inset-0 z-50 bg-background">
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b">
+              <div className="flex items-center gap-2">
+                <Zap className="h-5 w-5 text-primary" />
+                <h3 className="font-semibold text-sm">Live Liquidations</h3>
+                <Badge variant={isConnected ? "default" : "destructive"} className="text-xs">
+                  {isConnected ? "LIVE" : "OFFLINE"}
+                </Badge>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => onToggleCollapse(true)}
+                data-testid="button-close-sidebar-mobile"
+              >
+                <ChevronRight className="h-5 w-5" />
+              </Button>
+            </div>
+
+            {/* Stats */}
+            <div className="p-4 border-b">
+              <div className="text-center p-3 rounded-md bg-muted/30">
+                <div className="text-muted-foreground text-xs">Total Value</div>
+                <div className="font-bold text-lg">{formatValue(totalValue)}</div>
+              </div>
+            </div>
+
+            {/* Liquidations List */}
+            <div className="flex-1 overflow-auto" style={{ height: 'calc(100vh - 180px)' }}>
+              {recentLiquidations.length === 0 ? (
+                <div className="p-4 text-center text-muted-foreground text-sm">
+                  <Activity className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  {selectedAssets.length === 0 ? "Select assets to monitor" : "No recent liquidations"}
+                </div>
+              ) : (
+                <div className="p-2 space-y-1">
+                  {recentLiquidations.map((liquidation, index) => (
+                    <div
+                      key={liquidation.id}
+                      className={`relative p-3 rounded-lg border transition-all duration-200 ${
+                        index === 0 
+                          ? 'bg-gradient-to-r from-primary/10 to-primary/5 border-primary/30 ring-1 ring-primary/20 shadow-sm' 
+                          : 'bg-card hover-elevate border-border/50'
+                      }`}
+                      onClick={() => {
+                        onLiquidationClick(liquidation);
+                        onToggleCollapse(true);
+                      }}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-sm">{liquidation.symbol}</span>
+                          <Badge 
+                            className={`text-xs px-2 py-0.5 font-medium ${
+                              liquidation.side === 'long' 
+                                ? 'bg-green-500 text-white' 
+                                : 'bg-red-500 text-white'
+                            }`}
+                          >
+                            {liquidation.side.toUpperCase()}
+                          </Badge>
+                          {(() => {
+                            const percentile = calculateAssetPercentile(liquidation.symbol, parseFloat(liquidation.value));
+                            const { text, color } = getPercentileLabel(percentile);
+                            return (
+                              <Badge className={`text-xs px-2 py-0.5 font-medium ${color}`}>
+                                {text}
+                              </Badge>
+                            );
+                          })()}
+                        </div>
+                        <div className="text-sm font-bold font-mono">{formatValue(parseFloat(liquidation.value))}</div>
+                      </div>
+                      <div className="text-xs text-muted-foreground font-mono">
+                        @ ${parseFloat(liquidation.price).toFixed(4)}
+                      </div>
+                      {index === 0 && (
+                        <div className="absolute -left-1 top-1/2 transform -translate-y-1/2 w-1 h-8 bg-primary rounded-r animate-pulse"></div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-3 border-t bg-muted/30">
+              <div className="text-xs text-muted-foreground text-center">
+                Showing last {recentLiquidations.length} liquidations
+                {selectedAssets.length > 0 && (
+                  <div className="mt-1">
+                    Tracking: {selectedAssets.slice(0, 2).join(", ")}
+                    {selectedAssets.length > 2 && ` +${selectedAssets.length - 2} more`}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </>
   );
 }
