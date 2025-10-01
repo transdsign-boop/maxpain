@@ -31,10 +31,11 @@ Preferred communication style: Simple, everyday language.
 - **Migrations**: Drizzle Kit.
 
 ### Real-time Data Features
-- Architecture prepared for real-time WebSocket integration.
+- Live WebSocket connection to Aster DEX for real-time liquidation streaming.
 - Connection monitoring and status display.
 - Configurable refresh intervals for data updates.
 - Dominant direction analysis using order book and funding rate data.
+- Strategy engine evaluates ALL real-time liquidations (including database duplicates) for trade signals.
 
 ### Security & Performance
 - End-to-end TypeScript for type safety.
