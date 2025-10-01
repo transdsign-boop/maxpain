@@ -44,6 +44,7 @@ export class StrategyEngine extends EventEmitter {
     slippageTolerance: number;
   }> = new Map(); // Track pending paper orders for limit order simulation
   private positionCreationLocks: Map<string, Promise<void>> = new Map(); // sessionId-symbol -> lock to prevent duplicate positions
+  private pendingLayerOrders: Map<string, Set<number>> = new Map(); // positionId -> Set of pending layer numbers to prevent duplicates
   private isRunning = false;
   private orderMonitorInterval?: NodeJS.Timeout;
   private wsClients: Set<any> = new Set(); // WebSocket clients for broadcasting trade notifications
@@ -92,6 +93,7 @@ export class StrategyEngine extends EventEmitter {
     }
     
     this.activeStrategies.clear();
+    this.pendingLayerOrders.clear();
     this.activeSessions.clear();
     this.liquidationHistory.clear();
     this.pendingPaperOrders.clear();
@@ -461,6 +463,20 @@ export class StrategyEngine extends EventEmitter {
     try {
       const side = position.side === 'long' ? 'buy' : 'sell';
       const price = parseFloat(liquidation.price);
+      const nextLayer = position.layersFilled + 1;
+      
+      // Check if we already have a pending order for this layer
+      const pendingLayers = this.pendingLayerOrders.get(position.id);
+      if (pendingLayers && pendingLayers.has(nextLayer)) {
+        console.log(`⏭️ Skipping layer ${nextLayer} for ${liquidation.symbol} - already pending`);
+        return;
+      }
+      
+      // Mark this layer as pending
+      if (!this.pendingLayerOrders.has(position.id)) {
+        this.pendingLayerOrders.set(position.id, new Set());
+      }
+      this.pendingLayerOrders.get(position.id)!.add(nextLayer);
       
       // Calculate available capital based on account usage percentage
       const currentBalance = parseFloat(session.currentBalance);
@@ -473,7 +489,6 @@ export class StrategyEngine extends EventEmitter {
       const basePositionValue = (positionSizePercent / 100) * availableCapital;
       const positionValue = basePositionValue * leverage;
       const quantity = positionValue / price;
-      const nextLayer = position.layersFilled + 1;
 
       console.log(`📈 Adding layer ${nextLayer} for ${liquidation.symbol} at $${price} (Position: ${positionSizePercent}% of $${availableCapital} = $${basePositionValue}, Leverage: ${leverage}x = $${positionValue})`);
 
@@ -483,20 +498,32 @@ export class StrategyEngine extends EventEmitter {
         await new Promise(resolve => setTimeout(resolve, strategy.orderDelayMs));
       }
 
-      // Place layer order with price chasing
-      await this.placeOrderWithRetry({
-        strategy,
-        session,
-        symbol: liquidation.symbol,
-        side,
-        orderSide: position.side,
-        quantity,
-        targetPrice: price,
-        triggerLiquidationId: liquidation.id,
-        layerNumber: nextLayer,
-      });
+      try {
+        // Place layer order with price chasing
+        await this.placeOrderWithRetry({
+          strategy,
+          session,
+          symbol: liquidation.symbol,
+          side,
+          orderSide: position.side,
+          quantity,
+          targetPrice: price,
+          triggerLiquidationId: liquidation.id,
+          layerNumber: nextLayer,
+          positionId: position.id,
+        });
 
-      console.log(`✅ Layer ${nextLayer} completed for ${liquidation.symbol}`);
+        console.log(`✅ Layer ${nextLayer} completed for ${liquidation.symbol}`);
+      } finally {
+        // Remove the pending layer marker regardless of success/failure
+        const layers = this.pendingLayerOrders.get(position.id);
+        if (layers) {
+          layers.delete(nextLayer);
+          if (layers.size === 0) {
+            this.pendingLayerOrders.delete(position.id);
+          }
+        }
+      }
     } catch (error) {
       console.error('❌ Error executing layer:', error);
     }
@@ -513,8 +540,9 @@ export class StrategyEngine extends EventEmitter {
     targetPrice: number;
     triggerLiquidationId: string;
     layerNumber: number;
+    positionId?: string;
   }) {
-    const { strategy, session, symbol, side, orderSide, quantity, targetPrice, triggerLiquidationId, layerNumber } = params;
+    const { strategy, session, symbol, side, orderSide, quantity, targetPrice, triggerLiquidationId, layerNumber, positionId } = params;
     const maxRetryDuration = strategy.maxRetryDurationMs;
     const slippageTolerance = parseFloat(strategy.slippageTolerancePercent) / 100;
     const startTime = Date.now();
