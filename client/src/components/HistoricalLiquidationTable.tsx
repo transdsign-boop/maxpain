@@ -94,7 +94,7 @@ export default function HistoricalLiquidationTable({
   const getPercentileLabel = (percentile: number) => {
     const ordinal = getOrdinalSuffix(percentile);
     
-    if (percentile >= 95) return { text: ordinal, color: 'bg-red-500 text-white' };
+    if (percentile >= 95) return { text: ordinal, color: 'bg-orange-500 text-white' };
     if (percentile >= 90) return { text: ordinal, color: 'bg-orange-500 text-white' };
     if (percentile >= 75) return { text: ordinal, color: 'bg-yellow-500 text-black' };
     if (percentile >= 50) return { text: ordinal, color: 'bg-blue-500 text-white' };
@@ -188,8 +188,8 @@ export default function HistoricalLiquidationTable({
                   <Badge
                     className={`flex items-center gap-1 w-fit text-xs ${
                       liquidation.side === 'long' 
-                        ? 'bg-green-500/10 text-green-600 border-green-500/20 hover:bg-green-500/20' 
-                        : 'bg-red-500/10 text-red-600 border-red-500/20 hover:bg-red-500/20'
+                        ? 'bg-lime-500/10 text-lime-600 border-lime-500/20 hover:bg-lime-500/20' 
+                        : 'bg-orange-500/10 text-orange-600 border-orange-500/20 hover:bg-orange-500/20'
                     }`}
                   >
                     {liquidation.side === 'long' ? (

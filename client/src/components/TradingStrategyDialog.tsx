@@ -438,7 +438,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
           <DialogTitle className="flex items-center justify-between">
             <span>Trading Settings</span>
             {isStrategyRunning && (
-              <Badge variant="default" className="bg-green-600">
+              <Badge variant="default" className="bg-lime-600">
                 <div className="w-2 h-2 bg-white rounded-full mr-1 animate-pulse" />
                 Active
               </Badge>
@@ -1070,7 +1070,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                 type="button"
                 onClick={handleStartStrategy}
                 disabled={!activeStrategy || startStrategyMutation.isPending}
-                className="bg-green-600 hover:bg-green-700"
+                className="bg-lime-600 hover:bg-lime-700"
                 data-testid="button-start-strategy"
               >
                 <Play className="h-4 w-4 mr-2" />

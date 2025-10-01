@@ -509,7 +509,7 @@ export default function Dashboard() {
                 <div className="flex items-center gap-4">
                   <div className="flex flex-col">
                     <div className="text-xs text-muted-foreground">Available</div>
-                    <div className="text-lg font-mono font-semibold text-emerald-600 dark:text-emerald-400" data-testid="text-available-margin">
+                    <div className="text-lg font-mono font-semibold text-lime-600 dark:text-lime-400" data-testid="text-available-margin">
                       {formatCurrency(availableMargin)}
                     </div>
                   </div>
@@ -689,7 +689,7 @@ export default function Dashboard() {
               </div>
               <div className="flex flex-col">
                 <div className="text-muted-foreground">Available</div>
-                <div className="text-sm font-mono font-semibold text-emerald-600 dark:text-emerald-400" data-testid="text-available-margin-mobile">
+                <div className="text-sm font-mono font-semibold text-lime-600 dark:text-lime-400" data-testid="text-available-margin-mobile">
                   {formatCurrency(availableMargin)}
                 </div>
               </div>

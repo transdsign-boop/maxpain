@@ -101,9 +101,9 @@ export default function LiquidationTable({
           </div>
 
           <div className="flex items-center gap-2 p-3 bg-muted/20 rounded-md">
-            <TrendingUp className="h-4 w-4 text-green-600 dark:text-green-400" />
+            <TrendingUp className="h-4 w-4 text-lime-600 dark:text-lime-400" />
             <div>
-              <div className="text-lg font-bold text-green-600 dark:text-green-400" data-testid="text-long-count">
+              <div className="text-lg font-bold text-lime-600 dark:text-lime-400" data-testid="text-long-count">
                 {stats.longLiquidations}
               </div>
               <div className="text-xs text-muted-foreground">Long ({longPercentage}%)</div>
@@ -111,9 +111,9 @@ export default function LiquidationTable({
           </div>
 
           <div className="flex items-center gap-2 p-3 bg-muted/20 rounded-md">
-            <TrendingDown className="h-4 w-4 text-red-600 dark:text-red-400" />
+            <TrendingDown className="h-4 w-4 text-orange-600 dark:text-orange-400" />
             <div>
-              <div className="text-lg font-bold text-red-600 dark:text-red-400" data-testid="text-short-count">
+              <div className="text-lg font-bold text-orange-600 dark:text-orange-400" data-testid="text-short-count">
                 {stats.shortLiquidations}
               </div>
               <div className="text-xs text-muted-foreground">Short ({shortPercentage}%)</div>

@@ -426,7 +426,7 @@ export default function TradingControlPanel() {
               </div>
               <div className="flex items-center gap-2">
                 {isStrategyRunning && (
-                  <Badge variant="default" className="bg-green-600">
+                  <Badge variant="default" className="bg-lime-600">
                     <div className="w-2 h-2 bg-white rounded-full mr-1 animate-pulse" />
                     Active
                   </Badge>
@@ -966,7 +966,7 @@ export default function TradingControlPanel() {
                   data-testid="button-start-strategy"
                   onClick={handleStartStrategy}
                   disabled={startStrategyMutation.isPending}
-                  className="flex-1 bg-green-600 hover:bg-green-700"
+                  className="flex-1 bg-lime-600 hover:bg-lime-700"
                 >
                   <Play className="mr-2 h-4 w-4" />
                   {startStrategyMutation.isPending ? "Starting..." : "Start Trading"}

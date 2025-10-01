@@ -24,8 +24,8 @@ export default function LiquidationRow({
   isHighlighted = false,
   allValues
 }: LiquidationRowProps) {
-  // BUY should be green (success), SELL should be red (destructive)
-  const sideColor = side === "long" ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400";
+  // BUY should be lime (success), SELL should be orange (destructive)
+  const sideColor = side === "long" ? "text-lime-600 dark:text-lime-400" : "text-orange-600 dark:text-orange-400";
   const sideIcon = side === "long" ? TrendingUp : TrendingDown;
   const SideIcon = sideIcon;
 
@@ -77,7 +77,7 @@ export default function LiquidationRow({
   const getPercentileLabel = (percentile: number) => {
     const ordinal = getOrdinalSuffix(percentile);
     
-    if (percentile >= 95) return { text: ordinal, color: 'bg-red-500 text-white' };
+    if (percentile >= 95) return { text: ordinal, color: 'bg-orange-500 text-white' };
     if (percentile >= 90) return { text: ordinal, color: 'bg-orange-500 text-white' };
     if (percentile >= 75) return { text: ordinal, color: 'bg-yellow-500 text-black' };
     if (percentile >= 50) return { text: ordinal, color: 'bg-blue-500 text-white' };
@@ -103,7 +103,7 @@ export default function LiquidationRow({
       </td>
       <td className="p-2" data-testid={`badge-side-${id}`}>
         <Badge
-          className={`flex items-center gap-1 w-fit !text-white ${side === "long" ? "!bg-green-600 hover:!bg-green-700 dark:!bg-green-500 dark:hover:!bg-green-600" : "!bg-red-600 hover:!bg-red-700 dark:!bg-red-500 dark:hover:!bg-red-600"}`}
+          className={`flex items-center gap-1 w-fit !text-white ${side === "long" ? "!bg-lime-600 hover:!bg-lime-700 dark:!bg-lime-500 dark:hover:!bg-lime-600" : "!bg-orange-600 hover:!bg-orange-700 dark:!bg-orange-500 dark:hover:!bg-orange-600"}`}
         >
           <SideIcon className="h-3 w-3" />
           {side.toUpperCase()}
