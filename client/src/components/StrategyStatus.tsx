@@ -21,6 +21,7 @@ interface Fill {
   value: string;
   layerNumber: number;
   filledAt: Date;
+  fee?: string;
 }
 
 interface Position {
@@ -69,6 +70,164 @@ interface PositionCardProps{
   getPnlColor: (pnl: number) => string;
 }
 
+interface CompletedTradeCardProps {
+  position: Position;
+  formatCurrency: (value: number) => string;
+  formatPercentage: (value: number) => string;
+  getPnlColor: (pnl: number) => string;
+}
+
+// Completed trade card with expandable layer details
+function CompletedTradeCard({ position, formatCurrency, formatPercentage, getPnlColor }: CompletedTradeCardProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  
+  const { data: fills } = useQuery<Fill[]>({
+    queryKey: ['/api/positions', position.id, 'fills'],
+    enabled: isExpanded,
+  });
+
+  // realizedPnl is stored as percentage in the database (stored in unrealizedPnl field after close)
+  const realizedPnlPercent = parseFloat(position.unrealizedPnl);
+  const totalCost = parseFloat(position.totalCost);
+  const realizedPnlDollar = (realizedPnlPercent / 100) * totalCost;
+  const avgEntry = parseFloat(position.avgEntryPrice);
+  
+  // Separate entry and exit fills/fees
+  const entryFills = fills?.filter(f => f.layerNumber > 0) || [];
+  const exitFills = fills?.filter(f => f.layerNumber === 0) || [];
+  const entryFees = entryFills.reduce((sum, f) => sum + parseFloat(f.fee || '0'), 0);
+  const exitFees = exitFills.reduce((sum, f) => sum + parseFloat(f.fee || '0'), 0);
+  const totalFees = entryFees + exitFees;
+  
+  return (
+    <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
+      <div className="rounded-lg border bg-card hover-elevate" data-testid={`completed-trade-${position.id}`}>
+        <div className="p-4">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-6 w-6" data-testid="button-toggle-trade-details">
+                  {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                </Button>
+              </CollapsibleTrigger>
+              <span className="font-semibold text-sm">{position.symbol}</span>
+              <Badge 
+                className={`text-xs ${position.side === 'long' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}
+              >
+                {position.side.toUpperCase()}
+              </Badge>
+              <Badge variant="outline" className="text-xs">
+                {position.layersFilled}/{position.maxLayers} layers
+              </Badge>
+            </div>
+            <div className={`text-sm font-semibold ${getPnlColor(realizedPnlDollar)}`}>
+              {realizedPnlDollar >= 0 ? '+' : ''}{formatCurrency(realizedPnlDollar)}
+              <span className="text-xs ml-1">
+                ({realizedPnlPercent >= 0 ? '+' : ''}{formatPercentage(realizedPnlPercent)})
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            <div>
+              Quantity: <span className="text-foreground">{parseFloat(position.totalQuantity).toFixed(4)}</span>
+            </div>
+            <div>
+              Avg Entry: <span className="text-foreground">{formatCurrency(avgEntry)}</span>
+            </div>
+            <div>
+              Opened: <span className="text-foreground">{format(new Date(position.openedAt), 'MMM d, h:mm a')}</span>
+            </div>
+            <div>
+              Closed: <span className="text-foreground">{position.closedAt ? format(new Date(position.closedAt), 'MMM d, h:mm a') : 'N/A'}</span>
+            </div>
+            {fills && (
+              <>
+                <div>
+                  Entry Fees: <span className="text-foreground">{formatCurrency(entryFees)}</span>
+                </div>
+                <div>
+                  Exit Fees: <span className="text-foreground">{formatCurrency(exitFees)}</span>
+                </div>
+              </>
+            )}
+            {!fills && (
+              <div className="col-span-2">
+                Total Fees: <span className="text-foreground">{formatCurrency(parseFloat(position.totalFees || '0'))}</span>
+                {parseFloat(position.totalFees || '0') > 0 && (
+                  <span className="text-xs text-muted-foreground ml-1">(0.035% taker)</span>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <CollapsibleContent>
+          <div className="border-t px-4 py-3">
+            <p className="text-xs font-medium text-muted-foreground mb-2">Layer Details</p>
+            {fills && fills.length > 0 ? (
+              <div className="space-y-2">
+                {entryFills.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground/70 mb-1">Entry Layers ({entryFills.length})</p>
+                    <div className="space-y-1">
+                      {entryFills.sort((a, b) => a.layerNumber - b.layerNumber).map((fill) => (
+                        <div key={fill.id} className="flex items-center justify-between text-xs py-1 px-2 rounded bg-muted/30">
+                          <div className="flex items-center gap-2 flex-1">
+                            <Badge variant="outline" className="text-xs h-5">L{fill.layerNumber}</Badge>
+                            <span className="text-foreground">
+                              {parseFloat(fill.quantity).toFixed(4)} @ {formatCurrency(parseFloat(fill.price))}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground/70">
+                              {format(new Date(fill.filledAt), 'MMM d, h:mm:ss a')}
+                            </span>
+                            <span className="text-muted-foreground text-xs">
+                              Fee: {formatCurrency(parseFloat(fill.fee || '0'))}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {exitFills.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground/70 mb-1">Exit</p>
+                    <div className="space-y-1">
+                      {exitFills.map((fill) => (
+                        <div key={fill.id} className="flex items-center justify-between text-xs py-1 px-2 rounded bg-muted/30">
+                          <div className="flex items-center gap-2 flex-1">
+                            <Badge variant="outline" className="text-xs h-5">Exit</Badge>
+                            <span className="text-foreground">
+                              {parseFloat(fill.quantity).toFixed(4)} @ {formatCurrency(parseFloat(fill.price))}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground/70">
+                              {format(new Date(fill.filledAt), 'MMM d, h:mm:ss a')}
+                            </span>
+                            <span className="text-muted-foreground text-xs">
+                              Fee: {formatCurrency(parseFloat(fill.fee || '0'))}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">No layer details available</p>
+            )}
+          </div>
+        </CollapsibleContent>
+      </div>
+    </Collapsible>
+  );
+}
+
 function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, formatPercentage, getPnlColor }: PositionCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   
@@ -113,7 +272,7 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
         <div className="flex items-center justify-between p-3">
           <div className="flex items-center gap-3 flex-1">
             <CollapsibleTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-6 w-6">
+              <Button variant="ghost" size="icon" className="h-6 w-6" data-testid="button-toggle-layers">
                 {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
               </Button>
             </CollapsibleTrigger>
@@ -503,62 +662,8 @@ export function StrategyStatus() {
                       </div>
                     );
                   } else {
-                    // Render trade card
-                    const position = item.data;
-                  // realizedPnl is stored as percentage in the database
-                  const realizedPnlPercent = parseFloat(position.realizedPnl);
-                  const totalCost = parseFloat(position.totalCost);
-                  const realizedPnlDollar = (realizedPnlPercent / 100) * totalCost;
-                  const avgEntry = parseFloat(position.avgEntryPrice);
-                  
-                  return (
-                    <div
-                      key={position.id}
-                      className="p-4 rounded-lg border bg-card hover-elevate"
-                      data-testid={`completed-trade-${position.id}`}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-sm">{position.symbol}</span>
-                          <Badge 
-                            className={`text-xs ${position.side === 'long' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}
-                          >
-                            {position.side.toUpperCase()}
-                          </Badge>
-                          <Badge variant="outline" className="text-xs">
-                            {position.layersFilled}/{position.maxLayers} layers
-                          </Badge>
-                        </div>
-                        <div className={`text-sm font-semibold ${getPnlColor(realizedPnlDollar)}`}>
-                          {realizedPnlDollar >= 0 ? '+' : ''}{formatCurrency(realizedPnlDollar)}
-                          <span className="text-xs ml-1">
-                            ({realizedPnlPercent >= 0 ? '+' : ''}{formatPercentage(realizedPnlPercent)})
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                        <div>
-                          Quantity: <span className="text-foreground">{parseFloat(position.totalQuantity).toFixed(4)}</span>
-                        </div>
-                        <div>
-                          Entry: <span className="text-foreground">{formatCurrency(avgEntry)}</span>
-                        </div>
-                        <div>
-                          Opened: <span className="text-foreground">{format(new Date(position.openedAt), 'MMM d, h:mm a')}</span>
-                        </div>
-                        <div>
-                          Closed: <span className="text-foreground">{position.closedAt ? format(new Date(position.closedAt), 'MMM d, h:mm a') : 'N/A'}</span>
-                        </div>
-                        <div className="col-span-2">
-                          Fees: <span className="text-foreground">{formatCurrency(parseFloat(position.totalFees || '0'))}</span>
-                          {parseFloat(position.totalFees || '0') > 0 && (
-                            <span className="text-xs text-muted-foreground ml-1">(0.035% taker)</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
+                    // Render trade card (with expandable details)
+                    return <CompletedTradeCard key={item.data.id} position={item.data} formatCurrency={formatCurrency} formatPercentage={formatPercentage} getPnlColor={getPnlColor} />;
                   }
                 })}
               </div>
