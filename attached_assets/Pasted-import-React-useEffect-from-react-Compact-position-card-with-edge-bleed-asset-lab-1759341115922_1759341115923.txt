@@ -1,0 +1,249 @@
+import React, { useEffect } from "react";
+
+/**
+ * Compact position card with edge-bleed asset label on the left.
+ * TailwindCSS required. Default export renders a sample card.
+ * A small demo and basic runtime tests are included at the bottom.
+ */
+
+// ---------------------- Types ----------------------
+export type Side = "LONG" | "SHORT" | string;
+export interface PositionData {
+  asset: string;
+  side: Side;
+  avg: number;
+  current: number;
+  sl: number;
+  tp: number;
+  liq: number;
+  liqAwayPct: number;
+  pressure: string; // e.g. "Loss" | "Neutral" | "Win"
+  leverage: number;
+  sizeUsd: number; // position notional
+  filled: number; // filled contracts
+  max: number; // total contracts
+  pnlUsd: number;
+  pnlPct: number;
+}
+
+// ---------------------- Main Card (sample) ----------------------
+export default function PositionCard() {
+  const sample: PositionData = {
+    asset: "PUMPUSDT",
+    side: "LONG",
+    avg: 0.01,
+    current: 0.01,
+    sl: 0.01,
+    tp: 0.01,
+    liq: 0.01,
+    liqAwayPct: 9.28,
+    pressure: "Loss",
+    leverage: 10,
+    sizeUsd: 16.45,
+    filled: 2,
+    max: 10,
+    pnlUsd: -0.39,
+    pnlPct: -0.24,
+  };
+  return <PositionCardInner data={sample} />;
+}
+
+// The inner component is what you should reuse elsewhere.
+export function PositionCardInner({ data }: { data: PositionData }) {
+  return (
+    <div className="w-full max-w-4xl rounded-2xl bg-zinc-900/70 ring-1 ring-zinc-800 shadow-xl overflow-hidden">
+      <div className="grid grid-cols-[minmax(140px,220px)_1fr_auto]">
+        {/* Left: Asset label, edge-bleed */}
+        <div className="relative isolate overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-emerald-600/25 via-emerald-500/10 to-transparent" />
+          <div className="absolute -left-2 top-1/2 -translate-y-1/2 select-none pointer-events-none">
+            <span className="font-black tracking-tight text-5xl sm:text-6xl md:text-7xl leading-none text-emerald-400/15 whitespace-nowrap">
+              {data.asset}
+            </span>
+          </div>
+
+          {/* Top row: compact chips */}
+          <div className="relative p-2 flex items-center gap-2">
+            <BadgeSide side={data.side} />
+            <Chip>{`${data.filled}/${data.max}`}</Chip>
+            <Chip>{`${data.leverage}× • $${data.sizeUsd.toFixed(2)}`}</Chip>
+          </div>
+
+          {/* Bottom: large asset label visible at small sizes too */}
+          <div className="relative px-2 pb-2">
+            <div className="font-extrabold text-zinc-200 text-2xl tracking-tight">{data.asset}</div>
+          </div>
+        </div>
+
+        {/* Middle: numbers in a compact grid */}
+        <div className="px-3 py-2 flex flex-col gap-1">
+          <div className="grid grid-cols-3 gap-x-3 text-sm">
+            <Field label="Avg" value={`$${data.avg.toFixed(2)}`} />
+            <Field label="Current" value={`$${data.current.toFixed(2)}`} emphasis />
+            <Field label="Liq" value={`$${data.liq.toFixed(2)} (${data.liqAwayPct.toFixed(2)}% away)`} warn={true} />
+          </div>
+          <div className="grid grid-cols-3 gap-x-3 text-sm">
+            <Field label="SL" value={`$${data.sl.toFixed(2)}`} neutral />
+            <Field label="TP" value={`$${data.tp.toFixed(2)}`} positive />
+            <Field label="Pressure" value={data.pressure} warn={data.pressure === "Loss"} />
+          </div>
+        </div>
+
+        {/* Right: PnL block */}
+        <div className="px-3 py-2 flex flex-col items-end justify-center gap-1 bg-gradient-to-l from-zinc-900 to-transparent">
+          <div className={`text-right text-sm font-semibold ${data.pnlUsd >= 0 ? "text-emerald-400" : "text-orange-400"}`}>
+            {data.pnlUsd >= 0 ? "+" : ""}${data.pnlUsd.toFixed(2)}
+          </div>
+          <div className={`text-right text-xs ${data.pnlPct >= 0 ? "text-emerald-400" : "text-orange-400"}`}>
+            {data.pnlPct >= 0 ? "+" : ""}{data.pnlPct.toFixed(2)}%
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------- UI Bits ----------------------
+function BadgeSide({ side }: { side: Side }) {
+  const isLong = side.toUpperCase() === "LONG";
+  return (
+    <div
+      className={`px-1.5 py-0.5 rounded-xl text-[10px] font-semibold tracking-wide inline-flex items-center gap-1 ${
+        isLong
+          ? "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-400/30"
+          : "bg-red-500/15 text-red-300 ring-1 ring-red-400/30"
+      }`}
+    >
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="opacity-80">
+        {isLong ? (
+          <path d="M12 3l7 7h-4v7h-6v-7H5l7-7z" />
+        ) : (
+          <path d="M12 21l-7-7h4V7h6v7h4l-7 7z" />
+        )}
+      </svg>
+      {side}
+    </div>
+  );
+}
+
+function Chip({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="px-1.5 py-0.5 rounded-lg text-[10px] text-zinc-300 bg-zinc-800/70 ring-1 ring-zinc-700/70">
+      {children}
+    </span>
+  );
+}
+
+function Field({
+  label,
+  value,
+  emphasis = false,
+  warn = false,
+  positive = false,
+  neutral = false,
+}: {
+  label: string;
+  value: string | number;
+  emphasis?: boolean;
+  warn?: boolean;
+  positive?: boolean;
+  neutral?: boolean;
+}) {
+  return (
+    <div className="min-w-0">
+      <div className="text-[10px] text-zinc-400 truncate">{label}:</div>
+      <div
+        className={`truncate ${
+          emphasis ? "text-[14px] font-semibold text-zinc-100" : "text-[13px] text-zinc-200"
+        } ${warn ? "text-orange-400" : ""} ${positive ? "text-emerald-400" : ""} ${neutral ? "text-zinc-300" : ""}`}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------- Demo & Basic Tests ----------------------
+export function PositionCardDemo() {
+  const scenarios: PositionData[] = [
+    // Test 1: LONG, small positive PnL
+    {
+      asset: "PUMPUSDT",
+      side: "LONG",
+      avg: 0.01,
+      current: 0.011,
+      sl: 0.009,
+      tp: 0.013,
+      liq: 0.0091,
+      liqAwayPct: 9.28,
+      pressure: "Loss",
+      leverage: 10,
+      sizeUsd: 16.45,
+      filled: 2,
+      max: 10,
+      pnlUsd: 0.52,
+      pnlPct: 1.74,
+    },
+    // Test 2: SHORT, negative PnL
+    {
+      asset: "ETHUSDT",
+      side: "SHORT",
+      avg: 3200,
+      current: 3220,
+      sl: 3250,
+      tp: 3100,
+      liq: 3400,
+      liqAwayPct: 5.2,
+      pressure: "Loss",
+      leverage: 3,
+      sizeUsd: 2500,
+      filled: 1,
+      max: 5,
+      pnlUsd: -35.2,
+      pnlPct: -1.1,
+    },
+    // Test 3: Near liquidation edge case
+    {
+      asset: "BTCUSDT",
+      side: "LONG",
+      avg: 65000,
+      current: 59200,
+      sl: 58800,
+      tp: 66500,
+      liq: 59000,
+      liqAwayPct: 0.4,
+      pressure: "Loss",
+      leverage: 20,
+      sizeUsd: 15000,
+      filled: 3,
+      max: 10,
+      pnlUsd: -980.12,
+      pnlPct: -6.17,
+    },
+  ];
+
+  return (
+    <div className="space-y-3">
+      <BasicRuntimeTests cases={scenarios} />
+      {scenarios.map((s, i) => (
+        <PositionCardInner key={i} data={s} />
+      ))}
+    </div>
+  );
+}
+
+// Simple runtime validations to catch obvious mistakes without a test runner
+function BasicRuntimeTests({ cases }: { cases: PositionData[] }) {
+  useEffect(() => {
+    cases.forEach((c, idx) => {
+      const msg = (ok: boolean, text: string) => console[ok ? "log" : "error"](`Test ${idx + 1}: ${text}`);
+      const defined = [c.asset, c.side, c.avg, c.current, c.sl, c.tp, c.liq, c.liqAwayPct, c.pressure, c.leverage, c.sizeUsd, c.filled, c.max, c.pnlUsd, c.pnlPct].every(
+        (v) => v !== undefined && v !== null
+      );
+      msg(defined, "all fields defined");
+      msg(!Number.isNaN(c.current), "current is a number");
+      msg(c.max >= c.filled, "filled <= max");
+    });
+  }, [cases]);
+  return null;
+}

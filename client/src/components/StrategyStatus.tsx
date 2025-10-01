@@ -280,8 +280,6 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
   const totalMargin = leverage > 0 ? totalCost / leverage : totalCost;
 
   // Calculate liquidation price based on leverage (isolated margin)
-  // For isolated margin: liquidationPrice = entry * (1 ± 1/leverage)
-  // We apply 0.95 maintenance margin factor for conservative estimate
   const maintenanceMarginFactor = 0.95;
   const hasLiquidation = leverage > 1 && !isNaN(leverage) && isFinite(leverage);
   
@@ -298,144 +296,163 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
       ? ((currentPrice - liquidationPrice) / currentPrice) * 100
       : ((liquidationPrice - currentPrice) / currentPrice) * 100;
     
-    // Clamp to non-negative values and handle edge cases
     distanceToLiquidation = Math.max(0, rawDistance);
   }
   
   // Calculate position pressure for visual indicator
-  // Maps unrealizedPnl to a 0-100 scale based on strategy's SL and TP settings
-  // Left boundary = Stop Loss (negative), Right boundary = Take Profit (positive)
-  const totalRange = sanitizedTP + sanitizedSL; // e.g., 8% + 5% = 13%
-  
-  // Clamp P&L to strategy boundaries
+  const totalRange = sanitizedTP + sanitizedSL;
   const clampedPnl = Math.max(-sanitizedSL, Math.min(sanitizedTP, unrealizedPnlPercent));
-  const clampedFromLeft = clampedPnl + sanitizedSL; // Shift to 0-based range
-  
-  // Map to 0-100 scale: SL = 0%, Break-even (neutral) = (SL/totalRange)*100, TP = 100%
+  const clampedFromLeft = clampedPnl + sanitizedSL;
   const pressureValue = totalRange > 0 ? Math.max(0, Math.min(100, (clampedFromLeft / totalRange) * 100)) : 50;
-  const neutralPoint = totalRange > 0 ? (sanitizedSL / totalRange) * 100 : 50; // Break-even position
+  const neutralPoint = totalRange > 0 ? (sanitizedSL / totalRange) * 100 : 50;
+
+  const isLong = position.side === 'long';
 
   return (
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
       <div 
-        className="relative rounded-lg border overflow-hidden transition-all duration-300" 
+        className="relative rounded-2xl overflow-hidden ring-1 ring-border shadow-lg transition-all duration-300" 
         data-testid={`position-${position.symbol}`}
         style={{
           background: `linear-gradient(to right, rgb(251 146 60 / 0.12) 0%, rgb(156 163 175 / 0.06) ${neutralPoint}%, rgb(190 242 100 / 0.12) 100%)`
         }}
       >
-        {/* Current pressure indicator line */}
+        {/* Position pressure indicator line */}
         <div 
-          className="absolute top-0 bottom-0 w-0.5 transition-all duration-300 z-0"
+          className="absolute top-0 bottom-0 w-0.5 transition-all duration-300 z-10"
           style={{ 
             left: `${pressureValue}%`,
             backgroundColor: unrealizedPnlPercent > 0 
-              ? 'rgb(190, 242, 100)' // lime
+              ? 'rgb(190, 242, 100)'
               : unrealizedPnlPercent < 0 
-              ? 'rgb(251, 146, 60)' // orange
-              : 'rgb(156, 163, 175)' // gray
+              ? 'rgb(251, 146, 60)'
+              : 'rgb(156, 163, 175)'
           }}
           data-testid={`pressure-indicator-${position.symbol}`}
         />
         
-        {/* Intensity overlay from neutral to current */}
+        {/* Intensity overlay */}
         <div 
           className="absolute top-0 bottom-0 transition-all duration-300 z-0"
           style={{ 
             left: pressureValue > neutralPoint ? `${neutralPoint}%` : `${pressureValue}%`,
             right: pressureValue < neutralPoint ? `${100 - neutralPoint}%` : `${100 - pressureValue}%`,
             backgroundColor: unrealizedPnlPercent > 0 
-              ? 'rgba(190, 242, 100, 0.12)' // lime with transparency
+              ? 'rgba(190, 242, 100, 0.15)'
               : unrealizedPnlPercent < 0 
-              ? 'rgba(251, 146, 60, 0.12)' // orange with transparency
-              : 'rgba(156, 163, 175, 0.08)' // gray with transparency
+              ? 'rgba(251, 146, 60, 0.15)'
+              : 'rgba(156, 163, 175, 0.08)'
           }}
         />
         
-        <div className="relative z-10 flex items-center justify-between p-3">
-          <div className="flex items-center gap-3 flex-1">
-            <CollapsibleTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-6 w-6" data-testid="button-toggle-layers">
-                {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-              </Button>
-            </CollapsibleTrigger>
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="font-medium">{position.symbol}</span>
-                <Badge className={`text-xs ${position.side === 'long' ? 'bg-lime-500 text-black' : 'bg-orange-500 text-white'}`}>
-                  {position.side === 'long' ? (
-                    <TrendingUp className="h-3 w-3 mr-1" />
-                  ) : (
-                    <TrendingDown className="h-3 w-3 mr-1" />
-                  )}
-                  {position.side.toUpperCase()}
-                </Badge>
-                {isHedge && (
-                  <Badge variant="secondary" className="text-xs">
-                    HEDGE
-                  </Badge>
-                )}
-                <Badge variant="outline" className="flex items-center gap-1 text-xs">
-                  <Layers className="h-3 w-3" />
-                  {position.layersFilled}/{position.maxLayers}
-                </Badge>
-                <Badge variant="outline" className="text-xs" data-testid={`leverage-${position.symbol}`}>
-                  {leverage}x • {formatCurrency(totalMargin)}
-                </Badge>
+        <div className="relative z-10 grid grid-cols-[minmax(140px,220px)_1fr_auto]">
+          {/* Left: Asset label with edge-bleed */}
+          <div className="relative isolate overflow-hidden">
+            {/* Gradient background */}
+            <div className={`absolute inset-0 ${isLong ? 'bg-gradient-to-br from-lime-600/25 via-lime-500/10 to-transparent' : 'bg-gradient-to-br from-orange-600/25 via-orange-500/10 to-transparent'}`} />
+            
+            {/* Large background asset text */}
+            <div className="absolute -left-2 top-1/2 -translate-y-1/2 select-none pointer-events-none">
+              <span className={`font-black tracking-tight text-5xl sm:text-6xl md:text-7xl leading-none whitespace-nowrap ${isLong ? 'text-lime-400/15' : 'text-orange-400/15'}`}>
+                {position.symbol}
+              </span>
+            </div>
+
+            {/* Top row: compact chips */}
+            <div className="relative p-2 flex items-center gap-2 flex-wrap">
+              <Badge className={`text-xs px-1.5 py-0.5 ${isLong ? 'bg-lime-500/15 text-lime-300 border-lime-400/30' : 'bg-orange-500/15 text-orange-300 border-orange-400/30'}`}>
+                {isLong ? <TrendingUp className="h-3 w-3 mr-1" /> : <TrendingDown className="h-3 w-3 mr-1" />}
+                {position.side.toUpperCase()}
+              </Badge>
+              <span className="px-1.5 py-0.5 rounded-lg text-[10px] text-muted-foreground bg-muted/50 border border-border/50">
+                {position.layersFilled}/{position.maxLayers}
+              </span>
+              <span className="px-1.5 py-0.5 rounded-lg text-[10px] text-muted-foreground bg-muted/50 border border-border/50">
+                {leverage}× • {formatCurrency(totalMargin)}
+              </span>
+              {isHedge && (
+                <Badge variant="secondary" className="text-xs">HEDGE</Badge>
+              )}
+            </div>
+
+            {/* Bottom: large asset label */}
+            <div className="relative px-2 pb-2">
+              <div className="font-extrabold text-foreground text-2xl tracking-tight">{position.symbol}</div>
+            </div>
+          </div>
+
+          {/* Middle: price data in compact grid */}
+          <div className="px-3 py-2 flex flex-col gap-1">
+            <div className="grid grid-cols-3 gap-x-3 text-sm">
+              <div className="min-w-0">
+                <div className="text-[10px] text-muted-foreground truncate">Avg:</div>
+                <div className="text-[13px] text-foreground/90 truncate">{formatCurrency(avgEntry)}</div>
               </div>
-              <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                <span>Avg: {formatCurrency(avgEntry)}</span>
-                <span className="font-medium text-foreground" data-testid={`current-price-${position.symbol}`}>
-                  Current: {formatCurrency(currentPrice)}
-                </span>
-                <span className="text-orange-600 dark:text-orange-400">SL: {formatCurrency(stopLossPrice)}</span>
-                <span className="text-lime-600 dark:text-lime-400">TP: {formatCurrency(takeProfitPrice)}</span>
+              <div className="min-w-0">
+                <div className="text-[10px] text-muted-foreground truncate">Current:</div>
+                <div className="text-[14px] font-semibold text-foreground truncate" data-testid={`current-price-${position.symbol}`}>
+                  {formatCurrency(currentPrice)}
+                </div>
               </div>
-              
-              {/* Liquidation Distance Indicator */}
               {liquidationPrice !== null && distanceToLiquidation !== null && (
-                <div className="flex items-center gap-2 text-xs mt-2" data-testid={`liquidation-info-${position.symbol}`}>
-                  <span className={`font-medium ${distanceToLiquidation < 10 ? 'text-orange-600 dark:text-orange-400' : 'text-muted-foreground'}`}>
-                    Liq: {formatCurrency(liquidationPrice)}
-                  </span>
-                  <span className={`${distanceToLiquidation < 10 ? 'text-orange-600 dark:text-orange-400' : 'text-muted-foreground'}`}>
-                    ({distanceToLiquidation.toFixed(2)}% away)
-                  </span>
+                <div className="min-w-0">
+                  <div className="text-[10px] text-muted-foreground truncate">Liq:</div>
+                  <div className={`text-[13px] truncate ${distanceToLiquidation < 10 ? 'text-orange-600 dark:text-orange-400' : 'text-foreground/90'}`} data-testid={`liquidation-info-${position.symbol}`}>
+                    {formatCurrency(liquidationPrice)} ({distanceToLiquidation.toFixed(1)}%)
+                  </div>
                 </div>
               )}
-              
-              {/* Position Pressure Label */}
-              <div className="flex items-center gap-2 mt-2">
-                <span className="text-xs text-muted-foreground">Position Pressure:</span>
-                <span className={`text-xs font-medium ${getPnlColor(unrealizedPnlPercent)}`}>
+            </div>
+            <div className="grid grid-cols-3 gap-x-3 text-sm">
+              <div className="min-w-0">
+                <div className="text-[10px] text-muted-foreground truncate">SL:</div>
+                <div className="text-[13px] text-orange-600 dark:text-orange-400 truncate">{formatCurrency(stopLossPrice)}</div>
+              </div>
+              <div className="min-w-0">
+                <div className="text-[10px] text-muted-foreground truncate">TP:</div>
+                <div className="text-[13px] text-lime-600 dark:text-lime-400 truncate">{formatCurrency(takeProfitPrice)}</div>
+              </div>
+              <div className="min-w-0">
+                <div className="text-[10px] text-muted-foreground truncate">Pressure:</div>
+                <div className={`text-[13px] truncate ${getPnlColor(unrealizedPnlPercent)}`}>
                   {unrealizedPnlPercent > 0 ? 'Profit' : unrealizedPnlPercent < 0 ? 'Loss' : 'Neutral'}
-                </span>
+                </div>
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+
+          {/* Right: PnL and actions */}
+          <div className="px-3 py-2 flex items-center gap-3">
             <div className="text-right">
-              <p className={`font-medium ${getPnlColor(unrealizedPnlDollar)}`}>
-                {formatCurrency(unrealizedPnlDollar)}
-              </p>
-              <p className={`text-sm ${getPnlColor(unrealizedPnlPercent)}`}>
-                {formatPercentage(unrealizedPnlPercent)}
-              </p>
+              <div className={`text-sm font-semibold ${getPnlColor(unrealizedPnlDollar)}`}>
+                {unrealizedPnlDollar >= 0 ? '+' : ''}{formatCurrency(unrealizedPnlDollar)}
+              </div>
+              <div className={`text-xs ${getPnlColor(unrealizedPnlPercent)}`}>
+                {unrealizedPnlPercent >= 0 ? '+' : ''}{unrealizedPnlPercent.toFixed(2)}%
+              </div>
             </div>
-            <Button
-              size="icon"
-              variant="ghost"
-              data-testid={`button-close-position-${position.symbol}`}
-              onClick={onClose}
-              disabled={isClosing}
-            >
-              <X className="h-4 w-4" />
-            </Button>
+            <div className="flex flex-col gap-1">
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-7 w-7" data-testid="button-toggle-layers">
+                  {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                </Button>
+              </CollapsibleTrigger>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7"
+                data-testid={`button-close-position-${position.symbol}`}
+                onClick={onClose}
+                disabled={isClosing}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </div>
 
         <CollapsibleContent>
-          <div className="border-t px-3 py-2">
+          <div className="border-t px-3 py-2 relative z-10 bg-background/30">
             <p className="text-xs font-medium text-muted-foreground mb-2">Layer Entries</p>
             {fills && fills.length > 0 ? (
               <div className="space-y-1">
