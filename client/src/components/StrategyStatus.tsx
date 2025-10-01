@@ -68,6 +68,7 @@ interface PositionCardProps{
   formatCurrency: (value: number) => string;
   formatPercentage: (value: number) => string;
   getPnlColor: (pnl: number) => string;
+  isHedge?: boolean;
 }
 
 interface CompletedTradeCardProps {
@@ -75,10 +76,11 @@ interface CompletedTradeCardProps {
   formatCurrency: (value: number) => string;
   formatPercentage: (value: number) => string;
   getPnlColor: (pnl: number) => string;
+  isHedge?: boolean;
 }
 
 // Completed trade card with expandable layer details
-function CompletedTradeCard({ position, formatCurrency, formatPercentage, getPnlColor }: CompletedTradeCardProps) {
+function CompletedTradeCard({ position, formatCurrency, formatPercentage, getPnlColor, isHedge }: CompletedTradeCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   
   const { data: fills } = useQuery<Fill[]>({
@@ -116,6 +118,11 @@ function CompletedTradeCard({ position, formatCurrency, formatPercentage, getPnl
               >
                 {position.side.toUpperCase()}
               </Badge>
+              {isHedge && (
+                <Badge variant="secondary" className="text-xs">
+                  HEDGE
+                </Badge>
+              )}
               <Badge variant="outline" className="text-xs">
                 {position.layersFilled}/{position.maxLayers} layers
               </Badge>
@@ -228,7 +235,7 @@ function CompletedTradeCard({ position, formatCurrency, formatPercentage, getPnl
   );
 }
 
-function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, formatPercentage, getPnlColor }: PositionCardProps) {
+function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, formatPercentage, getPnlColor, isHedge }: PositionCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   
   const { data: fills } = useQuery<Fill[]>({
@@ -363,6 +370,11 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
                   )}
                   {position.side.toUpperCase()}
                 </Badge>
+                {isHedge && (
+                  <Badge variant="secondary" className="text-xs">
+                    HEDGE
+                  </Badge>
+                )}
                 <Badge variant="outline" className="flex items-center gap-1 text-xs">
                   <Layers className="h-3 w-3" />
                   {position.layersFilled}/{position.maxLayers}
@@ -503,6 +515,40 @@ export function StrategyStatus() {
     refetchInterval: 10000, // Refresh every 10 seconds
   });
 
+  // Detect hedge positions in closed trades - check for overlapping time periods with opposite sides
+  // Returns a Map of positionId -> boolean indicating if that specific position was hedged
+  const closedHedgePositions = useMemo(() => {
+    if (!closedPositions) return new Map<string, boolean>();
+    
+    const hedgedMap = new Map<string, boolean>();
+    
+    // For each position, check if there's another position with opposite side that overlapped in time
+    closedPositions.forEach(pos1 => {
+      let isHedged = false;
+      
+      closedPositions.forEach(pos2 => {
+        if (pos1.id === pos2.id) return; // Skip same position
+        if (pos1.symbol !== pos2.symbol) return; // Skip different symbols
+        if (pos1.side === pos2.side) return; // Skip same side
+        
+        // Check if time periods overlapped
+        const pos1Start = new Date(pos1.openedAt).getTime();
+        const pos1End = pos1.closedAt ? new Date(pos1.closedAt).getTime() : Date.now();
+        const pos2Start = new Date(pos2.openedAt).getTime();
+        const pos2End = pos2.closedAt ? new Date(pos2.closedAt).getTime() : Date.now();
+        
+        // Check for overlap: start1 <= end2 && start2 <= end1
+        if (pos1Start <= pos2End && pos2Start <= pos1End) {
+          isHedged = true;
+        }
+      });
+      
+      hedgedMap.set(pos1.id, isHedged);
+    });
+    
+    return hedgedMap;
+  }, [closedPositions]);
+
   // Merge and sort closed positions with strategy changes by timestamp
   const tradeHistory = useMemo(() => {
     const items: Array<{ type: 'trade' | 'change'; timestamp: Date; data: any }> = [];
@@ -530,6 +576,31 @@ export function StrategyStatus() {
     // Sort by timestamp, newest first
     return items.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
   }, [closedPositions, strategyChanges]);
+
+  // Detect hedge positions - when there are both long and short positions for the same symbol
+  const hedgeSymbols = useMemo(() => {
+    if (!summary?.positions) return new Set<string>();
+    
+    const symbolSides = new Map<string, Set<'long' | 'short'>>();
+    
+    // Group positions by symbol and track their sides
+    summary.positions.forEach(pos => {
+      if (!symbolSides.has(pos.symbol)) {
+        symbolSides.set(pos.symbol, new Set());
+      }
+      symbolSides.get(pos.symbol)!.add(pos.side);
+    });
+    
+    // Find symbols that have both long and short positions
+    const hedged = new Set<string>();
+    symbolSides.forEach((sides, symbol) => {
+      if (sides.has('long') && sides.has('short')) {
+        hedged.add(symbol);
+      }
+    });
+    
+    return hedged;
+  }, [summary?.positions]);
 
   // Close position mutation - must be defined before any early returns
   const closePositionMutation = useMutation({
@@ -689,6 +760,7 @@ export function StrategyStatus() {
                   formatCurrency={formatCurrency}
                   formatPercentage={formatPercentage}
                   getPnlColor={getPnlColor}
+                  isHedge={hedgeSymbols.has(position.symbol)}
                 />
               ))}
             </div>
@@ -764,7 +836,7 @@ export function StrategyStatus() {
                     );
                   } else {
                     // Render trade card (with expandable details)
-                    return <CompletedTradeCard key={item.data.id} position={item.data} formatCurrency={formatCurrency} formatPercentage={formatPercentage} getPnlColor={getPnlColor} />;
+                    return <CompletedTradeCard key={item.data.id} position={item.data} formatCurrency={formatCurrency} formatPercentage={formatPercentage} getPnlColor={getPnlColor} isHedge={closedHedgePositions.get(item.data.id) || false} />;
                   }
                 })}
               </div>

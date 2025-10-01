@@ -244,6 +244,7 @@ export default function PerformanceOverview() {
                 <Tooltip content={<CustomTooltip />} />
                 <Legend />
                 <ReferenceLine yAxisId="left" y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
+                <ReferenceLine yAxisId="right" y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
                 {/* Vertical lines for strategy changes */}
                 {strategyChanges?.map((change) => {
                   // Find the trade number at or after this change timestamp
@@ -276,13 +277,13 @@ export default function PerformanceOverview() {
                   return null;
                 })}
                 <defs>
-                  <linearGradient id="cumulativePnlGradientPositive" x1="0" y1="0" x2="0" y2="1">
+                  <linearGradient id="positivePnlGradient" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="rgb(190, 242, 100)" stopOpacity={0.3}/>
                     <stop offset="100%" stopColor="rgb(190, 242, 100)" stopOpacity={0.05}/>
                   </linearGradient>
-                  <linearGradient id="cumulativePnlGradientNegative" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="rgb(251, 146, 60)" stopOpacity={0.3}/>
-                    <stop offset="100%" stopColor="rgb(251, 146, 60)" stopOpacity={0.05}/>
+                  <linearGradient id="negativePnlGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="rgb(251, 146, 60)" stopOpacity={0.05}/>
+                    <stop offset="100%" stopColor="rgb(251, 146, 60)" stopOpacity={0.3}/>
                   </linearGradient>
                 </defs>
                 <Bar 
@@ -295,20 +296,57 @@ export default function PerformanceOverview() {
                   {chartData.map((entry, index) => (
                     <Cell 
                       key={`cell-${index}`} 
-                      fill={entry.pnl >= 0 ? 'hsl(var(--muted-foreground) / 0.3)' : 'hsl(var(--muted-foreground) / 0.6)'} 
+                      fill={entry.pnl >= 0 ? 'rgba(190, 242, 100, 0.7)' : 'rgba(251, 146, 60, 0.7)'} 
                     />
                   ))}
                 </Bar>
+                {/* Positive P&L line (above zero) */}
+                <Line
+                  yAxisId="right"
+                  type="monotone"
+                  dataKey={(entry: any) => entry.cumulativePnl >= 0 ? entry.cumulativePnl : null}
+                  name="Cumulative P&L (Profit)"
+                  stroke="rgb(190, 242, 100)"
+                  strokeWidth={2}
+                  dot={false}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                />
+                {/* Negative P&L line (below zero) */}
+                <Line
+                  yAxisId="right"
+                  type="monotone"
+                  dataKey={(entry: any) => entry.cumulativePnl <= 0 ? entry.cumulativePnl : null}
+                  name="Cumulative P&L (Loss)"
+                  stroke="rgb(251, 146, 60)"
+                  strokeWidth={2}
+                  dot={false}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                />
+                {/* Positive P&L area (above zero) */}
                 <Area 
                   yAxisId="right"
                   type="monotone" 
-                  dataKey="cumulativePnl" 
-                  name="Cumulative P&L"
-                  stroke={performance.totalPnl >= 0 ? 'rgb(190, 242, 100)' : 'rgb(251, 146, 60)'}
-                  strokeWidth={2}
-                  fill={performance.totalPnl >= 0 ? 'url(#cumulativePnlGradientPositive)' : 'url(#cumulativePnlGradientNegative)'}
+                  dataKey={(entry: any) => entry.cumulativePnl >= 0 ? entry.cumulativePnl : null}
+                  stroke="none"
+                  fill="url(#positivePnlGradient)"
                   dot={false}
-                  data-testid="chart-area-cumulative"
+                  connectNulls={false}
+                  baseValue={0}
+                  isAnimationActive={false}
+                />
+                {/* Negative P&L area (below zero) */}
+                <Area 
+                  yAxisId="right"
+                  type="monotone" 
+                  dataKey={(entry: any) => entry.cumulativePnl <= 0 ? entry.cumulativePnl : null}
+                  stroke="none"
+                  fill="url(#negativePnlGradient)"
+                  dot={false}
+                  connectNulls={false}
+                  baseValue={0}
+                  isAnimationActive={false}
                 />
               </ComposedChart>
               </ResponsiveContainer>

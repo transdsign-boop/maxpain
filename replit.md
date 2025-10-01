@@ -15,8 +15,8 @@ Preferred communication style: Simple, everyday language.
 - **Styling**: Tailwind CSS with a custom financial trading-focused design system.
 - **State Management**: React hooks with TanStack Query.
 - **Routing**: Wouter.
-- **UI/UX Design**: Dark/light mode, professional trading aesthetic (green for long, red for short), Inter font for text, JetBrains Mono for numerical data, responsive design, optimized tables and cards for financial data.
-- **Key Features**: Collapsible trade details showing layer-by-layer entry/exit information and fees; live strategy editing with tracked changes and performance chart visualization; interactive performance chart with individual trade P&L bars and cumulative P&L line graph.
+- **UI/UX Design**: Dark/light mode, professional trading aesthetic with consistent color scheme (bright lime rgb(190, 242, 100) for positive/profit states, neutral orange/amber rgb(251, 146, 60) for negative/loss states), Inter font for text, JetBrains Mono for numerical data, responsive design, optimized tables and cards for financial data.
+- **Key Features**: Collapsible trade details showing layer-by-layer entry/exit information and fees; live strategy editing with tracked changes and performance chart visualization; interactive performance chart with per-trade P&L bars (lime for gains, orange for losses) and split cumulative P&L line (lime above zero, orange below zero) with gradient fills; hedge position detection and labeling for overlapping long/short positions on same symbol.
 
 ### Backend Architecture
 - **Runtime**: Node.js with Express.js.
