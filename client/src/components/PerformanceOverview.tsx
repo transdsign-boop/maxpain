@@ -279,8 +279,8 @@ export default function PerformanceOverview() {
                 })}
                 <defs>
                   <linearGradient id="cumulativePnlGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="hsl(199, 89%, 48%)" stopOpacity={0.6}/>
-                    <stop offset="100%" stopColor="hsl(199, 89%, 48%)" stopOpacity={0.1}/>
+                    <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
+                    <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0.05}/>
                   </linearGradient>
                 </defs>
                 <Bar 
@@ -293,7 +293,7 @@ export default function PerformanceOverview() {
                   {chartData.map((entry, index) => (
                     <Cell 
                       key={`cell-${index}`} 
-                      fill={entry.pnl >= 0 ? 'hsl(199, 89%, 48%)' : 'hsl(0, 84%, 60%)'} 
+                      fill={entry.pnl >= 0 ? 'hsl(var(--muted-foreground) / 0.3)' : 'hsl(var(--muted-foreground) / 0.6)'} 
                     />
                   ))}
                 </Bar>
@@ -302,7 +302,7 @@ export default function PerformanceOverview() {
                   type="monotone" 
                   dataKey="cumulativePnl" 
                   name="Cumulative P&L"
-                  stroke="hsl(199, 89%, 48%)"
+                  stroke="hsl(var(--primary))"
                   strokeWidth={2}
                   fill="url(#cumulativePnlGradient)"
                   dot={false}
