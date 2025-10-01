@@ -142,7 +142,9 @@ export class StrategyEngine extends EventEmitter {
       }
     }
     
+    // Store by both strategy ID and session ID for easy lookup
     this.activeSessions.set(strategy.id, session);
+    this.activeSessions.set(session.id, session);
     console.log(`✅ Strategy registered with session: ${session.id} (mode: ${session.mode})`);
   }
 
@@ -151,9 +153,15 @@ export class StrategyEngine extends EventEmitter {
     console.log(`📤 Unregistering strategy: ${strategyId}`);
     this.activeStrategies.delete(strategyId);
     
+    // Delete session from both strategy ID and session ID keys
+    const session = this.activeSessions.get(strategyId);
+    if (session) {
+      this.activeSessions.delete(session.id);
+    }
+    this.activeSessions.delete(strategyId);
+    
     // Note: We do NOT end the trade session here to preserve open positions
     // The session stays active so positions remain visible when strategy is restarted
-    this.activeSessions.delete(strategyId);
   }
 
   // Handle incoming liquidation event
