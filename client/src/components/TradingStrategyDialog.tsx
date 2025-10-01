@@ -39,6 +39,7 @@ interface Strategy {
   maxRetryDurationMs: number;
   marginAmount: string;
   tradingMode: "paper" | "live";
+  paperAccountSize: string;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -76,6 +77,10 @@ const strategyFormSchema = z.object({
     return !isNaN(num) && num >= 1 && num <= 100;
   }, "Account usage must be between 1% and 100%"),
   tradingMode: z.enum(["paper", "live"]),
+  paperAccountSize: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 100 && num <= 1000000;
+  }, "Paper account size must be between $100 and $1,000,000"),
 });
 
 type StrategyFormData = z.infer<typeof strategyFormSchema>;
@@ -124,6 +129,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
       maxRetryDurationMs: 30000,
       marginAmount: "10.0",
       tradingMode: "paper",
+      paperAccountSize: "10000.0",
     }
   });
 
@@ -185,6 +191,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         maxRetryDurationMs: strategy.maxRetryDurationMs,
         marginAmount: strategy.marginAmount,
         tradingMode: strategy.tradingMode,
+        paperAccountSize: strategy.paperAccountSize || "10000.0",
       });
     },
     onError: () => {
@@ -320,6 +327,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         maxRetryDurationMs: activeStrategy.maxRetryDurationMs,
         marginAmount: activeStrategy.marginAmount,
         tradingMode: activeStrategy.tradingMode,
+        paperAccountSize: activeStrategy.paperAccountSize || "10000.0",
       });
 
       if (hasChanges) {
@@ -386,6 +394,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         maxRetryDurationMs: strategy.maxRetryDurationMs,
         marginAmount: strategy.marginAmount,
         tradingMode: strategy.tradingMode,
+        paperAccountSize: strategy.paperAccountSize || "10000.0",
       });
     } else if (strategies && strategies.length === 0) {
       // No strategies available, clear active strategy
@@ -482,6 +491,39 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                   </FormItem>
                 )}
               />
+
+              {/* Paper Account Size (only shown in paper mode) */}
+              {form.watch("tradingMode") === "paper" && (
+                <>
+                  <FormField
+                    control={form.control}
+                    name="paperAccountSize"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel data-testid="label-paper-account-size">
+                          <div className="flex items-center gap-2">
+                            <DollarSign className="h-4 w-4" />
+                            Paper Account Size
+                          </div>
+                        </FormLabel>
+                        <FormDescription>
+                          Starting balance for paper trading (simulated funds)
+                        </FormDescription>
+                        <FormControl>
+                          <Input
+                            data-testid="input-paper-account-size"
+                            type="text"
+                            placeholder="10000.0"
+                            {...field}
+                            disabled={false}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </>
+              )}
 
               <Separator />
 
