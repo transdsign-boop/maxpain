@@ -11,11 +11,14 @@ export const liquidations = pgTable("liquidations", {
   price: decimal("price", { precision: 18, scale: 8 }).notNull(),
   value: decimal("value", { precision: 18, scale: 8 }).notNull(),
   timestamp: timestamp("timestamp").notNull().defaultNow(),
+  eventTimestamp: varchar("event_timestamp").unique(), // Aster DEX event timestamp (E field) - unique per event
 });
 
 export const insertLiquidationSchema = createInsertSchema(liquidations).omit({
   id: true,
   timestamp: true,
+}).extend({
+  eventTimestamp: z.string().optional(),
 });
 
 export type InsertLiquidation = z.infer<typeof insertLiquidationSchema>;
