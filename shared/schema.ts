@@ -96,6 +96,7 @@ export const strategies = pgTable("strategies", {
   hedgeMode: boolean("hedge_mode").notNull().default(false), // Allow simultaneous long and short positions on same asset
   isActive: boolean("is_active").notNull().default(false),
   paused: boolean("paused").notNull().default(false), // Temporarily pause trading without deactivating strategy
+  liveSessionStartedAt: timestamp("live_session_started_at"), // Tracks when current live session began (null when in paper mode)
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
