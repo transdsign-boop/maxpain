@@ -250,21 +250,27 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
     ? avgEntry * (1 + unrealizedPnlPercent / 100)
     : avgEntry * (1 - unrealizedPnlPercent / 100);
   
-  // Calculate SL and TP based on strategy settings
-  const stopLossPercent = strategy ? parseFloat(strategy.stopLossPercent) : 2;
-  const profitTargetPercent = strategy ? parseFloat(strategy.profitTargetPercent) : 1;
+  // Sanitize strategy values with defaults to prevent NaN issues
+  const rawSL = Number(strategy?.stopLossPercent);
+  const sanitizedSL = Number.isFinite(rawSL) && rawSL > 0 ? rawSL : 2;
   
+  const rawTP = Number(strategy?.profitTargetPercent);
+  const sanitizedTP = Number.isFinite(rawTP) && rawTP > 0 ? rawTP : 1;
+  
+  const rawLeverage = Number(strategy?.leverage);
+  const leverage = Number.isFinite(rawLeverage) && rawLeverage > 0 ? rawLeverage : 1;
+  
+  // Calculate SL and TP prices using sanitized values
   const stopLossPrice = position.side === 'long'
-    ? avgEntry * (1 - stopLossPercent / 100)
-    : avgEntry * (1 + stopLossPercent / 100);
+    ? avgEntry * (1 - sanitizedSL / 100)
+    : avgEntry * (1 + sanitizedSL / 100);
     
   const takeProfitPrice = position.side === 'long'
-    ? avgEntry * (1 + profitTargetPercent / 100)
-    : avgEntry * (1 - profitTargetPercent / 100);
+    ? avgEntry * (1 + sanitizedTP / 100)
+    : avgEntry * (1 - sanitizedTP / 100);
   
   // Calculate margin (totalCost is already the leveraged position value)
-  const leverage = strategy ? parseFloat(strategy.leverage.toString()) : 1;
-  const totalMargin = totalCost / leverage;
+  const totalMargin = leverage > 0 ? totalCost / leverage : totalCost;
 
   // Calculate liquidation price based on leverage (isolated margin)
   // For isolated margin: liquidationPrice = entry * (1 ± 1/leverage)
@@ -290,11 +296,17 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
   }
   
   // Calculate position pressure for visual indicator
-  // Maps unrealizedPnl to a 0-100 scale where:
-  // -100% (complete loss) = 0, 0% = 50, +100% = 100
-  const maxPnl = 10; // Cap at ±10% for visual scaling
-  const normalizedPnl = Math.max(-maxPnl, Math.min(maxPnl, unrealizedPnlPercent));
-  const pressureValue = 50 + (normalizedPnl / maxPnl) * 50; // 0-100 scale
+  // Maps unrealizedPnl to a 0-100 scale based on strategy's SL and TP settings
+  // Left boundary = Stop Loss (negative), Right boundary = Take Profit (positive)
+  const totalRange = sanitizedTP + sanitizedSL; // e.g., 8% + 5% = 13%
+  
+  // Clamp P&L to strategy boundaries
+  const clampedPnl = Math.max(-sanitizedSL, Math.min(sanitizedTP, unrealizedPnlPercent));
+  const clampedFromLeft = clampedPnl + sanitizedSL; // Shift to 0-based range
+  
+  // Map to 0-100 scale: SL = 0%, Break-even (neutral) = (SL/totalRange)*100, TP = 100%
+  const pressureValue = totalRange > 0 ? Math.max(0, Math.min(100, (clampedFromLeft / totalRange) * 100)) : 50;
+  const neutralPoint = totalRange > 0 ? (sanitizedSL / totalRange) * 100 : 50; // Break-even position
 
   return (
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
@@ -355,8 +367,13 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
                   </span>
                 </div>
                 <div className="relative h-2 bg-muted rounded-full overflow-hidden">
-                  {/* Background gradient showing pressure zones */}
-                  <div className="absolute inset-0 bg-gradient-to-r from-red-500/20 via-muted to-green-500/20" />
+                  {/* Background gradient showing pressure zones with dynamic neutral pivot */}
+                  <div 
+                    className="absolute inset-0"
+                    style={{
+                      background: `linear-gradient(to right, rgb(239 68 68 / 0.2) 0%, rgb(156 163 175 / 0.15) ${neutralPoint}%, rgb(34 197 94 / 0.2) 100%)`
+                    }}
+                  />
                   
                   {/* Position indicator */}
                   <div 
@@ -372,12 +389,12 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
                     data-testid={`pressure-indicator-${position.symbol}`}
                   />
                   
-                  {/* Fill showing intensity */}
+                  {/* Fill showing intensity - pivots at dynamic neutral point */}
                   <div 
                     className="absolute top-0 bottom-0 transition-all duration-300"
                     style={{ 
-                      left: pressureValue > 50 ? '50%' : `${pressureValue}%`,
-                      right: pressureValue < 50 ? '50%' : `${100 - pressureValue}%`,
+                      left: pressureValue > neutralPoint ? `${neutralPoint}%` : `${pressureValue}%`,
+                      right: pressureValue < neutralPoint ? `${100 - neutralPoint}%` : `${100 - pressureValue}%`,
                       backgroundColor: unrealizedPnlPercent > 0 
                         ? 'rgba(34, 197, 94, 0.5)' // green with transparency
                         : unrealizedPnlPercent < 0 
