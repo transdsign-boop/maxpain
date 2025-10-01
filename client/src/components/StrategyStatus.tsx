@@ -464,12 +464,12 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
               {/* Actions */}
               <div className="flex items-center gap-2 ml-auto">
                 <button
-                  className="rounded-xl flex items-center justify-center px-4 py-2 border-4 border-destructive bg-transparent text-destructive transition-all hover:brightness-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="rounded-lg flex items-center justify-center px-3 py-1.5 border-2 border-destructive bg-transparent text-destructive text-xs font-semibold transition-all hover:brightness-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                   data-testid={`button-close-position-${position.symbol}`}
                   onClick={onClose}
                   disabled={isClosing}
                 >
-                  <span className="text-xs font-semibold">Close</span>
+                  Close
                 </button>
                 <CollapsibleTrigger asChild>
                   <Button variant="ghost" size="icon" className="h-10 w-10" data-testid="button-toggle-layers">
@@ -511,18 +511,9 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
                 )}
               </div>
 
-              {/* Bottom: large asset label with close button */}
+              {/* Bottom: large asset label with expand button */}
               <div className="relative px-2 pb-2 flex items-center gap-2">
                 <div className="font-extrabold text-foreground text-2xl tracking-tight">{position.symbol}</div>
-                <button
-                  className="rounded-full flex items-center justify-center h-7 w-7 border-2 border-destructive bg-transparent text-destructive transition-all hover:brightness-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                  data-testid={`button-close-position-${position.symbol}`}
-                  onClick={onClose}
-                  disabled={isClosing}
-                  title="Close Position"
-                >
-                  <X className="h-4 w-4" />
-                </button>
                 <CollapsibleTrigger asChild>
                   <Button variant="ghost" size="icon" className="h-7 w-7 ml-auto" data-testid="button-toggle-layers">
                     {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
@@ -531,43 +522,55 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
               </div>
             </div>
 
-            {/* Middle: price data with large centered P&L */}
+            {/* Middle: price data with large centered P&L and Close button */}
             <div className="px-3 py-2 flex items-center justify-between gap-3">
-              {/* Left column: Avg and SL */}
-              <div className="space-y-1.5 flex-shrink-0">
-                <div className="min-w-0">
-                  <div className="text-[10px] text-muted-foreground truncate">Avg:</div>
-                  <div className="text-[13px] text-foreground/90 truncate">{formatCurrency(avgEntry)}</div>
-                </div>
-                <div className="min-w-0">
-                  <div className="text-[10px] text-muted-foreground truncate">SL:</div>
-                  <div className="text-[13px] text-red-700 dark:text-red-500 truncate">{formatCurrency(stopLossPrice)}</div>
-                </div>
-              </div>
-
-              {/* Center: Large P&L */}
-              <div className="flex flex-col items-center justify-center flex-1">
-                <div className={`text-3xl font-black font-mono leading-none ${getPnlColor(unrealizedPnlDollar)}`}>
-                  {unrealizedPnlDollar >= 0 ? '+' : ''}{formatCurrency(unrealizedPnlDollar)}
-                </div>
-                <div className={`text-lg font-bold font-mono mt-0.5 ${getPnlColor(unrealizedPnlPercent)}`}>
-                  {unrealizedPnlPercent >= 0 ? '+' : ''}{unrealizedPnlPercent.toFixed(2)}%
-                </div>
-              </div>
-
-              {/* Right column: Current and TP */}
-              <div className="space-y-1.5 flex-shrink-0">
-                <div className="min-w-0">
-                  <div className="text-[10px] text-muted-foreground truncate">Current:</div>
-                  <div className="text-[14px] font-semibold text-foreground truncate" data-testid={`current-price-${position.symbol}`}>
-                    {formatCurrency(currentPrice)}
+              <div className="flex items-center justify-between gap-3 flex-1">
+                {/* Left column: Avg and SL */}
+                <div className="space-y-1.5 flex-shrink-0">
+                  <div className="min-w-0">
+                    <div className="text-[10px] text-muted-foreground truncate">Avg:</div>
+                    <div className="text-[13px] text-foreground/90 truncate">{formatCurrency(avgEntry)}</div>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[10px] text-muted-foreground truncate">SL:</div>
+                    <div className="text-[13px] text-red-700 dark:text-red-500 truncate">{formatCurrency(stopLossPrice)}</div>
                   </div>
                 </div>
-                <div className="min-w-0">
-                  <div className="text-[10px] text-muted-foreground truncate">TP:</div>
-                  <div className="text-[13px] text-lime-600 dark:text-lime-400 truncate">{formatCurrency(takeProfitPrice)}</div>
+
+                {/* Center: Large P&L */}
+                <div className="flex flex-col items-center justify-center flex-1">
+                  <div className={`text-3xl font-black font-mono leading-none ${getPnlColor(unrealizedPnlDollar)}`}>
+                    {unrealizedPnlDollar >= 0 ? '+' : ''}{formatCurrency(unrealizedPnlDollar)}
+                  </div>
+                  <div className={`text-lg font-bold font-mono mt-0.5 ${getPnlColor(unrealizedPnlPercent)}`}>
+                    {unrealizedPnlPercent >= 0 ? '+' : ''}{unrealizedPnlPercent.toFixed(2)}%
+                  </div>
+                </div>
+
+                {/* Right column: Current and TP */}
+                <div className="space-y-1.5 flex-shrink-0">
+                  <div className="min-w-0">
+                    <div className="text-[10px] text-muted-foreground truncate">Current:</div>
+                    <div className="text-[14px] font-semibold text-foreground truncate" data-testid={`current-price-${position.symbol}`}>
+                      {formatCurrency(currentPrice)}
+                    </div>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[10px] text-muted-foreground truncate">TP:</div>
+                    <div className="text-[13px] text-lime-600 dark:text-lime-400 truncate">{formatCurrency(takeProfitPrice)}</div>
+                  </div>
                 </div>
               </div>
+
+              {/* Close button */}
+              <button
+                className="rounded-lg flex items-center justify-center px-3 py-1.5 border-2 border-destructive bg-transparent text-destructive text-xs font-semibold transition-all hover:brightness-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+                data-testid={`button-close-position-${position.symbol}`}
+                onClick={onClose}
+                disabled={isClosing}
+              >
+                Close
+              </button>
             </div>
 
             {/* Liquidation Risk Donut */}
