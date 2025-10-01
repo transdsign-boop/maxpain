@@ -223,22 +223,25 @@ export default function PerformanceOverview() {
           {!chartLoading && chartData && chartData.length > 0 ? (
             <>
               <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                <ComposedChart data={chartData} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
                 <XAxis 
                   dataKey="tradeNumber" 
                   label={{ value: 'Trade #', position: 'insideBottom', offset: -5 }}
                   className="text-xs"
+                  axisLine={false}
                 />
                 <YAxis 
                   yAxisId="left"
                   domain={pnlDomain}
                   tick={false}
+                  axisLine={false}
                 />
                 <YAxis 
                   yAxisId="right"
                   orientation="right"
                   domain={cumulativePnlDomain}
                   tick={false}
+                  axisLine={false}
                 />
                 <Tooltip content={<CustomTooltip />} />
                 <Legend verticalAlign="bottom" height={36} />
