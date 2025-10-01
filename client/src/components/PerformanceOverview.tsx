@@ -213,53 +213,50 @@ export default function PerformanceOverview() {
           </div>
         </div>
 
-        {/* Secondary Metrics - Medium Size */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-          <div className="space-y-1.5">
-            <div className="text-xs text-muted-foreground">Realized</div>
-            <div className={`text-xl md:text-2xl font-mono font-semibold ${performance.totalRealizedPnl >= 0 ? 'text-green-500' : 'text-red-500'}`} data-testid="text-realized-pnl">
-              {formatCurrency(performance.totalRealizedPnl)}
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <div className="text-xs text-muted-foreground">Unrealized</div>
-            <div className={`text-xl md:text-2xl font-mono font-semibold ${performance.totalUnrealizedPnl >= 0 ? 'text-green-500' : 'text-red-500'}`} data-testid="text-unrealized-pnl">
-              {formatCurrency(performance.totalUnrealizedPnl)}
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <div className="text-xs text-muted-foreground flex items-center gap-1">
-              <TrendingDown className="h-3 w-3" />
-              Max Drawdown
-            </div>
-            <div className="text-xl md:text-2xl font-mono font-semibold text-red-500" data-testid="text-max-drawdown">
-              {formatCurrency(performance.maxDrawdown ?? 0)}
-            </div>
-            <div className="text-xs font-mono text-muted-foreground">
-              {(performance.maxDrawdownPercent ?? 0).toFixed(2)}%
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <div className="text-xs text-muted-foreground">Avg Time</div>
-            <div className="text-xl md:text-2xl font-mono font-semibold" data-testid="text-avg-trade-time">
-              {formatTradeTime(performance.averageTradeTimeMs)}
-            </div>
-          </div>
-        </div>
-
-        {/* Performance Chart */}
-        <div className="h-64 md:h-80 relative">
+        {/* Performance Chart with Floating Metrics */}
+        <div className="relative h-64 md:h-80">
           {!chartLoading && chartData && chartData.length > 0 ? (
             <>
-              {/* Current P&L Label */}
-              <div className="absolute top-2 right-12 z-10">
-                <div className={`text-base font-mono font-bold ${chartData[chartData.length - 1].cumulativePnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                  {formatCurrency(chartData[chartData.length - 1].cumulativePnl)}
+              {/* Floating Metrics Overlay - Layered Text */}
+              <div className="absolute top-6 left-4 right-4 z-10 pointer-events-none">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+                  <div className="space-y-0.5 bg-background/60 backdrop-blur-sm rounded-md p-2 border border-border/50">
+                    <div className="text-xs text-muted-foreground">Realized</div>
+                    <div className={`text-base md:text-lg font-mono font-semibold ${performance.totalRealizedPnl >= 0 ? 'text-green-500' : 'text-red-500'}`} data-testid="text-realized-pnl-overlay">
+                      {formatCurrency(performance.totalRealizedPnl)}
+                    </div>
+                  </div>
+
+                  <div className="space-y-0.5 bg-background/60 backdrop-blur-sm rounded-md p-2 border border-border/50">
+                    <div className="text-xs text-muted-foreground">Unrealized</div>
+                    <div className={`text-base md:text-lg font-mono font-semibold ${performance.totalUnrealizedPnl >= 0 ? 'text-green-500' : 'text-red-500'}`} data-testid="text-unrealized-pnl-overlay">
+                      {formatCurrency(performance.totalUnrealizedPnl)}
+                    </div>
+                  </div>
+
+                  <div className="space-y-0.5 bg-background/60 backdrop-blur-sm rounded-md p-2 border border-border/50">
+                    <div className="text-xs text-muted-foreground flex items-center gap-1">
+                      <TrendingDown className="h-3 w-3" />
+                      Max Drawdown
+                    </div>
+                    <div className="text-base md:text-lg font-mono font-semibold text-red-500" data-testid="text-max-drawdown-overlay">
+                      {formatCurrency(performance.maxDrawdown ?? 0)}
+                    </div>
+                    <div className="text-xs font-mono text-muted-foreground">
+                      {(performance.maxDrawdownPercent ?? 0).toFixed(2)}%
+                    </div>
+                  </div>
+
+                  <div className="space-y-0.5 bg-background/60 backdrop-blur-sm rounded-md p-2 border border-border/50">
+                    <div className="text-xs text-muted-foreground">Avg Time</div>
+                    <div className="text-base md:text-lg font-mono font-semibold" data-testid="text-avg-trade-time-overlay">
+                      {formatTradeTime(performance.averageTradeTimeMs)}
+                    </div>
+                  </div>
                 </div>
               </div>
+
+              {/* Full Width Chart */}
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
@@ -360,7 +357,7 @@ export default function PerformanceOverview() {
           )}
         </div>
 
-        {/* Tertiary Metrics - Small Compact Grid */}
+        {/* Trade Statistics Section */}
         <div className="pt-4 border-t border-border">
           <div className="text-xs text-muted-foreground uppercase tracking-wider mb-4">Trade Statistics</div>
           <div className="grid grid-cols-3 md:grid-cols-6 gap-4">
@@ -405,6 +402,37 @@ export default function PerformanceOverview() {
               <div className="text-xs text-muted-foreground">Fees Paid</div>
               <div className="text-lg font-mono font-semibold text-muted-foreground" data-testid="text-total-fees">
                 -${(performance.totalFees ?? 0).toFixed(2)}
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <div className="text-xs text-muted-foreground">Realized</div>
+              <div className={`text-lg font-mono font-semibold ${performance.totalRealizedPnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                {formatCurrency(performance.totalRealizedPnl)}
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <div className="text-xs text-muted-foreground">Unrealized</div>
+              <div className={`text-lg font-mono font-semibold ${performance.totalUnrealizedPnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                {formatCurrency(performance.totalUnrealizedPnl)}
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <div className="text-xs text-muted-foreground flex items-center gap-1">
+                <TrendingDown className="h-3 w-3" />
+                Max Drawdown
+              </div>
+              <div className="text-lg font-mono font-semibold text-red-500">
+                {formatCurrency(performance.maxDrawdown ?? 0)}
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <div className="text-xs text-muted-foreground">Avg Time</div>
+              <div className="text-lg font-mono font-semibold">
+                {formatTradeTime(performance.averageTradeTimeMs)}
               </div>
             </div>
           </div>
