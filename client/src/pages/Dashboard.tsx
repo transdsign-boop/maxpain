@@ -13,7 +13,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Settings2, Pause, Play, AlertTriangle, BarChart3 } from "lucide-react";
+import { Settings2, Pause, Play, AlertTriangle, BarChart3, Menu } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 
@@ -58,8 +59,46 @@ export default function Dashboard() {
   });
 
   const activeStrategy = strategies?.find(s => s.isActive);
+  const isLiveMode = activeStrategy?.tradingMode === 'live';
 
-  // Fetch position summary for header display
+  // Fetch live account data when in live mode
+  const { data: liveAccount, error: liveAccountError } = useQuery<any>({
+    queryKey: ['/api/live/account'],
+    refetchInterval: 5000,
+    enabled: !!isLiveMode && !!activeStrategy,
+    retry: 2,
+  });
+
+  // Fetch live positions when in live mode
+  const { data: livePositions, error: livePositionsError } = useQuery<any[]>({
+    queryKey: ['/api/live/positions'],
+    refetchInterval: 5000,
+    enabled: !!isLiveMode && !!activeStrategy,
+    retry: 2,
+  });
+
+  // Show toast for live data errors
+  useEffect(() => {
+    if (liveAccountError) {
+      toast({
+        title: "Live Account Error",
+        description: "Failed to fetch live account data from Aster DEX. Check your API keys.",
+        variant: "destructive",
+      });
+    }
+  }, [liveAccountError]);
+
+  useEffect(() => {
+    if (livePositionsError) {
+      toast({
+        title: "Live Positions Error",
+        description: "Failed to fetch live positions from Aster DEX.",
+        variant: "destructive",
+      });
+    }
+  }, [livePositionsError]);
+
+  // Fetch position summary for header display (paper trading)
   const { data: positionSummary } = useQuery<any>({
     queryKey: ['/api/strategies', activeStrategy?.id, 'positions', 'summary'],
     queryFn: async () => {
@@ -429,13 +468,34 @@ export default function Dashboard() {
     }).format(value);
   };
 
-  // Calculate metrics
+  // Calculate metrics - use live data if in live mode, otherwise paper trading data
   const leverage = activeStrategy?.leverage || 1;
-  const currentBalanceWithUnrealized = positionSummary 
-    ? positionSummary.currentBalance + (positionSummary.unrealizedPnl || 0)
-    : 0;
-  const marginInUse = positionSummary ? (positionSummary.totalExposure / leverage) : 0;
-  const availableMargin = positionSummary ? (positionSummary.currentBalance - marginInUse) : 0;
+  
+  const currentBalance = isLiveMode && liveAccount 
+    ? parseFloat(liveAccount.totalWalletBalance)
+    : (positionSummary?.currentBalance || 0);
+    
+  const unrealizedPnl = isLiveMode && liveAccount
+    ? parseFloat(liveAccount.totalUnrealizedProfit)
+    : (positionSummary?.unrealizedPnl || 0);
+    
+  const currentBalanceWithUnrealized = currentBalance + unrealizedPnl;
+  
+  const availableMargin = isLiveMode && liveAccount
+    ? parseFloat(liveAccount.availableBalance)
+    : (positionSummary ? (positionSummary.currentBalance - (positionSummary.totalExposure / leverage)) : 0);
+    
+  const activePositions = isLiveMode && livePositions
+    ? livePositions.length
+    : (positionSummary?.activePositions || 0);
+    
+  const marginInUse = isLiveMode && liveAccount
+    ? (parseFloat(liveAccount.totalWalletBalance) - parseFloat(liveAccount.availableBalance))
+    : (positionSummary ? (positionSummary.totalExposure / leverage) : 0);
+    
+  const totalExposure = isLiveMode && liveAccount
+    ? (marginInUse * leverage)
+    : (positionSummary?.totalExposure || 0);
 
   return (
     <div className="min-h-screen bg-background">
@@ -447,11 +507,22 @@ export default function Dashboard() {
 
           <div className="flex items-center gap-8">
             {/* Trading Account Metrics with Visual Hierarchy */}
-            {positionSummary && (
+            {(positionSummary || (isLiveMode && liveAccount)) && (
               <div className="flex items-center gap-6">
                 {/* PRIMARY: Account Balance (Largest & Most Prominent) */}
                 <div className="flex flex-col">
-                  <div className="text-xs text-muted-foreground">Account Balance</div>
+                  <div className="flex items-center gap-2">
+                    <div className="text-xs text-muted-foreground">Account Balance</div>
+                    {isLiveMode && (
+                      <Badge 
+                        variant="default" 
+                        className="bg-[rgb(190,242,100)] text-black hover:bg-[rgb(190,242,100)] font-semibold"
+                        data-testid="badge-live-mode"
+                      >
+                        LIVE MODE
+                      </Badge>
+                    )}
+                  </div>
                   <div className="text-2xl font-mono font-bold" data-testid="text-current-balance">
                     {formatCurrency(currentBalanceWithUnrealized)}
                   </div>
@@ -468,9 +539,23 @@ export default function Dashboard() {
                     </div>
                   </div>
                   <div className="flex flex-col">
-                    <div className="text-xs text-muted-foreground">Positions</div>
-                    <div className="text-lg font-mono font-semibold" data-testid="text-active-positions">
-                      {positionSummary.activePositions}
+                    <div className="text-xs text-muted-foreground">
+                      {isLiveMode && unrealizedPnl !== 0 ? "Unrealized P&L" : "Positions"}
+                    </div>
+                    <div 
+                      className={`text-lg font-mono font-semibold ${
+                        isLiveMode && unrealizedPnl !== 0 
+                          ? unrealizedPnl >= 0 
+                            ? "text-lime-600 dark:text-lime-400" 
+                            : "text-red-600 dark:text-red-400"
+                          : ""
+                      }`}
+                      data-testid={isLiveMode && unrealizedPnl !== 0 ? "text-unrealized-pnl" : "text-active-positions"}
+                    >
+                      {isLiveMode && unrealizedPnl !== 0 
+                        ? `${unrealizedPnl >= 0 ? '+' : ''}${formatCurrency(unrealizedPnl)}`
+                        : activePositions
+                      }
                     </div>
                   </div>
                 </div>
@@ -488,7 +573,7 @@ export default function Dashboard() {
                   <div className="flex flex-col">
                     <div className="text-muted-foreground">Exposure</div>
                     <div className="font-mono font-semibold" data-testid="text-total-exposure">
-                      {formatCurrency(positionSummary.totalExposure)}
+                      {formatCurrency(totalExposure)}
                     </div>
                   </div>
                 </div>
@@ -597,24 +682,49 @@ export default function Dashboard() {
           </div>
 
           {/* Bottom Row: Key Metrics Only (Mobile) */}
-          {positionSummary && (
-            <div className="flex items-center justify-between gap-2 text-xs">
-              <div className="flex flex-col">
-                <div className="text-muted-foreground">Balance</div>
-                <div className="text-lg font-mono font-bold" data-testid="text-current-balance-mobile">
-                  {formatCurrency(currentBalanceWithUnrealized)}
+          {(positionSummary || (isLiveMode && liveAccount)) && (
+            <div className="flex flex-col gap-1">
+              {isLiveMode && (
+                <Badge 
+                  variant="default" 
+                  className="bg-[rgb(190,242,100)] text-black hover:bg-[rgb(190,242,100)] font-semibold text-[10px] w-fit"
+                  data-testid="badge-live-mode-mobile"
+                >
+                  LIVE MODE
+                </Badge>
+              )}
+              <div className="flex items-center justify-between gap-2 text-xs">
+                <div className="flex flex-col">
+                  <div className="text-muted-foreground">Balance</div>
+                  <div className="text-lg font-mono font-bold" data-testid="text-current-balance-mobile">
+                    {formatCurrency(currentBalanceWithUnrealized)}
+                  </div>
                 </div>
-              </div>
-              <div className="flex flex-col">
-                <div className="text-muted-foreground">Available</div>
-                <div className="text-sm font-mono font-semibold text-lime-600 dark:text-lime-400" data-testid="text-available-margin-mobile">
-                  {formatCurrency(availableMargin)}
+                <div className="flex flex-col">
+                  <div className="text-muted-foreground">Available</div>
+                  <div className="text-sm font-mono font-semibold text-lime-600 dark:text-lime-400" data-testid="text-available-margin-mobile">
+                    {formatCurrency(availableMargin)}
+                  </div>
                 </div>
-              </div>
-              <div className="flex flex-col">
-                <div className="text-muted-foreground">Positions</div>
-                <div className="text-sm font-mono font-semibold" data-testid="text-active-positions-mobile">
-                  {positionSummary.activePositions}
+                <div className="flex flex-col">
+                  <div className="text-muted-foreground">
+                    {isLiveMode && unrealizedPnl !== 0 ? "Unreal P&L" : "Positions"}
+                  </div>
+                  <div 
+                    className={`text-sm font-mono font-semibold ${
+                      isLiveMode && unrealizedPnl !== 0 
+                        ? unrealizedPnl >= 0 
+                          ? "text-lime-600 dark:text-lime-400" 
+                          : "text-red-600 dark:text-red-400"
+                        : ""
+                    }`}
+                    data-testid={isLiveMode && unrealizedPnl !== 0 ? "text-unrealized-pnl-mobile" : "text-active-positions-mobile"}
+                  >
+                    {isLiveMode && unrealizedPnl !== 0 
+                      ? `${unrealizedPnl >= 0 ? '+' : ''}${formatCurrency(unrealizedPnl)}`
+                      : activePositions
+                    }
+                  </div>
                 </div>
               </div>
             </div>
