@@ -129,6 +129,7 @@ export const fills = pgTable("fills", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   orderId: varchar("order_id").notNull(), // References orders.id
   sessionId: varchar("session_id").notNull(), // References tradeSessions.id
+  positionId: varchar("position_id"), // References positions.id (nullable for backwards compatibility)
   symbol: text("symbol").notNull(),
   side: text("side").notNull(), // "buy" or "sell"
   quantity: decimal("quantity", { precision: 18, scale: 8 }).notNull(),
