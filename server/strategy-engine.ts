@@ -9,8 +9,8 @@ import {
   type Fill 
 } from '@shared/schema';
 
-// Fixed liquidation monitoring window - always 60 seconds regardless of strategy settings
-const LIQUIDATION_WINDOW_SECONDS = 60;
+// Aster DEX taker fee constant moved here for clarity
+// (LIQUIDATION_WINDOW_SECONDS removed - now using configurable strategy.liquidationLookbackHours)
 
 // Aster DEX taker fee (0.035% per trade) - applied to paper trading only for realistic simulation
 const ASTER_TAKER_FEE_PERCENT = 0.035;
@@ -205,13 +205,14 @@ export class StrategyEngine extends EventEmitter {
 
     console.log(`🎯 Evaluating strategy "${strategy.name}" for ${liquidation.symbol}`);
 
-    // Check if liquidation meets threshold criteria (fixed 60-second window)
+    // Use configurable lookback window from strategy settings (convert hours to seconds)
+    const lookbackSeconds = strategy.liquidationLookbackHours * 3600;
     const recentLiquidations = this.getRecentLiquidations(
       liquidation.symbol, 
-      LIQUIDATION_WINDOW_SECONDS
+      lookbackSeconds
     );
 
-    console.log(`📈 Found ${recentLiquidations.length} liquidations in last ${LIQUIDATION_WINDOW_SECONDS}s for ${liquidation.symbol}`);
+    console.log(`📈 Found ${recentLiquidations.length} liquidations in last ${strategy.liquidationLookbackHours}h for ${liquidation.symbol}`);
 
     if (recentLiquidations.length === 0) return;
 
@@ -285,13 +286,9 @@ export class StrategyEngine extends EventEmitter {
     // Calculate percentile threshold: current liquidation must exceed specified percentile
     const currentLiquidationValue = parseFloat(liquidation.value);
     
-    // Require at least 2 liquidations to establish a meaningful percentile
-    if (recentLiquidations.length < 2) {
-      console.log(`📊 Insufficient data: Need at least 2 liquidations to calculate ${strategy.percentileThreshold}% threshold (found ${recentLiquidations.length})`);
-      return false;
-    }
+    if (recentLiquidations.length === 0) return false;
     
-    // Get all liquidation values within the 60-second window and sort them
+    // Get all liquidation values within the lookback window and sort them
     const liquidationValues = recentLiquidations.map(liq => parseFloat(liq.value)).sort((a, b) => a - b);
     
     // Calculate the percentile value: find the value such that X% of liquidations are below it
@@ -301,7 +298,7 @@ export class StrategyEngine extends EventEmitter {
     const percentileIndex = Math.max(0, percentilePosition - 1); // Convert to 0-based index
     const percentileValue = liquidationValues[Math.min(percentileIndex, liquidationValues.length - 1)];
     
-    console.log(`📊 Percentile Analysis: Current liquidation $${currentLiquidationValue.toFixed(2)} vs ${strategy.percentileThreshold}% threshold $${percentileValue.toFixed(2)} (${liquidationValues.length} liquidations in 60s window)`);
+    console.log(`📊 Percentile Analysis: Current liquidation $${currentLiquidationValue.toFixed(2)} vs ${strategy.percentileThreshold}% threshold $${percentileValue.toFixed(2)} (${liquidationValues.length} liquidations in ${strategy.liquidationLookbackHours}h window)`);
     
     // Only enter if current liquidation STRICTLY EXCEEDS the percentile threshold
     return currentLiquidationValue > percentileValue;
@@ -318,14 +315,11 @@ export class StrategyEngine extends EventEmitter {
       return false;
     }
 
-    // First check percentile threshold - same as entry logic
-    const recentLiquidations = this.getRecentLiquidations(liquidation.symbol, LIQUIDATION_WINDOW_SECONDS);
+    // Use configurable lookback window from strategy settings (convert hours to seconds)
+    const lookbackSeconds = strategy.liquidationLookbackHours * 3600;
+    const recentLiquidations = this.getRecentLiquidations(liquidation.symbol, lookbackSeconds);
     
-    // Require at least 2 liquidations to establish a meaningful percentile
-    if (recentLiquidations.length < 2) {
-      console.log(`📊 Layer blocked: Need at least 2 liquidations to calculate ${strategy.percentileThreshold}% threshold (found ${recentLiquidations.length})`);
-      return false;
-    }
+    if (recentLiquidations.length === 0) return false;
 
     const currentLiquidationValue = parseFloat(liquidation.value);
     const liquidationValues = recentLiquidations.map(liq => parseFloat(liq.value)).sort((a, b) => a - b);

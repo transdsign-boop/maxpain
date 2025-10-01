@@ -74,6 +74,7 @@ export const strategies = pgTable("strategies", {
   userId: varchar("user_id").notNull(), // Replit Auth user ID
   selectedAssets: text("selected_assets").array().notNull(),
   percentileThreshold: integer("percentile_threshold").notNull().default(50), // 1-100%
+  liquidationLookbackHours: integer("liquidation_lookback_hours").notNull().default(1), // 1-24 hours
   maxLayers: integer("max_layers").notNull().default(5),
   positionSizePercent: decimal("position_size_percent", { precision: 5, scale: 2 }).notNull(), // % of portfolio per position
   profitTargetPercent: decimal("profit_target_percent", { precision: 5, scale: 2 }).notNull().default("1.0"),
