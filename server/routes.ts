@@ -928,6 +928,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       });
       
+      // Check if paperAccountSize changed
+      const paperAccountSizeChanged = validatedUpdates.paperAccountSize !== undefined && 
+        existingStrategy.paperAccountSize !== validatedUpdates.paperAccountSize;
+      
       // Normalize data - liquidation window is always 60 seconds regardless of input
       const updateData = {
         ...validatedUpdates
@@ -935,6 +939,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       console.log('💾 Sending to database:', JSON.stringify(updateData, null, 2));
       await storage.updateStrategy(strategyId, updateData);
+      
+      // If paper account size changed and strategy is not active, reset the trade session
+      if (paperAccountSizeChanged && !existingStrategy.isActive) {
+        const activeSession = await storage.getActiveTradeSession(strategyId);
+        if (activeSession) {
+          const newBalance = validatedUpdates.paperAccountSize!;
+          console.log(`💰 Paper account size changed from ${existingStrategy.paperAccountSize} to ${newBalance} - resetting trade session`);
+          
+          // Close all open positions before resetting balance
+          const openPositions = await storage.getOpenPositions(activeSession.id);
+          if (openPositions.length > 0) {
+            console.log(`🔄 Closing ${openPositions.length} open positions before balance reset`);
+            for (const position of openPositions) {
+              await storage.updatePosition(position.id, { isOpen: false });
+            }
+          }
+          
+          // Update the session with new balance
+          await storage.updateTradeSession(activeSession.id, {
+            startingBalance: newBalance,
+            currentBalance: newBalance,
+            totalPnl: '0',
+            totalTrades: 0,
+            winRate: '0',
+          });
+          
+          console.log(`✅ Trade session ${activeSession.id} reset to new balance: ${newBalance}`);
+        }
+      }
       
       // If there are changes and strategy has an active session, record the change
       if (Object.keys(changes).length > 0) {
