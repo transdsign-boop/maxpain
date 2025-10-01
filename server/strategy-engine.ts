@@ -322,8 +322,8 @@ export class StrategyEngine extends EventEmitter {
     
     console.log(`📊 Percentile Analysis: Current liquidation $${currentLiquidationValue.toFixed(2)} vs ${strategy.percentileThreshold}% threshold $${percentileValue.toFixed(2)} (${liquidationValues.length} liquidations in ${strategy.liquidationLookbackHours}h window)`);
     
-    // Only enter if current liquidation STRICTLY EXCEEDS the percentile threshold
-    return currentLiquidationValue > percentileValue;
+    // Only enter if current liquidation equals or exceeds the percentile threshold
+    return currentLiquidationValue >= percentileValue;
   }
 
   // Determine if we should add a layer to existing position
@@ -351,14 +351,14 @@ export class StrategyEngine extends EventEmitter {
     const percentileIndex = Math.max(0, percentilePosition - 1);
     const percentileValue = liquidationValues[Math.min(percentileIndex, liquidationValues.length - 1)];
 
-    // Only proceed with layering if liquidation STRICTLY EXCEEDS percentile threshold
-    if (currentLiquidationValue <= percentileValue) {
-      console.log(`📊 Layer blocked: Liquidation $${currentLiquidationValue.toFixed(2)} does not exceed ${strategy.percentileThreshold}% threshold $${percentileValue.toFixed(2)}`);
+    // Only proceed with layering if liquidation equals or exceeds percentile threshold
+    if (currentLiquidationValue < percentileValue) {
+      console.log(`📊 Layer blocked: Liquidation $${currentLiquidationValue.toFixed(2)} is below ${strategy.percentileThreshold}% threshold $${percentileValue.toFixed(2)}`);
       return false;
     }
 
-    // Layer is allowed - liquidation exceeds the percentile threshold
-    console.log(`📊 Layer approved: Liquidation $${currentLiquidationValue.toFixed(2)} exceeds ${strategy.percentileThreshold}% threshold $${percentileValue.toFixed(2)}`);
+    // Layer is allowed - liquidation equals or exceeds the percentile threshold
+    console.log(`📊 Layer approved: Liquidation $${currentLiquidationValue.toFixed(2)} meets/exceeds ${strategy.percentileThreshold}% threshold $${percentileValue.toFixed(2)}`);
     return true;
   }
 
