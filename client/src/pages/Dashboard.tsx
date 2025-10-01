@@ -9,11 +9,10 @@ import { StrategyStatus } from "@/components/StrategyStatus";
 import ThemeToggle from "@/components/ThemeToggle";
 import AsterLogo from "@/components/AsterLogo";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Settings, Download, Upload, Settings2, Pause, Play, AlertTriangle } from "lucide-react";
+import { Settings2, Pause, Play, AlertTriangle } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 
@@ -49,9 +48,6 @@ export default function Dashboard() {
   
   // Real liquidation data from WebSocket and API
   const [liquidations, setLiquidations] = useState<Liquidation[]>([]);
-  
-  // File input ref for settings import
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch active strategies
   const { data: strategies } = useQuery<any[]>({
@@ -163,50 +159,6 @@ export default function Dashboard() {
   };
 
   // Export settings as JSON
-  const exportSettings = () => {
-    const settings = {
-      selectedAssets,
-      sideFilter,
-      minValue,
-      timeRange,
-      exportedAt: new Date().toISOString(),
-    };
-    const dataStr = JSON.stringify(settings, null, 2);
-    const dataBlob = new Blob([dataStr], { type: 'application/json' });
-    const url = URL.createObjectURL(dataBlob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'max-pain-settings.json';
-    link.click();
-    URL.revokeObjectURL(url);
-  };
-
-  // Import settings from JSON
-  const importSettings = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const result = e.target?.result as string;
-        const importedSettings = JSON.parse(result);
-        
-        if (importedSettings.selectedAssets) setSelectedAssets(importedSettings.selectedAssets);
-        if (importedSettings.sideFilter) setSideFilter(importedSettings.sideFilter);
-        if (importedSettings.minValue) setMinValue(importedSettings.minValue);
-        if (importedSettings.timeRange) setTimeRange(importedSettings.timeRange);
-        
-        // Reset file input
-        event.target.value = '';
-        
-        console.log('Settings imported successfully');
-      } catch (error) {
-        console.error('Failed to import settings:', error);
-      }
-    };
-    reader.readAsText(file);
-  };
 
   // Load settings from database
   const loadSettings = async () => {
@@ -470,8 +422,8 @@ export default function Dashboard() {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
+      minimumFractionDigits: 4,
+      maximumFractionDigits: 4
     }).format(value);
   };
 
@@ -588,25 +540,6 @@ export default function Dashboard() {
               <Settings2 className="h-4 w-4" />
             </Button>
             
-            {/* Settings Menu */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon" data-testid="button-settings" title="Settings">
-                  <Settings className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={exportSettings} data-testid="button-export-settings">
-                  <Download className="mr-2 h-4 w-4" />
-                  Export Settings
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => fileInputRef.current?.click()} data-testid="button-import-settings">
-                  <Upload className="mr-2 h-4 w-4" />
-                  Import Settings
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            
             <ThemeToggle />
           </div>
         </div>
@@ -657,23 +590,6 @@ export default function Dashboard() {
               >
                 <Settings2 className="h-4 w-4" />
               </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="icon" data-testid="button-settings">
-                    <Settings className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={exportSettings} data-testid="button-export-settings">
-                    <Download className="mr-2 h-4 w-4" />
-                    Export Settings
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => fileInputRef.current?.click()} data-testid="button-import-settings">
-                    <Upload className="mr-2 h-4 w-4" />
-                    Import Settings
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
               <ThemeToggle />
             </div>
           </div>
@@ -726,16 +642,6 @@ export default function Dashboard() {
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={setIsSidebarCollapsed}
         onLiquidationClick={handleLiquidationClick}
-      />
-
-      {/* Hidden file input for settings import */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".json"
-        onChange={importSettings}
-        style={{ display: 'none' }}
-        data-testid="input-import-settings"
       />
 
       {/* Liquidation Analytics Modal */}
