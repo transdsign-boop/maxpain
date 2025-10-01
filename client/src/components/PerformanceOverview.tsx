@@ -219,7 +219,10 @@ export default function PerformanceOverview() {
         </div>
 
         {/* Performance Chart */}
-        <div className="relative h-64 md:h-80 -mx-6 px-6 mb-8">
+        <div className="relative h-64 md:h-80 -mx-8 mb-8" style={{
+          maskImage: 'linear-gradient(to right, transparent, black 5%, black 95%, transparent)',
+          WebkitMaskImage: 'linear-gradient(to right, transparent, black 5%, black 95%, transparent)'
+        }}>
           {!chartLoading && chartData && chartData.length > 0 ? (
             <>
               <ResponsiveContainer width="100%" height="100%">
