@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
-import { createHmac } from "crypto";
+import crypto from "crypto";
 import { storage } from "./storage";
 import { strategyEngine } from "./strategy-engine";
 import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySchema, updateStrategySchema, type Position, type Liquidation, positions } from "@shared/schema";
@@ -654,6 +654,90 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(strategies);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch strategies" });
+    }
+  });
+
+  // Get live account balance from Aster DEX
+  app.get("/api/live/account", async (req, res) => {
+    try {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+
+      if (!apiKey || !secretKey) {
+        return res.status(400).json({ error: "Aster DEX API keys not configured" });
+      }
+
+      // Create signed request to get account information
+      const timestamp = Date.now();
+      const params = `timestamp=${timestamp}`;
+      const signature = crypto
+        .createHmac('sha256', secretKey)
+        .update(params)
+        .digest('hex');
+
+      const response = await fetch(
+        `https://fapi.asterdex.com/fapi/v1/account?${params}&signature=${signature}`,
+        {
+          headers: {
+            'X-MBX-APIKEY': apiKey,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Failed to fetch Aster DEX account:', errorText);
+        return res.status(response.status).json({ error: `Aster DEX API error: ${errorText}` });
+      }
+
+      const data = await response.json();
+      res.json(data);
+    } catch (error) {
+      console.error('Error fetching live account data:', error);
+      res.status(500).json({ error: "Failed to fetch live account data" });
+    }
+  });
+
+  // Get live open positions from Aster DEX
+  app.get("/api/live/positions", async (req, res) => {
+    try {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+
+      if (!apiKey || !secretKey) {
+        return res.status(400).json({ error: "Aster DEX API keys not configured" });
+      }
+
+      // Create signed request to get position information
+      const timestamp = Date.now();
+      const params = `timestamp=${timestamp}`;
+      const signature = crypto
+        .createHmac('sha256', secretKey)
+        .update(params)
+        .digest('hex');
+
+      const response = await fetch(
+        `https://fapi.asterdex.com/fapi/v2/positionRisk?${params}&signature=${signature}`,
+        {
+          headers: {
+            'X-MBX-APIKEY': apiKey,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Failed to fetch Aster DEX positions:', errorText);
+        return res.status(response.status).json({ error: `Aster DEX API error: ${errorText}` });
+      }
+
+      const data = await response.json();
+      // Filter out positions with zero quantity
+      const openPositions = data.filter((pos: any) => parseFloat(pos.positionAmt) !== 0);
+      res.json(openPositions);
+    } catch (error) {
+      console.error('Error fetching live positions:', error);
+      res.status(500).json({ error: "Failed to fetch live positions" });
     }
   });
 
