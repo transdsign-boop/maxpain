@@ -769,6 +769,7 @@ export function StrategyStatus() {
   const availableMargin = summary ? (summary.currentBalance - marginInUse) : 0;
 
   return (
+    <>
     <Card data-testid="strategy-status">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
@@ -948,5 +949,6 @@ export function StrategyStatus() {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    </>
   );
 }

@@ -325,4 +325,46 @@
   .border.hover-elevate:not(.no-hover-interaction-elevate)::after {
     inset: -1px;
   }
+
+  /* Moving Ticker Animation */
+  @keyframes ticker-scroll {
+    0% {
+      transform: translateX(0);
+    }
+    100% {
+      transform: translateX(-50%);
+    }
+  }
+
+  .ticker-wrapper {
+    width: 100%;
+    overflow: hidden;
+  }
+
+  .ticker-content {
+    display: flex;
+    align-items: center;
+    gap: 2rem;
+    animation: ticker-scroll 60s linear infinite;
+    width: fit-content;
+  }
+
+  .ticker-content:hover {
+    animation-play-state: paused;
+  }
+
+  .ticker-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .ticker-separator {
+    width: 1px;
+    height: 1rem;
+    background-color: hsl(var(--border));
+    flex-shrink: 0;
+  }
 }
