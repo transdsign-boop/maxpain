@@ -37,8 +37,31 @@ interface TradeDataPoint {
   quantity: number;
 }
 
+interface LiveAccountData {
+  totalWalletBalance: string;
+  totalUnrealizedProfit: string;
+  totalMarginBalance: string;
+  availableBalance: string;
+  maxWithdrawAmount: string;
+}
+
 export default function PerformanceOverview() {
   
+  // Fetch active strategy to check if live trading is enabled
+  const { data: strategies } = useQuery<any[]>({
+    queryKey: ['/api/strategies'],
+    refetchInterval: 5000,
+  });
+  const activeStrategy = strategies?.find(s => s.isActive);
+  const isLiveMode = activeStrategy?.isLiveTradingEnabled || false;
+
+  // Fetch live account data when in live mode
+  const { data: liveAccount } = useQuery<LiveAccountData>({
+    queryKey: ['/api/live/account'],
+    refetchInterval: 5000,
+    enabled: isLiveMode,
+  });
+
   const { data: performance, isLoading } = useQuery<PerformanceMetrics>({
     queryKey: ['/api/performance/overview'],
     refetchInterval: 5000,
@@ -85,13 +108,6 @@ export default function PerformanceOverview() {
     
     return [curr];
   }) : [];
-
-  // Fetch active strategy
-  const { data: strategies } = useQuery<any[]>({
-    queryKey: ['/api/strategies'],
-    refetchInterval: 5000,
-  });
-  const activeStrategy = strategies?.find(s => s.isActive);
 
   // Fetch strategy changes for vertical lines
   const { data: strategyChanges } = useQuery<any[]>({
@@ -193,63 +209,118 @@ export default function PerformanceOverview() {
     return null;
   };
 
+  // Calculate live mode P&L if available
+  const liveBalance = liveAccount ? parseFloat(liveAccount.totalWalletBalance) : 0;
+  const liveUnrealizedPnl = liveAccount ? parseFloat(liveAccount.totalUnrealizedProfit) : 0;
+  const liveAvailableBalance = liveAccount ? parseFloat(liveAccount.availableBalance) : 0;
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
-          Performance Overview
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+            {isLiveMode ? 'Live Account Balance' : 'Performance Overview'}
+          </CardTitle>
+          {isLiveMode && (
+            <Badge variant="default" className="bg-lime-500/20 text-lime-500 hover:bg-lime-500/30">
+              LIVE DATA
+            </Badge>
+          )}
+        </div>
       </CardHeader>
       <CardContent className="space-y-6 md:space-y-8">
-        {/* Hero Metrics - Most Important */}
-        <div className="flex flex-wrap items-end gap-6 md:gap-8">
-          {/* Main P&L - Hero Size */}
-          <div className="space-y-1 md:space-y-2">
-            <div className="text-xs text-muted-foreground uppercase tracking-wider">Total P&L</div>
-            <div className={`text-4xl md:text-6xl font-mono font-bold ${isProfitable ? 'text-primary' : 'text-red-600'}`} data-testid="text-total-pnl">
-              {formatCurrency(performance.totalPnl)}
-            </div>
-            <div className={`text-lg md:text-xl font-mono ${isProfitable ? 'text-primary/80' : 'text-red-600/80'}`}>
-              {(performance.totalPnlPercent ?? 0) >= 0 ? '+' : ''}{(performance.totalPnlPercent ?? 0).toFixed(2)}%
-            </div>
-          </div>
+        {isLiveMode && liveAccount ? (
+          /* Live Mode Display */
+          <>
+            <div className="flex flex-wrap items-end gap-6 md:gap-8">
+              {/* Live Balance - Hero Size */}
+              <div className="space-y-1 md:space-y-2">
+                <div className="text-xs text-muted-foreground uppercase tracking-wider">Total Balance</div>
+                <div className="text-4xl md:text-6xl font-mono font-bold" data-testid="text-live-balance">
+                  ${liveBalance.toFixed(2)}
+                </div>
+                <div className={`text-lg md:text-xl font-mono ${liveUnrealizedPnl >= 0 ? 'text-primary/80' : 'text-red-600/80'}`}>
+                  Unrealized: {liveUnrealizedPnl >= 0 ? '+' : ''}${liveUnrealizedPnl.toFixed(2)}
+                </div>
+              </div>
 
-          {/* Key Metrics - Large Size */}
-          <div className="flex gap-4 md:gap-8 flex-wrap">
-            <div className="space-y-1 md:space-y-2">
-              <div className="text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-                <Target className="h-3 w-3" />
-                Win Rate
-              </div>
-              <div className="text-3xl md:text-4xl font-mono font-bold" data-testid="text-win-rate">
-                {formatPercent(performance.winRate)}
-              </div>
-              <div className="text-xs md:text-sm text-muted-foreground">
-                {performance.winningTrades}W · {performance.losingTrades}L
-              </div>
-            </div>
+              {/* Live Account Metrics */}
+              <div className="flex gap-4 md:gap-8 flex-wrap">
+                <div className="space-y-1 md:space-y-2">
+                  <div className="text-xs text-muted-foreground uppercase tracking-wider">Available</div>
+                  <div className="text-3xl md:text-4xl font-mono font-bold" data-testid="text-available-balance">
+                    ${liveAvailableBalance.toFixed(2)}
+                  </div>
+                  <div className="text-xs md:text-sm text-muted-foreground">
+                    For trading
+                  </div>
+                </div>
 
-            <div className="space-y-1 md:space-y-2">
-              <div className="text-xs text-muted-foreground uppercase tracking-wider">Trades</div>
-              <div className="text-3xl md:text-4xl font-mono font-bold" data-testid="text-total-trades">
-                {performance.totalTrades}
-              </div>
-              <div className="text-xs md:text-sm text-muted-foreground">
-                {performance.openTrades} open · {performance.closedTrades} closed
+                <div className="space-y-1 md:space-y-2">
+                  <div className="text-xs text-muted-foreground uppercase tracking-wider">Paper P&L</div>
+                  <div className={`text-3xl md:text-4xl font-mono font-bold ${isProfitable ? 'text-primary' : 'text-red-600'}`}>
+                    {formatCurrency(performance.totalPnl)}
+                  </div>
+                  <div className="text-xs md:text-sm text-muted-foreground">
+                    {performance.totalTrades} trades
+                  </div>
+                </div>
               </div>
             </div>
+          </>
+        ) : (
+          /* Paper Trading Mode Display */
+          <>
+            <div className="flex flex-wrap items-end gap-6 md:gap-8">
+              {/* Main P&L - Hero Size */}
+              <div className="space-y-1 md:space-y-2">
+                <div className="text-xs text-muted-foreground uppercase tracking-wider">Total P&L</div>
+                <div className={`text-4xl md:text-6xl font-mono font-bold ${isProfitable ? 'text-primary' : 'text-red-600'}`} data-testid="text-total-pnl">
+                  {formatCurrency(performance.totalPnl)}
+                </div>
+                <div className={`text-lg md:text-xl font-mono ${isProfitable ? 'text-primary/80' : 'text-red-600/80'}`}>
+                  {(performance.totalPnlPercent ?? 0) >= 0 ? '+' : ''}{(performance.totalPnlPercent ?? 0).toFixed(2)}%
+                </div>
+              </div>
 
-            <div className="space-y-1 md:space-y-2">
-              <div className="text-xs text-muted-foreground uppercase tracking-wider">Profit Factor</div>
-              <div className={`text-3xl md:text-4xl font-mono font-bold ${(performance.profitFactor ?? 0) >= 1 ? 'text-primary' : 'text-red-600'}`} data-testid="text-profit-factor">
-                {(performance.profitFactor ?? 0) >= 999 ? '∞' : (performance.profitFactor ?? 0).toFixed(2)}
-              </div>
-              <div className="text-xs md:text-sm text-muted-foreground">
-                {(performance.profitFactor ?? 0) >= 1 ? 'Profitable' : 'Unprofitable'}
+              {/* Key Metrics - Large Size */}
+              <div className="flex gap-4 md:gap-8 flex-wrap">
+                <div className="space-y-1 md:space-y-2">
+                  <div className="text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                    <Target className="h-3 w-3" />
+                    Win Rate
+                  </div>
+                  <div className="text-3xl md:text-4xl font-mono font-bold" data-testid="text-win-rate">
+                    {formatPercent(performance.winRate)}
+                  </div>
+                  <div className="text-xs md:text-sm text-muted-foreground">
+                    {performance.winningTrades}W · {performance.losingTrades}L
+                  </div>
+                </div>
+
+                <div className="space-y-1 md:space-y-2">
+                  <div className="text-xs text-muted-foreground uppercase tracking-wider">Trades</div>
+                  <div className="text-3xl md:text-4xl font-mono font-bold" data-testid="text-total-trades">
+                    {performance.totalTrades}
+                  </div>
+                  <div className="text-xs md:text-sm text-muted-foreground">
+                    {performance.openTrades} open · {performance.closedTrades} closed
+                  </div>
+                </div>
+
+                <div className="space-y-1 md:space-y-2">
+                  <div className="text-xs text-muted-foreground uppercase tracking-wider">Profit Factor</div>
+                  <div className={`text-3xl md:text-4xl font-mono font-bold ${(performance.profitFactor ?? 0) >= 1 ? 'text-primary' : 'text-red-600'}`} data-testid="text-profit-factor">
+                    {(performance.profitFactor ?? 0) >= 999 ? '∞' : (performance.profitFactor ?? 0).toFixed(2)}
+                  </div>
+                  <div className="text-xs md:text-sm text-muted-foreground">
+                    {(performance.profitFactor ?? 0) >= 1 ? 'Profitable' : 'Unprofitable'}
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
+          </>
+        )}
 
         {/* Performance Chart */}
         <div className="relative h-64 md:h-80 -mx-8 mb-8" style={{

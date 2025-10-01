@@ -155,7 +155,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const queryString = params.toString();
       
       // Generate HMAC-SHA256 signature
-      const signature = createHmac('sha256', secretKey)
+      const signature = crypto
+        .createHmac('sha256', secretKey)
         .update(queryString)
         .digest('hex');
       
