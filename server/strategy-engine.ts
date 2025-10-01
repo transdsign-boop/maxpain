@@ -250,6 +250,12 @@ export class StrategyEngine extends EventEmitter {
     // Double-check strategy is still active (prevents race condition during unregister)
     if (!this.activeStrategies.has(strategy.id)) return;
     
+    // Check if strategy is paused
+    if (strategy.paused) {
+      console.log(`⏸️ Strategy "${strategy.name}" is paused, skipping liquidation processing`);
+      return;
+    }
+    
     const session = this.activeSessions.get(strategy.id);
     if (!session || !session.isActive) return;
 
