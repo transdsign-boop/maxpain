@@ -180,8 +180,10 @@ export class StrategyEngine extends EventEmitter {
       if (ordersToCancel.length > 0) {
         console.log(`🚫 Cancelling ${ordersToCancel.length} pending orders for session ${session.id}`);
         for (const orderId of ordersToCancel) {
-          await storage.updateOrderStatus(orderId, 'cancelled');
+          // CRITICAL: Delete from map FIRST (synchronous) to prevent order monitor from filling
+          // the order in the window between this and the DB update
           this.pendingPaperOrders.delete(orderId);
+          await storage.updateOrderStatus(orderId, 'cancelled');
         }
       }
     }
