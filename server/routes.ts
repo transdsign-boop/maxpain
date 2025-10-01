@@ -1528,23 +1528,23 @@ async function connectToAsterDEX(clients: Set<WebSocket>) {
           const signature = `${liquidationData.symbol}-${liquidationData.side}-${liquidationData.size}-${liquidationData.price}-${liquidationData.value}`;
           const now = Date.now();
           
-          // Check in-memory deduplication FIRST (before queue)
-          const lastSeen = recentLiquidations.get(signature);
-          if (lastSeen && (now - lastSeen) < DEDUP_WINDOW_MS) {
-            console.log(`🔄 Skipping duplicate liquidation (in-memory): ${liquidationData.symbol} ${liquidationData.side} $${liquidationData.value}`);
-            return;
-          }
-          
-          // Mark as seen IMMEDIATELY to block other duplicates
-          recentLiquidations.set(signature, now);
-          
-          // Wait for any pending processing of this signature to complete (queue-based dedup)
+          // ATOMIC check-and-lock: Check processingQueue FIRST to prevent race conditions
           const existingProcess = processingQueue.get(signature);
           if (existingProcess) {
             console.log(`🔄 Skipping duplicate (already processing): ${liquidationData.symbol} ${liquidationData.side} $${liquidationData.value}`);
             await existingProcess; // Wait for it to finish
             return; // Skip this duplicate
           }
+          
+          // Check in-memory deduplication
+          const lastSeen = recentLiquidations.get(signature);
+          if (lastSeen && (now - lastSeen) < DEDUP_WINDOW_MS) {
+            console.log(`🔄 Skipping duplicate liquidation (in-memory): ${liquidationData.symbol} ${liquidationData.side} $${liquidationData.value}`);
+            return;
+          }
+          
+          // Mark as seen IMMEDIATELY and add to processingQueue ATOMICALLY
+          recentLiquidations.set(signature, now);
           
           // Create a promise for this processing
           let resolveProcessing: () => void;
