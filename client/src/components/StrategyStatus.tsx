@@ -307,6 +307,25 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
   const pressureValue = totalRange > 0 ? Math.max(0, Math.min(100, (clampedFromLeft / totalRange) * 100)) : 50;
   const neutralPoint = totalRange > 0 ? (sanitizedSL / totalRange) * 100 : 50;
 
+  // Calculate gradient opacity based on distance from neutral point
+  // Opacity increases as we move closer to either extreme (SL or TP)
+  const distanceFromNeutral = Math.abs(pressureValue - neutralPoint);
+  const maxDistance = unrealizedPnlPercent > 0 
+    ? (100 - neutralPoint) // Distance to TP
+    : neutralPoint; // Distance to SL
+  const opacityFactor = maxDistance > 0 ? distanceFromNeutral / maxDistance : 0;
+  
+  // Create gradient colors with increasing opacity toward the target
+  const gradientColor = unrealizedPnlPercent > 0 
+    ? 'rgb(190, 242, 100)'
+    : unrealizedPnlPercent < 0 
+    ? 'rgb(220, 38, 38)'
+    : 'rgb(156, 163, 175)';
+  
+  const gradientDirection = pressureValue > neutralPoint ? 'to right' : 'to left';
+  const gradientStart = `rgba(${unrealizedPnlPercent > 0 ? '190, 242, 100' : unrealizedPnlPercent < 0 ? '220, 38, 38' : '156, 163, 175'}, 0.05)`;
+  const gradientEnd = `rgba(${unrealizedPnlPercent > 0 ? '190, 242, 100' : unrealizedPnlPercent < 0 ? '220, 38, 38' : '156, 163, 175'}, ${Math.min(0.5, 0.1 + opacityFactor * 0.4)})`;
+
   const isLong = position.side === 'long';
 
   return (
@@ -320,26 +339,18 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
           className="absolute top-0 bottom-0 w-0.5 transition-all duration-300 z-10"
           style={{ 
             left: `${pressureValue}%`,
-            backgroundColor: unrealizedPnlPercent > 0 
-              ? 'rgb(190, 242, 100)'
-              : unrealizedPnlPercent < 0 
-              ? 'rgb(220, 38, 38)'
-              : 'rgb(156, 163, 175)'
+            backgroundColor: gradientColor
           }}
           data-testid={`pressure-indicator-${position.symbol}`}
         />
         
-        {/* Intensity overlay */}
+        {/* Gradient intensity overlay */}
         <div 
           className="absolute top-0 bottom-0 transition-all duration-300 z-0"
           style={{ 
             left: pressureValue > neutralPoint ? `${neutralPoint}%` : `${pressureValue}%`,
             right: pressureValue < neutralPoint ? `${100 - neutralPoint}%` : `${100 - pressureValue}%`,
-            backgroundColor: unrealizedPnlPercent > 0 
-              ? 'rgba(190, 242, 100, 0.30)'
-              : unrealizedPnlPercent < 0 
-              ? 'rgba(220, 38, 38, 0.30)'
-              : 'rgba(156, 163, 175, 0.08)'
+            background: `linear-gradient(${gradientDirection}, ${gradientStart}, ${gradientEnd})`
           }}
         />
         
@@ -605,9 +616,6 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
                     </div>
                     <div className="text-[8px] text-muted-foreground">to liq</div>
                   </div>
-                </div>
-                <div className="text-[10px] text-center text-muted-foreground mt-1">
-                  {formatCurrency(liquidationPrice)}
                 </div>
               </div>
             )}
