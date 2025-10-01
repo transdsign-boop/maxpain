@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { TrendingUp, TrendingDown, Target, Award, Activity, LineChart } from "lucide-react";
 import { ComposedChart, Line, Area, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, Label } from "recharts";
 import { format } from "date-fns";
@@ -53,7 +54,7 @@ export default function PerformanceOverview() {
     refetchInterval: 5000,
   });
   const activeStrategy = strategies?.find(s => s.isActive);
-  const isLiveMode = activeStrategy?.isLiveTradingEnabled || false;
+  const isLiveMode = activeStrategy?.tradingMode === 'live';
 
   // Fetch live account data when in live mode
   const { data: liveAccount } = useQuery<LiveAccountData>({
