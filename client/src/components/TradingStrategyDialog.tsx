@@ -27,6 +27,7 @@ interface Strategy {
   userId: string;
   selectedAssets: string[];
   percentileThreshold: number;
+  liquidationLookbackHours: number;
   maxLayers: number;
   positionSizePercent: string;
   profitTargetPercent: string;
@@ -50,6 +51,7 @@ const strategyFormSchema = z.object({
   name: z.string().min(1, "Strategy name is required").max(50, "Name too long"),
   selectedAssets: z.array(z.string()).min(1, "Select at least one asset"),
   percentileThreshold: z.number().min(1).max(100),
+  liquidationLookbackHours: z.number().min(1).max(24),
   maxLayers: z.number().min(1).max(10),
   positionSizePercent: z.string().min(1, "Position size is required").refine((val) => {
     const num = parseFloat(val);
@@ -117,6 +119,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
       name: "Liquidation Counter-Trade",
       selectedAssets: ["ASTERUSDT"],
       percentileThreshold: 50,
+      liquidationLookbackHours: 1,
       maxLayers: 5,
       positionSizePercent: "5.0",
       profitTargetPercent: "1.0",
@@ -179,6 +182,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         name: strategy.name,
         selectedAssets: strategy.selectedAssets,
         percentileThreshold: strategy.percentileThreshold,
+        liquidationLookbackHours: strategy.liquidationLookbackHours,
         maxLayers: strategy.maxLayers,
         positionSizePercent: strategy.positionSizePercent,
         profitTargetPercent: strategy.profitTargetPercent,
@@ -382,6 +386,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         name: strategy.name,
         selectedAssets: strategy.selectedAssets,
         percentileThreshold: strategy.percentileThreshold,
+        liquidationLookbackHours: strategy.liquidationLookbackHours,
         maxLayers: strategy.maxLayers,
         positionSizePercent: strategy.positionSizePercent,
         profitTargetPercent: strategy.profitTargetPercent,
@@ -585,7 +590,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                       </div>
                     </FormLabel>
                     <FormDescription>
-                      Trigger trades when liquidation volume exceeds this percentile within a fixed 60-second monitoring window
+                      Trigger trades when liquidation volume exceeds this percentile
                     </FormDescription>
                     <FormControl>
                       <Slider
@@ -603,6 +608,44 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                       <span>1%</span>
                       <span>100%</span>
                     </div>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* Liquidation Lookback Window */}
+              <FormField
+                control={form.control}
+                name="liquidationLookbackHours"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel data-testid="label-liquidation-lookback">
+                      Lookback Window: {field.value} hour{field.value !== 1 ? 's' : ''}
+                    </FormLabel>
+                    <FormDescription>
+                      Compare liquidations against historical data from the past 1-24 hours
+                    </FormDescription>
+                    <FormControl>
+                      <Select 
+                        value={field.value.toString()} 
+                        onValueChange={(value) => field.onChange(parseInt(value))}
+                        disabled={false}
+                      >
+                        <SelectTrigger data-testid="select-liquidation-lookback">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="1">1 hour</SelectItem>
+                          <SelectItem value="2">2 hours</SelectItem>
+                          <SelectItem value="4">4 hours</SelectItem>
+                          <SelectItem value="6">6 hours</SelectItem>
+                          <SelectItem value="8">8 hours</SelectItem>
+                          <SelectItem value="12">12 hours</SelectItem>
+                          <SelectItem value="18">18 hours</SelectItem>
+                          <SelectItem value="24">24 hours</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
