@@ -46,6 +46,7 @@ export class StrategyEngine extends EventEmitter {
   private positionCreationLocks: Map<string, Promise<void>> = new Map(); // sessionId-symbol -> lock to prevent duplicate positions
   private isRunning = false;
   private orderMonitorInterval?: NodeJS.Timeout;
+  private wsClients: Set<any> = new Set(); // WebSocket clients for broadcasting trade notifications
 
   constructor() {
     super();
@@ -101,6 +102,33 @@ export class StrategyEngine extends EventEmitter {
   // Get current market price for a symbol
   getCurrentPrice(symbol: string): number | undefined {
     return this.priceCache.get(symbol);
+  }
+
+  // Set WebSocket clients for broadcasting trade notifications
+  setWebSocketClients(clients: Set<any>) {
+    this.wsClients = clients;
+  }
+
+  // Broadcast trade notification to all connected clients
+  private broadcastTradeNotification(data: {
+    symbol: string;
+    side: 'long' | 'short';
+    tradeType: 'entry' | 'layer' | 'stop_loss' | 'take_profit';
+    layerNumber?: number;
+    price: number;
+    quantity: number;
+    value: number;
+  }) {
+    const message = JSON.stringify({
+      type: 'trade_notification',
+      data
+    });
+
+    this.wsClients.forEach((client: any) => {
+      if (client.readyState === 1) { // WebSocket.OPEN = 1
+        client.send(message);
+      }
+    });
   }
 
   // Load the default strategy for the user (singleton pattern)
@@ -210,7 +238,7 @@ export class StrategyEngine extends EventEmitter {
     }
 
     // Check all active strategies for this symbol (sequentially to avoid race conditions)
-    for (const [strategyId, strategy] of this.activeStrategies.entries()) {
+    for (const [strategyId, strategy] of Array.from(this.activeStrategies.entries())) {
       if (strategy.selectedAssets.includes(liquidation.symbol)) {
         await this.evaluateStrategySignal(strategy, liquidation);
       }
@@ -693,7 +721,7 @@ export class StrategyEngine extends EventEmitter {
   }
 
   // Fill a paper order and create fill record
-  private async fillPaperOrder(order: Order, fillPrice: number, fillQuantity: number) {
+  private async fillPaperOrder(order: Order, fillPrice: number, fillQuantity: number, tradeType: 'entry' | 'layer' | 'stop_loss' | 'take_profit' = 'entry') {
     // Update order status
     await storage.updateOrderStatus(order.id, 'filled', new Date());
 
@@ -730,6 +758,17 @@ export class StrategyEngine extends EventEmitter {
       session.currentBalance = newBalance.toString();
       console.log(`💸 Entry fee applied: $${fee.toFixed(4)} (${ASTER_TAKER_FEE_PERCENT}% of $${fillValue.toFixed(2)})`);
     }
+
+    // Broadcast trade notification to connected clients
+    this.broadcastTradeNotification({
+      symbol: order.symbol,
+      side: position.side as 'long' | 'short',
+      tradeType: order.layerNumber === 1 ? 'entry' : 'layer',
+      layerNumber: order.layerNumber,
+      price: fillPrice,
+      quantity: fillQuantity,
+      value: fillValue
+    });
   }
 
   // Ensure position exists and return it (create or update as needed)
@@ -1020,6 +1059,16 @@ export class StrategyEngine extends EventEmitter {
         value: exitValue.toString(),
         fee: exitFee.toString(),
         layerNumber: 0, // Exit trades don't have layers
+      });
+
+      // Broadcast trade notification for exit
+      this.broadcastTradeNotification({
+        symbol: position.symbol,
+        side: position.side as 'long' | 'short',
+        tradeType: exitType,
+        price: exitPrice,
+        quantity,
+        value: exitValue
       });
 
       // Close position in database

@@ -11,6 +11,7 @@ import AsterLogo from "@/components/AsterLogo";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Settings, Download, Upload, Settings2 } from "lucide-react";
+import { toast } from "@/hooks/use-toast";
 
 interface Liquidation {
   id: string;
@@ -219,6 +220,22 @@ export default function Dashboard() {
               // Add to queue instead of directly to state
               liquidationQueue.push(normalizedLiquidation);
               processQueue();
+            } else if (message.type === 'trade_notification' && message.data) {
+              // Show toast notification for trade
+              const { symbol, side, tradeType, layerNumber, price, value } = message.data;
+              
+              const tradeTypeLabel = tradeType === 'entry' ? 'Entry' 
+                : tradeType === 'layer' ? `Layer ${layerNumber}` 
+                : tradeType === 'take_profit' ? 'Take Profit' 
+                : 'Stop Loss';
+              
+              const sideLabel = side === 'long' ? '🟢 LONG' : '🔴 SHORT';
+              
+              toast({
+                title: `${tradeTypeLabel}: ${symbol}`,
+                description: `${sideLabel} @ $${price.toFixed(4)} • Value: $${value.toFixed(2)}`,
+                duration: 3000,
+              });
             }
           } catch (error) {
             console.error('Failed to parse WebSocket message:', error);
