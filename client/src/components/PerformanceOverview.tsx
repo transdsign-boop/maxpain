@@ -148,10 +148,10 @@ export default function PerformanceOverview() {
           <p className="text-sm font-semibold mb-1">Trade #{data.tradeNumber}</p>
           <p className="text-xs text-muted-foreground mb-2">{format(new Date(data.timestamp), "MMM d, h:mm a")}</p>
           <p className="text-xs mb-1"><span className="font-medium">{data.symbol}</span> {data.side}</p>
-          <p className={`text-sm font-mono font-semibold ${data.pnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+          <p className={`text-sm font-mono font-semibold ${data.pnl >= 0 ? 'text-lime-500' : 'text-orange-500'}`}>
             P&L: {data.pnl >= 0 ? '+' : ''}${Math.abs(data.pnl).toFixed(2)}
           </p>
-          <p className={`text-sm font-mono font-semibold ${data.cumulativePnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+          <p className={`text-sm font-mono font-semibold ${data.cumulativePnl >= 0 ? 'text-lime-500' : 'text-orange-500'}`}>
             Cumulative: {data.cumulativePnl >= 0 ? '+' : ''}${Math.abs(data.cumulativePnl).toFixed(2)}
           </p>
         </div>
@@ -173,10 +173,10 @@ export default function PerformanceOverview() {
           {/* Main P&L - Hero Size */}
           <div className="space-y-1 md:space-y-2">
             <div className="text-xs text-muted-foreground uppercase tracking-wider">Total P&L</div>
-            <div className={`text-4xl md:text-6xl font-mono font-bold ${isProfitable ? 'text-primary' : 'text-red-500'}`} data-testid="text-total-pnl">
+            <div className={`text-4xl md:text-6xl font-mono font-bold ${isProfitable ? 'text-primary' : 'text-orange-500'}`} data-testid="text-total-pnl">
               {formatCurrency(performance.totalPnl)}
             </div>
-            <div className={`text-lg md:text-xl font-mono ${isProfitable ? 'text-primary/80' : 'text-red-500/80'}`}>
+            <div className={`text-lg md:text-xl font-mono ${isProfitable ? 'text-primary/80' : 'text-orange-500/80'}`}>
               {(performance.totalPnlPercent ?? 0) >= 0 ? '+' : ''}{(performance.totalPnlPercent ?? 0).toFixed(2)}%
             </div>
           </div>
@@ -208,7 +208,7 @@ export default function PerformanceOverview() {
 
             <div className="space-y-1 md:space-y-2">
               <div className="text-xs text-muted-foreground uppercase tracking-wider">Profit Factor</div>
-              <div className={`text-3xl md:text-4xl font-mono font-bold ${(performance.profitFactor ?? 0) >= 1 ? 'text-primary' : 'text-red-500'}`} data-testid="text-profit-factor">
+              <div className={`text-3xl md:text-4xl font-mono font-bold ${(performance.profitFactor ?? 0) >= 1 ? 'text-primary' : 'text-orange-500'}`} data-testid="text-profit-factor">
                 {(performance.profitFactor ?? 0) >= 999 ? '∞' : (performance.profitFactor ?? 0).toFixed(2)}
               </div>
               <div className="text-xs md:text-sm text-muted-foreground">
@@ -340,7 +340,7 @@ export default function PerformanceOverview() {
                 <TrendingUp className="h-3 w-3" />
                 Avg Win
               </div>
-              <div className="text-lg font-mono font-semibold text-green-500" data-testid="text-avg-win">
+              <div className="text-lg font-mono font-semibold text-lime-500" data-testid="text-avg-win">
                 {formatCurrency(performance.averageWin)}
               </div>
             </div>
@@ -350,7 +350,7 @@ export default function PerformanceOverview() {
                 <TrendingDown className="h-3 w-3" />
                 Avg Loss
               </div>
-              <div className="text-lg font-mono font-semibold text-red-500" data-testid="text-avg-loss">
+              <div className="text-lg font-mono font-semibold text-orange-500" data-testid="text-avg-loss">
                 {formatCurrency(-Math.abs(performance.averageLoss))}
               </div>
             </div>
@@ -360,14 +360,14 @@ export default function PerformanceOverview() {
                 <Award className="h-3 w-3" />
                 Best
               </div>
-              <div className="text-lg font-mono font-semibold text-green-500" data-testid="text-best-trade">
+              <div className="text-lg font-mono font-semibold text-lime-500" data-testid="text-best-trade">
                 {formatCurrency(performance.bestTrade)}
               </div>
             </div>
 
             <div className="space-y-1">
               <div className="text-xs text-muted-foreground">Worst</div>
-              <div className="text-lg font-mono font-semibold text-red-500" data-testid="text-worst-trade">
+              <div className="text-lg font-mono font-semibold text-orange-500" data-testid="text-worst-trade">
                 {formatCurrency(-Math.abs(performance.worstTrade))}
               </div>
             </div>
@@ -381,14 +381,14 @@ export default function PerformanceOverview() {
 
             <div className="space-y-1">
               <div className="text-xs text-muted-foreground">Realized</div>
-              <div className={`text-lg font-mono font-semibold ${performance.totalRealizedPnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+              <div className={`text-lg font-mono font-semibold ${performance.totalRealizedPnl >= 0 ? 'text-lime-500' : 'text-orange-500'}`}>
                 {formatCurrency(performance.totalRealizedPnl)}
               </div>
             </div>
 
             <div className="space-y-1">
               <div className="text-xs text-muted-foreground">Unrealized</div>
-              <div className={`text-lg font-mono font-semibold ${performance.totalUnrealizedPnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+              <div className={`text-lg font-mono font-semibold ${performance.totalUnrealizedPnl >= 0 ? 'text-lime-500' : 'text-orange-500'}`}>
                 {formatCurrency(performance.totalUnrealizedPnl)}
               </div>
             </div>
@@ -398,7 +398,7 @@ export default function PerformanceOverview() {
                 <TrendingDown className="h-3 w-3" />
                 Max Drawdown
               </div>
-              <div className="text-lg font-mono font-semibold text-red-500">
+              <div className="text-lg font-mono font-semibold text-orange-500">
                 {formatCurrency(performance.maxDrawdown ?? 0)}
               </div>
             </div>

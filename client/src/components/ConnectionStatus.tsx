@@ -34,13 +34,13 @@ export default function ConnectionStatus({ isConnected }: ConnectionStatusProps)
           <div 
             className={`w-2.5 h-2.5 rounded-full ${
               isConnected 
-                ? 'bg-emerald-500' 
-                : 'bg-red-500'
+                ? 'bg-lime-500' 
+                : 'bg-orange-500'
             }`}
             data-testid="dot-websocket-status"
           />
           {isConnected && (
-            <div className="absolute inset-0 w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping opacity-75" />
+            <div className="absolute inset-0 w-2.5 h-2.5 rounded-full bg-lime-500 animate-ping opacity-75" />
           )}
         </div>
         <span className="text-xs text-muted-foreground">WS</span>
@@ -55,13 +55,13 @@ export default function ConnectionStatus({ isConnected }: ConnectionStatusProps)
           <div 
             className={`w-2.5 h-2.5 rounded-full ${
               apiConnected 
-                ? 'bg-emerald-500' 
-                : 'bg-red-500'
+                ? 'bg-lime-500' 
+                : 'bg-orange-500'
             }`}
             data-testid="dot-api-status"
           />
           {apiConnected && (
-            <div className="absolute inset-0 w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping opacity-75" />
+            <div className="absolute inset-0 w-2.5 h-2.5 rounded-full bg-lime-500 animate-ping opacity-75" />
           )}
         </div>
         <span className="text-xs text-muted-foreground">API</span>
