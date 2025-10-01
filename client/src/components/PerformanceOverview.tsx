@@ -282,7 +282,7 @@ export default function PerformanceOverview() {
               {formatCurrency(performance.totalPnl)}
             </div>
             <div className={`text-xs font-mono ${isProfitable ? 'text-green-500' : 'text-red-500'}`}>
-              {performance.totalPnlPercent >= 0 ? '+' : ''}{performance.totalPnlPercent.toFixed(2)}%
+              {(performance.totalPnlPercent ?? 0) >= 0 ? '+' : ''}{(performance.totalPnlPercent ?? 0).toFixed(2)}%
             </div>
           </div>
 
@@ -319,8 +319,8 @@ export default function PerformanceOverview() {
           {/* Profit Factor */}
           <div className="space-y-1">
             <div className="text-xs text-muted-foreground">Profit Factor</div>
-            <div className={`text-xl font-mono font-semibold ${performance.profitFactor >= 1 ? 'text-green-500' : 'text-red-500'}`} data-testid="text-profit-factor">
-              {performance.profitFactor >= 999 ? '∞' : performance.profitFactor.toFixed(2)}
+            <div className={`text-xl font-mono font-semibold ${(performance.profitFactor ?? 0) >= 1 ? 'text-green-500' : 'text-red-500'}`} data-testid="text-profit-factor">
+              {(performance.profitFactor ?? 0) >= 999 ? '∞' : (performance.profitFactor ?? 0).toFixed(2)}
             </div>
           </div>
 
@@ -331,10 +331,10 @@ export default function PerformanceOverview() {
               Max Drawdown
             </div>
             <div className="text-xl font-mono font-semibold text-red-500" data-testid="text-max-drawdown">
-              {formatCurrency(-performance.maxDrawdown)}
+              {formatCurrency(-(performance.maxDrawdown ?? 0))}
             </div>
             <div className="text-xs font-mono text-red-500">
-              {performance.maxDrawdownPercent.toFixed(2)}%
+              {(performance.maxDrawdownPercent ?? 0).toFixed(2)}%
             </div>
           </div>
 
@@ -394,7 +394,7 @@ export default function PerformanceOverview() {
           <div className="space-y-1">
             <div className="text-xs text-muted-foreground">Total Fees</div>
             <div className="text-xl font-mono font-semibold text-red-500" data-testid="text-total-fees">
-              ${performance.totalFees.toFixed(2)}
+              ${(performance.totalFees ?? 0).toFixed(2)}
             </div>
           </div>
 

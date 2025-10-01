@@ -615,7 +615,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // If no active session, return zeros
       if (!activeSession) {
-        return res.json({
+        const responseData = {
           totalTrades: 0,
           openTrades: 0,
           closedTrades: 0,
@@ -625,14 +625,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
           totalRealizedPnl: 0,
           totalUnrealizedPnl: 0,
           totalPnl: 0,
+          totalPnlPercent: 0,
           averageWin: 0,
           averageLoss: 0,
           bestTrade: 0,
           worstTrade: 0,
           profitFactor: 0,
           totalFees: 0,
-          averageTradeTimeMs: 0
-        });
+          averageTradeTimeMs: 0,
+          maxDrawdown: 0,
+          maxDrawdownPercent: 0
+        };
+        console.log("📊 Performance Overview (no session):", JSON.stringify(responseData));
+        return res.json(responseData);
       }
 
       // Get positions ONLY for the current active session
@@ -649,13 +654,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           totalRealizedPnl: 0,
           totalUnrealizedPnl: 0,
           totalPnl: 0,
+          totalPnlPercent: 0,
           averageWin: 0,
           averageLoss: 0,
           bestTrade: 0,
           worstTrade: 0,
           profitFactor: 0,
           totalFees: 0,
-          averageTradeTimeMs: 0
+          averageTradeTimeMs: 0,
+          maxDrawdown: 0,
+          maxDrawdownPercent: 0
         });
       }
 
