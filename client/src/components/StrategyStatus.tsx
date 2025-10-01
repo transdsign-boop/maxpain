@@ -462,9 +462,8 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
           )}
 
           {/* Right: Full-height Close Position button */}
-          <Button
-            variant="destructive"
-            className="h-full rounded-l-none rounded-r-2xl flex flex-col items-center justify-center gap-1 px-3 hover-elevate active-elevate-2"
+          <button
+            className="h-full rounded-l-none rounded-r-2xl flex flex-col items-center justify-center gap-1 px-3 border-2 border-red-600 bg-transparent text-red-600 dark:text-red-500 dark:border-red-500 transition-all hover:border-red-700 hover:text-red-700 dark:hover:border-red-400 dark:hover:text-red-400 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
             data-testid={`button-close-position-${position.symbol}`}
             onClick={onClose}
             disabled={isClosing}
@@ -472,7 +471,7 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
             <X className="h-5 w-5" />
             <span className="text-xs font-semibold whitespace-nowrap">Close</span>
             <span className="text-xs font-semibold whitespace-nowrap">Position</span>
-          </Button>
+          </button>
         </div>
 
         <CollapsibleContent>
