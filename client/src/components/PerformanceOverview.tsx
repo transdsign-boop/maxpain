@@ -219,12 +219,11 @@ export default function PerformanceOverview() {
         </div>
 
         {/* Performance Chart */}
-        <div className="relative h-64 md:h-80">
+        <div className="relative h-64 md:h-80 -mx-6 px-6 mb-8">
           {!chartLoading && chartData && chartData.length > 0 ? (
             <>
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                 <XAxis 
                   dataKey="tradeNumber" 
                   label={{ value: 'Trade #', position: 'insideBottom', offset: -5 }}
@@ -242,7 +241,7 @@ export default function PerformanceOverview() {
                   tick={false}
                 />
                 <Tooltip content={<CustomTooltip />} />
-                <Legend />
+                <Legend verticalAlign="bottom" height={36} />
                 <ReferenceLine yAxisId="left" y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
                 <ReferenceLine yAxisId="right" y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
                 {/* Vertical lines for strategy changes */}
