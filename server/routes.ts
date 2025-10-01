@@ -1142,10 +1142,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const paperAccountSizeChanged = validatedUpdates.paperAccountSize !== undefined && 
         existingStrategy.paperAccountSize !== validatedUpdates.paperAccountSize;
       
+      // Handle live session start/end
+      const tradingModeChanging = validatedUpdates.tradingMode !== undefined && 
+        existingStrategy.tradingMode !== validatedUpdates.tradingMode;
+      
       // Normalize data - liquidation window is always 60 seconds regardless of input
-      const updateData = {
+      const updateData: any = {
         ...validatedUpdates
       };
+      
+      // Set live session timestamp when switching to live mode, clear when switching to paper
+      if (tradingModeChanging) {
+        if (validatedUpdates.tradingMode === 'live') {
+          updateData.liveSessionStartedAt = new Date();
+          console.log('🟢 Starting new live trading session');
+        } else if (validatedUpdates.tradingMode === 'paper') {
+          updateData.liveSessionStartedAt = null;
+          console.log('📄 Switching to paper trading mode - clearing live session timestamp');
+        }
+      }
       
       console.log('💾 Sending to database:', JSON.stringify(updateData, null, 2));
       await storage.updateStrategy(strategyId, updateData);
