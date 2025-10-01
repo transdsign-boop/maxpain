@@ -1574,11 +1574,20 @@ async function connectToAsterDEX(clients: Set<WebSocket>) {
   try {
     console.log('Connecting to Aster DEX WebSocket...');
     
-    // Connect to real Aster DEX liquidation stream
-    const asterWs = new WebSocket('wss://fstream.asterdex.com/ws/!forceOrder@arr');
+    // Connect to Aster DEX liquidation stream using proper stream API
+    const asterWs = new WebSocket('wss://fstream.asterdex.com/stream?streams=!forceOrder@arr');
     
     asterWs.on('open', () => {
       console.log('✅ Successfully connected to Aster DEX liquidation stream');
+      
+      // Send subscription message as per Aster DEX API
+      const subscribeMsg = {
+        method: "SUBSCRIBE",
+        params: ["!forceOrder@arr"],
+        id: 1
+      };
+      asterWs.send(JSON.stringify(subscribeMsg));
+      console.log('📤 Sent subscription request:', JSON.stringify(subscribeMsg));
       console.log('🔊 Listening for real liquidation events...');
     });
     
@@ -1587,10 +1596,20 @@ async function connectToAsterDEX(clients: Set<WebSocket>) {
         const message = JSON.parse(data.toString());
         console.log('📨 Received Aster DEX message:', JSON.stringify(message, null, 2));
         
+        // Handle subscription confirmation
+        if (message.result === null && message.id === 1) {
+          console.log('✅ Subscription confirmed');
+          return;
+        }
+        
+        // Extract liquidation data from stream format
+        const payload = message.data;
+        if (!payload) return;
+        
         // Handle liquidation order events
-        if (message.e === 'forceOrder') {
+        if (payload.e === 'forceOrder') {
           // Extract Aster DEX event timestamp (E field) - this is the unique identifier per event
-          const eventTimestamp = message.E.toString();
+          const eventTimestamp = payload.E.toString();
           
           // Check in-memory cache first - fastest deduplication
           if (recentLiquidations.has(eventTimestamp)) {
@@ -1632,14 +1651,14 @@ async function connectToAsterDEX(clients: Set<WebSocket>) {
             // Map BUY/SELL from Aster DEX to our side representation
             // When exchange SELLS = long position being liquidated (price dropped)
             // When exchange BUYS = short position being liquidated (price rose)
-            const side = message.o.S.toLowerCase() === 'buy' ? 'short' : 'long';
+            const side = payload.o.S.toLowerCase() === 'buy' ? 'short' : 'long';
             
             const liquidationData = {
-              symbol: message.o.s,
+              symbol: payload.o.s,
               side: side,
-              size: message.o.q,
-              price: message.o.p,
-              value: (parseFloat(message.o.q) * parseFloat(message.o.p)).toFixed(8),
+              size: payload.o.q,
+              price: payload.o.p,
+              value: (parseFloat(payload.o.q) * parseFloat(payload.o.p)).toFixed(8),
               eventTimestamp: eventTimestamp, // Store Aster DEX event timestamp
             };
             
