@@ -314,7 +314,7 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
         className="relative rounded-2xl overflow-hidden ring-1 ring-border shadow-lg transition-all duration-300" 
         data-testid={`position-${position.symbol}`}
         style={{
-          background: `linear-gradient(to right, rgb(220 38 38 / 0.12) 0%, rgb(156 163 175 / 0.06) ${neutralPoint}%, rgb(190 242 100 / 0.12) 100%)`
+          background: `linear-gradient(to right, rgb(220 38 38 / 0.25) 0%, rgb(156 163 175 / 0.06) ${neutralPoint}%, rgb(190 242 100 / 0.25) 100%)`
         }}
       >
         {/* Position pressure indicator line */}
@@ -338,9 +338,9 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
             left: pressureValue > neutralPoint ? `${neutralPoint}%` : `${pressureValue}%`,
             right: pressureValue < neutralPoint ? `${100 - neutralPoint}%` : `${100 - pressureValue}%`,
             backgroundColor: unrealizedPnlPercent > 0 
-              ? 'rgba(190, 242, 100, 0.15)'
+              ? 'rgba(190, 242, 100, 0.30)'
               : unrealizedPnlPercent < 0 
-              ? 'rgba(220, 38, 38, 0.15)'
+              ? 'rgba(220, 38, 38, 0.30)'
               : 'rgba(156, 163, 175, 0.08)'
           }}
         />
@@ -463,14 +463,12 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
 
           {/* Right: Full-height Close Position button */}
           <button
-            className="h-full rounded-l-none rounded-r-2xl flex flex-col items-center justify-center gap-1 px-3 border-2 border-red-600 bg-transparent text-red-600 dark:text-red-500 dark:border-red-500 transition-all hover:border-red-700 hover:text-red-700 dark:hover:border-red-400 dark:hover:text-red-400 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="h-full rounded-l-none rounded-r-2xl flex items-center justify-center px-3 border-[6px] border-red-600 bg-transparent text-red-600 dark:text-red-500 dark:border-red-500 transition-all hover:border-red-700 hover:text-red-700 dark:hover:border-red-400 dark:hover:text-red-400 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
             data-testid={`button-close-position-${position.symbol}`}
             onClick={onClose}
             disabled={isClosing}
           >
-            <X className="h-5 w-5" />
-            <span className="text-xs font-semibold whitespace-nowrap">Close</span>
-            <span className="text-xs font-semibold whitespace-nowrap">Position</span>
+            <span className="text-xs font-semibold whitespace-nowrap">Close Position</span>
           </button>
         </div>
 
