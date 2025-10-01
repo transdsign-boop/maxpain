@@ -413,8 +413,8 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-4xl max-h-[90vh]" aria-describedby="loading-description">
           <DialogHeader>
-            <DialogTitle>Trading Strategy Configuration</DialogTitle>
-            <DialogDescription id="loading-description">Loading strategy configuration...</DialogDescription>
+            <DialogTitle>Trading Settings</DialogTitle>
+            <DialogDescription id="loading-description">Loading trading settings...</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 p-6">
             <div className="h-4 bg-muted animate-pulse rounded" />
@@ -431,7 +431,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
       <DialogContent className="max-w-4xl max-h-[90vh]" data-testid="dialog-trading-strategy" aria-describedby="strategy-dialog-description">
         <DialogHeader>
           <DialogTitle className="flex items-center justify-between">
-            <span>Trading Strategy Configuration</span>
+            <span>Trading Settings</span>
             {isStrategyRunning && (
               <Badge variant="default" className="bg-green-600">
                 <div className="w-2 h-2 bg-white rounded-full mr-1 animate-pulse" />
@@ -443,7 +443,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
             )}
           </DialogTitle>
           <DialogDescription id="strategy-dialog-description">
-            Configure your liquidation counter-trading strategy with position averaging
+            Configure your trading parameters and position sizing
           </DialogDescription>
         </DialogHeader>
 
@@ -995,36 +995,6 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
 
         <DialogFooter className="flex flex-col sm:flex-row gap-2">
           <div className="flex flex-1 gap-2">
-            {activeStrategy && !isStrategyRunning && (
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    size="sm"
-                    data-testid="button-delete-strategy"
-                  >
-                    <Trash2 className="h-4 w-4 mr-1" />
-                    Delete
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Delete Strategy?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      This will permanently delete the strategy and all associated data. This action cannot be undone.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleDeleteStrategy}>
-                      Delete
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            )}
-
             {activeStrategy && activeStrategy.tradingMode === "paper" && !isStrategyRunning && (
               <AlertDialog>
                 <AlertDialogTrigger asChild>
@@ -1042,7 +1012,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                   <AlertDialogHeader>
                     <AlertDialogTitle>Clear All Paper Trades?</AlertDialogTitle>
                     <AlertDialogDescription>
-                      This will delete all positions and fill history for this strategy, resetting your paper trading account. Your strategy settings will remain unchanged.
+                      This will delete all positions and fill history, resetting your paper trading account. Your settings will remain unchanged.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
@@ -1064,7 +1034,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
               disabled={createStrategyMutation.isPending || updateStrategyMutation.isPending}
               data-testid="button-save-strategy"
             >
-              {activeStrategy ? 'Update' : 'Create'} Strategy
+              Save Settings
             </Button>
             {!isStrategyRunning ? (
               <Button

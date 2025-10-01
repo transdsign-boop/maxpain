@@ -104,19 +104,23 @@ export class StrategyEngine extends EventEmitter {
     return this.priceCache.get(symbol);
   }
 
-  // Load all active strategies from database
+  // Load the default strategy for the user (singleton pattern)
   private async loadActiveStrategies() {
     try {
-      console.log('📚 Loading active strategies from database...');
-      const activeStrategies = await storage.getAllActiveStrategies();
+      const DEFAULT_USER_ID = "personal_user";
+      console.log('📚 Loading default trading strategy...');
       
-      for (const strategy of activeStrategies) {
+      // Get or create the single default strategy for this user
+      const strategy = await storage.getOrCreateDefaultStrategy(DEFAULT_USER_ID);
+      
+      if (strategy.isActive) {
         await this.registerStrategy(strategy);
+        console.log(`✅ Loaded default strategy: ${strategy.name}`);
+      } else {
+        console.log(`⏸️ Default strategy is inactive, not registering`);
       }
-      
-      console.log(`✅ Loaded ${activeStrategies.length} active strategies`);
     } catch (error) {
-      console.error('❌ Error loading active strategies:', error);
+      console.error('❌ Error loading default strategy:', error);
     }
   }
 
