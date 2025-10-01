@@ -162,51 +162,51 @@ export default function PerformanceOverview() {
           Performance Overview
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-8">
+      <CardContent className="space-y-6 md:space-y-8">
         {/* Hero Metrics - Most Important */}
-        <div className="flex flex-wrap items-end gap-8">
+        <div className="flex flex-wrap items-end gap-6 md:gap-8">
           {/* Main P&L - Hero Size */}
-          <div className="space-y-2">
+          <div className="space-y-1 md:space-y-2">
             <div className="text-xs text-muted-foreground uppercase tracking-wider">Total P&L</div>
-            <div className={`text-6xl font-mono font-bold ${isProfitable ? 'text-primary' : 'text-red-500'}`} data-testid="text-total-pnl">
+            <div className={`text-4xl md:text-6xl font-mono font-bold ${isProfitable ? 'text-primary' : 'text-red-500'}`} data-testid="text-total-pnl">
               {formatCurrency(performance.totalPnl)}
             </div>
-            <div className={`text-xl font-mono ${isProfitable ? 'text-primary/80' : 'text-red-500/80'}`}>
+            <div className={`text-lg md:text-xl font-mono ${isProfitable ? 'text-primary/80' : 'text-red-500/80'}`}>
               {(performance.totalPnlPercent ?? 0) >= 0 ? '+' : ''}{(performance.totalPnlPercent ?? 0).toFixed(2)}%
             </div>
           </div>
 
           {/* Key Metrics - Large Size */}
-          <div className="flex gap-8 flex-wrap">
-            <div className="space-y-2">
+          <div className="flex gap-4 md:gap-8 flex-wrap">
+            <div className="space-y-1 md:space-y-2">
               <div className="text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1">
                 <Target className="h-3 w-3" />
                 Win Rate
               </div>
-              <div className="text-4xl font-mono font-bold" data-testid="text-win-rate">
+              <div className="text-3xl md:text-4xl font-mono font-bold" data-testid="text-win-rate">
                 {formatPercent(performance.winRate)}
               </div>
-              <div className="text-sm text-muted-foreground">
+              <div className="text-xs md:text-sm text-muted-foreground">
                 {performance.winningTrades}W · {performance.losingTrades}L
               </div>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-1 md:space-y-2">
               <div className="text-xs text-muted-foreground uppercase tracking-wider">Trades</div>
-              <div className="text-4xl font-mono font-bold" data-testid="text-total-trades">
+              <div className="text-3xl md:text-4xl font-mono font-bold" data-testid="text-total-trades">
                 {performance.totalTrades}
               </div>
-              <div className="text-sm text-muted-foreground">
+              <div className="text-xs md:text-sm text-muted-foreground">
                 {performance.openTrades} open · {performance.closedTrades} closed
               </div>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-1 md:space-y-2">
               <div className="text-xs text-muted-foreground uppercase tracking-wider">Profit Factor</div>
-              <div className={`text-4xl font-mono font-bold ${(performance.profitFactor ?? 0) >= 1 ? 'text-primary' : 'text-red-500'}`} data-testid="text-profit-factor">
+              <div className={`text-3xl md:text-4xl font-mono font-bold ${(performance.profitFactor ?? 0) >= 1 ? 'text-primary' : 'text-red-500'}`} data-testid="text-profit-factor">
                 {(performance.profitFactor ?? 0) >= 999 ? '∞' : (performance.profitFactor ?? 0).toFixed(2)}
               </div>
-              <div className="text-sm text-muted-foreground">
+              <div className="text-xs md:text-sm text-muted-foreground">
                 {(performance.profitFactor ?? 0) >= 1 ? 'Profitable' : 'Unprofitable'}
               </div>
             </div>
@@ -214,17 +214,17 @@ export default function PerformanceOverview() {
         </div>
 
         {/* Secondary Metrics - Medium Size */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
           <div className="space-y-1.5">
             <div className="text-xs text-muted-foreground">Realized</div>
-            <div className={`text-2xl font-mono font-semibold ${performance.totalRealizedPnl >= 0 ? 'text-green-500' : 'text-red-500'}`} data-testid="text-realized-pnl">
+            <div className={`text-xl md:text-2xl font-mono font-semibold ${performance.totalRealizedPnl >= 0 ? 'text-green-500' : 'text-red-500'}`} data-testid="text-realized-pnl">
               {formatCurrency(performance.totalRealizedPnl)}
             </div>
           </div>
 
           <div className="space-y-1.5">
             <div className="text-xs text-muted-foreground">Unrealized</div>
-            <div className={`text-2xl font-mono font-semibold ${performance.totalUnrealizedPnl >= 0 ? 'text-green-500' : 'text-red-500'}`} data-testid="text-unrealized-pnl">
+            <div className={`text-xl md:text-2xl font-mono font-semibold ${performance.totalUnrealizedPnl >= 0 ? 'text-green-500' : 'text-red-500'}`} data-testid="text-unrealized-pnl">
               {formatCurrency(performance.totalUnrealizedPnl)}
             </div>
           </div>
@@ -234,7 +234,7 @@ export default function PerformanceOverview() {
               <TrendingDown className="h-3 w-3" />
               Max Drawdown
             </div>
-            <div className="text-2xl font-mono font-semibold text-red-500" data-testid="text-max-drawdown">
+            <div className="text-xl md:text-2xl font-mono font-semibold text-red-500" data-testid="text-max-drawdown">
               {formatCurrency(performance.maxDrawdown ?? 0)}
             </div>
             <div className="text-xs font-mono text-muted-foreground">
@@ -244,14 +244,14 @@ export default function PerformanceOverview() {
 
           <div className="space-y-1.5">
             <div className="text-xs text-muted-foreground">Avg Time</div>
-            <div className="text-2xl font-mono font-semibold" data-testid="text-avg-trade-time">
+            <div className="text-xl md:text-2xl font-mono font-semibold" data-testid="text-avg-trade-time">
               {formatTradeTime(performance.averageTradeTimeMs)}
             </div>
           </div>
         </div>
 
         {/* Performance Chart */}
-        <div className="h-80 relative">
+        <div className="h-64 md:h-80 relative">
           {!chartLoading && chartData && chartData.length > 0 ? (
             <>
               {/* Current P&L Label */}
