@@ -748,7 +748,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const maxDrawdownPercent = startingBalance > 0 ? (maxDrawdown / startingBalance) * 100 : 0;
 
       res.json({
-        totalTrades: allPositions.length,
+        totalTrades: closedPositions.length, // Only closed positions are completed trades
         openTrades: openPositions.length,
         closedTrades: closedPositions.length,
         winningTrades: winningTrades.length,
