@@ -276,9 +276,13 @@ export default function PerformanceOverview() {
                   return null;
                 })}
                 <defs>
-                  <linearGradient id="cumulativePnlGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
-                    <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0.05}/>
+                  <linearGradient id="cumulativePnlGradientPositive" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="rgb(190, 242, 100)" stopOpacity={0.3}/>
+                    <stop offset="100%" stopColor="rgb(190, 242, 100)" stopOpacity={0.05}/>
+                  </linearGradient>
+                  <linearGradient id="cumulativePnlGradientNegative" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="rgb(251, 146, 60)" stopOpacity={0.3}/>
+                    <stop offset="100%" stopColor="rgb(251, 146, 60)" stopOpacity={0.05}/>
                   </linearGradient>
                 </defs>
                 <Bar 
@@ -300,9 +304,9 @@ export default function PerformanceOverview() {
                   type="monotone" 
                   dataKey="cumulativePnl" 
                   name="Cumulative P&L"
-                  stroke="hsl(var(--primary))"
+                  stroke={performance.totalPnl >= 0 ? 'rgb(190, 242, 100)' : 'rgb(251, 146, 60)'}
                   strokeWidth={2}
-                  fill="url(#cumulativePnlGradient)"
+                  fill={performance.totalPnl >= 0 ? 'url(#cumulativePnlGradientPositive)' : 'url(#cumulativePnlGradientNegative)'}
                   dot={false}
                   data-testid="chart-area-cumulative"
                 />
