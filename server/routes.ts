@@ -1057,6 +1057,196 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Pause strategy route (temporarily stop processing without deactivating)
+  app.post("/api/strategies/:id/pause", async (req, res) => {
+    try {
+      const strategyId = req.params.id;
+      
+      // Verify strategy exists
+      const strategy = await storage.getStrategy(strategyId);
+      if (!strategy) {
+        return res.status(404).json({ error: "Strategy not found" });
+      }
+      
+      // Update strategy to paused status
+      await storage.updateStrategy(strategyId, { 
+        paused: true
+      });
+      
+      // Reload strategy in engine to pick up paused status
+      const updatedStrategy = await storage.getStrategy(strategyId);
+      if (updatedStrategy && updatedStrategy.isActive) {
+        await strategyEngine.registerStrategy(updatedStrategy);
+      }
+      
+      res.status(200).json(updatedStrategy);
+    } catch (error) {
+      console.error('Error pausing strategy:', error);
+      res.status(500).json({ error: "Failed to pause strategy" });
+    }
+  });
+
+  // Resume strategy route (unpause trading)
+  app.post("/api/strategies/:id/resume", async (req, res) => {
+    try {
+      const strategyId = req.params.id;
+      
+      // Verify strategy exists
+      const strategy = await storage.getStrategy(strategyId);
+      if (!strategy) {
+        return res.status(404).json({ error: "Strategy not found" });
+      }
+      
+      // Update strategy to unpaused status
+      await storage.updateStrategy(strategyId, { 
+        paused: false
+      });
+      
+      // Reload strategy in engine to pick up resumed status
+      const updatedStrategy = await storage.getStrategy(strategyId);
+      if (updatedStrategy && updatedStrategy.isActive) {
+        await strategyEngine.registerStrategy(updatedStrategy);
+      }
+      
+      res.status(200).json(updatedStrategy);
+    } catch (error) {
+      console.error('Error resuming strategy:', error);
+      res.status(500).json({ error: "Failed to resume strategy" });
+    }
+  });
+
+  // Emergency stop route (close all open positions)
+  app.post("/api/strategies/:id/emergency-stop", async (req, res) => {
+    try {
+      const strategyId = req.params.id;
+      const { pin } = req.body;
+      
+      // Verify PIN
+      if (pin !== "2233") {
+        return res.status(401).json({ error: "Invalid PIN" });
+      }
+      
+      // Verify strategy exists
+      const strategy = await storage.getStrategy(strategyId);
+      if (!strategy) {
+        return res.status(404).json({ error: "Strategy not found" });
+      }
+      
+      // Find the active trade session for this strategy
+      const session = await storage.getActiveTradeSession(strategyId);
+      if (!session) {
+        return res.status(404).json({ error: "No active trade session found" });
+      }
+      
+      // Get all open positions
+      const openPositions = await storage.getOpenPositions(session.id);
+      
+      const isPaperTrading = session.mode === 'paper';
+      const closedPositions = [];
+      let totalPnl = 0;
+      
+      // Close all positions
+      for (const position of openPositions) {
+        try {
+          // ALWAYS fetch real-time current price from Aster DEX API
+          let currentPrice: number | null = null;
+          try {
+            const asterApiUrl = `https://fapi.asterdex.com/fapi/v1/ticker/price?symbol=${position.symbol}`;
+            const priceResponse = await fetch(asterApiUrl);
+            
+            if (priceResponse.ok) {
+              const priceData = await priceResponse.json();
+              currentPrice = parseFloat(priceData.price);
+            }
+          } catch (apiError) {
+            console.error(`Failed to fetch price for ${position.symbol}:`, apiError);
+            continue; // Skip this position if we can't get price
+          }
+          
+          if (!currentPrice) {
+            console.error(`Unable to get price for ${position.symbol}, skipping`);
+            continue;
+          }
+
+          // Calculate P&L
+          const avgEntryPrice = parseFloat(position.avgEntryPrice);
+          let unrealizedPnl = 0;
+          if (position.side === 'long') {
+            unrealizedPnl = ((currentPrice - avgEntryPrice) / avgEntryPrice) * 100;
+          } else {
+            unrealizedPnl = ((avgEntryPrice - currentPrice) / avgEntryPrice) * 100;
+          }
+
+          // Calculate dollar P&L
+          const totalCost = parseFloat(position.totalCost);
+          const dollarPnl = (unrealizedPnl / 100) * totalCost;
+
+          // Emergency close = limit order (manual close style) = 0.01% maker fee for paper trading
+          const quantity = parseFloat(position.totalQuantity);
+          const exitValue = currentPrice * quantity;
+          const exitFee = isPaperTrading ? (exitValue * 0.01) / 100 : 0;
+          
+          // Create exit fill record
+          await storage.applyFill({
+            orderId: `emergency-exit-${position.id}`,
+            sessionId: position.sessionId,
+            positionId: position.id,
+            symbol: position.symbol,
+            side: position.side === 'long' ? 'sell' : 'buy',
+            quantity: position.totalQuantity,
+            price: currentPrice.toString(),
+            value: exitValue.toString(),
+            fee: exitFee.toString(),
+            layerNumber: 0,
+          });
+
+          // Close the position
+          await storage.closePosition(position.id, new Date(), unrealizedPnl);
+          
+          // Accumulate P&L (deduct exit fee for paper trading)
+          const netDollarPnl = isPaperTrading ? dollarPnl - exitFee : dollarPnl;
+          totalPnl += netDollarPnl;
+          
+          closedPositions.push({
+            id: position.id,
+            symbol: position.symbol,
+            side: position.side,
+            pnlPercent: unrealizedPnl,
+            pnlDollar: netDollarPnl,
+          });
+          
+          console.log(`🚨 Emergency closed position ${position.symbol} at $${currentPrice} with ${unrealizedPnl.toFixed(2)}% P&L ($${netDollarPnl.toFixed(2)})`);
+        } catch (error) {
+          console.error(`Error closing position ${position.id}:`, error);
+        }
+      }
+      
+      // Update session balance and stats
+      if (closedPositions.length > 0) {
+        const newTotalTrades = session.totalTrades + closedPositions.length;
+        const oldTotalPnl = parseFloat(session.totalPnl);
+        const newTotalPnl = oldTotalPnl + totalPnl;
+        const oldBalance = parseFloat(session.currentBalance);
+        const newBalance = oldBalance + totalPnl;
+
+        await storage.updateTradeSession(session.id, {
+          totalTrades: newTotalTrades,
+          totalPnl: newTotalPnl.toString(),
+          currentBalance: newBalance.toString(),
+        });
+      }
+      
+      res.status(200).json({ 
+        message: `Emergency stop completed. Closed ${closedPositions.length} of ${openPositions.length} positions.`,
+        closedPositions,
+        totalPnl
+      });
+    } catch (error) {
+      console.error('Error executing emergency stop:', error);
+      res.status(500).json({ error: "Failed to execute emergency stop" });
+    }
+  });
+
   // Delete strategy route
   app.delete("/api/strategies/:id", async (req, res) => {
     try {
