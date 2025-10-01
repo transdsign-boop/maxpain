@@ -742,7 +742,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get account trade history from Aster DEX
+  // Get account trade history from Aster DEX (filtered by live session start time)
   app.get("/api/live/trades", async (req, res) => {
     try {
       const apiKey = process.env.ASTER_API_KEY;
@@ -752,10 +752,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Aster DEX API keys not configured" });
       }
 
+      // Get the active strategy to check session start time
+      const strategies = await storage.getStrategiesByUser(DEFAULT_USER_ID);
+      const activeStrategy = strategies.find(s => s.isActive);
+
+      // If no active strategy or not in live mode, return empty array
+      if (!activeStrategy || activeStrategy.tradingMode !== 'live') {
+        return res.json([]);
+      }
+
+      // Use live session start time to filter trades (only show current session trades)
+      let sessionStartTime: number | undefined;
+      if (activeStrategy.liveSessionStartedAt) {
+        sessionStartTime = new Date(activeStrategy.liveSessionStartedAt).getTime();
+        console.log(`📊 Filtering live trades from session start: ${new Date(sessionStartTime).toISOString()}`);
+      }
+
       // Optional query parameters
       const symbol = req.query.symbol as string | undefined;
-      const limit = Math.min(parseInt(req.query.limit as string) || 500, 1000); // Max 1000
-      const startTime = req.query.startTime as string | undefined;
+      const limit = Math.min(parseInt(req.query.limit as string) || 1000, 1000); // Max 1000
+      const startTime = sessionStartTime?.toString() || req.query.startTime as string | undefined;
 
       // Create signed request to get trade history
       const timestamp = Date.now();
