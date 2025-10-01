@@ -10,7 +10,7 @@ export default function Landing() {
         <div className="container mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <TrendingDown className="h-6 w-6 text-primary" />
-            <h1 className="text-xl font-bold">Aster DEX Trading Platform</h1>
+            <h1 className="text-xl font-bold">Max Pain Liquidation Counter Trading</h1>
           </div>
           <div className="flex items-center gap-4">
             <ThemeToggle />
@@ -24,7 +24,7 @@ export default function Landing() {
       <main className="container mx-auto px-6 py-16">
         <div className="max-w-4xl mx-auto text-center mb-16">
           <h2 className="text-4xl font-bold mb-4">
-            Professional Trading Platform for Aster DEX
+            Professional Liquidation Counter Trading Platform
           </h2>
           <p className="text-xl text-muted-foreground mb-8">
             Real-time liquidation monitoring and automated trading strategies. Track market movements and execute trades with precision.
@@ -45,7 +45,7 @@ export default function Landing() {
               <Target className="h-12 w-12 mb-2 text-primary" />
               <CardTitle>Real-Time Liquidations</CardTitle>
               <CardDescription>
-                Monitor live liquidation events across all cryptocurrency pairs on Aster DEX with instant notifications
+                Monitor live liquidation events across all cryptocurrency pairs with instant notifications
               </CardDescription>
             </CardHeader>
           </Card>

@@ -30,8 +30,8 @@ export default function AsterLogo({ className = "" }: { className?: string }) {
       </svg>
       
       <div className="flex flex-col leading-tight">
-        <span className="text-xl font-bold tracking-tight">ASTER</span>
-        <span className="text-xs text-muted-foreground tracking-wider">DEX TRADING</span>
+        <span className="text-xl font-bold tracking-tight">MAX PAIN</span>
+        <span className="text-xs text-muted-foreground tracking-wider">LIQUIDATION COUNTER TRADING</span>
       </div>
     </div>
   );

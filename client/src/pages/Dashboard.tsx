@@ -98,7 +98,7 @@ export default function Dashboard() {
     const url = URL.createObjectURL(dataBlob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'aster-dex-settings.json';
+    link.download = 'max-pain-settings.json';
     link.click();
     URL.revokeObjectURL(url);
   };

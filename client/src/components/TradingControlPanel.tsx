@@ -478,7 +478,7 @@ export default function TradingControlPanel() {
                   <div className="space-y-0.5">
                     <FormLabel data-testid="label-trading-mode">Live Trading Mode</FormLabel>
                     <FormDescription>
-                      Enable live trading to execute trades on Aster DEX. When off, all trades are simulated.
+                      Enable live trading to execute real trades. When off, all trades are simulated.
                     </FormDescription>
                   </div>
                   <FormControl>
