@@ -1432,26 +1432,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const totalCost = parseFloat(position.totalCost);
       const dollarPnl = (unrealizedPnl / 100) * totalCost;
 
+      // Get session to check trading mode
+      const session = await storage.getTradeSession(position.sessionId);
+      const isPaperTrading = session?.mode === 'paper';
+      
+      // Manual close = limit order (take profit style) = 0.01% maker fee for paper trading
+      const quantity = parseFloat(position.totalQuantity);
+      const exitValue = currentPrice * quantity;
+      const exitFee = isPaperTrading ? (exitValue * 0.01) / 100 : 0;
+      
+      // Create exit fill record
+      await storage.applyFill({
+        orderId: `exit-${position.id}`,
+        sessionId: position.sessionId,
+        positionId: position.id,
+        symbol: position.symbol,
+        side: position.side === 'long' ? 'sell' : 'buy',
+        quantity: position.totalQuantity,
+        price: currentPrice.toString(),
+        value: exitValue.toString(),
+        fee: exitFee.toString(),
+        layerNumber: 0,
+      });
+
       // Close the position
       await storage.closePosition(position.id, new Date(), unrealizedPnl);
 
-      // Update session balance and stats
-      const session = await storage.getTradeSession(position.sessionId);
+      // Update session balance and stats (deduct exit fee from P&L)
       if (session) {
         const newTotalTrades = session.totalTrades + 1;
         const oldTotalPnl = parseFloat(session.totalPnl);
-        const newTotalPnl = oldTotalPnl + dollarPnl;
+        const netDollarPnl = isPaperTrading ? dollarPnl - exitFee : dollarPnl;
+        const newTotalPnl = oldTotalPnl + netDollarPnl;
         const oldBalance = parseFloat(session.currentBalance);
-        const newBalance = oldBalance + dollarPnl;
+        const newBalance = oldBalance + netDollarPnl;
 
         await storage.updateTradeSession(session.id, {
           totalTrades: newTotalTrades,
           totalPnl: newTotalPnl.toString(),
           currentBalance: newBalance.toString(),
         });
+        
+        if (isPaperTrading) {
+          console.log(`💸 Manual exit fee applied: $${exitFee.toFixed(4)} (0.01% maker fee - limit order)`);
+        }
       }
 
-      console.log(`✋ Manually closed position ${position.symbol} at $${currentPrice} with ${unrealizedPnl.toFixed(2)}% P&L ($${dollarPnl.toFixed(2)})`);
+      console.log(`✋ Manually closed position ${position.symbol} at $${currentPrice} via LIMIT (manual/take profit) with ${unrealizedPnl.toFixed(2)}% P&L ($${dollarPnl.toFixed(2)})`);
 
       res.json({ 
         success: true, 
@@ -1462,7 +1489,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         },
         exitPrice: currentPrice,
         pnlPercent: unrealizedPnl,
-        pnlDollar: dollarPnl
+        pnlDollar: dollarPnl,
+        exitFee: exitFee
       });
     } catch (error) {
       console.error('Error closing position:', error);

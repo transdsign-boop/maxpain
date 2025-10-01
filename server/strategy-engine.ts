@@ -10,11 +10,9 @@ import {
   type Fill 
 } from '@shared/schema';
 
-// Aster DEX taker fee constant moved here for clarity
-// (LIQUIDATION_WINDOW_SECONDS removed - now using configurable strategy.liquidationLookbackHours)
-
-// Aster DEX taker fee (0.035% per trade) - applied to paper trading only for realistic simulation
-const ASTER_TAKER_FEE_PERCENT = 0.035;
+// Aster DEX fee schedule
+const ASTER_MAKER_FEE_PERCENT = 0.01;  // 0.01% for limit orders (adds liquidity) 
+const ASTER_TAKER_FEE_PERCENT = 0.035; // 0.035% for market orders (removes liquidity)
 
 export interface LiquidationSignal {
   liquidation: Liquidation;
@@ -939,23 +937,28 @@ export class StrategyEngine extends EventEmitter {
       unrealizedPnl: unrealizedPnl.toString(),
     });
 
-    // Check if profit target is reached
+    // Check if profit target is reached (exit with limit order - 0.01% maker fee)
     if (unrealizedPnl >= profitTargetPercent) {
-      await this.closePosition(position, currentPrice, unrealizedPnl);
+      await this.closePosition(position, currentPrice, unrealizedPnl, 'take_profit');
       return;
     }
 
-    // Check if stop loss is triggered (negative P&L exceeds threshold)
+    // Check if stop loss is triggered (exit with stop market order - 0.035% taker fee)
     const stopLossPercent = parseFloat(strategy.stopLossPercent);
     if (unrealizedPnl <= -stopLossPercent) {
       console.log(`🛑 Stop loss triggered for ${position.symbol}: ${unrealizedPnl.toFixed(2)}% loss exceeds -${stopLossPercent}% threshold`);
-      await this.closePosition(position, currentPrice, unrealizedPnl);
+      await this.closePosition(position, currentPrice, unrealizedPnl, 'stop_loss');
       return;
     }
   }
 
   // Close a position at current market price
-  private async closePosition(position: Position, exitPrice: number, realizedPnlPercent: number) {
+  private async closePosition(
+    position: Position, 
+    exitPrice: number, 
+    realizedPnlPercent: number,
+    exitType: 'take_profit' | 'stop_loss' = 'take_profit'
+  ) {
     try {
       // Guard: Check if position is already closed (prevent duplicate exit fills)
       if (!position.isOpen) {
@@ -967,16 +970,43 @@ export class StrategyEngine extends EventEmitter {
       const totalCost = parseFloat(position.totalCost);
       const dollarPnl = (realizedPnlPercent / 100) * totalCost;
       
-      console.log(`🎯 Closing position ${position.symbol} at $${exitPrice} with ${realizedPnlPercent.toFixed(2)}% profit ($${dollarPnl.toFixed(2)})`);
+      // Determine exit order type and fee
+      const orderType = exitType === 'take_profit' ? 'limit' : 'stop_market';
+      const feePercent = exitType === 'take_profit' ? ASTER_MAKER_FEE_PERCENT : ASTER_TAKER_FEE_PERCENT;
+      const exitReason = exitType === 'take_profit' ? 'take profit' : 'stop loss';
+      
+      console.log(`🎯 Closing position ${position.symbol} at $${exitPrice} via ${orderType.toUpperCase()} (${exitReason}) with ${realizedPnlPercent.toFixed(2)}% P&L ($${dollarPnl.toFixed(2)})`);
 
       // Get session to check if it's paper trading
       const session = this.activeSessions.get(position.sessionId);
       const isPaperTrading = session?.mode === 'paper';
       
-      // Calculate exit fee for paper trading (Aster DEX taker fee: 0.035%)
+      // Calculate exit fee based on order type
+      // Take profit = limit order (0.01% maker fee)
+      // Stop loss = stop market order (0.035% taker fee)
       const quantity = parseFloat(position.totalQuantity);
       const exitValue = exitPrice * quantity;
-      const exitFee = isPaperTrading ? (exitValue * ASTER_TAKER_FEE_PERCENT) / 100 : 0;
+      const exitFee = isPaperTrading ? (exitValue * feePercent) / 100 : 0;
+      
+      // For live trading, place the actual exit order on Aster DEX
+      if (!isPaperTrading) {
+        const exitSide = position.side === 'long' ? 'sell' : 'buy';
+        const liveOrderResult = await this.executeLiveOrder({
+          symbol: position.symbol,
+          side: exitSide,
+          orderType,
+          quantity,
+          price: exitPrice,
+        });
+        
+        if (!liveOrderResult.success) {
+          console.error(`❌ Failed to place live exit order: ${liveOrderResult.error}`);
+          // Don't close position if live order failed
+          return;
+        }
+        
+        console.log(`✅ Live exit order placed: ${orderType.toUpperCase()} ${exitSide} ${quantity.toFixed(4)} ${position.symbol} at $${exitPrice}`);
+      }
       
       // Create exit fill record
       await storage.applyFill({
@@ -1023,7 +1053,7 @@ export class StrategyEngine extends EventEmitter {
         }
         
         if (isPaperTrading) {
-          console.log(`💸 Exit fee applied: $${exitFee.toFixed(4)} (${ASTER_TAKER_FEE_PERCENT}% of $${exitValue.toFixed(2)})`);
+          console.log(`💸 Exit fee applied: $${exitFee.toFixed(4)} (${feePercent}% ${orderType === 'limit' ? 'maker' : 'taker'} fee - ${exitValue.toFixed(2)} value)`);
           console.log(`💰 Balance updated: $${oldBalance.toFixed(2)} → $${newBalance.toFixed(2)} (P&L: $${dollarPnl.toFixed(2)}, Fee: -$${exitFee.toFixed(4)}, Net: $${netDollarPnl.toFixed(2)})`);
         } else {
           console.log(`💰 Balance updated: $${oldBalance.toFixed(2)} → $${newBalance.toFixed(2)} (${dollarPnl >= 0 ? '+' : ''}$${dollarPnl.toFixed(2)})`);
