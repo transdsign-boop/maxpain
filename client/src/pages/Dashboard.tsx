@@ -393,45 +393,60 @@ export default function Dashboard() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="fixed top-0 left-0 right-0 z-50 border-b bg-card">
-        <div className="flex items-center justify-between px-6 py-4">
+        <div className="flex items-center justify-between px-6 py-3">
           <AsterLogo data-testid="app-logo" />
 
-          <div className="flex items-center gap-6">
-            {/* Trading Account Metrics */}
+          <div className="flex items-center gap-8">
+            {/* Trading Account Metrics with Visual Hierarchy */}
             {positionSummary && (
-              <div className="flex items-center gap-4 text-xs">
-                <div>
-                  <div className="text-muted-foreground">Balance</div>
-                  <div className="font-semibold" data-testid="text-current-balance">
+              <div className="flex items-center gap-6">
+                {/* PRIMARY: Account Balance (Largest & Most Prominent) */}
+                <div className="flex flex-col">
+                  <div className="text-xs text-muted-foreground">Account Balance</div>
+                  <div className="text-2xl font-mono font-bold" data-testid="text-current-balance">
                     {formatCurrency(currentBalanceWithUnrealized)}
                   </div>
                 </div>
-                <div>
-                  <div className="text-muted-foreground">Available</div>
-                  <div className="font-semibold text-emerald-600 dark:text-emerald-400" data-testid="text-available-margin">
-                    {formatCurrency(availableMargin)}
+
+                <div className="h-10 w-px bg-border" />
+
+                {/* SECONDARY: Key Metrics (Medium Prominence) */}
+                <div className="flex items-center gap-4">
+                  <div className="flex flex-col">
+                    <div className="text-xs text-muted-foreground">Available</div>
+                    <div className="text-lg font-mono font-semibold text-emerald-600 dark:text-emerald-400" data-testid="text-available-margin">
+                      {formatCurrency(availableMargin)}
+                    </div>
+                  </div>
+                  <div className="flex flex-col">
+                    <div className="text-xs text-muted-foreground">Positions</div>
+                    <div className="text-lg font-mono font-semibold" data-testid="text-active-positions">
+                      {positionSummary.activePositions}
+                    </div>
                   </div>
                 </div>
-                <div>
-                  <div className="text-muted-foreground">In Use</div>
-                  <div className="font-semibold" data-testid="text-margin-in-use">
-                    {formatCurrency(marginInUse)}
+
+                <div className="h-10 w-px bg-border" />
+
+                {/* TERTIARY: Supporting Details (Smaller) */}
+                <div className="flex items-center gap-3 text-xs">
+                  <div className="flex flex-col">
+                    <div className="text-muted-foreground">In Use</div>
+                    <div className="font-mono font-semibold" data-testid="text-margin-in-use">
+                      {formatCurrency(marginInUse)}
+                    </div>
                   </div>
-                </div>
-                <div>
-                  <div className="text-muted-foreground">Exposure</div>
-                  <div className="font-semibold" data-testid="text-total-exposure">
-                    {formatCurrency(positionSummary.totalExposure)}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-muted-foreground">Positions</div>
-                  <div className="font-semibold" data-testid="text-active-positions">
-                    {positionSummary.activePositions}
+                  <div className="flex flex-col">
+                    <div className="text-muted-foreground">Exposure</div>
+                    <div className="font-mono font-semibold" data-testid="text-total-exposure">
+                      {formatCurrency(positionSummary.totalExposure)}
+                    </div>
                   </div>
                 </div>
               </div>
             )}
+
+            <div className="h-10 w-px bg-border" />
 
             <ConnectionStatus isConnected={isConnected} />
             
