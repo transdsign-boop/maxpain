@@ -214,6 +214,7 @@ export default function PerformanceOverview() {
                       <ReferenceLine
                         key={change.id}
                         x={chartData[tradeIndex].tradeNumber}
+                        yAxisId="left"
                         stroke="hsl(var(--primary))"
                         strokeWidth={2}
                         strokeDasharray="5 5"
