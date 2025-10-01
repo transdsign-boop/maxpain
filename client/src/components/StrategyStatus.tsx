@@ -359,49 +359,50 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
               )}
               
               {/* Position Pressure Visual Indicator */}
-              <div className="mt-2">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-xs text-muted-foreground">Position Pressure:</span>
-                  <span className={`text-xs font-medium ${getPnlColor(unrealizedPnlPercent)}`}>
-                    {unrealizedPnlPercent > 0 ? 'Profit' : unrealizedPnlPercent < 0 ? 'Loss' : 'Neutral'}
-                  </span>
-                </div>
-                <div className="relative h-2 bg-muted rounded-full overflow-hidden">
-                  {/* Background gradient showing pressure zones with dynamic neutral pivot */}
-                  <div 
-                    className="absolute inset-0"
-                    style={{
-                      background: `linear-gradient(to right, rgb(239 68 68 / 0.2) 0%, rgb(156 163 175 / 0.15) ${neutralPoint}%, rgb(34 197 94 / 0.2) 100%)`
-                    }}
-                  />
-                  
-                  {/* Position indicator */}
-                  <div 
-                    className="absolute top-0 bottom-0 w-1 transition-all duration-300"
-                    style={{ 
-                      left: `${pressureValue}%`,
-                      backgroundColor: unrealizedPnlPercent > 0 
-                        ? 'rgb(34, 197, 94)' // green
-                        : unrealizedPnlPercent < 0 
-                        ? 'rgb(239, 68, 68)' // red
-                        : 'rgb(156, 163, 175)' // gray
-                    }}
-                    data-testid={`pressure-indicator-${position.symbol}`}
-                  />
-                  
-                  {/* Fill showing intensity - pivots at dynamic neutral point */}
-                  <div 
-                    className="absolute top-0 bottom-0 transition-all duration-300"
-                    style={{ 
-                      left: pressureValue > neutralPoint ? `${neutralPoint}%` : `${pressureValue}%`,
-                      right: pressureValue < neutralPoint ? `${100 - neutralPoint}%` : `${100 - pressureValue}%`,
-                      backgroundColor: unrealizedPnlPercent > 0 
-                        ? 'rgba(34, 197, 94, 0.5)' // green with transparency
-                        : unrealizedPnlPercent < 0 
-                        ? 'rgba(239, 68, 68, 0.5)' // red with transparency
-                        : 'rgba(156, 163, 175, 0.3)' // gray with transparency
-                    }}
-                  />
+              <div 
+                className="relative mt-2 -mx-3 -mb-3 px-3 pb-3 pt-2 rounded-b-lg overflow-hidden transition-all duration-300"
+                style={{
+                  background: `linear-gradient(to right, rgb(239 68 68 / 0.15) 0%, rgb(156 163 175 / 0.08) ${neutralPoint}%, rgb(34 197 94 / 0.15) 100%)`
+                }}
+              >
+                {/* Current pressure indicator line */}
+                <div 
+                  className="absolute top-0 bottom-0 w-0.5 transition-all duration-300 z-0"
+                  style={{ 
+                    left: `${pressureValue}%`,
+                    backgroundColor: unrealizedPnlPercent > 0 
+                      ? 'rgb(34, 197, 94)' // green
+                      : unrealizedPnlPercent < 0 
+                      ? 'rgb(239, 68, 68)' // red
+                      : 'rgb(156, 163, 175)' // gray
+                  }}
+                  data-testid={`pressure-indicator-${position.symbol}`}
+                />
+                
+                {/* Intensity overlay from neutral to current */}
+                <div 
+                  className="absolute top-0 bottom-0 transition-all duration-300 z-0"
+                  style={{ 
+                    left: pressureValue > neutralPoint ? `${neutralPoint}%` : `${pressureValue}%`,
+                    right: pressureValue < neutralPoint ? `${100 - neutralPoint}%` : `${100 - pressureValue}%`,
+                    backgroundColor: unrealizedPnlPercent > 0 
+                      ? 'rgba(34, 197, 94, 0.15)' // green with transparency
+                      : unrealizedPnlPercent < 0 
+                      ? 'rgba(239, 68, 68, 0.15)' // red with transparency
+                      : 'rgba(156, 163, 175, 0.1)' // gray with transparency
+                  }}
+                />
+                
+                <div className="flex items-center justify-between relative z-10">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">Position Pressure:</span>
+                    <span className={`text-xs font-medium ${getPnlColor(unrealizedPnlPercent)}`}>
+                      {unrealizedPnlPercent > 0 ? 'Profit' : unrealizedPnlPercent < 0 ? 'Loss' : 'Neutral'}
+                    </span>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {pressureValue.toFixed(0)}%
+                  </div>
                 </div>
               </div>
             </div>
