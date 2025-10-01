@@ -10,6 +10,7 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+- **Fixed Duplicate Position Creation Race Condition (2025-10-01):** Resolved massive position duplication bug where concurrent liquidations for the same symbol created duplicate positions. When multiple liquidations arrived milliseconds apart, both checked for existing positions BEFORE either could create one, causing both to execute entry logic. Fixed by adding session+symbol atomic locking with same proven pattern as liquidation deduplication - concurrent processes now wait for lock, then re-check if position was created. Deleted 180 duplicate positions and 24 incorrectly distributed fills. Corrected metrics: totalTrades 196→22, openTrades 9→7
 - **Fixed Race Condition in Liquidation Deduplication (2025-10-01):** Resolved critical race condition causing duplicate liquidations to appear in UI and database. When duplicate WebSocket messages arrived milliseconds apart, they both bypassed deduplication checks. Fixed by reordering logic to check processingQueue first, creating an atomic lock per signature. Deleted 14 existing duplicates from database. System now properly handles Aster DEX's duplicate message broadcasts
 - **Comprehensive Data Validation & Integrity Fixes (2025-10-01):** Performed full database audit and fixed critical data integrity issues:
   - Deleted 1,281 duplicate liquidations from database (Aster WebSocket occasionally sends duplicates milliseconds apart)
