@@ -1650,45 +1650,35 @@ async function connectToAsterDEX(clients: Set<WebSocket>) {
               // If this fails due to unique constraint, it's a duplicate from Aster DEX
               if (dbError.code === '23505' || dbError.constraint?.includes('event_timestamp')) {
                 isDuplicate = true;
-                console.log(`🔄 Duplicate detected by database (Aster event ${eventTimestamp})`);
-                // Create a mock liquidation object from validatedData for strategy engine
-                // The strategy engine needs to evaluate ALL liquidations, not just new ones
-                storedLiquidation = {
-                  id: `temp-${eventTimestamp}`, // Temporary ID for duplicates
-                  ...validatedData,
-                  timestamp: new Date(eventTimestamp)
-                } as Liquidation;
+                console.log(`🔄 Duplicate liquidation skipped (Aster event ${eventTimestamp})`);
               } else {
                 console.error('❌ Database insert error:', dbError);
               }
               // Don't return - let finally block execute
             }
             
-            if (storedLiquidation) {
-              // Emit to strategy engine for trade execution (even if duplicate)
-              // The strategy engine needs to evaluate ALL real-time liquidations
+            // Only process NEW liquidations (not duplicates) for trading and display
+            if (storedLiquidation && !isDuplicate) {
+              // Emit to strategy engine for trade execution
               try {
                 strategyEngine.emit('liquidation', storedLiquidation);
               } catch (error) {
                 console.error('❌ Error emitting liquidation to strategy engine:', error);
               }
               
-              // Only broadcast to clients and log if it's a new liquidation (not duplicate)
-              if (!isDuplicate) {
-                // Broadcast to all connected clients
-                const broadcastMessage = JSON.stringify({
-                  type: 'liquidation',
-                  data: storedLiquidation
-                });
+              // Broadcast to all connected clients
+              const broadcastMessage = JSON.stringify({
+                type: 'liquidation',
+                data: storedLiquidation
+              });
 
-                clients.forEach(client => {
-                  if (client.readyState === WebSocket.OPEN) {
-                    client.send(broadcastMessage);
-                  }
-                });
+              clients.forEach(client => {
+                if (client.readyState === WebSocket.OPEN) {
+                  client.send(broadcastMessage);
+                }
+              });
 
-                console.log(`🚨 REAL Liquidation: ${liquidationData.symbol} ${liquidationData.side} $${(parseFloat(liquidationData.value)).toFixed(2)} [Event: ${eventTimestamp}]`);
-              }
+              console.log(`🚨 REAL Liquidation: ${liquidationData.symbol} ${liquidationData.side} $${(parseFloat(liquidationData.value)).toFixed(2)} [Event: ${eventTimestamp}]`);
             }
           } finally {
             // ALWAYS resolve the processing promise and clean up
