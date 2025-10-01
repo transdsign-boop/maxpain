@@ -235,7 +235,7 @@ export default function PerformanceOverview() {
               Max Drawdown
             </div>
             <div className="text-2xl font-mono font-semibold text-red-500" data-testid="text-max-drawdown">
-              {formatCurrency(-(performance.maxDrawdown ?? 0))}
+              {formatCurrency(performance.maxDrawdown ?? 0)}
             </div>
             <div className="text-xs font-mono text-muted-foreground">
               {(performance.maxDrawdownPercent ?? 0).toFixed(2)}%
@@ -243,9 +243,9 @@ export default function PerformanceOverview() {
           </div>
 
           <div className="space-y-1.5">
-            <div className="text-xs text-muted-foreground">Total Fees</div>
-            <div className="text-2xl font-mono font-semibold text-muted-foreground" data-testid="text-total-fees">
-              ${(performance.totalFees ?? 0).toFixed(2)}
+            <div className="text-xs text-muted-foreground">Avg Time</div>
+            <div className="text-2xl font-mono font-semibold" data-testid="text-avg-trade-time">
+              {formatTradeTime(performance.averageTradeTimeMs)}
             </div>
           </div>
         </div>
@@ -380,7 +380,7 @@ export default function PerformanceOverview() {
                 Avg Loss
               </div>
               <div className="text-lg font-mono font-semibold text-red-500" data-testid="text-avg-loss">
-                {formatCurrency(performance.averageLoss)}
+                {formatCurrency(-Math.abs(performance.averageLoss))}
               </div>
             </div>
 
@@ -397,21 +397,14 @@ export default function PerformanceOverview() {
             <div className="space-y-1">
               <div className="text-xs text-muted-foreground">Worst</div>
               <div className="text-lg font-mono font-semibold text-red-500" data-testid="text-worst-trade">
-                {formatCurrency(performance.worstTrade)}
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <div className="text-xs text-muted-foreground">Avg Time</div>
-              <div className="text-lg font-mono font-semibold" data-testid="text-avg-trade-time">
-                {formatTradeTime(performance.averageTradeTimeMs)}
+                {formatCurrency(-Math.abs(performance.worstTrade))}
               </div>
             </div>
 
             <div className="space-y-1">
               <div className="text-xs text-muted-foreground">Fees Paid</div>
-              <div className="text-lg font-mono font-semibold text-muted-foreground">
-                ${(performance.totalFees ?? 0).toFixed(2)}
+              <div className="text-lg font-mono font-semibold text-muted-foreground" data-testid="text-total-fees">
+                -${(performance.totalFees ?? 0).toFixed(2)}
               </div>
             </div>
           </div>
