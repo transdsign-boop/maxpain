@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events';
+import { createHmac } from 'crypto';
 import { storage } from './storage';
 import { 
   type Liquidation, 
@@ -585,7 +586,7 @@ export class StrategyEngine extends EventEmitter {
     console.log(`❌ Order retry timeout: Failed to place order within ${maxRetryDuration}ms due to price movement`);
   }
 
-  // Execute live order on Aster DEX
+  // Execute live order on Aster DEX with proper HMAC-SHA256 signature
   private async executeLiveOrder(params: {
     symbol: string;
     side: string; // 'buy' or 'sell'
@@ -599,50 +600,92 @@ export class StrategyEngine extends EventEmitter {
       const apiKey = process.env.ASTER_API_KEY;
       const secretKey = process.env.ASTER_SECRET_KEY;
       
+      // Safety check: Verify API credentials exist
       if (!apiKey || !secretKey) {
         console.error('❌ Aster DEX API keys not configured');
         return { success: false, error: 'API keys not configured' };
       }
       
-      // Prepare order parameters for Aster DEX API
+      // Safety check: Validate order parameters
+      if (quantity <= 0) {
+        console.error('❌ Invalid quantity:', quantity);
+        return { success: false, error: 'Invalid quantity' };
+      }
+      
+      if (orderType === 'limit' && price <= 0) {
+        console.error('❌ Invalid price for limit order:', price);
+        return { success: false, error: 'Invalid price' };
+      }
+      
+      // Prepare order parameters for Aster DEX API (Binance-style)
       const timestamp = Date.now();
-      const orderParams = {
+      const orderParams: Record<string, string | number> = {
         symbol,
         side: side.toUpperCase(),
         type: orderType.toUpperCase(),
-        quantity: quantity.toString(),
-        price: orderType === 'limit' ? price.toString() : undefined,
+        quantity: quantity.toFixed(8),
         timestamp,
+        recvWindow: 5000, // 5 second receive window for clock sync tolerance
       };
       
-      // Create signature (implementation depends on Aster DEX API requirements)
-      // This is a placeholder - you'll need to implement the actual signature logic
+      // Add price for limit orders, timeInForce for all orders
+      if (orderType.toLowerCase() === 'limit') {
+        orderParams.price = price.toFixed(8);
+        orderParams.timeInForce = 'GTC'; // Good Till Cancel
+      }
+      
+      // Create query string for signature (sorted alphabetically for consistency)
       const queryString = Object.entries(orderParams)
-        .filter(([_, v]) => v !== undefined)
+        .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
         .map(([k, v]) => `${k}=${v}`)
         .join('&');
       
-      console.log(`🔴 LIVE ORDER: Executing ${side} ${quantity} ${symbol} at $${price}`);
-      console.log(`📡 Order params: ${queryString}`);
+      // Generate HMAC-SHA256 signature
+      const signature = createHmac('sha256', secretKey)
+        .update(queryString)
+        .digest('hex');
+      
+      // Add signature to parameters
+      const signedParams = `${queryString}&signature=${signature}`;
+      
+      console.log(`🔴 LIVE ORDER: Executing ${side} ${quantity.toFixed(4)} ${symbol} at $${price}`);
+      console.log(`📡 Order type: ${orderType.toUpperCase()}`);
+      console.log(`🔐 Signed request length: ${signedParams.length} chars`);
+      
+      // Safety check: Log intent before execution
+      console.log(`⚠️ REAL MONEY: This will place a LIVE order on Aster DEX`);
       
       // Execute the live order on Aster DEX
       const response = await fetch('https://fapi.asterdex.com/fapi/v1/order', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'X-ASTER-APIKEY': apiKey,
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-MBX-APIKEY': apiKey,
         },
-        body: JSON.stringify(orderParams),
+        body: signedParams,
       });
       
+      const responseText = await response.text();
+      
       if (!response.ok) {
-        const errorData = await response.text();
-        console.error(`❌ Live order failed: ${errorData}`);
-        return { success: false, error: errorData };
+        console.error(`❌ Live order failed (${response.status}): ${responseText}`);
+        
+        // Parse error if JSON
+        try {
+          const errorData = JSON.parse(responseText);
+          return { 
+            success: false, 
+            error: `API Error ${errorData.code || response.status}: ${errorData.msg || responseText}` 
+          };
+        } catch {
+          return { success: false, error: `HTTP ${response.status}: ${responseText}` };
+        }
       }
       
-      const result = await response.json();
-      console.log(`✅ Live order executed: ${result.orderId || 'success'}`);
+      const result = JSON.parse(responseText);
+      console.log(`✅ Live order executed successfully`);
+      console.log(`📝 Order ID: ${result.orderId || 'N/A'}`);
+      console.log(`💰 Order details:`, JSON.stringify(result, null, 2));
       
       return { success: true, orderId: result.orderId };
     } catch (error) {
