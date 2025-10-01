@@ -48,10 +48,47 @@ export default function PerformanceOverview() {
     refetchInterval: 5000,
   });
 
-  const { data: chartData, isLoading: chartLoading } = useQuery<TradeDataPoint[]>({
+  const { data: rawChartData, isLoading: chartLoading } = useQuery<TradeDataPoint[]>({
     queryKey: ['/api/performance/chart'],
     refetchInterval: 5000,
   });
+
+  // Add interpolated points at zero crossings for smooth color transitions
+  const chartData = rawChartData ? rawChartData.flatMap((point, index, arr) => {
+    if (index === 0) return [point];
+    
+    const prev = arr[index - 1];
+    const curr = point;
+    
+    // Check if line crosses zero
+    if ((prev.cumulativePnl >= 0 && curr.cumulativePnl < 0) || 
+        (prev.cumulativePnl < 0 && curr.cumulativePnl >= 0)) {
+      // Calculate interpolated point at zero
+      const ratio = Math.abs(prev.cumulativePnl) / (Math.abs(prev.cumulativePnl) + Math.abs(curr.cumulativePnl));
+      const interpolatedTradeNumber = prev.tradeNumber + ratio * (curr.tradeNumber - prev.tradeNumber);
+      const interpolatedTimestamp = prev.timestamp + ratio * (curr.timestamp - prev.timestamp);
+      
+      return [
+        {
+          ...prev,
+          tradeNumber: interpolatedTradeNumber - 0.001,
+          timestamp: interpolatedTimestamp - 1,
+          cumulativePnl: 0,
+          pnl: 0
+        },
+        {
+          ...curr,
+          tradeNumber: interpolatedTradeNumber + 0.001,
+          timestamp: interpolatedTimestamp + 1,
+          cumulativePnl: 0,
+          pnl: 0
+        },
+        curr
+      ];
+    }
+    
+    return [curr];
+  }) : [];
 
   // Fetch active strategy
   const { data: strategies } = useQuery<any[]>({
@@ -284,6 +321,12 @@ export default function PerformanceOverview() {
                     <stop offset="0%" stopColor="rgb(220, 38, 38)" stopOpacity={0.05}/>
                     <stop offset="100%" stopColor="rgb(220, 38, 38)" stopOpacity={0.3}/>
                   </linearGradient>
+                  <linearGradient id="splitLineGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="rgb(190, 242, 100)" stopOpacity={1}/>
+                    <stop offset="50%" stopColor="rgb(190, 242, 100)" stopOpacity={1}/>
+                    <stop offset="50%" stopColor="rgb(220, 38, 38)" stopOpacity={1}/>
+                    <stop offset="100%" stopColor="rgb(220, 38, 38)" stopOpacity={1}/>
+                  </linearGradient>
                 </defs>
                 <Bar 
                   yAxisId="left"
@@ -308,7 +351,7 @@ export default function PerformanceOverview() {
                   stroke="rgb(190, 242, 100)"
                   strokeWidth={2}
                   dot={false}
-                  connectNulls={false}
+                  connectNulls={true}
                   isAnimationActive={false}
                 />
                 {/* Negative P&L line (below zero) - no legend entry */}
@@ -319,7 +362,7 @@ export default function PerformanceOverview() {
                   stroke="rgb(220, 38, 38)"
                   strokeWidth={2}
                   dot={false}
-                  connectNulls={false}
+                  connectNulls={true}
                   isAnimationActive={false}
                   legendType="none"
                 />
