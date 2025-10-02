@@ -295,7 +295,6 @@ export class DatabaseStorage implements IStorage {
       selectedAssets: ["BTCUSDT"],
       isActive: true,
       tradingMode: "paper",
-      paperAccountSize: "10000.00",
       positionSizePercent: "10.00",
       percentileThreshold: 90,
       liquidationLookbackHours: 1,
@@ -325,17 +324,59 @@ export class DatabaseStorage implements IStorage {
       return existing[0];
     }
 
+    // Get real exchange balance for both paper and live trading
+    const exchangeBalance = await this.getExchangeBalance();
+    const initialBalance = exchangeBalance || "10000.00"; // Fallback to $10k if API unavailable
+
     // Create new session if doesn't exist
     const newSession: InsertTradeSession = {
       strategyId: strategy.id,
       mode: strategy.tradingMode,
-      startingBalance: strategy.paperAccountSize,
-      currentBalance: strategy.paperAccountSize,
+      startingBalance: initialBalance,
+      currentBalance: initialBalance,
       isActive: true
     };
 
     const result = await db.insert(tradeSessions).values(newSession).returning();
     return result[0];
+  }
+
+  // Fetch available balance from Aster DEX exchange
+  private async getExchangeBalance(): Promise<string | null> {
+    try {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+
+      if (!apiKey || !secretKey) {
+        console.log('ℹ️ Aster DEX API keys not configured, using default balance');
+        return null;
+      }
+
+      const { createHmac } = await import('crypto');
+      const timestamp = Date.now();
+      const params = `timestamp=${timestamp}`;
+      const signature = createHmac('sha256', secretKey)
+        .update(params)
+        .digest('hex');
+
+      const response = await fetch(
+        `https://fapi.asterdex.com/fapi/v1/account?${params}&signature=${signature}`,
+        {
+          headers: { 'X-MBX-APIKEY': apiKey },
+        }
+      );
+
+      if (!response.ok) {
+        console.log('ℹ️ Could not fetch exchange balance, using default');
+        return null;
+      }
+
+      const data = await response.json();
+      return data.availableBalance || data.totalWalletBalance || null;
+    } catch (error) {
+      console.log('ℹ️ Error fetching exchange balance, using default:', error);
+      return null;
+    }
   }
 
   async updateSessionBalance(sessionId: string, newBalance: number): Promise<TradeSession> {
