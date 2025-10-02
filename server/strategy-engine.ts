@@ -61,6 +61,8 @@ export class StrategyEngine extends EventEmitter {
   private staleLimitOrderSeconds: number = 180; // 3 minutes default timeout for limit orders
   private recoveryAttempts: Map<string, number> = new Map(); // Track cooldown for auto-repair attempts
   private cleanupInProgress: boolean = false; // Prevent overlapping cleanup runs
+  private lastFillTime: Map<string, number> = new Map(); // positionId -> timestamp of last fill
+  private fillCooldownMs: number = 10000; // 10 second cooldown after each fill
 
   constructor() {
     super();
@@ -614,6 +616,17 @@ export class StrategyEngine extends EventEmitter {
       if (pendingLayers && pendingLayers.has(nextLayer)) {
         console.log(`⏭️ Skipping layer ${nextLayer} for ${liquidation.symbol} - already pending`);
         return;
+      }
+      
+      // Check cooldown: wait 10 seconds after last fill before adding another layer
+      const lastFill = this.lastFillTime.get(position.id);
+      if (lastFill) {
+        const timeSinceLastFill = Date.now() - lastFill;
+        if (timeSinceLastFill < this.fillCooldownMs) {
+          const waitTime = ((this.fillCooldownMs - timeSinceLastFill) / 1000).toFixed(1);
+          console.log(`⏸️ Cooldown active for ${liquidation.symbol} - wait ${waitTime}s before next layer`);
+          return;
+        }
       }
       
       // Mark this layer as pending
@@ -1431,6 +1444,10 @@ export class StrategyEngine extends EventEmitter {
       quantity: fillQuantity,
       value: fillValue
     });
+    
+    // Update cooldown timestamp to prevent rapid-fire entries
+    this.lastFillTime.set(position.id, Date.now());
+    console.log(`⏰ Fill cooldown started for ${position.symbol} (${this.fillCooldownMs / 1000}s)`);
   }
 
   // Ensure position exists and return it (create or update as needed)
