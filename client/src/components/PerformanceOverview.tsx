@@ -349,8 +349,10 @@ export default function PerformanceOverview() {
   };
 
   // Calculate unified account metrics (same for both live and paper)
+  // In live mode: Use totalMarginBalance (wallet balance + unrealized PnL) for total equity
+  // This matches what users expect to see as their "total account value"
   const totalBalance = isLiveMode 
-    ? (liveAccount ? parseFloat(liveAccount.totalWalletBalance) : 0)
+    ? (liveAccount ? parseFloat(liveAccount.totalMarginBalance) : 0)
     : (paperSession?.currentBalance || 0);
   
   const unrealizedPnl = isLiveMode 
