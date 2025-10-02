@@ -1554,7 +1554,112 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { strategyId } = req.params;
       
-      // Find the active trade session for this strategy
+      // Get the strategy to check trading mode
+      const strategy = await storage.getStrategy(strategyId);
+      if (!strategy) {
+        return res.status(404).json({ error: 'Strategy not found' });
+      }
+
+      // In LIVE mode: Fetch positions from exchange
+      if (strategy.tradingMode === 'live') {
+        const apiKey = process.env.ASTER_API_KEY;
+        const secretKey = process.env.ASTER_SECRET_KEY;
+
+        if (!apiKey || !secretKey) {
+          return res.status(400).json({ error: "Aster DEX API keys not configured" });
+        }
+
+        // Get account info for balance and unrealized P&L
+        const accountTimestamp = Date.now();
+        const accountParams = `timestamp=${accountTimestamp}`;
+        const accountSignature = crypto
+          .createHmac('sha256', secretKey)
+          .update(accountParams)
+          .digest('hex');
+
+        const accountResponse = await fetch(
+          `https://fapi.asterdex.com/fapi/v2/account?${accountParams}&signature=${accountSignature}`,
+          {
+            headers: { 'X-MBX-APIKEY': apiKey },
+          }
+        );
+
+        if (!accountResponse.ok) {
+          const errorText = await accountResponse.text();
+          console.error('Failed to fetch Aster DEX account:', errorText);
+          return res.status(accountResponse.status).json({ error: `Aster DEX API error: ${errorText}` });
+        }
+
+        const account = await accountResponse.json();
+
+        // Get positions from exchange
+        const posTimestamp = Date.now();
+        const posParams = `timestamp=${posTimestamp}`;
+        const posSignature = crypto
+          .createHmac('sha256', secretKey)
+          .update(posParams)
+          .digest('hex');
+
+        const posResponse = await fetch(
+          `https://fapi.asterdex.com/fapi/v2/positionRisk?${posParams}&signature=${posSignature}`,
+          {
+            headers: { 'X-MBX-APIKEY': apiKey },
+          }
+        );
+
+        if (!posResponse.ok) {
+          const errorText = await posResponse.text();
+          console.error('Failed to fetch Aster DEX positions:', errorText);
+          return res.status(posResponse.status).json({ error: `Aster DEX API error: ${errorText}` });
+        }
+
+        const exchangePositions = await posResponse.json();
+        
+        // Filter out positions with zero quantity and map to our format
+        const positions = exchangePositions
+          .filter((pos: any) => parseFloat(pos.positionAmt) !== 0)
+          .map((pos: any) => ({
+            id: `live-${pos.symbol}-${pos.positionSide}`,
+            symbol: pos.symbol,
+            side: parseFloat(pos.positionAmt) > 0 ? 'long' : 'short',
+            quantity: Math.abs(parseFloat(pos.positionAmt)),
+            entryPrice: pos.entryPrice,
+            currentPrice: pos.markPrice,
+            unrealizedPnl: ((parseFloat(pos.markPrice) - parseFloat(pos.entryPrice)) / parseFloat(pos.entryPrice) * 100).toFixed(2),
+            totalCost: (Math.abs(parseFloat(pos.positionAmt)) * parseFloat(pos.entryPrice)).toFixed(2),
+            leverage: parseInt(pos.leverage),
+            positionSide: pos.positionSide,
+          }));
+
+        // Calculate totals from exchange data
+        const totalUnrealizedPnl = parseFloat(account.totalUnrealizedProfit || '0');
+        const startingBalance = parseFloat(account.totalWalletBalance || '0') - totalUnrealizedPnl;
+        const currentBalance = parseFloat(account.totalWalletBalance || '0');
+        const totalExposure = positions.reduce((sum: number, pos: any) => sum + parseFloat(pos.totalCost), 0);
+
+        // Get live session info for tracking
+        const session = await storage.getActiveTradeSession(strategyId);
+        const sessionId = session ? session.id : 'live-session';
+
+        const summary = {
+          sessionId,
+          strategyId,
+          startingBalance,
+          currentBalance,
+          totalPnl: totalUnrealizedPnl, // In live mode, we only show current P&L
+          realizedPnl: 0, // Exchange doesn't provide session-based realized P&L
+          unrealizedPnl: totalUnrealizedPnl,
+          totalExposure,
+          activePositions: positions.length,
+          totalTrades: 0, // Exchange doesn't track session trades
+          winRate: 0,
+          positions
+        };
+
+        return res.json(summary);
+      }
+
+      // In PAPER mode: Fetch positions from database
       const session = await storage.getActiveTradeSession(strategyId);
       
       if (!session) {
