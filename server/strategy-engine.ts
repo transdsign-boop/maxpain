@@ -56,6 +56,7 @@ export class StrategyEngine extends EventEmitter {
   private pendingLayerOrders: Map<string, Set<number>> = new Map(); // positionId -> Set of pending layer numbers to prevent duplicates
   private isRunning = false;
   private orderMonitorInterval?: NodeJS.Timeout;
+  private cleanupInterval?: NodeJS.Timeout;
   private wsClients: Set<any> = new Set(); // WebSocket clients for broadcasting trade notifications
 
   constructor() {
@@ -149,6 +150,9 @@ export class StrategyEngine extends EventEmitter {
     // Start monitoring pending paper orders for limit order simulation
     this.startPaperOrderMonitoring();
     
+    // Start periodic cleanup of orphaned TP/SL orders (every 5 minutes)
+    this.startCleanupMonitoring();
+    
     console.log(`✅ StrategyEngine started with ${this.activeStrategies.size} active strategies`);
   }
 
@@ -161,6 +165,11 @@ export class StrategyEngine extends EventEmitter {
     if (this.orderMonitorInterval) {
       clearInterval(this.orderMonitorInterval);
       this.orderMonitorInterval = undefined;
+    }
+    
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = undefined;
     }
     
     this.activeStrategies.clear();
@@ -1547,6 +1556,25 @@ export class StrategyEngine extends EventEmitter {
     } catch (error) {
       console.error(`❌ Error reloading strategy ${strategyId}:`, error);
     }
+  }
+
+  // Start periodic cleanup of orphaned TP/SL orders
+  private startCleanupMonitoring() {
+    // Run cleanup every 5 minutes
+    this.cleanupInterval = setInterval(async () => {
+      if (!this.isRunning) return;
+      
+      try {
+        const canceledCount = await this.cleanupOrphanedTPSL();
+        if (canceledCount > 0) {
+          console.log(`🧹 Cleanup: Removed ${canceledCount} orphaned TP/SL orders`);
+        }
+      } catch (error) {
+        console.error('❌ Error in cleanup monitoring:', error);
+      }
+    }, 5 * 60 * 1000); // 5 minutes
+    
+    console.log('🧹 Orphaned order cleanup monitoring started (5 minute intervals)');
   }
 
   // Remove a pending paper order from tracking
