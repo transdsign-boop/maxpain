@@ -277,8 +277,8 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
     ? avgEntry * (1 + sanitizedTP / 100)
     : avgEntry * (1 - sanitizedTP / 100);
   
-  // Calculate margin (totalCost is already the leveraged position value)
-  const totalMargin = leverage > 0 ? totalCost / leverage : totalCost;
+  // Calculate notional value (totalCost stores margin, multiply by leverage for notional)
+  const notionalValue = totalCost * leverage;
 
   // Calculate liquidation price based on leverage (isolated margin)
   const maintenanceMarginFactor = 0.95;
@@ -391,7 +391,7 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
                     {position.layersFilled}/{position.maxLayers} Layers
                   </span>
                   <span className="px-2 py-1 rounded-lg text-xs text-muted-foreground bg-muted/50 border border-border/50">
-                    {leverage}× • {formatCurrency(totalMargin)}
+                    {leverage}× • {formatCurrency(notionalValue)}
                   </span>
                 </div>
               </div>
@@ -515,7 +515,7 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
                   {position.layersFilled}/{position.maxLayers}
                 </span>
                 <span className="px-1.5 py-0.5 rounded-lg text-[10px] text-muted-foreground bg-muted/50 border border-border/50">
-                  {leverage}× • {formatCurrency(totalMargin)}
+                  {leverage}× • {formatCurrency(notionalValue)}
                 </span>
                 {isHedge && (
                   <Badge variant="secondary" className="text-xs">HEDGE</Badge>
