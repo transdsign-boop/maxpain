@@ -877,7 +877,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Get positions ONLY for the current active session
-      const allPositions = await storage.getPositionsBySession(activeSession.id);
+      let allPositions = await storage.getPositionsBySession(activeSession.id);
+
+      // In live mode, only show positions from current session (after liveSessionStartedAt)
+      if (activeStrategy.tradingMode === 'live' && activeStrategy.liveSessionStartedAt) {
+        const sessionStartTime = new Date(activeStrategy.liveSessionStartedAt).getTime();
+        allPositions = allPositions.filter(p => new Date(p.openedAt).getTime() >= sessionStartTime);
+      }
 
       if (!allPositions || allPositions.length === 0) {
         return res.json({
@@ -1035,9 +1041,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Get all closed positions for the active session, sorted by close time
       const allPositions = await storage.getPositionsBySession(activeSession.id);
-      const closedPositions = allPositions
-        .filter(p => p.isOpen === false && p.closedAt)
-        .sort((a, b) => new Date(a.closedAt!).getTime() - new Date(b.closedAt!).getTime());
+      
+      // Filter positions based on mode
+      let closedPositions = allPositions.filter(p => p.isOpen === false && p.closedAt);
+      
+      // In live mode, only show positions from current session (after liveSessionStartedAt)
+      if (activeStrategy.tradingMode === 'live' && activeStrategy.liveSessionStartedAt) {
+        const sessionStartTime = new Date(activeStrategy.liveSessionStartedAt).getTime();
+        closedPositions = closedPositions.filter(p => new Date(p.openedAt).getTime() >= sessionStartTime);
+      }
+      
+      closedPositions = closedPositions.sort((a, b) => new Date(a.closedAt!).getTime() - new Date(b.closedAt!).getTime());
 
       if (closedPositions.length === 0) {
         return res.json([]);
