@@ -18,7 +18,6 @@ import { Settings2, Pause, Play, AlertTriangle, BarChart3, Menu } from "lucide-r
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { localStorageService } from "@/lib/localStorageService";
 
 interface Liquidation {
   id: string;
@@ -181,29 +180,38 @@ export default function Dashboard() {
     },
   });
 
-  // Save settings to localStorage
-  const saveSettings = () => {
+  // Save settings to database
+  const saveSettings = async () => {
     try {
-      localStorageService.saveUserSettings({
-        selectedAssets,
-        sideFilter,
-        minValue,
-        timeRange,
-      } as any);
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          selectedAssets,
+          sideFilter,
+          minValue,
+          timeRange,
+        }),
+      });
     } catch (error) {
       console.error('Failed to save settings:', error);
     }
   };
 
-  // Load settings from localStorage
-  const loadSettings = () => {
+  // Load settings from database
+  const loadSettings = async () => {
     try {
-      const settings = localStorageService.getUserSettings();
-      if (settings) {
-        setSelectedAssets(settings.selectedAssets || []);
-        setSideFilter((settings.sideFilter as "all" | "long" | "short") || "all");
-        setMinValue(settings.minValue || "0");
-        setTimeRange(settings.timeRange || "1h");
+      const response = await fetch('/api/settings');
+      if (response.ok) {
+        const settings = await response.json();
+        if (settings) {
+          setSelectedAssets(settings.selectedAssets || []);
+          setSideFilter(settings.sideFilter || "all");
+          setMinValue(settings.minValue || "0");
+          setTimeRange(settings.timeRange || "1h");
+        }
       }
     } catch (error) {
       console.error('Failed to load settings:', error);
