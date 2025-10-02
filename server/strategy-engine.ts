@@ -61,7 +61,7 @@ export class StrategyEngine extends EventEmitter {
   private staleLimitOrderSeconds: number = 180; // 3 minutes default timeout for limit orders
   private recoveryAttempts: Map<string, number> = new Map(); // Track cooldown for auto-repair attempts
   private cleanupInProgress: boolean = false; // Prevent overlapping cleanup runs
-  private lastFillTime: Map<string, number> = new Map(); // positionId -> timestamp of last fill
+  private lastFillTime: Map<string, number> = new Map(); // "sessionId-symbol-side" -> timestamp of last fill
   private fillCooldownMs: number = 10000; // 10 second cooldown after each fill
 
   constructor() {
@@ -425,7 +425,7 @@ export class StrategyEngine extends EventEmitter {
         }
       } else {
         // No open position - check if we should enter a new position
-        const shouldEnter = await this.shouldEnterPosition(strategy, liquidation, recentLiquidations);
+        const shouldEnter = await this.shouldEnterPosition(strategy, liquidation, recentLiquidations, session, positionSide);
         if (shouldEnter) {
           await this.executeEntry(strategy, session, liquidation, positionSide);
         }
@@ -451,8 +451,22 @@ export class StrategyEngine extends EventEmitter {
   private async shouldEnterPosition(
     strategy: Strategy, 
     liquidation: Liquidation, 
-    recentLiquidations: Liquidation[]
+    recentLiquidations: Liquidation[],
+    session: TradeSession,
+    positionSide: string
   ): Promise<boolean> {
+    // Check cooldown: prevent rapid entries on same symbol+side
+    const cooldownKey = `${session.id}-${liquidation.symbol}-${positionSide}`;
+    const lastFill = this.lastFillTime.get(cooldownKey);
+    if (lastFill) {
+      const timeSinceLastFill = Date.now() - lastFill;
+      if (timeSinceLastFill < this.fillCooldownMs) {
+        const waitTime = ((this.fillCooldownMs - timeSinceLastFill) / 1000).toFixed(1);
+        console.log(`⏸️ Entry cooldown active for ${liquidation.symbol} ${positionSide} - wait ${waitTime}s before new entry`);
+        return false;
+      }
+    }
+    
     // Calculate percentile threshold: current liquidation must exceed specified percentile
     const currentLiquidationValue = parseFloat(liquidation.value);
     
@@ -635,12 +649,13 @@ export class StrategyEngine extends EventEmitter {
       }
       
       // Check cooldown: wait 10 seconds after last fill before adding another layer
-      const lastFill = this.lastFillTime.get(position.id);
+      const cooldownKey = `${session.id}-${liquidation.symbol}-${positionSide}`;
+      const lastFill = this.lastFillTime.get(cooldownKey);
       if (lastFill) {
         const timeSinceLastFill = Date.now() - lastFill;
         if (timeSinceLastFill < this.fillCooldownMs) {
           const waitTime = ((this.fillCooldownMs - timeSinceLastFill) / 1000).toFixed(1);
-          console.log(`⏸️ Cooldown active for ${liquidation.symbol} - wait ${waitTime}s before next layer`);
+          console.log(`⏸️ Layer cooldown active for ${liquidation.symbol} ${positionSide} - wait ${waitTime}s before next layer`);
           return;
         }
       }
@@ -1468,8 +1483,9 @@ export class StrategyEngine extends EventEmitter {
     });
     
     // Update cooldown timestamp to prevent rapid-fire entries
-    this.lastFillTime.set(position.id, Date.now());
-    console.log(`⏰ Fill cooldown started for ${position.symbol} (${this.fillCooldownMs / 1000}s)`);
+    const cooldownKey = `${order.sessionId}-${order.symbol}-${position.side}`;
+    this.lastFillTime.set(cooldownKey, Date.now());
+    console.log(`⏰ Fill cooldown started for ${position.symbol} ${position.side} (${this.fillCooldownMs / 1000}s)`);
   }
 
   // Ensure position exists and return it (create or update as needed)
