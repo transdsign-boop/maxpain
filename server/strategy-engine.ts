@@ -497,6 +497,46 @@ export class StrategyEngine extends EventEmitter {
     return true;
   }
 
+  // Fetch available balance from exchange (for live trading)
+  private async getExchangeAvailableBalance(strategy: Strategy): Promise<number | null> {
+    try {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+
+      if (!apiKey || !secretKey) {
+        console.error('❌ Aster DEX API keys not configured');
+        return null;
+      }
+
+      const timestamp = Date.now();
+      const params = `timestamp=${timestamp}`;
+      const signature = createHmac('sha256', secretKey)
+        .update(params)
+        .digest('hex');
+
+      const response = await fetch(
+        `https://fapi.asterdex.com/fapi/v1/account?${params}&signature=${signature}`,
+        {
+          headers: { 'X-MBX-APIKEY': apiKey },
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Failed to fetch exchange account:', errorText);
+        return null;
+      }
+
+      const data = await response.json();
+      const availableBalance = parseFloat(data.availableBalance || '0');
+      console.log(`💰 Exchange available balance: $${availableBalance.toFixed(2)}`);
+      return availableBalance;
+    } catch (error) {
+      console.error('❌ Error fetching exchange balance:', error);
+      return null;
+    }
+  }
+
   // Execute initial position entry with smart order placement
   private async executeEntry(strategy: Strategy, session: TradeSession, liquidation: Liquidation, positionSide: string) {
     try {
@@ -506,7 +546,19 @@ export class StrategyEngine extends EventEmitter {
       const price = parseFloat(liquidation.price);
       
       // Calculate available capital based on account usage percentage
-      const currentBalance = parseFloat(session.currentBalance);
+      let currentBalance = parseFloat(session.currentBalance);
+      
+      // In live mode, use actual exchange balance instead of paper trading balance
+      if (strategy.tradingMode === 'live') {
+        const exchangeBalance = await this.getExchangeAvailableBalance(strategy);
+        if (exchangeBalance !== null) {
+          currentBalance = exchangeBalance;
+          console.log(`📊 Using live exchange balance: $${currentBalance.toFixed(2)} (paper balance was $${session.currentBalance})`);
+        } else {
+          console.warn('⚠️ Failed to fetch exchange balance, falling back to paper balance');
+        }
+      }
+      
       const marginPercent = parseFloat(strategy.marginAmount);
       const availableCapital = (marginPercent / 100) * currentBalance;
       
@@ -571,7 +623,19 @@ export class StrategyEngine extends EventEmitter {
       this.pendingLayerOrders.get(position.id)!.add(nextLayer);
       
       // Calculate available capital based on account usage percentage
-      const currentBalance = parseFloat(session.currentBalance);
+      let currentBalance = parseFloat(session.currentBalance);
+      
+      // In live mode, use actual exchange balance instead of paper trading balance
+      if (strategy.tradingMode === 'live') {
+        const exchangeBalance = await this.getExchangeAvailableBalance(strategy);
+        if (exchangeBalance !== null) {
+          currentBalance = exchangeBalance;
+          console.log(`📊 Using live exchange balance for layer ${nextLayer}: $${currentBalance.toFixed(2)}`);
+        } else {
+          console.warn('⚠️ Failed to fetch exchange balance for layer, falling back to paper balance');
+        }
+      }
+      
       const marginPercent = parseFloat(strategy.marginAmount);
       const availableCapital = (marginPercent / 100) * currentBalance;
       
