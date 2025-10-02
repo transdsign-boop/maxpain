@@ -372,7 +372,17 @@ export class DatabaseStorage implements IStorage {
       }
 
       const data = await response.json();
-      return data.availableBalance || data.totalWalletBalance || null;
+      
+      // Check for USDT balance first (most common), then USDC, then fall back to top-level balance
+      const usdtAsset = data.assets?.find((asset: any) => asset.asset === 'USDT');
+      const usdtBalance = usdtAsset ? parseFloat(usdtAsset.walletBalance) : 0;
+      
+      const usdcAsset = data.assets?.find((asset: any) => asset.asset === 'USDC');
+      const usdcBalance = usdcAsset ? parseFloat(usdcAsset.walletBalance) : 0;
+      
+      const balance = usdtBalance || usdcBalance || parseFloat(data.availableBalance || '0');
+      
+      return balance > 0 ? balance.toString() : null;
     } catch (error) {
       console.log('ℹ️ Error fetching exchange balance, using default:', error);
       return null;
