@@ -89,8 +89,8 @@ function CompletedTradeCard({ position, formatCurrency, formatPercentage, getPnl
     enabled: isExpanded,
   });
 
-  // realizedPnl is stored as percentage in the database (stored in unrealizedPnl field after close)
-  const realizedPnlPercent = parseFloat(position.unrealizedPnl);
+  // realizedPnl is stored as percentage in the database (in the realizedPnl field)
+  const realizedPnlPercent = parseFloat(position.realizedPnl || position.unrealizedPnl);
   const totalCost = parseFloat(position.totalCost);
   const realizedPnlDollar = (realizedPnlPercent / 100) * totalCost;
   const avgEntry = parseFloat(position.avgEntryPrice);
