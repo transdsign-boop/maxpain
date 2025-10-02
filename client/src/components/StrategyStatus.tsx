@@ -679,7 +679,7 @@ export function StrategyStatus() {
       }
       return response.json();
     },
-    enabled: !!activeStrategy?.id,
+    enabled: !!activeStrategy?.id && !isLiveMode, // Only fetch database positions in paper mode
     refetchInterval: 1000, // Refresh every 1 second for real-time P&L
     retry: (failureCount, error: any) => {
       // Don't retry 404 errors - they indicate no trade session exists
@@ -687,6 +687,49 @@ export function StrategyStatus() {
       return failureCount < 3;
     },
   });
+
+  // Fetch live exchange positions when in live mode
+  const { data: livePositionsData } = useQuery<any[]>({
+    queryKey: ['/api/live/positions'],
+    refetchInterval: 2000, // Refresh every 2 seconds
+    enabled: !!isLiveMode && !!activeStrategy,
+    retry: 2,
+  });
+
+  // Transform live positions to match Position interface for display
+  const livePositionsSummary: PositionSummary | undefined = livePositionsData ? {
+    positions: livePositionsData
+      .filter(p => parseFloat(p.positionAmt) !== 0) // Filter out zero positions
+      .map(p => ({
+        id: `live-${p.symbol}-${parseFloat(p.positionAmt) > 0 ? 'LONG' : 'SHORT'}`,
+        symbol: p.symbol,
+        side: parseFloat(p.positionAmt) > 0 ? 'long' as const : 'short' as const,
+        avgEntryPrice: p.entryPrice,
+        totalQuantity: Math.abs(parseFloat(p.positionAmt)).toString(),
+        totalCost: Math.abs(parseFloat(p.positionAmt) * parseFloat(p.entryPrice)).toString(),
+        unrealizedPnl: p.unRealizedProfit && parseFloat(p.entryPrice) > 0 
+          ? ((parseFloat(p.unRealizedProfit) / (Math.abs(parseFloat(p.positionAmt)) * parseFloat(p.entryPrice))) * 100).toString()
+          : '0',
+        layersFilled: 1,
+        maxLayers: 1,
+        openedAt: new Date(),
+        updatedAt: new Date(),
+        closedAt: null,
+        sessionId: activeStrategy.id,
+      })),
+    totalExposure: livePositionsData.reduce((sum, p) => 
+      sum + Math.abs(parseFloat(p.positionAmt) * parseFloat(p.markPrice || p.entryPrice || 0)), 0
+    ),
+    currentBalance: 0, // Will be updated from account data
+    startingBalance: 0,
+    totalPnl: 0,
+    winRate: 0,
+    totalTrades: 0,
+    unrealizedPnl: livePositionsData.reduce((sum, p) => sum + parseFloat(p.unRealizedProfit || '0'), 0),
+  } : undefined;
+
+  // Use live positions summary when in live mode, otherwise use database summary
+  const displaySummary = isLiveMode ? livePositionsSummary : summary;
 
   // Fetch closed positions when section is expanded
   // Backend automatically returns appropriate data based on trading mode
@@ -767,12 +810,12 @@ export function StrategyStatus() {
 
   // Detect hedge positions - when there are both long and short positions for the same symbol
   const hedgeSymbols = useMemo(() => {
-    if (!summary?.positions) return new Set<string>();
+    if (!displaySummary?.positions) return new Set<string>();
     
     const symbolSides = new Map<string, Set<'long' | 'short'>>();
     
     // Group positions by symbol and track their sides
-    summary.positions.forEach(pos => {
+    displaySummary.positions.forEach(pos => {
       if (!symbolSides.has(pos.symbol)) {
         symbolSides.set(pos.symbol, new Set());
       }
@@ -788,7 +831,7 @@ export function StrategyStatus() {
     });
     
     return hedged;
-  }, [summary?.positions]);
+  }, [displaySummary?.positions]);
 
   // Close position mutation - must be defined before any early returns
   const closePositionMutation = useMutation({
@@ -911,17 +954,17 @@ export function StrategyStatus() {
     return "text-muted-foreground";
   };
 
-  const totalReturnPercent = summary ? ((summary.totalPnl / summary.startingBalance) * 100) : 0;
+  const totalReturnPercent = displaySummary ? ((displaySummary.totalPnl || 0) / (displaySummary.startingBalance || 1)) * 100 : 0;
   
   // Calculate current balance including unrealized P&L
-  const currentBalanceWithUnrealized = summary 
-    ? summary.currentBalance + (summary.unrealizedPnl || 0)
+  const currentBalanceWithUnrealized = displaySummary 
+    ? displaySummary.currentBalance + (displaySummary.unrealizedPnl || 0)
     : 0;
   
   // Calculate available margin (current balance minus margin in use)
   const leverage = activeStrategy?.leverage || 1;
-  const marginInUse = summary ? (summary.totalExposure / leverage) : 0;
-  const availableMargin = summary ? (summary.currentBalance - marginInUse) : 0;
+  const marginInUse = displaySummary ? (displaySummary.totalExposure / leverage) : 0;
+  const availableMargin = displaySummary ? (displaySummary.currentBalance - marginInUse) : 0;
 
   return (
     <div className="space-y-6">
@@ -946,11 +989,11 @@ export function StrategyStatus() {
       <CardContent className="space-y-6">
 
         {/* Active Positions */}
-        {summary?.positions && summary.positions.length > 0 ? (
+        {displaySummary?.positions && displaySummary.positions.length > 0 ? (
           <div className="space-y-3">
             <h4 className="text-sm font-medium text-muted-foreground">Active Positions</h4>
             <div className="space-y-2">
-              {summary.positions.map((position) => (
+              {displaySummary.positions.map((position) => (
                 <PositionCard
                   key={position.id}
                   position={position}
