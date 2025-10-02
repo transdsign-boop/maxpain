@@ -277,7 +277,6 @@ export class DatabaseStorage implements IStorage {
     const defaultStrategy: InsertStrategy = {
       userId,
       name: "Liquidation Counter-Trade",
-      description: "Automated counter-trend trading on liquidation spikes",
       selectedAssets: ["BTCUSDT"],
       isActive: true,
       tradingMode: "paper",
