@@ -2358,7 +2358,87 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { positionId } = req.params;
       
-      // Get the position
+      // Handle LIVE positions (from exchange, not database)
+      if (positionId.startsWith('live-')) {
+        const apiKey = process.env.ASTER_API_KEY;
+        const secretKey = process.env.ASTER_SECRET_KEY;
+
+        if (!apiKey || !secretKey) {
+          return res.status(400).json({ error: 'Aster DEX API keys not configured' });
+        }
+
+        // Extract symbol from live position ID (format: live-ETHUSDT-SHORT)
+        const parts = positionId.substring(5).split('-');
+        const positionSide = parts.pop() || 'BOTH';
+        const symbol = parts.join('-');
+
+        // Get current position from exchange
+        const posTimestamp = Date.now();
+        const posParams = `timestamp=${posTimestamp}`;
+        const posSignature = crypto
+          .createHmac('sha256', secretKey)
+          .update(posParams)
+          .digest('hex');
+
+        const posResponse = await fetch(
+          `https://fapi.asterdex.com/fapi/v2/positionRisk?${posParams}&signature=${posSignature}`,
+          {
+            headers: { 'X-MBX-APIKEY': apiKey },
+          }
+        );
+
+        if (!posResponse.ok) {
+          const errorText = await posResponse.text();
+          console.error('Failed to fetch position from exchange:', errorText);
+          return res.status(posResponse.status).json({ error: 'Failed to fetch position from exchange' });
+        }
+
+        const positions = await posResponse.json();
+        const targetPosition = positions.find((p: any) => p.symbol === symbol);
+
+        if (!targetPosition || parseFloat(targetPosition.positionAmt) === 0) {
+          return res.status(404).json({ error: 'Position not found on exchange or already closed' });
+        }
+
+        const quantity = Math.abs(parseFloat(targetPosition.positionAmt));
+        const side = parseFloat(targetPosition.positionAmt) > 0 ? 'SELL' : 'BUY'; // Opposite side to close
+
+        // Place market order to close the position
+        const orderTimestamp = Date.now();
+        const orderParams = `symbol=${symbol}&side=${side}&type=MARKET&quantity=${quantity}&timestamp=${orderTimestamp}`;
+        const orderSignature = crypto
+          .createHmac('sha256', secretKey)
+          .update(orderParams)
+          .digest('hex');
+
+        const orderResponse = await fetch(
+          `https://fapi.asterdex.com/fapi/v1/order?${orderParams}&signature=${orderSignature}`,
+          {
+            method: 'POST',
+            headers: { 'X-MBX-APIKEY': apiKey },
+          }
+        );
+
+        if (!orderResponse.ok) {
+          const errorText = await orderResponse.text();
+          console.error('Failed to place close order:', errorText);
+          return res.status(orderResponse.status).json({ error: `Failed to close position: ${errorText}` });
+        }
+
+        const orderResult = await orderResponse.json();
+        console.log(`✅ Live position ${symbol} closed on exchange: ${side} ${quantity} (Order ID: ${orderResult.orderId})`);
+
+        return res.json({
+          success: true,
+          message: `Position ${symbol} closed on exchange`,
+          orderId: orderResult.orderId,
+          symbol,
+          side,
+          quantity: quantity.toString(),
+        });
+      }
+
+      // Handle PAPER TRADING positions (from database)
       const position = await storage.getPosition(positionId);
       if (!position) {
         return res.status(404).json({ error: 'Position not found' });
