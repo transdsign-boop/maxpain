@@ -79,7 +79,6 @@ const strategyFormSchema = z.object({
     const num = parseFloat(val);
     return !isNaN(num) && num >= 1 && num <= 100;
   }, "Account usage must be between 1% and 100%"),
-  tradingMode: z.enum(["paper", "live"]),
   paperAccountSize: z.string().refine((val) => {
     const num = parseFloat(val);
     return !isNaN(num) && num >= 100 && num <= 1000000;
@@ -134,7 +133,6 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
       orderType: "limit",
       maxRetryDurationMs: 30000,
       marginAmount: "10.0",
-      tradingMode: "paper",
       paperAccountSize: "10000.0",
       hedgeMode: false,
     }
@@ -198,7 +196,6 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         orderType: strategy.orderType,
         maxRetryDurationMs: strategy.maxRetryDurationMs,
         marginAmount: strategy.marginAmount,
-        tradingMode: strategy.tradingMode,
         paperAccountSize: strategy.paperAccountSize || "10000.0",
         hedgeMode: strategy.hedgeMode,
       });
@@ -358,6 +355,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         name: activeStrategy.name,
         selectedAssets: activeStrategy.selectedAssets,
         percentileThreshold: activeStrategy.percentileThreshold,
+        liquidationLookbackHours: activeStrategy.liquidationLookbackHours,
         maxLayers: activeStrategy.maxLayers,
         positionSizePercent: activeStrategy.positionSizePercent,
         profitTargetPercent: activeStrategy.profitTargetPercent,
@@ -369,8 +367,8 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         orderType: activeStrategy.orderType,
         maxRetryDurationMs: activeStrategy.maxRetryDurationMs,
         marginAmount: activeStrategy.marginAmount,
-        tradingMode: activeStrategy.tradingMode,
         paperAccountSize: activeStrategy.paperAccountSize || "10000.0",
+        hedgeMode: activeStrategy.hedgeMode,
       });
 
       if (hasChanges) {
@@ -437,7 +435,6 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         orderType: strategy.orderType,
         maxRetryDurationMs: strategy.maxRetryDurationMs,
         marginAmount: strategy.marginAmount,
-        tradingMode: strategy.tradingMode,
         paperAccountSize: strategy.paperAccountSize || "10000.0",
         hedgeMode: strategy.hedgeMode,
       });
@@ -513,62 +510,34 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
 
               <Separator />
 
-              {/* Trading Mode Toggle */}
+              {/* Paper Account Size */}
               <FormField
                 control={form.control}
-                name="tradingMode"
+                name="paperAccountSize"
                 render={({ field }) => (
-                  <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                    <div className="space-y-0.5">
-                      <FormLabel data-testid="label-trading-mode">Live Trading Mode</FormLabel>
-                      <FormDescription>
-                        Enable live trading to execute real trades. When off, all trades are simulated.
-                      </FormDescription>
-                    </div>
+                  <FormItem>
+                    <FormLabel data-testid="label-paper-account-size">
+                      <div className="flex items-center gap-2">
+                        <DollarSign className="h-4 w-4" />
+                        Paper Account Size
+                      </div>
+                    </FormLabel>
+                    <FormDescription>
+                      Starting balance for paper trading (simulated funds)
+                    </FormDescription>
                     <FormControl>
-                      <Switch
-                        data-testid="switch-trading-mode"
-                        checked={field.value === "live"}
-                        onCheckedChange={(checked) => field.onChange(checked ? "live" : "paper")}
+                      <Input
+                        data-testid="input-paper-account-size"
+                        type="text"
+                        placeholder="10000.0"
+                        {...field}
                         disabled={false}
                       />
                     </FormControl>
+                    <FormMessage />
                   </FormItem>
                 )}
               />
-
-              {/* Paper Account Size (only shown in paper mode) */}
-              {form.watch("tradingMode") === "paper" && (
-                <>
-                  <FormField
-                    control={form.control}
-                    name="paperAccountSize"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel data-testid="label-paper-account-size">
-                          <div className="flex items-center gap-2">
-                            <DollarSign className="h-4 w-4" />
-                            Paper Account Size
-                          </div>
-                        </FormLabel>
-                        <FormDescription>
-                          Starting balance for paper trading (simulated funds)
-                        </FormDescription>
-                        <FormControl>
-                          <Input
-                            data-testid="input-paper-account-size"
-                            type="text"
-                            placeholder="10000.0"
-                            {...field}
-                            disabled={false}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </>
-              )}
 
               {/* Hedge Mode Toggle */}
               <FormField
