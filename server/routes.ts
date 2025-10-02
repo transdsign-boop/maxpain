@@ -2026,6 +2026,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { positionId } = req.params;
       
+      // Handle live positions (IDs like: live-HYPEUSDT-LONG)
+      if (positionId.startsWith('live-')) {
+        // Extract symbol from live position ID
+        const parts = positionId.substring(5).split('-'); // Remove "live-" prefix
+        const positionSide = parts.pop(); // Last part is position side (LONG/SHORT/BOTH)
+        const symbol = parts.join('-'); // Rest is symbol (handles symbols with dashes)
+        
+        // Get active strategy to find session
+        const strategies = await storage.getStrategiesByUser(DEFAULT_USER_ID);
+        const activeStrategy = strategies.find(s => s.isActive && s.tradingMode === 'live');
+        
+        if (!activeStrategy) {
+          return res.json([]);
+        }
+
+        const session = await storage.getActiveTradeSession(activeStrategy.id);
+        if (!session) {
+          return res.json([]);
+        }
+
+        // Get fills for this symbol and determine side from position
+        const sessionFills = await storage.getFillsBySession(session.id);
+        
+        // Determine fill side based on position side
+        let fillSide: string;
+        if (positionSide === 'LONG' || positionSide.includes('LONG')) {
+          fillSide = 'buy';
+        } else if (positionSide === 'SHORT' || positionSide.includes('SHORT')) {
+          fillSide = 'sell';
+        } else {
+          // For BOTH or unknown, return all fills for the symbol
+          const fills = sessionFills.filter(f => f.symbol === symbol);
+          return res.json(fills);
+        }
+
+        const fills = sessionFills.filter(f => 
+          f.symbol === symbol && f.side === fillSide
+        );
+        
+        return res.json(fills);
+      }
+      
+      // Handle database positions
       const position = await storage.getPosition(positionId);
       if (!position) {
         return res.status(404).json({ error: 'Position not found' });
