@@ -39,7 +39,6 @@ interface Strategy {
   maxRetryDurationMs: number;
   marginAmount: string;
   tradingMode: "paper" | "live";
-  paperAccountSize: string;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -76,10 +75,6 @@ const strategyFormSchema = z.object({
     const num = parseFloat(val);
     return !isNaN(num) && num >= 1 && num <= 100;
   }, "Account usage must be between 1% and 100%"),
-  paperAccountSize: z.string().refine((val) => {
-    const num = parseFloat(val);
-    return !isNaN(num) && num >= 100 && num <= 1000000;
-  }, "Paper account size must be between $100 and $1,000,000"),
 });
 
 type StrategyFormData = z.infer<typeof strategyFormSchema>;
@@ -148,7 +143,6 @@ export default function TradingControlPanel() {
       orderType: "limit",
       maxRetryDurationMs: 30000,
       marginAmount: "10.0",
-      paperAccountSize: "10000.0",
     }
   });
 
@@ -209,7 +203,6 @@ export default function TradingControlPanel() {
         orderType: strategy.orderType,
         maxRetryDurationMs: strategy.maxRetryDurationMs,
         marginAmount: strategy.marginAmount,
-        paperAccountSize: strategy.paperAccountSize || "10000.0",
       });
     },
     onError: () => {
@@ -409,7 +402,6 @@ export default function TradingControlPanel() {
         orderType: strategy.orderType,
         maxRetryDurationMs: strategy.maxRetryDurationMs,
         marginAmount: strategy.marginAmount,
-        paperAccountSize: strategy.paperAccountSize || "10000.0",
       });
     } else if (strategies && strategies.length === 0) {
       // No strategies available, clear active strategy
@@ -491,37 +483,6 @@ export default function TradingControlPanel() {
                 </FormItem>
               )}
             />
-
-            <Separator />
-
-            {/* Paper Account Size - Only show in paper mode */}
-            {activeStrategy?.tradingMode === "paper" && (
-              <FormField
-                control={form.control}
-                name="paperAccountSize"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel data-testid="label-paper-account-size">Paper Trading Account Size</FormLabel>
-                    <FormControl>
-                      <Input
-                        data-testid="input-paper-account-size"
-                        type="number"
-                        step="100"
-                        min="100"
-                        max="1000000"
-                        placeholder="10000"
-                        {...field}
-                        disabled={isStrategyRunning}
-                      />
-                    </FormControl>
-                    <FormDescription className="text-xs">
-                      Starting balance for paper trading (between $100 and $1,000,000)
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            )}
 
             <Separator />
 
