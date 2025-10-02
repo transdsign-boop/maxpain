@@ -1943,7 +1943,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 
                 const entryPrice = parseFloat(exPos.entryPrice);
                 const quantity = Math.abs(posAmt);
-                const totalCost = entryPrice * quantity;
+                const leverage = parseInt(exPos.leverage) || strategy.leverage || 1;
+                // Calculate actual margin used (notional / leverage)
+                const notionalValue = entryPrice * quantity;
+                const actualMargin = notionalValue / leverage;
                 
                 // Create position in database so it will be monitored for stop-loss
                 const orphanedPosition = await storage.createPosition({
@@ -1952,14 +1955,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   side,
                   totalQuantity: quantity.toString(),
                   avgEntryPrice: entryPrice.toString(),
-                  totalCost: totalCost.toString(),
+                  totalCost: actualMargin.toString(), // Actual margin = notional / leverage
                   layersFilled: 1,
                   maxLayers: strategy.maxLayers,
+                  leverage,
                   lastLayerPrice: entryPrice.toString(),
                 });
                 
                 console.log(`✅ Created DB entry for orphaned position: ${exPos.symbol} ${side} (ID: ${orphanedPosition.id})`);
-                console.log(`   Entry: $${entryPrice}, Quantity: ${quantity}, Total Cost: $${totalCost.toFixed(2)}`);
+                console.log(`   Entry: $${entryPrice}, Quantity: ${quantity}, Margin: $${actualMargin.toFixed(2)} (${leverage}x leverage)`);
               }
             }
           }

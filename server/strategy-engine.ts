@@ -1610,14 +1610,20 @@ export class StrategyEngine extends EventEmitter {
     let position = await storage.getPositionBySymbol(order.sessionId, order.symbol);
     
     if (!position) {
-      // Find the strategy to get maxLayers setting
+      // Find the strategy to get maxLayers and leverage settings
       let maxLayers = 5; // Default fallback
+      let leverage = 1; // Default fallback
       this.activeStrategies.forEach((strategy) => {
         const session = this.activeSessions.get(strategy.id);
         if (session && session.id === order.sessionId) {
           maxLayers = strategy.maxLayers;
+          leverage = strategy.leverage;
         }
       });
+
+      // Calculate actual margin used (totalCost = notional value / leverage)
+      const notionalValue = fillPrice * fillQuantity;
+      const actualMargin = notionalValue / leverage;
 
       // Create new position
       position = await storage.createPosition({
@@ -1626,9 +1632,10 @@ export class StrategyEngine extends EventEmitter {
         side: order.side === 'buy' ? 'long' : 'short',
         totalQuantity: fillQuantity.toString(),
         avgEntryPrice: fillPrice.toString(),
-        totalCost: (fillPrice * fillQuantity).toString(),
+        totalCost: actualMargin.toString(), // Actual margin = notional / leverage
         layersFilled: 1,
         maxLayers,
+        leverage,
         lastLayerPrice: fillPrice.toString(),
       });
     } else {
@@ -1649,15 +1656,21 @@ export class StrategyEngine extends EventEmitter {
     const currentQuantity = parseFloat(position.totalQuantity);
     const currentCost = parseFloat(position.totalCost);
     const currentAvgPrice = parseFloat(position.avgEntryPrice);
+    const leverage = position.leverage || 1; // Use position's leverage
 
     const newQuantity = currentQuantity + fillQuantity;
-    const newCost = currentCost + (fillPrice * fillQuantity);
-    const newAvgPrice = newCost / newQuantity;
+    
+    // Calculate new average entry price using notional values (price-based, not margin-based)
+    const newAvgPrice = ((currentAvgPrice * currentQuantity) + (fillPrice * fillQuantity)) / newQuantity;
+    
+    // Add actual margin for new layer (notional / leverage)
+    const newLayerMargin = (fillPrice * fillQuantity) / leverage;
+    const newCost = currentCost + newLayerMargin;
 
     await storage.updatePosition(position.id, {
       totalQuantity: newQuantity.toString(),
-      avgEntryPrice: newAvgPrice.toString(),
-      totalCost: newCost.toString(),
+      avgEntryPrice: newAvgPrice.toString(), // Weighted average of entry prices
+      totalCost: newCost.toString(), // Actual total margin used
       layersFilled: position.layersFilled + 1,
       lastLayerPrice: fillPrice.toString(),
     });
