@@ -263,7 +263,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           maxRetryDurationMs: Number(s.maxRetryDurationMs),
           slippageTolerancePercent: String(s.slippageTolerancePercent),
           liquidationLookbackHours: Number(s.liquidationLookbackHours),
-          paperAccountSize: String(s.paperAccountSize),
           hedgeMode: Boolean(s.hedgeMode),
         }))
       };
@@ -1296,7 +1295,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         maxRetryDurationMs: validatedData.maxRetryDurationMs,
         marginAmount: validatedData.marginAmount,
         tradingMode: validatedData.tradingMode,
-        paperAccountSize: validatedData.paperAccountSize,
         isActive: validatedData.isActive || false,
       };
       
@@ -1341,10 +1339,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       });
       
-      // Check if paperAccountSize changed
-      const paperAccountSizeChanged = validatedUpdates.paperAccountSize !== undefined && 
-        existingStrategy.paperAccountSize !== validatedUpdates.paperAccountSize;
-      
       // Handle live session start/end
       const tradingModeChanging = validatedUpdates.tradingMode !== undefined && 
         existingStrategy.tradingMode !== validatedUpdates.tradingMode;
@@ -1368,35 +1362,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('💾 Sending to database:', JSON.stringify(updateData, null, 2));
       await storage.updateStrategy(strategyId, updateData);
       
-      // If paper account size changed, update the existing session balance in-place
-      if (paperAccountSizeChanged) {
-        const activeSession = await storage.getActiveTradeSession(strategyId);
-        if (activeSession) {
-          const newBalance = parseFloat(validatedUpdates.paperAccountSize!);
-          console.log(`💰 Paper account size changed from ${existingStrategy.paperAccountSize} to ${newBalance} - updating session balance in-place`);
-          
-          // Cancel any pending orders
-          const pendingOrders = (await storage.getOrdersBySession(activeSession.id))
-            .filter(o => o.status === 'pending');
-          
-          for (const order of pendingOrders) {
-            await storage.updateOrderStatus(order.id, 'cancelled');
-            strategyEngine.removePendingOrder(order.id);
-          }
-          
-          if (pendingOrders.length > 0) {
-            console.log(`🚫 Cancelled ${pendingOrders.length} pending orders before balance update`);
-          }
-          
-          // Update the session balance in-place
-          await storage.updateSessionBalance(activeSession.id, newBalance);
-          console.log(`✅ Updated session ${activeSession.id} balance to ${newBalance} (positions and history preserved)`);
-        }
-      }
-      
       // CRITICAL: Reload strategy in engine whenever ANY settings change
       // This ensures position sizing and all other settings are applied immediately
-      if (Object.keys(changes).length > 0 || paperAccountSizeChanged) {
+      if (Object.keys(changes).length > 0) {
         console.log(`🔄 Reloading strategy in engine to apply updated settings...`);
         await strategyEngine.reloadStrategy(strategyId);
       }

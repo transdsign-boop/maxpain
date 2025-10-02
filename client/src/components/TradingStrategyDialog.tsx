@@ -40,7 +40,6 @@ interface Strategy {
   maxRetryDurationMs: number;
   marginAmount: string;
   tradingMode: "paper" | "live";
-  paperAccountSize: string;
   hedgeMode: boolean;
   isActive: boolean;
   createdAt: string;
@@ -79,10 +78,6 @@ const strategyFormSchema = z.object({
     const num = parseFloat(val);
     return !isNaN(num) && num >= 1 && num <= 100;
   }, "Account usage must be between 1% and 100%"),
-  paperAccountSize: z.string().refine((val) => {
-    const num = parseFloat(val);
-    return !isNaN(num) && num >= 100 && num <= 1000000;
-  }, "Paper account size must be between $100 and $1,000,000"),
   hedgeMode: z.boolean(),
 });
 
@@ -158,7 +153,6 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
       orderType: "limit",
       maxRetryDurationMs: 30000,
       marginAmount: "10.0",
-      paperAccountSize: "10000.0",
       hedgeMode: false,
     }
   });
@@ -221,7 +215,6 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         orderType: strategy.orderType,
         maxRetryDurationMs: strategy.maxRetryDurationMs,
         marginAmount: strategy.marginAmount,
-        paperAccountSize: strategy.paperAccountSize || "10000.0",
         hedgeMode: strategy.hedgeMode,
       });
     },
@@ -462,7 +455,6 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         orderType: activeStrategy.orderType,
         maxRetryDurationMs: activeStrategy.maxRetryDurationMs,
         marginAmount: activeStrategy.marginAmount,
-        paperAccountSize: activeStrategy.paperAccountSize || "10000.0",
         hedgeMode: activeStrategy.hedgeMode,
       });
 
@@ -530,7 +522,6 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         orderType: strategy.orderType,
         maxRetryDurationMs: strategy.maxRetryDurationMs,
         marginAmount: strategy.marginAmount,
-        paperAccountSize: strategy.paperAccountSize || "10000.0",
         hedgeMode: strategy.hedgeMode,
       });
     } else if (strategies && strategies.length === 0) {
@@ -604,35 +595,6 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
               />
 
               <Separator />
-
-              {/* Paper Account Size */}
-              <FormField
-                control={form.control}
-                name="paperAccountSize"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel data-testid="label-paper-account-size">
-                      <div className="flex items-center gap-2">
-                        <DollarSign className="h-4 w-4" />
-                        Paper Account Size
-                      </div>
-                    </FormLabel>
-                    <FormDescription>
-                      Starting balance for paper trading (simulated funds)
-                    </FormDescription>
-                    <FormControl>
-                      <Input
-                        data-testid="input-paper-account-size"
-                        type="text"
-                        placeholder="10000.0"
-                        {...field}
-                        disabled={false}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
 
               {/* Hedge Mode Toggle */}
               <FormField
