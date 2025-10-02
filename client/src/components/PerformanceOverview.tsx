@@ -594,6 +594,7 @@ export default function PerformanceOverview() {
                   yAxisId="right"
                   type="monotone"
                   dataKey={(entry: any) => entry.cumulativePnl <= 0 ? entry.cumulativePnl : null}
+                  name="Negative P&L"
                   stroke="rgb(220, 38, 38)"
                   strokeWidth={2}
                   dot={false}
@@ -618,6 +619,7 @@ export default function PerformanceOverview() {
                   yAxisId="right"
                   type="monotone" 
                   dataKey={(entry: any) => entry.cumulativePnl >= 0 ? entry.cumulativePnl : null}
+                  name="Positive P&L Area"
                   stroke="none"
                   fill="url(#positivePnlGradient)"
                   dot={false}
@@ -630,6 +632,7 @@ export default function PerformanceOverview() {
                   yAxisId="right"
                   type="monotone" 
                   dataKey={(entry: any) => entry.cumulativePnl <= 0 ? entry.cumulativePnl : null}
+                  name="Negative P&L Area"
                   stroke="none"
                   fill="url(#negativePnlGradient)"
                   dot={false}
@@ -710,29 +713,29 @@ export default function PerformanceOverview() {
               <div className="ticker-item">
                 <TrendingUp className="h-3 w-3 text-lime-500" />
                 <span className="text-xs text-muted-foreground">Avg Win</span>
-                <span className="text-sm font-mono font-semibold text-lime-500">{formatCurrency(performance.averageWin)}</span>
+                <span className="text-sm font-mono font-semibold text-lime-500">{formatCurrency(displayPerformance.averageWin)}</span>
               </div>
               <div className="ticker-separator" />
               <div className="ticker-item">
                 <TrendingDown className="h-3 w-3 text-red-600" />
                 <span className="text-xs text-muted-foreground">Avg Loss</span>
-                <span className="text-sm font-mono font-semibold text-red-600">{formatCurrency(-Math.abs(performance.averageLoss))}</span>
+                <span className="text-sm font-mono font-semibold text-red-600">{formatCurrency(-Math.abs(displayPerformance.averageLoss))}</span>
               </div>
               <div className="ticker-separator" />
               <div className="ticker-item">
                 <Award className="h-3 w-3 text-lime-500" />
                 <span className="text-xs text-muted-foreground">Best</span>
-                <span className="text-sm font-mono font-semibold text-lime-500">{formatCurrency(performance.bestTrade)}</span>
+                <span className="text-sm font-mono font-semibold text-lime-500">{formatCurrency(displayPerformance.bestTrade)}</span>
               </div>
               <div className="ticker-separator" />
               <div className="ticker-item">
                 <span className="text-xs text-muted-foreground">Worst</span>
-                <span className="text-sm font-mono font-semibold text-red-600">{formatCurrency(-Math.abs(performance.worstTrade))}</span>
+                <span className="text-sm font-mono font-semibold text-red-600">{formatCurrency(-Math.abs(displayPerformance.worstTrade))}</span>
               </div>
               <div className="ticker-separator" />
               <div className="ticker-item">
                 <span className="text-xs text-muted-foreground">Fees Paid</span>
-                <span className="text-sm font-mono font-semibold text-muted-foreground">-${(performance.totalFees ?? 0).toFixed(2)}</span>
+                <span className="text-sm font-mono font-semibold text-muted-foreground">-${(displayPerformance.totalFees ?? 0).toFixed(2)}</span>
               </div>
               <div className="ticker-separator" />
               <div className="ticker-item">
