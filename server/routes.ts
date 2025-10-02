@@ -1578,8 +1578,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             layerNumber: 0,
           });
 
-          // Close the position
-          await storage.closePosition(position.id, new Date(), unrealizedPnl);
+          // Close the position with dollar P&L
+          await storage.closePosition(position.id, new Date(), dollarPnl);
           
           // Accumulate P&L (deduct exit fee for paper trading)
           const netDollarPnl = isPaperTrading ? dollarPnl - exitFee : dollarPnl;
@@ -1855,13 +1855,74 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const key = `${dbPos.symbol}-${dbPos.side}`;
             if (!exchangeOpenSymbols.has(key)) {
               // Position closed on exchange, close it in database
-              // For now, use 0 for realizedPnl - this will be improved in future to calculate from exchange fills
-              // The main goal is to show completed trades in the UI, P&L accuracy will be refined later
-              const realizedPnl = 0;
+              // Calculate realized P&L (dollar amount) from fills
+              let realizedPnlPercent = 0;
               
-              console.log(`🔒 Closing database position ${dbPos.symbol} ${dbPos.side} (closed on exchange)`);
+              try {
+                // Get all fills for this position from the database (entry + exit)
+                const positionFills = await storage.getFillsBySession(liveSession.id);
+                const symbolFills = positionFills.filter(f => 
+                  f.symbol === dbPos.symbol && 
+                  new Date(f.filledAt) >= new Date(dbPos.openedAt)
+                );
+                
+                if (symbolFills.length > 0) {
+                  // Separate entry and exit fills
+                  const entrySide = dbPos.side === 'long' ? 'buy' : 'sell';
+                  const exitSide = dbPos.side === 'long' ? 'sell' : 'buy';
+                  
+                  const entryFills = symbolFills.filter(f => f.side === entrySide);
+                  const exitFills = symbolFills.filter(f => f.side === exitSide);
+                  
+                  // Use the existing avgEntryPrice from the position
+                  const avgEntryPrice = parseFloat(dbPos.avgEntryPrice);
+                  
+                  // Calculate weighted average exit price from exit fills
+                  if (exitFills.length > 0) {
+                    const totalExitValue = exitFills.reduce((sum, f) => sum + parseFloat(f.value), 0);
+                    const totalExitQty = exitFills.reduce((sum, f) => sum + parseFloat(f.quantity), 0);
+                    const avgExitPrice = totalExitQty > 0 ? totalExitValue / totalExitQty : avgEntryPrice;
+                    
+                    // Calculate P&L percentage based on position side
+                    if (dbPos.side === 'long') {
+                      realizedPnlPercent = ((avgExitPrice - avgEntryPrice) / avgEntryPrice) * 100;
+                    } else {
+                      realizedPnlPercent = ((avgEntryPrice - avgExitPrice) / avgEntryPrice) * 100;
+                    }
+                    
+                    console.log(`📊 Calculated P&L for ${dbPos.symbol} ${dbPos.side}: ${realizedPnlPercent.toFixed(2)}% (Entry: $${avgEntryPrice}, Exit: $${avgExitPrice})`);
+                  } else {
+                    // No exit fills found, fetch current price to estimate P&L
+                    try {
+                      const priceResponse = await fetch(`https://fapi.asterdex.com/fapi/v1/ticker/price?symbol=${dbPos.symbol}`);
+                      if (priceResponse.ok) {
+                        const priceData = await priceResponse.json();
+                        const currentPrice = parseFloat(priceData.price);
+                        
+                        if (dbPos.side === 'long') {
+                          realizedPnlPercent = ((currentPrice - avgEntryPrice) / avgEntryPrice) * 100;
+                        } else {
+                          realizedPnlPercent = ((avgEntryPrice - currentPrice) / avgEntryPrice) * 100;
+                        }
+                        
+                        console.log(`📊 Estimated P&L for ${dbPos.symbol} ${dbPos.side}: ${realizedPnlPercent.toFixed(2)}% (Entry: $${avgEntryPrice}, Current: $${currentPrice})`);
+                      }
+                    } catch (priceError) {
+                      console.error(`Failed to fetch price for P&L calculation:`, priceError);
+                    }
+                  }
+                }
+              } catch (error) {
+                console.error(`Error calculating realized P&L for ${dbPos.symbol}:`, error);
+              }
               
-              await storage.closePosition(dbPos.id, new Date(), realizedPnl);
+              // Convert percentage to dollar amount
+              const totalCost = parseFloat(dbPos.totalCost);
+              const realizedPnlDollar = (realizedPnlPercent / 100) * totalCost;
+              
+              console.log(`🔒 Closing database position ${dbPos.symbol} ${dbPos.side} with ${realizedPnlPercent.toFixed(2)}% P&L ($${realizedPnlDollar.toFixed(2)}) (closed on exchange)`);
+              
+              await storage.closePosition(dbPos.id, new Date(), realizedPnlDollar);
             }
           }
         }
@@ -2621,8 +2682,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         layerNumber: 0,
       });
 
-      // Close the position
-      await storage.closePosition(position.id, new Date(), unrealizedPnl);
+      // Close the position with dollar P&L
+      await storage.closePosition(position.id, new Date(), dollarPnl);
 
       // Update session balance and stats (deduct exit fee from P&L)
       if (session) {
