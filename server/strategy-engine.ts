@@ -2098,12 +2098,12 @@ export class StrategyEngine extends EventEmitter {
       const session = this.activeSessions.get(position.sessionId);
       const isPaperTrading = session?.mode === 'paper';
       
-      // Calculate exit fee based on order type
+      // Calculate exit fee based on order type (SAME FOR BOTH PAPER AND LIVE)
       // Take profit = limit order (0.01% maker fee)
       // Stop loss = stop market order (0.035% taker fee)
       const quantity = parseFloat(position.totalQuantity);
       const exitValue = exitPrice * quantity;
-      const exitFee = isPaperTrading ? (exitValue * feePercent) / 100 : 0;
+      const exitFee = (exitValue * feePercent) / 100; // Apply fee for BOTH paper and live
       
       // For live trading, place the actual exit order on Aster DEX
       if (!isPaperTrading) {
@@ -2159,8 +2159,8 @@ export class StrategyEngine extends EventEmitter {
         const newTotalTrades = latestSession.totalTrades + 1;
         const oldTotalPnl = parseFloat(latestSession.totalPnl);
         
-        // Subtract exit fee from realized P&L for paper trading
-        const netDollarPnl = isPaperTrading ? dollarPnl - exitFee : dollarPnl;
+        // Subtract exit fee from realized P&L (SAME FOR BOTH PAPER AND LIVE)
+        const netDollarPnl = dollarPnl - exitFee;
         const newTotalPnl = oldTotalPnl + netDollarPnl;
         
         // Update current balance with net realized P&L
@@ -2180,17 +2180,14 @@ export class StrategyEngine extends EventEmitter {
           session.currentBalance = newBalance.toString();
         }
         
-        if (isPaperTrading) {
-          console.log(`💸 Exit fee applied: $${exitFee.toFixed(4)} (${feePercent}% ${orderType === 'limit' ? 'maker' : 'taker'} fee - ${exitValue.toFixed(2)} value)`);
-          console.log(`💰 Balance updated: $${oldBalance.toFixed(2)} → $${newBalance.toFixed(2)} (P&L: $${dollarPnl.toFixed(2)}, Fee: -$${exitFee.toFixed(4)}, Net: $${netDollarPnl.toFixed(2)})`);
-        } else {
-          console.log(`💰 Balance updated: $${oldBalance.toFixed(2)} → $${newBalance.toFixed(2)} (${dollarPnl >= 0 ? '+' : ''}$${dollarPnl.toFixed(2)})`);
-        }
+        // Show detailed fee breakdown for BOTH paper and live
+        console.log(`💸 Exit fee applied: $${exitFee.toFixed(4)} (${feePercent}% ${orderType === 'limit' ? 'maker' : 'taker'} fee - ${exitValue.toFixed(2)} value)`);
+        console.log(`💰 Balance updated: $${oldBalance.toFixed(2)} → $${newBalance.toFixed(2)} (P&L: $${dollarPnl.toFixed(2)}, Fee: -$${exitFee.toFixed(4)}, Net: $${netDollarPnl.toFixed(2)})`);
       } else {
         console.warn(`⚠️ Could not update session stats - session ${position.sessionId} not found in database`);
       }
 
-      console.log(`✅ Position closed: ${position.symbol} - P&L: ${realizedPnlPercent.toFixed(2)}% ($${dollarPnl.toFixed(2)}${isPaperTrading ? `, Fee: $${exitFee.toFixed(4)}` : ''})`);
+      console.log(`✅ Position closed: ${position.symbol} - P&L: ${realizedPnlPercent.toFixed(2)}% ($${dollarPnl.toFixed(2)}, Fee: $${exitFee.toFixed(4)})`);
     } catch (error) {
       console.error('❌ Error closing position:', error);
     }
