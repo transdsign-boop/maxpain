@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import crypto from "crypto";
+import { randomUUID } from "crypto";
 import { storage } from "./storage";
 import { strategyEngine } from "./strategy-engine";
 import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySchema, updateStrategySchema, type Position, type Liquidation, positions } from "@shared/schema";
@@ -1549,6 +1550,94 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Helper function to sync live fills from exchange to database
+  async function syncLiveFills(strategyId: string, sessionId: string): Promise<void> {
+    const apiKey = process.env.ASTER_API_KEY;
+    const secretKey = process.env.ASTER_SECRET_KEY;
+
+    if (!apiKey || !secretKey) {
+      return;
+    }
+
+    const strategy = await storage.getStrategy(strategyId);
+    if (!strategy || !strategy.liveSessionStartedAt) {
+      return;
+    }
+
+    const sessionStartTime = new Date(strategy.liveSessionStartedAt).getTime();
+
+    // Fetch fills from exchange
+    const timestamp = Date.now();
+    const params = `timestamp=${timestamp}&limit=1000&startTime=${sessionStartTime}`;
+    const signature = crypto
+      .createHmac('sha256', secretKey)
+      .update(params)
+      .digest('hex');
+
+    try {
+      const response = await fetch(
+        `https://fapi.asterdex.com/fapi/v1/userTrades?${params}&signature=${signature}`,
+        {
+          headers: { 'X-MBX-APIKEY': apiKey },
+        }
+      );
+
+      if (!response.ok) {
+        return;
+      }
+
+      const exchangeFills = await response.json();
+
+      // Get existing fills to avoid duplicates
+      const existingFills = await storage.getFillsBySession(sessionId);
+      const existingTradeIds = new Set(
+        existingFills
+          .map(f => f.orderId.startsWith('trade-') ? f.orderId.substring(6) : null)
+          .filter(Boolean)
+      );
+
+      // Group fills by symbol and positionSide to track layers per position
+      const layerCounts = new Map<string, number>();
+      existingFills.forEach(f => {
+        const key = `${f.symbol}-${f.side}`;
+        layerCounts.set(key, (layerCounts.get(key) || 0) + 1);
+      });
+
+      // Process and store new fills
+      for (const trade of exchangeFills) {
+        const tradeId = trade.id.toString();
+        
+        if (existingTradeIds.has(tradeId)) {
+          continue;
+        }
+
+        const side = trade.side === 'BUY' ? 'buy' : 'sell';
+        const key = `${trade.symbol}-${side}`;
+        const layerNumber = (layerCounts.get(key) || 0) + 1;
+        layerCounts.set(key, layerNumber);
+
+        const fillData: InsertFill = {
+          orderId: `trade-${tradeId}`,
+          sessionId,
+          positionId: null,
+          symbol: trade.symbol,
+          side,
+          quantity: trade.qty,
+          price: trade.price,
+          value: trade.quoteQty,
+          fee: trade.commission || '0',
+          layerNumber,
+          filledAt: new Date(trade.time),
+        };
+
+        await storage.applyFill(fillData);
+        existingTradeIds.add(tradeId);
+      }
+    } catch (error) {
+      console.error('Error syncing live fills:', error);
+    }
+  }
+
   // Get position summary by strategy ID (finds active trade session automatically)
   app.get('/api/strategies/:strategyId/positions/summary', async (req, res) => {
     try {
@@ -1568,6 +1657,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (!apiKey || !secretKey) {
           return res.status(400).json({ error: "Aster DEX API keys not configured" });
         }
+
+        // Get or create a live session for tracking fills
+        let liveSession = await storage.getActiveTradeSession(strategyId);
+        if (!liveSession) {
+          liveSession = await storage.createTradeSession({
+            id: randomUUID(),
+            strategyId,
+            mode: 'live',
+            startingBalance: '0', // Will be set from exchange
+            currentBalance: '0',
+            isActive: true,
+            startedAt: new Date()
+          });
+        }
+
+        // Sync fills from exchange to database
+        await syncLiveFills(strategyId, liveSession.id);
 
         // Get account info for balance and unrealized P&L
         const accountTimestamp = Date.now();
@@ -1615,22 +1721,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         const exchangePositions = await posResponse.json();
         
+        // Get all fills from the session
+        const sessionFills = liveSession ? await storage.getFillsBySession(liveSession.id) : [];
+        
         // Filter out positions with zero quantity and map to our format
         const positions = exchangePositions
           .filter((pos: any) => parseFloat(pos.positionAmt) !== 0)
-          .map((pos: any) => ({
-            id: `live-${pos.symbol}-${pos.positionSide}`,
-            symbol: pos.symbol,
-            side: parseFloat(pos.positionAmt) > 0 ? 'long' : 'short',
-            totalQuantity: Math.abs(parseFloat(pos.positionAmt)).toString(),
-            avgEntryPrice: pos.entryPrice,
-            unrealizedPnl: ((parseFloat(pos.markPrice) - parseFloat(pos.entryPrice)) / parseFloat(pos.entryPrice) * 100).toString(),
-            totalCost: (Math.abs(parseFloat(pos.positionAmt)) * parseFloat(pos.entryPrice)).toString(),
-            leverage: parseInt(pos.leverage),
-            positionSide: pos.positionSide,
-            isOpen: true,
-            openedAt: new Date().toISOString(),
-          }));
+          .map((pos: any) => {
+            const side = parseFloat(pos.positionAmt) > 0 ? 'long' : 'short';
+            const fillSide = side === 'long' ? 'buy' : 'sell';
+            
+            // Get fills for this position (matching symbol and side)
+            const positionFills = sessionFills.filter(f => 
+              f.symbol === pos.symbol && f.side === fillSide
+            );
+
+            return {
+              id: `live-${pos.symbol}-${pos.positionSide}`,
+              symbol: pos.symbol,
+              side,
+              totalQuantity: Math.abs(parseFloat(pos.positionAmt)).toString(),
+              avgEntryPrice: pos.entryPrice,
+              unrealizedPnl: ((parseFloat(pos.markPrice) - parseFloat(pos.entryPrice)) / parseFloat(pos.entryPrice) * 100).toString(),
+              totalCost: (Math.abs(parseFloat(pos.positionAmt)) * parseFloat(pos.entryPrice)).toString(),
+              leverage: parseInt(pos.leverage),
+              positionSide: pos.positionSide,
+              isOpen: true,
+              openedAt: positionFills.length > 0 ? positionFills[0].filledAt.toISOString() : new Date().toISOString(),
+              fills: positionFills, // Include fills as layers
+            };
+          });
 
         // Calculate totals from exchange data
         const totalUnrealizedPnl = parseFloat(account.totalUnrealizedProfit || '0');
@@ -1638,9 +1758,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const currentBalance = parseFloat(account.totalWalletBalance || '0');
         const totalExposure = positions.reduce((sum: number, pos: any) => sum + parseFloat(pos.totalCost), 0);
 
-        // Get live session info for tracking
-        const session = await storage.getActiveTradeSession(strategyId);
-        const sessionId = session ? session.id : 'live-session';
+        const sessionId = liveSession ? liveSession.id : 'live-session';
 
         const summary = {
           sessionId,
