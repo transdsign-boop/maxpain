@@ -1730,7 +1730,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         const exchangePositions = await posResponse.json();
         
-        // Fetch actual fills from exchange for all symbols
+        // Fetch actual fills from exchange for all symbols since session start
         const sessionStartTime = new Date(strategy.liveSessionStartedAt).getTime();
         const fillsTimestamp = Date.now();
         const fillsParams = `timestamp=${fillsTimestamp}&limit=1000&startTime=${sessionStartTime}`;
@@ -1762,9 +1762,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const side = parseFloat(pos.positionAmt) > 0 ? 'long' : 'short';
             const targetSide = side === 'long' ? 'BUY' : 'SELL';
             
-            // Get fills for this position from exchange data
-            const positionFills = allExchangeFills
+            // Get fills for this position from current session only
+            const allSymbolFills = allExchangeFills
               .filter((trade: any) => trade.symbol === pos.symbol && trade.side === targetSide)
+              .sort((a, b) => a.time - b.time);
+            
+            // Position is considered "open" starting from the first fill after session start
+            // Calculate the position open time: first fill at or after session start
+            const positionOpenTime = allSymbolFills.length > 0 ? allSymbolFills[0].time : sessionStartTime;
+            
+            // Filter to only fills from position open time onwards
+            const positionFills = allSymbolFills
+              .filter((trade: any) => trade.time >= positionOpenTime)
               .map((trade: any, index: number) => ({
                 id: `exchange-${trade.id}`,
                 orderId: trade.orderId.toString(),
@@ -1778,8 +1787,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 fee: trade.commission || '0',
                 layerNumber: index + 1,
                 filledAt: new Date(trade.time),
-              }))
-              .sort((a, b) => new Date(a.filledAt).getTime() - new Date(b.filledAt).getTime());
+              }));
 
             return {
               id: `live-${pos.symbol}-${pos.positionSide}`,
@@ -1793,7 +1801,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               positionSide: pos.positionSide,
               isOpen: true,
               openedAt: positionFills.length > 0 ? positionFills[0].filledAt.toISOString() : new Date().toISOString(),
-              fills: positionFills, // Include actual exchange fills as layers
+              fills: positionFills, // Include only fills from current position instance
             };
           });
 
