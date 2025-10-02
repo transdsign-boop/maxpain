@@ -112,7 +112,7 @@ export class StrategyEngine extends EventEmitter {
     }
   }
 
-  // Round quantity to match exchange precision requirements
+  // Round quantity to match exchange precision requirements using stepSize
   private roundQuantity(symbol: string, quantity: number): number {
     const precision = this.symbolPrecisionCache.get(symbol);
     if (!precision) {
@@ -120,11 +120,19 @@ export class StrategyEngine extends EventEmitter {
       return Math.floor(quantity * 100) / 100; // Default to 2 decimals
     }
     
-    const multiplier = Math.pow(10, precision.quantityPrecision);
-    return Math.floor(quantity * multiplier) / multiplier;
+    // Use stepSize for proper rounding (e.g., "1" = whole numbers, "0.1" = 1 decimal)
+    const stepSize = parseFloat(precision.stepSize);
+    const rounded = Math.floor(quantity / stepSize) * stepSize;
+    
+    // Format to correct decimal places to avoid floating point issues
+    const decimals = precision.stepSize.includes('.') 
+      ? precision.stepSize.split('.')[1].length 
+      : 0;
+    
+    return parseFloat(rounded.toFixed(decimals));
   }
 
-  // Round price to match exchange precision requirements
+  // Round price to match exchange precision requirements using tickSize
   private roundPrice(symbol: string, price: number): number {
     const precision = this.symbolPrecisionCache.get(symbol);
     if (!precision) {
@@ -132,8 +140,16 @@ export class StrategyEngine extends EventEmitter {
       return Math.floor(price * 100) / 100; // Default to 2 decimals
     }
     
-    const multiplier = Math.pow(10, precision.pricePrecision);
-    return Math.floor(price * multiplier) / multiplier;
+    // Use tickSize for proper rounding (e.g., "0.01" = 2 decimals, "0.1" = 1 decimal)
+    const tickSize = parseFloat(precision.tickSize);
+    const rounded = Math.floor(price / tickSize) * tickSize;
+    
+    // Format to correct decimal places to avoid floating point issues
+    const decimals = precision.tickSize.includes('.') 
+      ? precision.tickSize.split('.')[1].length 
+      : 0;
+    
+    return parseFloat(rounded.toFixed(decimals));
   }
 
   // Start the strategy engine
