@@ -367,7 +367,7 @@ export class StrategyEngine extends EventEmitter {
         // Position was created by the concurrent process, check if we should layer
         const shouldLayer = await this.shouldAddLayer(strategy, positionAfterWait, liquidation);
         if (shouldLayer) {
-          await this.executeLayer(strategy, session, positionAfterWait, liquidation);
+          await this.executeLayer(strategy, session, positionAfterWait, liquidation, positionSide);
         }
       }
       return;
@@ -390,13 +390,13 @@ export class StrategyEngine extends EventEmitter {
         // We have an open position - check if we should add a layer
         const shouldLayer = await this.shouldAddLayer(strategy, existingPosition, liquidation);
         if (shouldLayer) {
-          await this.executeLayer(strategy, session, existingPosition, liquidation);
+          await this.executeLayer(strategy, session, existingPosition, liquidation, positionSide);
         }
       } else {
         // No open position - check if we should enter a new position
         const shouldEnter = await this.shouldEnterPosition(strategy, liquidation, recentLiquidations);
         if (shouldEnter) {
-          await this.executeEntry(strategy, session, liquidation);
+          await this.executeEntry(strategy, session, liquidation, positionSide);
         }
       }
     } finally {
@@ -485,7 +485,7 @@ export class StrategyEngine extends EventEmitter {
   }
 
   // Execute initial position entry with smart order placement
-  private async executeEntry(strategy: Strategy, session: TradeSession, liquidation: Liquidation) {
+  private async executeEntry(strategy: Strategy, session: TradeSession, liquidation: Liquidation, positionSide: string) {
     try {
       const side = liquidation.side === 'long' ? 'buy' : 'sell'; // Counter-trade
       const orderSide = liquidation.side === 'long' ? 'long' : 'short';
@@ -522,6 +522,7 @@ export class StrategyEngine extends EventEmitter {
         targetPrice: price,
         triggerLiquidationId: liquidation.id,
         layerNumber: 1,
+        positionSide, // Include for hedge mode
       });
 
     } catch (error) {
@@ -534,7 +535,8 @@ export class StrategyEngine extends EventEmitter {
     strategy: Strategy, 
     session: TradeSession, 
     position: Position, 
-    liquidation: Liquidation
+    liquidation: Liquidation,
+    positionSide: string
   ) {
     try {
       const side = position.side === 'long' ? 'buy' : 'sell';
@@ -587,6 +589,7 @@ export class StrategyEngine extends EventEmitter {
           triggerLiquidationId: liquidation.id,
           layerNumber: nextLayer,
           positionId: position.id,
+          positionSide, // Include for hedge mode
         });
 
         console.log(`✅ Layer ${nextLayer} completed for ${liquidation.symbol}`);
@@ -617,8 +620,9 @@ export class StrategyEngine extends EventEmitter {
     triggerLiquidationId: string;
     layerNumber: number;
     positionId?: string;
+    positionSide?: string; // 'long' or 'short' for hedge mode
   }) {
-    const { strategy, session, symbol, side, orderSide, quantity, targetPrice, triggerLiquidationId, layerNumber, positionId } = params;
+    const { strategy, session, symbol, side, orderSide, quantity, targetPrice, triggerLiquidationId, layerNumber, positionId, positionSide } = params;
     const maxRetryDuration = strategy.maxRetryDurationMs;
     const slippageTolerance = parseFloat(strategy.slippageTolerancePercent) / 100;
     const startTime = Date.now();
@@ -657,6 +661,7 @@ export class StrategyEngine extends EventEmitter {
               orderType: strategy.orderType,
               quantity,
               price: orderPrice,
+              positionSide, // Include for hedge mode
             });
             
             if (!liveOrderResult.success) {
@@ -739,9 +744,10 @@ export class StrategyEngine extends EventEmitter {
     orderType: string;
     quantity: number;
     price: number;
+    positionSide?: string; // 'LONG' or 'SHORT' for hedge mode
   }): Promise<{ success: boolean; orderId?: string; error?: string }> {
     try {
-      const { symbol, side, orderType, quantity, price } = params;
+      const { symbol, side, orderType, quantity, price, positionSide } = params;
       
       const apiKey = process.env.ASTER_API_KEY;
       const secretKey = process.env.ASTER_SECRET_KEY;
@@ -777,6 +783,11 @@ export class StrategyEngine extends EventEmitter {
         timestamp,
         recvWindow: 5000, // 5 second receive window for clock sync tolerance
       };
+      
+      // Add positionSide for hedge mode
+      if (positionSide) {
+        orderParams.positionSide = positionSide.toUpperCase();
+      }
       
       // Add price for limit orders, timeInForce for all orders
       if (orderType.toLowerCase() === 'limit') {
@@ -1160,6 +1171,7 @@ export class StrategyEngine extends EventEmitter {
           orderType,
           quantity,
           price: exitPrice,
+          positionSide: position.side, // Position side for hedge mode
         });
         
         if (!liveOrderResult.success) {
