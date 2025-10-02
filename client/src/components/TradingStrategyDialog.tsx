@@ -16,7 +16,7 @@ import { Switch } from "@/components/ui/switch";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Play, Square, TrendingUp, DollarSign, Layers, Target, Trash2, RotateCcw, Key, CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import { Play, Square, TrendingUp, DollarSign, Layers, Target, Trash2, RotateCcw, Key, CheckCircle2, XCircle, Loader2, Download, Upload } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -363,6 +363,76 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
       });
     }
   });
+
+  // Export settings handler
+  const handleExportSettings = async () => {
+    try {
+      const response = await fetch('/api/settings/export');
+      if (!response.ok) throw new Error('Export failed');
+      
+      const data = await response.json();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `aster-dex-settings-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      toast({
+        title: "Settings Exported",
+        description: "Your settings have been downloaded as a JSON file.",
+      });
+    } catch (error) {
+      toast({
+        title: "Export Failed",
+        description: "Failed to export settings. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Import settings handler
+  const handleImportSettings = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/json';
+    input.onchange = async (e: any) => {
+      try {
+        const file = e.target?.files?.[0];
+        if (!file) return;
+        
+        const text = await file.text();
+        const data = JSON.parse(text);
+        
+        const response = await apiRequest('POST', '/api/settings/import', data);
+        if (!response.ok) throw new Error('Import failed');
+        
+        const result = await response.json();
+        
+        toast({
+          title: "Settings Imported",
+          description: result.message || "Your settings have been restored successfully.",
+        });
+        
+        // Refresh all data
+        queryClient.invalidateQueries({ queryKey: ['/api/strategies'] });
+        queryClient.invalidateQueries({ queryKey: ['/api/settings'] });
+        
+        // Reload the page to ensure all components refresh
+        setTimeout(() => window.location.reload(), 1000);
+      } catch (error) {
+        toast({
+          title: "Import Failed",
+          description: "Failed to import settings. Please check the file format.",
+          variant: "destructive",
+        });
+      }
+    };
+    input.click();
+  };
 
   const onSubmit = (data: StrategyFormData) => {
     if (activeStrategy) {
@@ -1133,6 +1203,26 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
 
         <DialogFooter className="flex flex-col sm:flex-row gap-2">
           <div className="flex flex-1 gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleExportSettings}
+              data-testid="button-export-settings"
+            >
+              <Download className="h-4 w-4 mr-1" />
+              Export
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleImportSettings}
+              data-testid="button-import-settings"
+            >
+              <Upload className="h-4 w-4 mr-1" />
+              Import
+            </Button>
             {activeStrategy && activeStrategy.tradingMode === "paper" && !isStrategyRunning && (
               <AlertDialog>
                 <AlertDialogTrigger asChild>

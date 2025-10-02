@@ -207,6 +207,95 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Export settings and strategy configuration
+  app.get("/api/settings/export", async (req, res) => {
+    try {
+      const settings = await storage.getUserSettings(DEFAULT_USER_ID);
+      const strategies = await storage.getStrategiesByUser(DEFAULT_USER_ID);
+      
+      const exportData = {
+        version: "1.0",
+        exportDate: new Date().toISOString(),
+        settings: settings || null,
+        strategies: strategies.map((s: any) => ({
+          name: s.name,
+          tradingMode: s.tradingMode,
+          selectedAssets: s.selectedAssets,
+          percentileThreshold: s.percentileThreshold,
+          positionSizePercent: s.positionSizePercent,
+          maxLayers: s.maxLayers,
+          profitTargetPercent: s.profitTargetPercent,
+          stopLossPercent: s.stopLossPercent,
+          marginMode: s.marginMode,
+          marginAmount: s.marginAmount,
+          leverage: s.leverage,
+          orderType: s.orderType,
+          orderDelayMs: s.orderDelayMs,
+          maxRetryDurationMs: s.maxRetryDurationMs,
+          slippageTolerancePercent: s.slippageTolerancePercent,
+          liquidationLookbackHours: s.liquidationLookbackHours,
+          paperAccountSize: s.paperAccountSize,
+          hedgeMode: s.hedgeMode,
+        }))
+      };
+      
+      res.json(exportData);
+    } catch (error) {
+      console.error('❌ Export settings error:', error);
+      res.status(500).json({ error: "Failed to export settings" });
+    }
+  });
+
+  // Import settings and strategy configuration
+  app.post("/api/settings/import", async (req, res) => {
+    try {
+      const importData = req.body;
+      
+      if (!importData.version || !importData.strategies) {
+        return res.status(400).json({ error: "Invalid import data format" });
+      }
+      
+      // Import user settings (skip if null)
+      if (importData.settings) {
+        const validatedSettings = insertUserSettingsSchema.parse({
+          ...importData.settings,
+          userId: DEFAULT_USER_ID
+        });
+        await storage.saveUserSettings(validatedSettings);
+      }
+      
+      // Import strategies (create new or update existing)
+      if (importData.strategies && importData.strategies.length > 0) {
+        const existingStrategies = await storage.getStrategiesByUser(DEFAULT_USER_ID);
+        
+        for (const strategyData of importData.strategies) {
+          const existingStrategy = existingStrategies.find((s: any) => s.name === strategyData.name);
+          
+          if (existingStrategy) {
+            // Validate and update existing strategy with imported settings
+            const validatedData = updateStrategySchema.parse(strategyData);
+            await storage.updateStrategy(existingStrategy.id, validatedData);
+          } else {
+            // Validate and create new strategy from imported data
+            const validatedData = frontendStrategySchema.parse({
+              ...strategyData,
+              userId: DEFAULT_USER_ID,
+            });
+            await storage.createStrategy(validatedData);
+          }
+        }
+      }
+      
+      res.json({ 
+        success: true, 
+        message: "Settings imported successfully" 
+      });
+    } catch (error) {
+      console.error('❌ Import settings error:', error);
+      res.status(500).json({ error: "Failed to import settings" });
+    }
+  });
+
   // Analytics API routes
   app.get("/api/analytics/assets", async (req, res) => {
     try {
