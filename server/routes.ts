@@ -1824,14 +1824,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
               filledAt: new Date(trade.time),
             }));
 
+            // Calculate unrealized P&L percentage from exchange-provided dollar amount
+            // Exchange already handles long/short logic correctly
+            const totalCost = Math.abs(parseFloat(pos.positionAmt)) * parseFloat(pos.entryPrice);
+            const unrealizedPnlPercent = totalCost > 0 
+              ? (parseFloat(pos.unRealizedProfit) / totalCost * 100)
+              : 0;
+
             return {
               id: `live-${pos.symbol}-${pos.positionSide}`,
               symbol: pos.symbol,
               side,
               totalQuantity: Math.abs(parseFloat(pos.positionAmt)).toString(),
               avgEntryPrice: pos.entryPrice,
-              unrealizedPnl: ((parseFloat(pos.markPrice) - parseFloat(pos.entryPrice)) / parseFloat(pos.entryPrice) * 100).toString(),
-              totalCost: (Math.abs(parseFloat(pos.positionAmt)) * parseFloat(pos.entryPrice)).toString(),
+              unrealizedPnl: unrealizedPnlPercent.toString(),
+              totalCost: totalCost.toString(),
               leverage: parseInt(pos.leverage),
               positionSide: pos.positionSide,
               isOpen: true,
