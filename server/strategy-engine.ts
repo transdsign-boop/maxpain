@@ -58,6 +58,8 @@ export class StrategyEngine extends EventEmitter {
   private orderMonitorInterval?: NodeJS.Timeout;
   private cleanupInterval?: NodeJS.Timeout;
   private wsClients: Set<any> = new Set(); // WebSocket clients for broadcasting trade notifications
+  private staleLimitOrderSeconds: number = 180; // 3 minutes default timeout for limit orders
+  private recoveryAttempts: Map<string, number> = new Map(); // Track cooldown for auto-repair attempts
 
   constructor() {
     super();
@@ -1096,6 +1098,63 @@ export class StrategyEngine extends EventEmitter {
       return canceledCount;
     } catch (error) {
       console.error('❌ Error in orphaned order cleanup:', error);
+      return 0;
+    }
+  }
+
+  // Clean up stale limit orders (older than configured timeout)
+  async cleanupStaleLimitOrders(): Promise<number> {
+    try {
+      let canceledCount = 0;
+      const liveSessions = Array.from(this.activeSessions.values()).filter(s => s.mode === 'live');
+      
+      if (liveSessions.length === 0) {
+        return 0;
+      }
+
+      const allOrders = await this.getOpenOrders();
+      if (allOrders.length === 0) {
+        return 0;
+      }
+
+      const currentTime = Date.now();
+
+      for (const order of allOrders) {
+        const orderType = order.type || '';
+        const symbol = order.symbol;
+        const orderId = String(order.orderId);
+        
+        // Only check LIMIT orders
+        if (orderType === 'LIMIT') {
+          const orderTime = order.time || 0;
+          const ageSeconds = (currentTime - orderTime) / 1000;
+          
+          // Check if older than timeout
+          if (ageSeconds > this.staleLimitOrderSeconds) {
+            // Skip if it's a tracked TP/SL order (has positionSide set)
+            const positionSide = order.positionSide;
+            if (positionSide && positionSide !== 'BOTH') {
+              console.log(`⏭️ Skipping tracked TP/SL limit order ${orderId}`);
+              continue;
+            }
+            
+            console.log(`⚠️ Found stale limit order ${orderId}, age: ${ageSeconds.toFixed(0)}s`);
+            
+            const canceled = await this.cancelOrder(symbol, orderId);
+            if (canceled) {
+              canceledCount++;
+            }
+          }
+        }
+      }
+
+      if (canceledCount > 0) {
+        console.log(`✅ Stale cleanup: Canceled ${canceledCount} old limit orders`);
+      }
+
+      return canceledCount;
+    } catch (error) {
+      console.error('❌ Error in stale limit order cleanup:', error);
       return 0;
     }
   }
