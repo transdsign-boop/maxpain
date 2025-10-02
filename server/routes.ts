@@ -15,6 +15,35 @@ const LIQUIDATION_WINDOW_SECONDS = 60;
 // Fixed user ID for personal app (no authentication needed)
 const DEFAULT_USER_ID = "personal_user";
 
+// Simple cache to prevent excessive API calls to Aster DEX
+interface CacheEntry<T> {
+  data: T;
+  timestamp: number;
+}
+
+const apiCache = new Map<string, CacheEntry<any>>();
+const CACHE_TTL_MS = 10000; // 10 second cache TTL to prevent rate limiting
+
+function getCached<T>(key: string): T | null {
+  const entry = apiCache.get(key);
+  if (!entry) return null;
+  
+  const age = Date.now() - entry.timestamp;
+  if (age > CACHE_TTL_MS) {
+    apiCache.delete(key);
+    return null;
+  }
+  
+  return entry.data as T;
+}
+
+function setCache<T>(key: string, data: T): void {
+  apiCache.set(key, {
+    data,
+    timestamp: Date.now()
+  });
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // Ensure default user exists
   await storage.upsertUser({
@@ -769,6 +798,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get live account balance from Aster DEX
   app.get("/api/live/account", async (req, res) => {
     try {
+      // Check cache first to prevent rate limiting
+      const cached = getCached<any>('live_account');
+      if (cached) {
+        return res.json(cached);
+      }
+
       const apiKey = process.env.ASTER_API_KEY;
       const secretKey = process.env.ASTER_SECRET_KEY;
 
@@ -806,10 +841,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const usdcBalance = usdcAsset ? parseFloat(usdcAsset.walletBalance) : 0;
       
       // Add USDC balance to response
-      res.json({
+      const result = {
         ...data,
         usdcBalance: usdcBalance.toString()
-      });
+      };
+
+      // Cache the result
+      setCache('live_account', result);
+      
+      res.json(result);
     } catch (error) {
       console.error('Error fetching live account data:', error);
       res.status(500).json({ error: "Failed to fetch live account data" });
@@ -819,6 +859,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get live open positions from Aster DEX
   app.get("/api/live/positions", async (req, res) => {
     try {
+      // Check cache first to prevent rate limiting
+      const cached = getCached<any[]>('live_positions');
+      if (cached) {
+        return res.json(cached);
+      }
+
       const apiKey = process.env.ASTER_API_KEY;
       const secretKey = process.env.ASTER_SECRET_KEY;
 
@@ -852,6 +898,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const data = await response.json();
       // Filter out positions with zero quantity
       const openPositions = data.filter((pos: any) => parseFloat(pos.positionAmt) !== 0);
+
+      // Cache the result
+      setCache('live_positions', openPositions);
+
       res.json(openPositions);
     } catch (error) {
       console.error('Error fetching live positions:', error);
