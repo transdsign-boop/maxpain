@@ -214,7 +214,7 @@ export const frontendStrategySchema = z.object({
   marginMode: z.enum(["cross", "isolated"]).default("cross"),
   leverage: z.number().min(1).max(125).default(1), // 1-125x leverage
   // Smart Order Placement
-  orderDelayMs: z.number().min(100).max(30000).default(1000), // 100ms to 30s
+  orderDelayMs: z.number().min(100).max(30000).default(10000), // 100ms to 30s
   slippageTolerancePercent: z.string().refine((val) => {
     const num = parseFloat(val);
     return !isNaN(num) && num >= 0.1 && num <= 5;
