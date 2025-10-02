@@ -1925,6 +1925,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
               await storage.closePosition(dbPos.id, new Date(), realizedPnlDollar);
             }
           }
+          
+          // Create DB entries for orphaned exchange positions (positions on exchange but not in DB)
+          for (const exPos of exchangePositions) {
+            const posAmt = parseFloat(exPos.positionAmt);
+            if (posAmt !== 0) {
+              const side = posAmt > 0 ? 'long' : 'short';
+              const key = `${exPos.symbol}-${side}`;
+              
+              // Check if this exchange position has a corresponding DB entry
+              const dbPos = dbOpenPositions.find(p => `${p.symbol}-${p.side}` === key);
+              
+              if (!dbPos) {
+                // Orphaned exchange position found - create DB entry for monitoring
+                console.warn(`⚠️ ORPHANED POSITION DETECTED: ${exPos.symbol} ${side} with ${Math.abs(posAmt)} units on exchange but NOT in database`);
+                console.warn(`   This position will now be tracked and monitored for stop-loss`);
+                
+                const entryPrice = parseFloat(exPos.entryPrice);
+                const quantity = Math.abs(posAmt);
+                const totalCost = entryPrice * quantity;
+                
+                // Create position in database so it will be monitored for stop-loss
+                const orphanedPosition = await storage.createPosition({
+                  sessionId: liveSession.id,
+                  symbol: exPos.symbol,
+                  side,
+                  totalQuantity: quantity.toString(),
+                  avgEntryPrice: entryPrice.toString(),
+                  totalCost: totalCost.toString(),
+                  layersFilled: 1,
+                  maxLayers: strategy.maxLayers,
+                  lastLayerPrice: entryPrice.toString(),
+                });
+                
+                console.log(`✅ Created DB entry for orphaned position: ${exPos.symbol} ${side} (ID: ${orphanedPosition.id})`);
+                console.log(`   Entry: $${entryPrice}, Quantity: ${quantity}, Total Cost: $${totalCost.toFixed(2)}`);
+              }
+            }
+          }
         }
 
         // Get account info for balance and unrealized P&L
