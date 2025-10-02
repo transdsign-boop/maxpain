@@ -469,32 +469,8 @@ export default function TradingControlPanel() {
 
             <Separator />
 
-            {/* Trading Mode Toggle */}
-            <FormField
-              control={form.control}
-              name="tradingMode"
-              render={({ field }) => (
-                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                  <div className="space-y-0.5">
-                    <FormLabel data-testid="label-trading-mode">Live Trading Mode</FormLabel>
-                    <FormDescription>
-                      Enable live trading to execute real trades. When off, all trades are simulated.
-                    </FormDescription>
-                  </div>
-                  <FormControl>
-                    <Switch
-                      data-testid="switch-trading-mode"
-                      checked={field.value === "live"}
-                      onCheckedChange={(checked) => field.onChange(checked ? "live" : "paper")}
-                      disabled={isStrategyRunning}
-                    />
-                  </FormControl>
-                </FormItem>
-              )}
-            />
-
             {/* Paper Account Size - Only show in paper mode */}
-            {form.watch("tradingMode") === "paper" && (
+            {activeStrategy?.tradingMode === "paper" && (
               <FormField
                 control={form.control}
                 name="paperAccountSize"

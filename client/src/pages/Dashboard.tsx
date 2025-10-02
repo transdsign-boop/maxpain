@@ -8,6 +8,7 @@ import TradingStrategyDialog from "@/components/TradingStrategyDialog";
 import { StrategyStatus } from "@/components/StrategyStatus";
 import ThemeToggle from "@/components/ThemeToggle";
 import AsterLogo from "@/components/AsterLogo";
+import LiveModeToggle from "@/components/LiveModeToggle";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -503,7 +504,10 @@ export default function Dashboard() {
       <header className="fixed top-0 left-0 right-0 z-50 border-b bg-card/80 backdrop-blur-md">
         {/* Desktop Layout */}
         <div className="hidden lg:flex items-center justify-between px-6 py-3">
-          <AsterLogo data-testid="app-logo" />
+          <div className="flex items-center gap-6">
+            <AsterLogo data-testid="app-logo" />
+            <LiveModeToggle />
+          </div>
 
           <div className="flex items-center gap-8">
             {/* Trading Account Metrics with Visual Hierarchy */}
@@ -635,8 +639,13 @@ export default function Dashboard() {
         <div className="lg:hidden px-4 py-2 space-y-2">
           {/* Top Row: Logo and Controls */}
           <div className="flex items-center justify-between">
-            <div className="scale-75 origin-left">
-              <AsterLogo data-testid="app-logo" />
+            <div className="flex items-center gap-3">
+              <div className="scale-75 origin-left">
+                <AsterLogo data-testid="app-logo" />
+              </div>
+              <div className="scale-90">
+                <LiveModeToggle />
+              </div>
             </div>
 
             <div className="flex items-center gap-2">
