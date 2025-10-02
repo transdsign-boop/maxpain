@@ -1730,20 +1730,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         const exchangePositions = await posResponse.json();
         
-        // Get all fills from the session
-        const sessionFills = liveSession ? await storage.getFillsBySession(liveSession.id) : [];
+        // Fetch actual fills from exchange for all symbols
+        const sessionStartTime = new Date(strategy.liveSessionStartedAt).getTime();
+        const fillsTimestamp = Date.now();
+        const fillsParams = `timestamp=${fillsTimestamp}&limit=1000&startTime=${sessionStartTime}`;
+        const fillsSignature = crypto
+          .createHmac('sha256', secretKey)
+          .update(fillsParams)
+          .digest('hex');
+
+        let allExchangeFills: any[] = [];
+        try {
+          const fillsResponse = await fetch(
+            `https://fapi.asterdex.com/fapi/v1/userTrades?${fillsParams}&signature=${fillsSignature}`,
+            {
+              headers: { 'X-MBX-APIKEY': apiKey },
+            }
+          );
+
+          if (fillsResponse.ok) {
+            allExchangeFills = await fillsResponse.json();
+          }
+        } catch (fillsError) {
+          console.error('Failed to fetch exchange fills for positions:', fillsError);
+        }
         
         // Filter out positions with zero quantity and map to our format
         const positions = exchangePositions
           .filter((pos: any) => parseFloat(pos.positionAmt) !== 0)
           .map((pos: any) => {
             const side = parseFloat(pos.positionAmt) > 0 ? 'long' : 'short';
-            const fillSide = side === 'long' ? 'buy' : 'sell';
+            const targetSide = side === 'long' ? 'BUY' : 'SELL';
             
-            // Get fills for this position (matching symbol and side)
-            const positionFills = sessionFills.filter(f => 
-              f.symbol === pos.symbol && f.side === fillSide
-            );
+            // Get fills for this position from exchange data
+            const positionFills = allExchangeFills
+              .filter((trade: any) => trade.symbol === pos.symbol && trade.side === targetSide)
+              .map((trade: any, index: number) => ({
+                id: `exchange-${trade.id}`,
+                orderId: trade.orderId.toString(),
+                sessionId: 'live-session',
+                positionId: null,
+                symbol: trade.symbol,
+                side: trade.side === 'BUY' ? 'buy' : 'sell',
+                quantity: trade.qty,
+                price: trade.price,
+                value: trade.quoteQty,
+                fee: trade.commission || '0',
+                layerNumber: index + 1,
+                filledAt: new Date(trade.time),
+              }))
+              .sort((a, b) => new Date(a.filledAt).getTime() - new Date(b.filledAt).getTime());
 
             return {
               id: `live-${pos.symbol}-${pos.positionSide}`,
@@ -1757,7 +1793,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               positionSide: pos.positionSide,
               isOpen: true,
               openedAt: positionFills.length > 0 ? positionFills[0].filledAt.toISOString() : new Date().toISOString(),
-              fills: positionFills, // Include fills as layers
+              fills: positionFills, // Include actual exchange fills as layers
             };
           });
 
@@ -2042,39 +2078,97 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const positionSide = parts.pop(); // Last part is position side (LONG/SHORT/BOTH)
         const symbol = parts.join('-'); // Rest is symbol (handles symbols with dashes)
         
-        // Get active strategy to find session
+        // Get active strategy to find session start time
         const strategies = await storage.getStrategiesByUser(DEFAULT_USER_ID);
         const activeStrategy = strategies.find(s => s.isActive && s.tradingMode === 'live');
         
-        if (!activeStrategy) {
+        if (!activeStrategy || !activeStrategy.liveSessionStartedAt) {
           return res.json([]);
         }
 
-        const session = await storage.getActiveTradeSession(activeStrategy.id);
-        if (!session) {
-          return res.json([]);
+        // Fetch actual fills from exchange
+        const apiKey = process.env.ASTER_API_KEY;
+        const secretKey = process.env.ASTER_SECRET_KEY;
+
+        if (!apiKey || !secretKey) {
+          return res.status(400).json({ error: 'Aster DEX API keys not configured' });
         }
 
-        // Get fills for this symbol and determine side from position
-        const sessionFills = await storage.getFillsBySession(session.id);
-        
-        // Determine fill side based on position side
-        let fillSide: string;
-        if (positionSide === 'LONG' || positionSide.includes('LONG')) {
-          fillSide = 'buy';
-        } else if (positionSide === 'SHORT' || positionSide.includes('SHORT')) {
-          fillSide = 'sell';
-        } else {
-          // For BOTH or unknown, return all fills for the symbol
-          const fills = sessionFills.filter(f => f.symbol === symbol);
+        const sessionStartTime = new Date(activeStrategy.liveSessionStartedAt).getTime();
+
+        // Fetch trade history from exchange for this symbol
+        const timestamp = Date.now();
+        const params = `symbol=${symbol}&timestamp=${timestamp}&limit=1000&startTime=${sessionStartTime}`;
+        const signature = crypto
+          .createHmac('sha256', secretKey)
+          .update(params)
+          .digest('hex');
+
+        try {
+          const response = await fetch(
+            `https://fapi.asterdex.com/fapi/v1/userTrades?${params}&signature=${signature}`,
+            {
+              headers: { 'X-MBX-APIKEY': apiKey },
+            }
+          );
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Failed to fetch exchange fills:', errorText);
+            return res.json([]);
+          }
+
+          const exchangeFills = await response.json();
+
+          // Determine fill side based on position side
+          let targetSide: string;
+          if (positionSide === 'LONG' || positionSide.includes('LONG')) {
+            targetSide = 'BUY';
+          } else if (positionSide === 'SHORT' || positionSide.includes('SHORT')) {
+            targetSide = 'SELL';
+          } else {
+            // For BOTH or unknown, return all fills
+            const fills = exchangeFills.map((trade: any, index: number) => ({
+              id: `exchange-${trade.id}`,
+              orderId: trade.orderId.toString(),
+              sessionId: 'live-session',
+              positionId: null,
+              symbol: trade.symbol,
+              side: trade.side === 'BUY' ? 'buy' : 'sell',
+              quantity: trade.qty,
+              price: trade.price,
+              value: trade.quoteQty,
+              fee: trade.commission || '0',
+              layerNumber: index + 1,
+              filledAt: new Date(trade.time),
+            }));
+            return res.json(fills);
+          }
+
+          // Filter and map fills for the specific side
+          const fills = exchangeFills
+            .filter((trade: any) => trade.side === targetSide)
+            .map((trade: any, index: number) => ({
+              id: `exchange-${trade.id}`,
+              orderId: trade.orderId.toString(),
+              sessionId: 'live-session',
+              positionId: null,
+              symbol: trade.symbol,
+              side: trade.side === 'BUY' ? 'buy' : 'sell',
+              quantity: trade.qty,
+              price: trade.price,
+              value: trade.quoteQty,
+              fee: trade.commission || '0',
+              layerNumber: index + 1,
+              filledAt: new Date(trade.time),
+            }))
+            .sort((a, b) => new Date(a.filledAt).getTime() - new Date(b.filledAt).getTime());
+
           return res.json(fills);
+        } catch (error) {
+          console.error('Error fetching exchange fills:', error);
+          return res.json([]);
         }
-
-        const fills = sessionFills
-          .filter(f => f.symbol === symbol && f.side === fillSide)
-          .sort((a, b) => new Date(a.filledAt).getTime() - new Date(b.filledAt).getTime());
-        
-        return res.json(fills);
       }
       
       // Handle database positions
