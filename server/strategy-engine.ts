@@ -487,8 +487,9 @@ export class StrategyEngine extends EventEmitter {
   // Execute initial position entry with smart order placement
   private async executeEntry(strategy: Strategy, session: TradeSession, liquidation: Liquidation, positionSide: string) {
     try {
-      const side = liquidation.side === 'long' ? 'buy' : 'sell'; // Counter-trade
-      const orderSide = liquidation.side === 'long' ? 'long' : 'short';
+      // Counter-trade: if LONG liquidated → go SHORT (sell), if SHORT liquidated → go LONG (buy)
+      const side = liquidation.side === 'long' ? 'sell' : 'buy';
+      const orderSide = liquidation.side === 'long' ? 'short' : 'long';
       const price = parseFloat(liquidation.price);
       
       // Calculate available capital based on account usage percentage
@@ -784,7 +785,7 @@ export class StrategyEngine extends EventEmitter {
         recvWindow: 5000, // 5 second receive window for clock sync tolerance
       };
       
-      // Add positionSide for hedge mode
+      // Add positionSide for hedge mode (exchange must be configured for dual position mode)
       if (positionSide) {
         orderParams.positionSide = positionSide.toUpperCase();
       }
