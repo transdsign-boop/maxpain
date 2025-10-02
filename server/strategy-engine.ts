@@ -783,7 +783,8 @@ export class StrategyEngine extends EventEmitter {
               orderType: strategy.orderType,
               quantity,
               price: orderPrice,
-              positionSide, // Include for hedge mode
+              // Only include positionSide if hedge mode is actually enabled
+              positionSide: strategy.hedgeMode ? positionSide : undefined,
             });
             
             if (!liveOrderResult.success) {
@@ -1976,6 +1977,9 @@ export class StrategyEngine extends EventEmitter {
       // Determine the exit side (opposite of position side)
       const exitSide = position.side === 'long' ? 'sell' : 'buy';
       
+      // Get the strategy to check if hedge mode is enabled
+      const strategy = this.activeStrategies.get(position.strategyId);
+      
       // Place the live order on Aster DEX with automatic precision rounding
       const liveOrderResult = await this.executeLiveOrder({
         symbol: position.symbol,
@@ -1983,7 +1987,8 @@ export class StrategyEngine extends EventEmitter {
         orderType: orderType.toLowerCase(),
         quantity,
         price,
-        positionSide: position.side, // Position side for hedge mode
+        // Only include positionSide if hedge mode is enabled
+        positionSide: strategy?.hedgeMode ? position.side : undefined,
       });
       
       if (!liveOrderResult.success) {
