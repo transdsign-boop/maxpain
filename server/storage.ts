@@ -30,6 +30,7 @@ export interface IStorage {
   getLargestLiquidationSince(timestamp: Date): Promise<Liquidation | undefined>;
   getLiquidationsBySignature(symbol: string, side: string, size: string, price: string, since: Date): Promise<Liquidation[]>;
   getLiquidationsByEventTimestamp(eventTimestamp: string): Promise<Liquidation[]>;
+  deleteOldLiquidations(olderThanDays: number): Promise<number>;
   
   // Analytics operations
   getAvailableAssets(): Promise<{ symbol: string; count: number; latestTimestamp: Date }[]>;
@@ -190,16 +191,30 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAvailableAssets(): Promise<{ symbol: string; count: number; latestTimestamp: Date }[]> {
+    // Only return data from last 5 days
+    const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+    
     const result = await db.select({
       symbol: liquidations.symbol,
       count: sql<number>`COUNT(*)`,
       latestTimestamp: sql<Date>`MAX(${liquidations.timestamp})`
     })
     .from(liquidations)
+    .where(gte(liquidations.timestamp, fiveDaysAgo))
     .groupBy(liquidations.symbol)
-    .orderBy(desc(sql`COUNT(*)`));
+    .orderBy(desc(sql`COUNT(*)`)); // Sort by liquidation count descending
     
     return result;
+  }
+
+  async deleteOldLiquidations(olderThanDays: number): Promise<number> {
+    const cutoffDate = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000);
+    
+    const result = await db.delete(liquidations)
+      .where(sql`${liquidations.timestamp} < ${cutoffDate}`)
+      .returning({ id: liquidations.id });
+    
+    return result.length;
   }
 
   async getLiquidationAnalytics(symbol: string, sinceTimestamp: Date): Promise<Liquidation[]> {

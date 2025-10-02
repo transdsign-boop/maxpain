@@ -36,6 +36,8 @@ Preferred communication style: Simple, everyday language.
 - Configurable refresh intervals for data updates.
 - Dominant direction analysis using order book and funding rate data.
 - Strategy engine evaluates ALL real-time liquidations (including database duplicates) for trade signals.
+- **Data Retention**: Liquidation data automatically retained for 5 days only - older data deleted every 5 minutes during cleanup cycles.
+- **Asset Ranking**: Assets sorted by liquidation count (descending) to show most active trading pairs first.
 
 ### Security & Performance
 - End-to-end TypeScript for type safety.

@@ -2319,7 +2319,13 @@ export class StrategyEngine extends EventEmitter {
           console.log(`  ✓ Fixed ${fixedCount} incorrect stop-loss orders`);
         }
         
-        const totalActions = orphanedCount + staleCount + repairedCount + fixedCount;
+        // 5. Delete liquidations older than 5 days
+        const deletedCount = await storage.deleteOldLiquidations(5);
+        if (deletedCount > 0) {
+          console.log(`  ✓ Deleted ${deletedCount} liquidations older than 5 days`);
+        }
+        
+        const totalActions = orphanedCount + staleCount + repairedCount + fixedCount + deletedCount;
         if (totalActions === 0) {
           console.log('  ✓ All systems healthy, no cleanup needed');
         } else {
@@ -2332,7 +2338,7 @@ export class StrategyEngine extends EventEmitter {
       }
     }, 5 * 60 * 1000); // 5 minutes
     
-    console.log('🧹 Safety monitoring started: Orphaned cleanup + Stale orders + Auto-repair (5 min intervals)');
+    console.log('🧹 Safety monitoring started: Orphaned cleanup + Stale orders + Auto-repair + Data retention (5 min intervals)');
   }
 
   // Remove a pending paper order from tracking
