@@ -126,8 +126,6 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
   const mergedAssets = symbols?.map((symbol: any) => ({
     ...symbol,
     liquidationCount: liquidationCounts?.[symbol.symbol] || 0,
-    // Add liquidity score - higher liquidation count suggests better liquidity
-    liquidityScore: liquidationCounts?.[symbol.symbol] || 0
   }));
 
   const assetsLoading = symbolsLoading || countsLoading;
@@ -165,13 +163,41 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
   const positionSizePercent = parseFloat(form.watch("positionSizePercent") || "5");
   const tradeSize = currentBalance * (positionSizePercent / 100);
 
+  // Fetch real liquidity data for symbols
+  const { data: liquidityData, isLoading: liquidityLoading } = useQuery({
+    queryKey: ['/api/analytics/liquidity/batch', symbols?.map((s: any) => s.symbol), tradeSize],
+    enabled: !!symbols && symbols.length > 0,
+    queryFn: async () => {
+      if (!symbols || symbols.length === 0) return [];
+      
+      const response = await apiRequest('POST', '/api/analytics/liquidity/batch', {
+        symbols: symbols.map((s: any) => s.symbol),
+        tradeSize: tradeSize
+      });
+      return await response.json();
+    },
+    staleTime: 30000, // Cache for 30 seconds
+  });
+
+  // Create liquidity lookup map
+  const liquidityMap: Record<string, any> = {};
+  liquidityData?.forEach((item: any) => {
+    liquidityMap[item.symbol] = item;
+  });
+
+  // Merge liquidity data with assets
+  const assetsWithLiquidity = mergedAssets?.map((asset: any) => ({
+    ...asset,
+    liquidity: liquidityMap[asset.symbol] || { totalLiquidity: 0, canHandleTradeSize: false },
+  }));
+
   // Sort assets based on selected mode
-  const availableAssets = mergedAssets?.slice().sort((a: any, b: any) => {
+  const availableAssets = assetsWithLiquidity?.slice().sort((a: any, b: any) => {
     if (assetSortMode === "alphabetical") {
       return a.symbol.localeCompare(b.symbol);
     } else if (assetSortMode === "liquidity") {
-      // Sort by liquidation count as proxy for liquidity
-      return b.liquidityScore - a.liquidityScore;
+      // Sort by REAL liquidity - use minSideLiquidity (the limiting factor for trades)
+      return (b.liquidity?.minSideLiquidity || 0) - (a.liquidity?.minSideLiquidity || 0);
     } else {
       // Default: sort by liquidation count
       return b.liquidationCount - a.liquidationCount;
@@ -666,12 +692,14 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                       </Select>
                     </div>
                     <FormDescription>
-                      {assetSortMode === "liquidity" ? (
-                        <span>Sorted by best liquidity for your account size (${(tradeSize).toFixed(0)} per trade). High liquidity assets can better handle your position sizes.</span>
+                      {liquidityLoading ? (
+                        <span>Loading real-time order book data...</span>
+                      ) : assetSortMode === "liquidity" ? (
+                        <span>Sorted by limiting side liquidity (min of bid/ask depth). Your trade size: ${(tradeSize).toFixed(0)}. ✓ = both sides can fill your order.</span>
                       ) : assetSortMode === "alphabetical" ? (
-                        <span>Assets sorted alphabetically for easy browsing</span>
+                        <span>Assets sorted alphabetically</span>
                       ) : (
-                        <span>Sorted by liquidation activity. High activity = better liquidity and more trading opportunities.</span>
+                        <span>Sorted by liquidation activity (not real liquidity - switch to "Best Liquidity" for real order book depth)</span>
                       )}
                     </FormDescription>
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-2">
@@ -698,14 +726,14 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                             <span className="text-xs text-muted-foreground">
                               ({asset.liquidationCount})
                             </span>
-                            {asset.liquidationCount >= 50 && (
+                            {!liquidityLoading && asset.liquidity && asset.liquidity.canHandleTradeSize && (
                               <Badge variant="outline" className="ml-1 text-[10px] px-1 py-0 h-4 bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20">
-                                High Liquidity
+                                ✓ ${(asset.liquidity.minSideLiquidity / 1000).toFixed(0)}k
                               </Badge>
                             )}
-                            {asset.liquidationCount >= 20 && asset.liquidationCount < 50 && (
-                              <Badge variant="outline" className="ml-1 text-[10px] px-1 py-0 h-4 bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/20">
-                                Medium
+                            {!liquidityLoading && asset.liquidity && !asset.liquidity.canHandleTradeSize && asset.liquidity.minSideLiquidity > 0 && (
+                              <Badge variant="outline" className="ml-1 text-[10px] px-1 py-0 h-4 bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20">
+                                ⚠ ${(asset.liquidity.minSideLiquidity / 1000).toFixed(0)}k {asset.liquidity.limitingSide}
                               </Badge>
                             )}
                           </label>

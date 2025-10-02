@@ -472,6 +472,83 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Batch liquidity endpoint - fetch order book depth for multiple symbols
+  app.post("/api/analytics/liquidity/batch", async (req, res) => {
+    try {
+      const { symbols, tradeSize } = req.body as { symbols: string[]; tradeSize?: number };
+      
+      if (!symbols || !Array.isArray(symbols) || symbols.length === 0) {
+        return res.status(400).json({ error: "symbols array required" });
+      }
+
+      const liquidityData = await Promise.all(
+        symbols.map(async (symbol) => {
+          try {
+            // Fetch order book data from Aster DEX
+            const orderBookResponse = await fetch(
+              `https://fapi.asterdex.com/fapi/v1/depth?symbol=${symbol}&limit=20`,
+              {
+                headers: {
+                  'X-MBX-APIKEY': process.env.ASTER_API_KEY || ''
+                }
+              }
+            );
+
+            if (!orderBookResponse.ok) {
+              return {
+                symbol,
+                error: true,
+                totalLiquidity: 0,
+                canHandleTradeSize: false
+              };
+            }
+
+            const orderBook = await orderBookResponse.json();
+            const bids = orderBook.bids || [];
+            const asks = orderBook.asks || [];
+
+            // Calculate total liquidity (in USD value)
+            const bidDepth = bids.reduce((sum: number, [price, quantity]: [string, string]) => 
+              sum + parseFloat(price) * parseFloat(quantity), 0);
+            const askDepth = asks.reduce((sum: number, [price, quantity]: [string, string]) => 
+              sum + parseFloat(price) * parseFloat(quantity), 0);
+            
+            const totalLiquidity = bidDepth + askDepth;
+            
+            // Check EACH side can handle the trade size (need both for longs and shorts)
+            // For a LONG (buy) you need sufficient asks, for SHORT (sell) you need sufficient bids
+            // Require 2x the trade size as safety margin to avoid complete book depletion
+            const minSideLiquidity = Math.min(bidDepth, askDepth);
+            const canHandleTradeSize = tradeSize ? minSideLiquidity >= tradeSize * 2 : true;
+
+            return {
+              symbol,
+              totalLiquidity: parseFloat(totalLiquidity.toFixed(2)),
+              bidDepth: parseFloat(bidDepth.toFixed(2)),
+              askDepth: parseFloat(askDepth.toFixed(2)),
+              minSideLiquidity: parseFloat(minSideLiquidity.toFixed(2)),
+              canHandleTradeSize,
+              limitingSide: bidDepth < askDepth ? 'bid' : 'ask',
+              error: false
+            };
+          } catch (error) {
+            return {
+              symbol,
+              error: true,
+              totalLiquidity: 0,
+              canHandleTradeSize: false
+            };
+          }
+        })
+      );
+
+      res.json(liquidityData);
+    } catch (error) {
+      console.error('Batch liquidity fetch error:', error);
+      res.status(500).json({ error: "Failed to fetch liquidity data" });
+    }
+  });
+
   app.get("/api/analytics/funding", async (req, res) => {
     try {
       const symbol = req.query.symbol as string;

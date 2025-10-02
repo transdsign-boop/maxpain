@@ -39,7 +39,11 @@ Preferred communication style: Simple, everyday language.
 - Dominant direction analysis using order book and funding rate data.
 - Strategy engine evaluates ALL real-time liquidations (including database duplicates) for trade signals.
 - **Data Retention**: Liquidation data automatically retained for 5 days only - older data deleted every 5 minutes during cleanup cycles.
-- **Asset Ranking**: Assets sorted by liquidation count (descending) to show most active trading pairs first.
+- **Asset Ranking**: Three sorting modes available:
+  - **Liquidation Activity** (default): Sorted by liquidation count, showing most active trading pairs first.
+  - **Best Liquidity**: Sorted by real-time order book depth (min of bid/ask liquidity) from Aster DEX API.
+  - **Alphabetical**: Simple A-Z sorting.
+- **Real-time Liquidity Metrics**: Batch endpoint (`/api/analytics/liquidity/batch`) fetches order book depth for multiple symbols, calculates bid/ask liquidity in USD, and determines if each side can handle 2x the user's trade size. Uses minimum of bid/ask depth as limiting factor since longs need asks and shorts need bids.
 
 ### Security & Performance
 - End-to-end TypeScript for type safety.
