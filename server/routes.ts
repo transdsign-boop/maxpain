@@ -1690,18 +1690,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({ error: "Aster DEX API keys not configured" });
         }
 
-        // Get or create a live session for tracking fills
+        // Get the active session (should exist from mode switch, but create if missing)
         let liveSession = await storage.getActiveTradeSession(strategyId);
-        if (!liveSession) {
+        if (!liveSession || liveSession.mode !== 'live') {
+          // Session doesn't exist or is wrong mode - create new live session
           liveSession = await storage.createTradeSession({
-            id: randomUUID(),
             strategyId,
             mode: 'live',
             startingBalance: '0', // Will be set from exchange
             currentBalance: '0',
-            isActive: true,
-            startedAt: new Date()
+            isActive: true
           });
+          console.log(`✅ Created fallback live session: ${liveSession.id}`);
         }
 
         // Sync fills from exchange to database
@@ -2083,32 +2083,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: 'Strategy not found' });
       }
 
-      // Get active session for both live and paper modes
-      const session = await storage.getActiveTradeSession(strategyId);
+      // Get ALL sessions for this strategy and filter by current trading mode
+      const allSessions = await storage.getSessionsByStrategy(strategyId);
+      const modeSessions = allSessions.filter(s => s.mode === strategy.tradingMode);
       
-      if (!session) {
-        return res.status(404).json({ error: 'No active trade session found for this strategy' });
+      if (modeSessions.length === 0) {
+        return res.json([]);
       }
 
-      // Fetch closed positions from database (works for both live and paper modes)
-      // Live mode positions are synced from exchange via syncLiveFills() and marked as closed when exits occur
-      const closedPositions = await storage.getClosedPositions(session.id);
+      // Get closed positions from ALL sessions matching the current mode
+      const allClosedPositions: any[] = [];
+      const allFills: any[] = [];
       
-      // Fetch fills for all closed positions to calculate total fees
-      const sessionFills = await storage.getFillsBySession(session.id);
+      for (const session of modeSessions) {
+        const sessionClosedPositions = await storage.getClosedPositions(session.id);
+        const sessionFills = await storage.getFillsBySession(session.id);
+        allClosedPositions.push(...sessionClosedPositions);
+        allFills.push(...sessionFills);
+      }
       
       // Enhance closed positions with fee information
-      const closedPositionsWithFees = closedPositions.map(position => {
+      const closedPositionsWithFees = allClosedPositions.map(position => {
         // Get fills for this specific position:
         // 1. Exit fill has synthetic orderId = `exit-${position.id}`
         // 2. Entry fills match by symbol AND fall within position's time window
-        const exitFill = sessionFills.find(fill => fill.orderId === `exit-${position.id}`);
+        const exitFill = allFills.find(fill => fill.orderId === `exit-${position.id}`);
         
         // For entry fills, match by symbol and timestamp within position lifetime
         const positionOpenTime = new Date(position.openedAt).getTime();
         const positionCloseTime = position.closedAt ? new Date(position.closedAt).getTime() : Date.now();
         
-        const entryFills = sessionFills.filter(fill => {
+        const entryFills = allFills.filter(fill => {
           if (fill.symbol !== position.symbol) return false;
           if (fill.orderId.startsWith('exit-')) return false; // Exclude exit fills
           
