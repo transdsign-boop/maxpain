@@ -2084,27 +2084,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: 'Strategy not found' });
       }
 
-      // Get active session - only show trades from current session
-      const session = await storage.getActiveTradeSession(strategyId);
+      // Get ALL sessions for this strategy and filter by current trading mode
+      // This preserves historical data when switching between modes
+      const allSessions = await storage.getSessionsByStrategy(strategyId);
+      const modeSessions = allSessions.filter(s => s.mode === strategy.tradingMode);
       
-      if (!session || session.mode !== strategy.tradingMode) {
+      if (modeSessions.length === 0) {
         return res.json([]);
       }
 
-      // For LIVE mode: filter positions closed AFTER liveSessionStartedAt
-      // For PAPER mode: show all positions from active paper session
-      let allClosedPositions = await storage.getClosedPositions(session.id);
+      // Get closed positions from ALL sessions matching the current mode
+      const allClosedPositions: any[] = [];
+      const allFills: any[] = [];
       
-      if (strategy.tradingMode === 'live' && strategy.liveSessionStartedAt) {
-        const sessionStartTime = new Date(strategy.liveSessionStartedAt).getTime();
-        allClosedPositions = allClosedPositions.filter(pos => {
-          const closedTime = pos.closedAt ? new Date(pos.closedAt).getTime() : 0;
-          return closedTime >= sessionStartTime;
-        });
+      for (const session of modeSessions) {
+        const sessionClosedPositions = await storage.getClosedPositions(session.id);
+        const sessionFills = await storage.getFillsBySession(session.id);
+        allClosedPositions.push(...sessionClosedPositions);
+        allFills.push(...sessionFills);
       }
-
-      // Get fills for these positions
-      const allFills = await storage.getFillsBySession(session.id);
       
       // Enhance closed positions with fee information
       const closedPositionsWithFees = allClosedPositions.map(position => {
