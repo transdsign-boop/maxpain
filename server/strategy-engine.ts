@@ -987,6 +987,98 @@ export class StrategyEngine extends EventEmitter {
     }
   }
 
+  // Get all exchange positions from Aster DEX
+  private async getExchangePositions(): Promise<any[]> {
+    try {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+      
+      if (!apiKey || !secretKey) {
+        console.error('❌ Aster DEX API keys not configured');
+        return [];
+      }
+      
+      const timestamp = Date.now();
+      const queryString = `timestamp=${timestamp}&recvWindow=5000`;
+      
+      const signature = createHmac('sha256', secretKey)
+        .update(queryString)
+        .digest('hex');
+      
+      const signedParams = `${queryString}&signature=${signature}`;
+      
+      const response = await fetch(`https://fapi.asterdex.com/fapi/v2/positionRisk?${signedParams}`, {
+        method: 'GET',
+        headers: {
+          'X-MBX-APIKEY': apiKey,
+        },
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ Failed to fetch exchange positions: ${response.status} ${errorText}`);
+        return [];
+      }
+      
+      const positions = await response.json();
+      return positions;
+    } catch (error) {
+      console.error('❌ Error fetching exchange positions:', error);
+      return [];
+    }
+  }
+
+  // Cancel an order on Aster DEX
+  private async cancelExchangeOrder(symbol: string, orderId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+      
+      if (!apiKey || !secretKey) {
+        console.error('❌ Aster DEX API keys not configured');
+        return { success: false, error: 'API keys not configured' };
+      }
+      
+      const timestamp = Date.now();
+      const orderParams: Record<string, string | number> = {
+        symbol,
+        orderId,
+        timestamp,
+        recvWindow: 5000,
+      };
+      
+      const queryString = Object.entries(orderParams)
+        .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
+        .map(([k, v]) => `${k}=${v}`)
+        .join('&');
+      
+      const signature = createHmac('sha256', secretKey)
+        .update(queryString)
+        .digest('hex');
+      
+      const signedParams = `${queryString}&signature=${signature}`;
+      
+      const response = await fetch(`https://fapi.asterdex.com/fapi/v1/order?${signedParams}`, {
+        method: 'DELETE',
+        headers: {
+          'X-MBX-APIKEY': apiKey,
+        },
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ Failed to cancel order ${orderId}: ${response.status} ${errorText}`);
+        return { success: false, error: errorText };
+      }
+      
+      console.log(`✅ Canceled order ${orderId} for ${symbol}`);
+      return { success: true };
+    } catch (error) {
+      console.error('❌ Error canceling order:', error);
+      return { success: false, error: String(error) };
+    }
+  }
+
   // Get all open orders from Aster DEX
   private async getOpenOrders(): Promise<any[]> {
     try {
@@ -1106,7 +1198,7 @@ export class StrategyEngine extends EventEmitter {
       // Get all active positions for all live sessions
       const positionsMap = new Map<string, Map<string, Position>>();
       for (const session of liveSessions) {
-        const positions = await storage.getActivePositions(session.id);
+        const positions = await storage.getOpenPositions(session.id);
         const sessionPositions = new Map<string, Position>();
         
         for (const position of positions) {
@@ -1158,7 +1250,7 @@ export class StrategyEngine extends EventEmitter {
         // Check if matching position exists across all live sessions
         let shouldCancel = true;
         
-        for (const [sessionId, sessionPositions] of positionsMap.entries()) {
+        for (const [sessionId, sessionPositions] of Array.from(positionsMap.entries())) {
           // Find strategy for this session to check hedge mode
           let hedgeMode = false;
           this.activeStrategies.forEach((strategy) => {
@@ -1315,16 +1407,27 @@ export class StrategyEngine extends EventEmitter {
           continue;
         }
         
-        // Find corresponding database position
+        // Find corresponding database position and strategy
         let dbPosition: Position | undefined;
+        let strategy: Strategy | undefined;
+        
         for (const session of liveSessions) {
           const positions = await storage.getOpenPositions(session.id);
           dbPosition = positions.find(p => 
             p.symbol === symbol && 
-            p.positionSide === side && 
+            p.side.toLowerCase() === side.toLowerCase() && 
             p.isOpen
           );
-          if (dbPosition) break;
+          if (dbPosition) {
+            // Get strategy from session
+            for (const [stratId, sess] of Array.from(this.activeSessions.entries())) {
+              if (sess.id === session.id) {
+                strategy = this.activeStrategies.get(stratId);
+                if (strategy) break;
+              }
+            }
+            break;
+          }
         }
         
         if (!dbPosition) {
@@ -1332,7 +1435,6 @@ export class StrategyEngine extends EventEmitter {
           continue;
         }
         
-        const strategy = this.activeStrategies.get(dbPosition.strategyId);
         if (!strategy) continue;
         
         const stopLossPercent = parseFloat(strategy.stopLossPercent);
@@ -1465,16 +1567,27 @@ export class StrategyEngine extends EventEmitter {
         
         if (positionAmt === 0) continue;
         
-        // Find corresponding database position
+        // Find corresponding database position and strategy
         let dbPosition: Position | undefined;
+        let strategy: Strategy | undefined;
+        
         for (const session of liveSessions) {
           const positions = await storage.getOpenPositions(session.id);
           dbPosition = positions.find(p => 
             p.symbol === symbol && 
-            p.positionSide?.toUpperCase() === side.toUpperCase() && 
+            p.side.toLowerCase() === side.toLowerCase() && 
             p.isOpen
           );
-          if (dbPosition) break;
+          if (dbPosition) {
+            // Get strategy from session
+            for (const [stratId, sess] of Array.from(this.activeSessions.entries())) {
+              if (sess.id === session.id) {
+                strategy = this.activeStrategies.get(stratId);
+                if (strategy) break;
+              }
+            }
+            break;
+          }
         }
         
         if (!dbPosition) {
@@ -1482,7 +1595,6 @@ export class StrategyEngine extends EventEmitter {
           continue;
         }
         
-        const strategy = this.activeStrategies.get(dbPosition.strategyId);
         if (!strategy) continue;
         
         const stopLossPercent = parseFloat(strategy.stopLossPercent);
@@ -1977,8 +2089,14 @@ export class StrategyEngine extends EventEmitter {
       // Determine the exit side (opposite of position side)
       const exitSide = position.side === 'long' ? 'sell' : 'buy';
       
-      // Get the strategy to check if hedge mode is enabled
-      const strategy = this.activeStrategies.get(position.strategyId);
+      // Get the strategy from session
+      let strategy: Strategy | undefined;
+      for (const [stratId, sess] of Array.from(this.activeSessions.entries())) {
+        if (sess.id === position.sessionId) {
+          strategy = this.activeStrategies.get(stratId);
+          if (strategy) break;
+        }
+      }
       
       // Place the live order on Aster DEX with automatic precision rounding
       const liveOrderResult = await this.executeLiveOrder({
