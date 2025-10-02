@@ -810,9 +810,46 @@ export class StrategyEngine extends EventEmitter {
               layerNumber,
             });
             
-            // Record the fill locally for position tracking
-            // Note: In production, you'd sync fills from Aster DEX API
-            await this.fillPaperOrder(order, orderPrice, quantity);
+            // Fetch actual fill data from exchange (with retry logic for fill propagation delay)
+            let actualFillData: any = null;
+            let retryCount = 0;
+            const maxRetries = 3;
+            
+            while (retryCount < maxRetries && liveOrderResult.orderId) {
+              // Small delay to allow exchange to process the fill
+              if (retryCount > 0) {
+                await new Promise(resolve => setTimeout(resolve, 500)); // 500ms between retries
+              }
+              
+              const fillResult = await this.fetchActualFills({
+                symbol,
+                orderId: liveOrderResult.orderId,
+              });
+              
+              if (fillResult.success && fillResult.fills && fillResult.fills.length > 0) {
+                actualFillData = fillResult.fills[0]; // Use first fill (most recent)
+                break;
+              }
+              
+              retryCount++;
+            }
+            
+            if (actualFillData) {
+              // Use ACTUAL fill data from exchange
+              const actualPrice = parseFloat(actualFillData.price);
+              const actualQty = parseFloat(actualFillData.qty);
+              const actualCommission = parseFloat(actualFillData.commission);
+              
+              console.log(`💎 Using REAL exchange data - Price: $${actualPrice}, Qty: ${actualQty}, Fee: $${actualCommission.toFixed(4)}`);
+              console.log(`📊 Fill type: ${actualFillData.maker ? 'MAKER' : 'TAKER'}`);
+              
+              // Record fill with ACTUAL exchange data (price, qty, commission)
+              await this.fillLiveOrder(order, actualPrice, actualQty, actualCommission);
+            } else {
+              console.warn(`⚠️ Could not fetch actual fill data after ${maxRetries} attempts, using order price as fallback`);
+              // Fallback to order price if we couldn't fetch actual fill
+              await this.fillPaperOrder(order, orderPrice, quantity);
+            }
           } else {
             // Paper trading mode - simulate the order locally
             const order = await storage.placePaperOrder({
@@ -1011,6 +1048,79 @@ export class StrategyEngine extends EventEmitter {
       return { success: true, orderId: result.orderId };
     } catch (error) {
       console.error('❌ Error executing live order:', error);
+      return { success: false, error: String(error) };
+    }
+  }
+
+  // Fetch actual fill data from Aster DEX for a specific order
+  private async fetchActualFills(params: {
+    symbol: string;
+    orderId: string;
+  }): Promise<{
+    success: boolean;
+    fills?: Array<{
+      price: string;
+      qty: string;
+      commission: string;
+      commissionAsset: string;
+      realizedPnl: string;
+      time: number;
+      maker: boolean;
+    }>;
+    error?: string;
+  }> {
+    try {
+      const { symbol, orderId } = params;
+      
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+      
+      if (!apiKey || !secretKey) {
+        return { success: false, error: 'API keys not configured' };
+      }
+      
+      // Build request parameters
+      const timestamp = Date.now();
+      const queryParams: Record<string, string | number> = {
+        symbol,
+        orderId,
+        timestamp,
+        recvWindow: 5000,
+      };
+      
+      // Create query string (sorted alphabetically)
+      const queryString = Object.entries(queryParams)
+        .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
+        .map(([k, v]) => `${k}=${v}`)
+        .join('&');
+      
+      // Generate signature
+      const signature = createHmac('sha256', secretKey)
+        .update(queryString)
+        .digest('hex');
+      
+      const signedParams = `${queryString}&signature=${signature}`;
+      
+      // Fetch actual fills from exchange
+      const response = await fetch(`https://fapi.asterdex.com/fapi/v1/userTrades?${signedParams}`, {
+        method: 'GET',
+        headers: {
+          'X-MBX-APIKEY': apiKey,
+        },
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ Failed to fetch fills: ${response.status} ${errorText}`);
+        return { success: false, error: `HTTP ${response.status}: ${errorText}` };
+      }
+      
+      const fills = await response.json();
+      console.log(`✅ Fetched ${fills.length} actual fill(s) from exchange for order ${orderId}`);
+      
+      return { success: true, fills };
+    } catch (error) {
+      console.error('❌ Error fetching actual fills:', error);
       return { success: false, error: String(error) };
     }
   }
@@ -1803,6 +1913,62 @@ export class StrategyEngine extends EventEmitter {
       layerNumber: order.layerNumber,
       price: fillPrice,
       quantity: fillQuantity,
+      value: fillValue
+    });
+    
+    // Update cooldown timestamp to prevent rapid-fire entries
+    const cooldownKey = `${order.sessionId}-${order.symbol}-${position.side}`;
+    this.lastFillTime.set(cooldownKey, Date.now());
+    console.log(`⏰ Fill cooldown started for ${position.symbol} ${position.side} (${this.fillCooldownMs / 1000}s)`);
+  }
+
+  // Fill a live order using ACTUAL exchange data (price, qty, commission)
+  private async fillLiveOrder(order: Order, actualFillPrice: number, actualFillQty: number, actualCommission: number) {
+    // Update order status
+    await storage.updateOrderStatus(order.id, 'filled', new Date());
+
+    // FIRST: Ensure position exists and get its ID
+    const position = await this.ensurePositionForFill(order, actualFillPrice, actualFillQty);
+
+    // Create fill record with ACTUAL exchange data
+    const fillValue = actualFillPrice * actualFillQty;
+    
+    await storage.applyFill({
+      orderId: order.id,
+      sessionId: order.sessionId,
+      positionId: position.id, // Link fill to position
+      symbol: order.symbol,
+      side: order.side,
+      quantity: actualFillQty.toString(),
+      price: actualFillPrice.toString(),
+      value: fillValue.toString(),
+      fee: actualCommission.toString(), // ✅ ACTUAL commission from exchange
+      layerNumber: order.layerNumber,
+    });
+
+    // Deduct ACTUAL entry fee from session balance
+    const session = this.activeSessions.get(order.sessionId);
+    if (session) {
+      const currentBalance = parseFloat(session.currentBalance);
+      const newBalance = currentBalance - actualCommission; // Use actual commission
+      
+      await storage.updateTradeSession(session.id, {
+        currentBalance: newBalance.toString(),
+      });
+      
+      session.currentBalance = newBalance.toString();
+      const feePercent = (actualCommission / fillValue) * 100;
+      console.log(`💸 REAL entry fee applied: $${actualCommission.toFixed(4)} (${feePercent.toFixed(3)}% of $${fillValue.toFixed(2)}) - from exchange`);
+    }
+
+    // Broadcast trade notification to connected clients
+    this.broadcastTradeNotification({
+      symbol: order.symbol,
+      side: position.side as 'long' | 'short',
+      tradeType: order.layerNumber === 1 ? 'entry' : 'layer',
+      layerNumber: order.layerNumber,
+      price: actualFillPrice,
+      quantity: actualFillQty,
       value: fillValue
     });
     
