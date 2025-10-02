@@ -44,6 +44,12 @@ Preferred communication style: Simple, everyday language.
   - **Best Liquidity**: Sorted by real-time order book depth (min of bid/ask liquidity) from Aster DEX API.
   - **Alphabetical**: Simple A-Z sorting.
 - **Real-time Liquidity Metrics**: Batch endpoint (`/api/analytics/liquidity/batch`) fetches order book depth for multiple symbols, calculates bid/ask liquidity in USD, and determines if each side can handle 2x the user's trade size. Uses minimum of bid/ask depth as limiting factor since longs need asks and shorts need bids.
+- **Intelligent Recommendations**: System recommends assets and risk parameters based on account size:
+  - **Account Tiers**: Micro (<$1k), Small ($1k-$10k), Mid ($10k-$50k), Large (>$50k) with tier-appropriate liquidity requirements (5x, 10x, 15x, 25x trade size respectively).
+  - **Asset Recommendations**: Filters assets meeting liquidity thresholds for user's account tier, displayed with green badges in asset selection.
+  - **Automated Risk Calculations**: Recommends order size (40% of minimum side liquidity), stop loss % (1.0-2.5% based on tier), take profit % (1.5-2x stop loss based on liquidity ratio), and max layers (constrained by liquidity depth).
+  - **Limiting Asset Detection**: Identifies the asset with lowest liquidity in selection and optimizes all parameters for that constraint.
+  - **Visual Warnings**: Orange warning badges appear when user settings exceed safe recommendations (position size too large, layers exceed liquidity capacity, risk parameters inappropriate for asset liquidity).
 
 ### Security & Performance
 - End-to-end TypeScript for type safety.
