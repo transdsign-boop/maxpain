@@ -92,7 +92,15 @@ function CompletedTradeCard({ position, formatCurrency, formatPercentage, getPnl
   // realizedPnl is stored as percentage in the database (in the realizedPnl field)
   const realizedPnlPercent = parseFloat(position.realizedPnl || position.unrealizedPnl);
   const totalCost = parseFloat(position.totalCost);
-  const realizedPnlDollar = (realizedPnlPercent / 100) * totalCost;
+  
+  // Get leverage from position (positions table stores leverage)
+  const leverage = (position as any).leverage || 1;
+  
+  // Calculate notional value (totalCost stores margin, multiply by leverage for notional)
+  const notionalValue = totalCost * leverage;
+  
+  // Calculate dollar P&L from percentage and NOTIONAL position size (not margin)
+  const realizedPnlDollar = (realizedPnlPercent / 100) * notionalValue;
   const avgEntry = parseFloat(position.avgEntryPrice);
   
   // Separate entry and exit fills/fees
