@@ -30,11 +30,20 @@ export interface PositionUpdate {
   shouldExit: boolean;
 }
 
+interface SymbolPrecision {
+  quantityPrecision: number;
+  pricePrecision: number;
+  stepSize: string;
+  tickSize: string;
+}
+
 export class StrategyEngine extends EventEmitter {
   private activeStrategies: Map<string, Strategy> = new Map();
   private activeSessions: Map<string, TradeSession> = new Map();
   private liquidationHistory: Map<string, Liquidation[]> = new Map(); // symbol -> liquidations
   private priceCache: Map<string, number> = new Map(); // symbol -> latest price
+  private symbolPrecisionCache: Map<string, SymbolPrecision> = new Map(); // symbol -> precision info
+  private exchangeInfoFetched = false; // Track if exchange info has been fetched
   private pendingPaperOrders: Map<string, {
     order: Order;
     strategy: Strategy;
@@ -62,12 +71,74 @@ export class StrategyEngine extends EventEmitter {
     this.on('liquidation', this.handleLiquidation.bind(this));
   }
 
+  // Fetch exchange info to get symbol precision requirements
+  private async fetchExchangeInfo() {
+    if (this.exchangeInfoFetched) return;
+    
+    try {
+      const response = await fetch('https://fapi.asterdex.com/fapi/v1/exchangeInfo');
+      if (!response.ok) {
+        console.error('❌ Failed to fetch exchange info:', response.statusText);
+        return;
+      }
+      
+      const data = await response.json();
+      
+      // Cache precision info for each symbol
+      for (const symbol of data.symbols || []) {
+        const lotSizeFilter = symbol.filters?.find((f: any) => f.filterType === 'LOT_SIZE');
+        const priceFilter = symbol.filters?.find((f: any) => f.filterType === 'PRICE_FILTER');
+        
+        if (lotSizeFilter && priceFilter) {
+          this.symbolPrecisionCache.set(symbol.symbol, {
+            quantityPrecision: symbol.quantityPrecision || 8,
+            pricePrecision: symbol.pricePrecision || 8,
+            stepSize: lotSizeFilter.stepSize || '1',
+            tickSize: priceFilter.tickSize || '0.01',
+          });
+        }
+      }
+      
+      this.exchangeInfoFetched = true;
+      console.log(`✅ Cached precision info for ${this.symbolPrecisionCache.size} symbols`);
+    } catch (error) {
+      console.error('❌ Error fetching exchange info:', error);
+    }
+  }
+
+  // Round quantity to match exchange precision requirements
+  private roundQuantity(symbol: string, quantity: number): number {
+    const precision = this.symbolPrecisionCache.get(symbol);
+    if (!precision) {
+      console.warn(`⚠️ No precision info for ${symbol}, using default rounding`);
+      return Math.floor(quantity * 100) / 100; // Default to 2 decimals
+    }
+    
+    const multiplier = Math.pow(10, precision.quantityPrecision);
+    return Math.floor(quantity * multiplier) / multiplier;
+  }
+
+  // Round price to match exchange precision requirements
+  private roundPrice(symbol: string, price: number): number {
+    const precision = this.symbolPrecisionCache.get(symbol);
+    if (!precision) {
+      console.warn(`⚠️ No precision info for ${symbol}, using default rounding`);
+      return Math.floor(price * 100) / 100; // Default to 2 decimals
+    }
+    
+    const multiplier = Math.pow(10, precision.pricePrecision);
+    return Math.floor(price * multiplier) / multiplier;
+  }
+
   // Start the strategy engine
   async start() {
     if (this.isRunning) return;
     
     console.log('🚀 StrategyEngine starting...');
     this.isRunning = true;
+    
+    // Fetch exchange info for precision requirements (for live trading)
+    await this.fetchExchangeInfo();
     
     // Load active strategies and sessions
     await this.loadActiveStrategies();
@@ -692,20 +763,24 @@ export class StrategyEngine extends EventEmitter {
         return { success: false, error: 'Invalid price' };
       }
       
+      // Round quantity and price to exchange precision requirements
+      const roundedQuantity = this.roundQuantity(symbol, quantity);
+      const roundedPrice = this.roundPrice(symbol, price);
+      
       // Prepare order parameters for Aster DEX API (Binance-style)
       const timestamp = Date.now();
       const orderParams: Record<string, string | number> = {
         symbol,
         side: side.toUpperCase(),
         type: orderType.toUpperCase(),
-        quantity: quantity.toFixed(8),
+        quantity: roundedQuantity,
         timestamp,
         recvWindow: 5000, // 5 second receive window for clock sync tolerance
       };
       
       // Add price for limit orders, timeInForce for all orders
       if (orderType.toLowerCase() === 'limit') {
-        orderParams.price = price.toFixed(8);
+        orderParams.price = roundedPrice;
         orderParams.timeInForce = 'GTC'; // Good Till Cancel
       }
       
@@ -723,7 +798,7 @@ export class StrategyEngine extends EventEmitter {
       // Add signature to parameters
       const signedParams = `${queryString}&signature=${signature}`;
       
-      console.log(`🔴 LIVE ORDER: Executing ${side} ${quantity.toFixed(4)} ${symbol} at $${price}`);
+      console.log(`🔴 LIVE ORDER: Executing ${side} ${roundedQuantity} ${symbol} at $${roundedPrice}`);
       console.log(`📡 Order type: ${orderType.toUpperCase()}`);
       console.log(`🔐 Signed request length: ${signedParams.length} chars`);
       
