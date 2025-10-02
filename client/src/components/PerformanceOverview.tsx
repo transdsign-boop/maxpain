@@ -47,6 +47,16 @@ interface LiveAccountData {
   maxWithdrawAmount: string;
 }
 
+interface SessionSummary {
+  sessionId: string;
+  startingBalance: number;
+  currentBalance: number;
+  totalPnl: number;
+  realizedPnl: number;
+  unrealizedPnl: number;
+  totalExposure: number;
+}
+
 export default function PerformanceOverview() {
   
   // Fetch active strategy to check if live trading is enabled
@@ -56,6 +66,14 @@ export default function PerformanceOverview() {
   });
   const activeStrategy = strategies?.find(s => s.isActive);
   const isLiveMode = activeStrategy?.tradingMode === 'live';
+
+  // Fetch paper session data
+  const { data: paperSession, isLoading: paperSessionLoading } = useQuery<SessionSummary>({
+    queryKey: ['/api/strategies', activeStrategy?.id, 'positions', 'summary'],
+    refetchInterval: 5000,
+    enabled: !isLiveMode && !!activeStrategy,
+    retry: 2,
+  });
 
   // Fetch live account data when in live mode
   const { data: liveAccount, isLoading: liveAccountLoading } = useQuery<LiveAccountData>({
@@ -222,7 +240,7 @@ export default function PerformanceOverview() {
 
   // Use live performance data if in live mode, otherwise use paper trading data
   const displayPerformance = isLiveMode ? livePerformance : performance;
-  const displayLoading = isLiveMode ? (liveAccountLoading || liveTradesLoading) : isLoading;
+  const displayLoading = isLiveMode ? (liveAccountLoading || liveTradesLoading) : (isLoading || paperSessionLoading);
 
   if (displayLoading || !displayPerformance) {
     return (
@@ -330,10 +348,22 @@ export default function PerformanceOverview() {
     return null;
   };
 
-  // Calculate live mode P&L if available
-  const liveBalance = liveAccount ? parseFloat(liveAccount.totalWalletBalance) : 0;
-  const liveUnrealizedPnl = liveAccount ? parseFloat(liveAccount.totalUnrealizedProfit) : 0;
-  const liveAvailableBalance = liveAccount ? parseFloat(liveAccount.availableBalance) : 0;
+  // Calculate unified account metrics (same for both live and paper)
+  const totalBalance = isLiveMode 
+    ? (liveAccount ? parseFloat(liveAccount.totalWalletBalance) : 0)
+    : (paperSession?.currentBalance || 0);
+  
+  const unrealizedPnl = isLiveMode 
+    ? (liveAccount ? parseFloat(liveAccount.totalUnrealizedProfit) : 0)
+    : (paperSession?.unrealizedPnl || 0);
+  
+  // Calculate available balance accounting for margin in use
+  // For paper mode, subtract margin usage (totalExposure / leverage)
+  const leverage = activeStrategy?.leverage || 1;
+  const paperMarginInUse = paperSession ? (paperSession.totalExposure / leverage) : 0;
+  const availableBalance = isLiveMode 
+    ? (liveAccount ? parseFloat(liveAccount.availableBalance) : 0)
+    : (paperSession ? paperSession.currentBalance - paperMarginInUse : 0);
 
   return (
     <Card>
@@ -354,98 +384,108 @@ export default function PerformanceOverview() {
         </div>
       </CardHeader>
       <CardContent className="space-y-6 md:space-y-8">
-        {isLiveMode && liveAccount ? (
-          /* Live Mode Display */
-          <>
-            <div className="flex flex-wrap items-end gap-6 md:gap-8">
-              {/* Live Balance - Hero Size */}
-              <div className="space-y-1 md:space-y-2">
-                <div className="text-xs text-muted-foreground uppercase tracking-wider">Total Balance</div>
-                <div className="text-4xl md:text-6xl font-mono font-bold" data-testid="text-live-balance">
-                  ${liveBalance.toFixed(2)}
-                </div>
-                <div className={`text-lg md:text-xl font-mono ${liveUnrealizedPnl >= 0 ? 'text-primary/80' : 'text-red-600/80'}`}>
-                  Unrealized: {liveUnrealizedPnl >= 0 ? '+' : ''}${liveUnrealizedPnl.toFixed(2)}
-                </div>
+        {/* Unified Display for Both Modes */}
+        <div className="flex flex-wrap items-end gap-6 md:gap-8">
+          {/* Total Balance - Hero Size */}
+          <div className="space-y-1 md:space-y-2">
+            <div className="text-xs text-muted-foreground uppercase tracking-wider">Total Balance</div>
+            <div className="text-4xl md:text-6xl font-mono font-bold" data-testid="text-total-balance">
+              ${totalBalance.toFixed(2)}
+            </div>
+            <div className={`text-lg md:text-xl font-mono ${unrealizedPnl >= 0 ? 'text-primary/80' : 'text-red-600/80'}`}>
+              Unrealized: {unrealizedPnl >= 0 ? '+' : ''}${unrealizedPnl.toFixed(2)}
+            </div>
+          </div>
+
+          {/* Account Metrics */}
+          <div className="flex gap-4 md:gap-8 flex-wrap">
+            <div className="space-y-1 md:space-y-2">
+              <div className="text-xs text-muted-foreground uppercase tracking-wider">Available</div>
+              <div className="text-3xl md:text-4xl font-mono font-bold" data-testid="text-available-balance">
+                ${availableBalance.toFixed(2)}
               </div>
-
-              {/* Live Account Metrics */}
-              <div className="flex gap-4 md:gap-8 flex-wrap">
-                <div className="space-y-1 md:space-y-2">
-                  <div className="text-xs text-muted-foreground uppercase tracking-wider">Available</div>
-                  <div className="text-3xl md:text-4xl font-mono font-bold" data-testid="text-available-balance">
-                    ${liveAvailableBalance.toFixed(2)}
-                  </div>
-                  <div className="text-xs md:text-sm text-muted-foreground">
-                    For trading
-                  </div>
-                </div>
-
-                <div className="space-y-1 md:space-y-2">
-                  <div className="text-xs text-muted-foreground uppercase tracking-wider">Realized P&L</div>
-                  <div className={`text-3xl md:text-4xl font-mono font-bold ${isProfitable ? 'text-primary' : 'text-red-600'}`}>
-                    {formatCurrency(displayPerformance.totalPnl)}
-                  </div>
-                  <div className="text-xs md:text-sm text-muted-foreground">
-                    {displayPerformance.totalTrades} trades
-                  </div>
-                </div>
+              <div className="text-xs md:text-sm text-muted-foreground">
+                For trading
               </div>
             </div>
-          </>
-        ) : (
-          /* Paper Trading Mode Display */
-          <>
-            <div className="flex flex-wrap items-end gap-6 md:gap-8">
-              {/* Main P&L - Hero Size */}
-              <div className="space-y-1 md:space-y-2">
-                <div className="text-xs text-muted-foreground uppercase tracking-wider">Total P&L</div>
-                <div className={`text-4xl md:text-6xl font-mono font-bold ${isProfitable ? 'text-primary' : 'text-red-600'}`} data-testid="text-total-pnl">
-                  {formatCurrency(displayPerformance.totalPnl)}
-                </div>
-                <div className={`text-lg md:text-xl font-mono ${isProfitable ? 'text-primary/80' : 'text-red-600/80'}`}>
-                  {(displayPerformance.totalPnlPercent ?? 0) >= 0 ? '+' : ''}{(displayPerformance.totalPnlPercent ?? 0).toFixed(2)}%
-                </div>
+
+            <div className="space-y-1 md:space-y-2">
+              <div className="text-xs text-muted-foreground uppercase tracking-wider">Realized P&L</div>
+              <div className={`text-3xl md:text-4xl font-mono font-bold ${displayPerformance.totalRealizedPnl >= 0 ? 'text-primary' : 'text-red-600'}`} data-testid="text-realized-pnl">
+                {formatCurrency(displayPerformance.totalRealizedPnl)}
               </div>
-
-              {/* Key Metrics - Large Size */}
-              <div className="flex gap-4 md:gap-8 flex-wrap">
-                <div className="space-y-1 md:space-y-2">
-                  <div className="text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-                    <Target className="h-3 w-3" />
-                    Win Rate
-                  </div>
-                  <div className="text-3xl md:text-4xl font-mono font-bold" data-testid="text-win-rate">
-                    {formatPercent(displayPerformance.winRate)}
-                  </div>
-                  <div className="text-xs md:text-sm text-muted-foreground">
-                    {displayPerformance.winningTrades}W · {displayPerformance.losingTrades}L
-                  </div>
-                </div>
-
-                <div className="space-y-1 md:space-y-2">
-                  <div className="text-xs text-muted-foreground uppercase tracking-wider">Trades</div>
-                  <div className="text-3xl md:text-4xl font-mono font-bold" data-testid="text-total-trades">
-                    {displayPerformance.totalTrades}
-                  </div>
-                  <div className="text-xs md:text-sm text-muted-foreground">
-                    {displayPerformance.openTrades} open · {displayPerformance.closedTrades} closed
-                  </div>
-                </div>
-
-                <div className="space-y-1 md:space-y-2">
-                  <div className="text-xs text-muted-foreground uppercase tracking-wider">Profit Factor</div>
-                  <div className={`text-3xl md:text-4xl font-mono font-bold ${(displayPerformance.profitFactor ?? 0) >= 1 ? 'text-primary' : 'text-red-600'}`} data-testid="text-profit-factor">
-                    {(displayPerformance.profitFactor ?? 0) >= 999 ? '∞' : (displayPerformance.profitFactor ?? 0).toFixed(2)}
-                  </div>
-                  <div className="text-xs md:text-sm text-muted-foreground">
-                    {(displayPerformance.profitFactor ?? 0) >= 1 ? 'Profitable' : 'Unprofitable'}
-                  </div>
-                </div>
+              <div className="text-xs md:text-sm text-muted-foreground">
+                {displayPerformance.totalTrades} trades
               </div>
             </div>
-          </>
-        )}
+          </div>
+        </div>
+
+        {/* Secondary Metrics Row */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+          <div className="space-y-1">
+            <div className="text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+              <Target className="h-3 w-3" />
+              Win Rate
+            </div>
+            <div className="text-2xl md:text-3xl font-mono font-bold" data-testid="text-win-rate">
+              {formatPercent(displayPerformance.winRate)}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {displayPerformance.winningTrades}W · {displayPerformance.losingTrades}L
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <div className="text-xs text-muted-foreground uppercase tracking-wider">Trades</div>
+            <div className="text-2xl md:text-3xl font-mono font-bold" data-testid="text-total-trades">
+              {displayPerformance.totalTrades}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {displayPerformance.openTrades} open · {displayPerformance.closedTrades} closed
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <div className="text-xs text-muted-foreground uppercase tracking-wider">Profit Factor</div>
+            <div className={`text-2xl md:text-3xl font-mono font-bold ${(displayPerformance.profitFactor ?? 0) >= 1 ? 'text-primary' : 'text-red-600'}`} data-testid="text-profit-factor">
+              {(displayPerformance.profitFactor ?? 0) >= 999 ? '∞' : (displayPerformance.profitFactor ?? 0).toFixed(2)}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {(displayPerformance.profitFactor ?? 0) >= 1 ? 'Profitable' : 'Unprofitable'}
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <div className="text-xs text-muted-foreground uppercase tracking-wider">Fees Paid</div>
+            <div className="text-2xl md:text-3xl font-mono font-bold" data-testid="text-fees-paid">
+              ${(displayPerformance.totalFees || 0).toFixed(2)}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Total fees
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <div className="text-xs text-muted-foreground uppercase tracking-wider">Max Drawdown</div>
+            <div className="text-2xl md:text-3xl font-mono font-bold text-red-600" data-testid="text-max-drawdown">
+              ${(displayPerformance.maxDrawdown || 0).toFixed(2)}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {(displayPerformance.maxDrawdownPercent || 0).toFixed(1)}% peak
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <div className="text-xs text-muted-foreground uppercase tracking-wider">Avg Time</div>
+            <div className="text-2xl md:text-3xl font-mono font-bold" data-testid="text-avg-time">
+              {formatTradeTime(displayPerformance.averageTradeTimeMs || 0)}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Per trade
+            </div>
+          </div>
+        </div>
 
         {/* Performance Chart */}
         <div className="relative h-64 md:h-80 -mx-8 mb-8" style={{
