@@ -5,7 +5,7 @@ import crypto from "crypto";
 import { randomUUID } from "crypto";
 import { storage } from "./storage";
 import { strategyEngine } from "./strategy-engine";
-import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySchema, updateStrategySchema, type Position, type Liquidation, positions } from "@shared/schema";
+import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySchema, updateStrategySchema, type Position, type Liquidation, type InsertFill, positions } from "@shared/schema";
 import { db } from "./db";
 import { desc } from "drizzle-orm";
 
@@ -1657,7 +1657,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           value: trade.quoteQty,
           fee: trade.commission || '0',
           layerNumber,
-          filledAt: new Date(trade.time),
         };
 
         try {
@@ -1807,7 +1806,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const exchangePositions = await posResponse.json();
         
         // Fetch actual fills from exchange for all symbols since session start
-        const sessionStartTime = new Date(strategy.liveSessionStartedAt).getTime();
+        const sessionStartTime = strategy.liveSessionStartedAt ? new Date(strategy.liveSessionStartedAt).getTime() : Date.now();
         const fillsTimestamp = Date.now();
         const fillsParams = `timestamp=${fillsTimestamp}&limit=1000&startTime=${sessionStartTime}`;
         const fillsSignature = crypto
@@ -2179,7 +2178,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (positionId.startsWith('live-')) {
         // Extract symbol from live position ID
         const parts = positionId.substring(5).split('-'); // Remove "live-" prefix
-        const positionSide = parts.pop(); // Last part is position side (LONG/SHORT/BOTH)
+        const positionSide = parts.pop() || 'BOTH'; // Last part is position side (LONG/SHORT/BOTH)
         const symbol = parts.join('-'); // Rest is symbol (handles symbols with dashes)
         
         // Get active strategy to find session start time
@@ -2198,7 +2197,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({ error: 'Aster DEX API keys not configured' });
         }
 
-        const sessionStartTime = new Date(activeStrategy.liveSessionStartedAt).getTime();
+        const sessionStartTime = new Date(activeStrategy.liveSessionStartedAt as unknown as string).getTime();
 
         // Fetch trade history from exchange for this symbol
         const timestamp = Date.now();
