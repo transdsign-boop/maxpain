@@ -582,17 +582,15 @@ export class StrategyEngine extends EventEmitter {
       const price = parseFloat(liquidation.price);
       
       // Calculate available capital based on account usage percentage
+      // ALWAYS use actual exchange balance for both paper and live modes
+      // This ensures paper trading mirrors live trading exactly
       let currentBalance = parseFloat(session.currentBalance);
-      
-      // In live mode, use actual exchange balance instead of paper trading balance
-      if (strategy.tradingMode === 'live') {
-        const exchangeBalance = await this.getExchangeAvailableBalance(strategy);
-        if (exchangeBalance !== null) {
-          currentBalance = exchangeBalance;
-          console.log(`📊 Using live exchange balance: $${currentBalance.toFixed(2)} (paper balance was $${session.currentBalance})`);
-        } else {
-          console.warn('⚠️ Failed to fetch exchange balance, falling back to paper balance');
-        }
+      const exchangeBalance = await this.getExchangeAvailableBalance(strategy);
+      if (exchangeBalance !== null) {
+        currentBalance = exchangeBalance;
+        console.log(`📊 Using exchange balance for ${session.mode} mode: $${currentBalance.toFixed(2)}`);
+      } else {
+        console.warn('⚠️ Failed to fetch exchange balance, falling back to session balance');
       }
       
       const marginPercent = parseFloat(strategy.marginAmount);
@@ -672,17 +670,15 @@ export class StrategyEngine extends EventEmitter {
       this.pendingLayerOrders.get(position.id)!.add(nextLayer);
       
       // Calculate available capital based on account usage percentage
+      // ALWAYS use actual exchange balance for both paper and live modes
+      // This ensures paper trading mirrors live trading exactly
       let currentBalance = parseFloat(session.currentBalance);
-      
-      // In live mode, use actual exchange balance instead of paper trading balance
-      if (strategy.tradingMode === 'live') {
-        const exchangeBalance = await this.getExchangeAvailableBalance(strategy);
-        if (exchangeBalance !== null) {
-          currentBalance = exchangeBalance;
-          console.log(`📊 Using live exchange balance for layer ${nextLayer}: $${currentBalance.toFixed(2)}`);
-        } else {
-          console.warn('⚠️ Failed to fetch exchange balance for layer, falling back to paper balance');
-        }
+      const exchangeBalance = await this.getExchangeAvailableBalance(strategy);
+      if (exchangeBalance !== null) {
+        currentBalance = exchangeBalance;
+        console.log(`📊 Using exchange balance for ${session.mode} mode (layer ${nextLayer}): $${currentBalance.toFixed(2)}`);
+      } else {
+        console.warn('⚠️ Failed to fetch exchange balance for layer, falling back to session balance');
       }
       
       const marginPercent = parseFloat(strategy.marginAmount);
