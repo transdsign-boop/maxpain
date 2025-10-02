@@ -877,8 +877,14 @@ export class StrategyEngine extends EventEmitter {
       }
       
       // Round quantity and price to exchange precision requirements
+      const precisionInfo = this.symbolPrecisionCache.get(symbol);
+      console.log(`🔧 Precision for ${symbol}:`, precisionInfo ? `stepSize=${precisionInfo.stepSize}, tickSize=${precisionInfo.tickSize}` : 'NOT FOUND');
+      console.log(`🔢 Raw values: quantity=${quantity}, price=${price}`);
+      
       const roundedQuantity = this.roundQuantity(symbol, quantity);
       const roundedPrice = this.roundPrice(symbol, price);
+      
+      console.log(`🔢 Rounded values: quantity=${roundedQuantity}, price=${roundedPrice}`);
       
       // Prepare order parameters for Aster DEX API (Binance-style)
       const timestamp = Date.now();
@@ -1810,6 +1816,41 @@ export class StrategyEngine extends EventEmitter {
       console.log(`✅ Position closed: ${position.symbol} - P&L: ${realizedPnlPercent.toFixed(2)}% ($${dollarPnl.toFixed(2)}${isPaperTrading ? `, Fee: $${exitFee.toFixed(4)}` : ''})`);
     } catch (error) {
       console.error('❌ Error closing position:', error);
+    }
+  }
+
+  // Place an exit order (TP/SL) on the exchange
+  private async placeExitOrder(
+    position: Position,
+    orderType: 'LIMIT' | 'STOP_MARKET' | 'MARKET',
+    price: number,
+    quantity: number,
+    exitType: 'take_profit' | 'stop_loss'
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      // Determine the exit side (opposite of position side)
+      const exitSide = position.side === 'long' ? 'sell' : 'buy';
+      
+      // Place the live order on Aster DEX with automatic precision rounding
+      const liveOrderResult = await this.executeLiveOrder({
+        symbol: position.symbol,
+        side: exitSide,
+        orderType: orderType.toLowerCase(),
+        quantity,
+        price,
+        positionSide: position.side, // Position side for hedge mode
+      });
+      
+      if (!liveOrderResult.success) {
+        console.error(`❌ Failed to place ${orderType} exit order: ${liveOrderResult.error}`);
+        return { success: false, error: liveOrderResult.error };
+      }
+      
+      console.log(`✅ ${orderType} exit order placed: ${exitSide} ${quantity.toFixed(4)} ${position.symbol} at $${price.toFixed(2)}`);
+      return { success: true };
+    } catch (error) {
+      console.error('❌ Error placing exit order:', error);
+      return { success: false, error: String(error) };
     }
   }
 
