@@ -1613,6 +1613,85 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Sync paper trading balance with current exchange balance
+  app.post("/api/strategies/:id/sync-balance", async (req, res) => {
+    try {
+      const strategyId = req.params.id;
+      
+      // Verify strategy exists
+      const strategy = await storage.getStrategy(strategyId);
+      if (!strategy) {
+        return res.status(404).json({ error: "Strategy not found" });
+      }
+      
+      // Only sync for paper trading mode
+      if (strategy.tradingMode !== 'paper') {
+        return res.status(400).json({ error: "Balance sync only available in paper trading mode" });
+      }
+      
+      // Get active session
+      const session = await storage.getActiveTradeSession(strategyId);
+      if (!session) {
+        return res.status(404).json({ error: "No active session found" });
+      }
+      
+      // Fetch current exchange balance
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+      
+      if (!apiKey || !secretKey) {
+        return res.status(400).json({ error: "Exchange API keys not configured" });
+      }
+      
+      const timestamp = Date.now();
+      const params = `timestamp=${timestamp}`;
+      const signature = crypto
+        .createHmac('sha256', secretKey)
+        .update(params)
+        .digest('hex');
+      
+      const response = await fetch(
+        `https://fapi.asterdex.com/fapi/v1/account?${params}&signature=${signature}`,
+        {
+          headers: { 'X-MBX-APIKEY': apiKey },
+        }
+      );
+      
+      if (!response.ok) {
+        return res.status(500).json({ error: "Failed to fetch exchange balance" });
+      }
+      
+      const data = await response.json();
+      
+      // Extract USDT or USDC balance
+      const usdtAsset = data.assets?.find((asset: any) => asset.asset === 'USDT');
+      const usdtBalance = usdtAsset ? parseFloat(usdtAsset.walletBalance) : 0;
+      
+      const usdcAsset = data.assets?.find((asset: any) => asset.asset === 'USDC');
+      const usdcBalance = usdcAsset ? parseFloat(usdcAsset.walletBalance) : 0;
+      
+      const balance = usdtBalance || usdcBalance || parseFloat(data.availableBalance || '0');
+      
+      if (balance <= 0) {
+        return res.status(400).json({ error: "No valid exchange balance found" });
+      }
+      
+      // Update session balance
+      const updatedSession = await storage.updateSessionBalance(session.id, balance);
+      
+      console.log(`💰 Synced paper trading balance to exchange balance: $${balance.toFixed(2)}`);
+      
+      res.json({ 
+        success: true, 
+        balance: balance.toString(),
+        session: updatedSession
+      });
+    } catch (error) {
+      console.error('Error syncing balance:', error);
+      res.status(500).json({ error: "Failed to sync balance" });
+    }
+  });
+
   // Emergency stop route (close all open positions)
   app.post("/api/strategies/:id/emergency-stop", async (req, res) => {
     try {
