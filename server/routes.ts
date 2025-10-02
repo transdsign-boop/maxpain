@@ -876,13 +876,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json(responseData);
       }
 
-      // Get positions ONLY for the current active session
-      let allPositions = await storage.getPositionsBySession(activeSession.id);
-
-      // In live mode, only show positions from current session (after liveSessionStartedAt)
-      if (activeStrategy.tradingMode === 'live' && activeStrategy.liveSessionStartedAt) {
-        const sessionStartTime = new Date(activeStrategy.liveSessionStartedAt).getTime();
-        allPositions = allPositions.filter(p => new Date(p.openedAt).getTime() >= sessionStartTime);
+      // Get ALL sessions for this strategy and filter by current trading mode
+      const allSessions = await storage.getSessionsByStrategy(activeStrategy.id);
+      const modeSessions = allSessions.filter(s => s.mode === activeStrategy.tradingMode);
+      
+      // Get positions from ALL sessions matching the current mode
+      const allPositions: any[] = [];
+      const allSessionFills: any[] = [];
+      
+      for (const session of modeSessions) {
+        const sessionPositions = await storage.getPositionsBySession(session.id);
+        const sessionFills = await storage.getFillsBySession(session.id);
+        allPositions.push(...sessionPositions);
+        allSessionFills.push(...sessionFills);
       }
 
       if (!allPositions || allPositions.length === 0) {
@@ -952,9 +958,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const totalLosses = Math.abs(losingTrades.reduce((sum, pnl) => sum + pnl, 0));
       const profitFactor = totalLosses > 0 ? totalWins / totalLosses : totalWins > 0 ? 999 : 0;
 
-      // Calculate total fees from fills
-      const sessionFills = await storage.getFillsBySession(activeSession.id);
-      const totalFees = sessionFills.reduce((sum, fill) => sum + parseFloat(fill.fee || '0'), 0);
+      // Calculate total fees from all fills across all sessions of this mode
+      const totalFees = allSessionFills.reduce((sum, fill) => sum + parseFloat(fill.fee || '0'), 0);
 
       // Calculate average trade time from closed positions (in milliseconds)
       const tradeTimesMs = closedPositions
@@ -1034,32 +1039,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json([]);
       }
 
-      const activeSession = await storage.getActiveTradeSession(activeStrategy.id);
-      if (!activeSession) {
+      // Get ALL sessions for this strategy and filter by current trading mode
+      const allSessions = await storage.getSessionsByStrategy(activeStrategy.id);
+      const modeSessions = allSessions.filter(s => s.mode === activeStrategy.tradingMode);
+      
+      if (modeSessions.length === 0) {
         return res.json([]);
       }
 
-      // Get all closed positions for the active session, sorted by close time
-      const allPositions = await storage.getPositionsBySession(activeSession.id);
+      // Get all positions and fills from ALL sessions matching the current mode
+      const allPositions: any[] = [];
+      const sessionFills: any[] = [];
       
-      // Filter positions based on mode
-      let closedPositions = allPositions.filter(p => p.isOpen === false && p.closedAt);
-      
-      // In live mode, only show positions from current session (after liveSessionStartedAt)
-      if (activeStrategy.tradingMode === 'live' && activeStrategy.liveSessionStartedAt) {
-        const sessionStartTime = new Date(activeStrategy.liveSessionStartedAt).getTime();
-        closedPositions = closedPositions.filter(p => new Date(p.openedAt).getTime() >= sessionStartTime);
+      for (const session of modeSessions) {
+        const sessionPositions = await storage.getPositionsBySession(session.id);
+        const fills = await storage.getFillsBySession(session.id);
+        allPositions.push(...sessionPositions);
+        sessionFills.push(...fills);
       }
+      
+      // Filter for closed positions only
+      let closedPositions = allPositions.filter(p => p.isOpen === false && p.closedAt);
       
       closedPositions = closedPositions.sort((a, b) => new Date(a.closedAt!).getTime() - new Date(b.closedAt!).getTime());
 
       if (closedPositions.length === 0) {
         return res.json([]);
       }
-
-      // Build chart data with cumulative P&L (net of fees)
-      // Get all fills to calculate fees per position
-      const sessionFills = await storage.getFillsBySession(activeSession.id);
       
       let cumulativePnl = 0;
       const chartData = closedPositions.map((position, index) => {
