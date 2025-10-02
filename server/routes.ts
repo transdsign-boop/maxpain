@@ -1177,11 +1177,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const openPositions = allPositions.filter(p => p.isOpen === true);
       const closedPositions = allPositions.filter(p => p.isOpen === false);
       
-      // Convert realizedPnl percentages to dollar amounts for all closed positions
+      // CRITICAL: realizedPnl is ALREADY in DOLLARS (not percentage!)
       const closedPnlDollars = closedPositions.map(p => {
-        const pnlPercent = parseFloat(p.realizedPnl || '0');
-        const totalCost = parseFloat(p.totalCost || '0');
-        return (pnlPercent / 100) * totalCost;
+        return parseFloat(p.realizedPnl || '0');
       });
       
       const winningTrades = closedPnlDollars.filter(pnl => pnl > 0);
@@ -1190,10 +1188,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const totalRealizedPnl = closedPnlDollars.reduce((sum, pnl) => sum + pnl, 0);
       
       // Convert unrealized P&L percentages to dollar amounts for open positions
+      // CRITICAL: totalCost stores MARGIN, multiply by leverage to get notional value
       const totalUnrealizedPnl = openPositions.reduce((sum, p) => {
         const pnlPercent = parseFloat(p.unrealizedPnl || '0');
         const totalCost = parseFloat(p.totalCost || '0');
-        const pnlDollar = (pnlPercent / 100) * totalCost;
+        const leverage = (p as any).leverage || 1;
+        const notionalValue = totalCost * leverage;
+        const pnlDollar = (pnlPercent / 100) * notionalValue;
         return sum + pnlDollar;
       }, 0);
       
@@ -1327,9 +1328,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       let cumulativePnl = 0;
       const chartData = closedPositions.map((position, index) => {
-        const pnlPercent = parseFloat(position.realizedPnl || '0');
-        const totalCost = parseFloat(position.totalCost || '0');
-        const grossPnlDollar = (pnlPercent / 100) * totalCost;
+        // CRITICAL: realizedPnl is ALREADY in DOLLARS (not percentage!)
+        const grossPnlDollar = parseFloat(position.realizedPnl || '0');
         
         // Calculate fees for this position
         const positionOpenTime = new Date(position.openedAt).getTime();
@@ -2431,10 +2431,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Calculate unrealized P&L from open positions
       // Convert unrealized P&L percentages to dollar values before summing
+      // CRITICAL: totalCost stores MARGIN, multiply by leverage to get notional value
       const totalUnrealizedPnl = positions.reduce((sum, pos) => {
         const pnlPercent = parseFloat(pos.unrealizedPnl || '0');
         const totalCost = parseFloat(pos.totalCost || '0');
-        const pnlDollar = (pnlPercent / 100) * totalCost;
+        const leverage = (pos as any).leverage || 1;
+        const notionalValue = totalCost * leverage;
+        const pnlDollar = (pnlPercent / 100) * notionalValue;
         return sum + pnlDollar;
       }, 0);
 
@@ -2444,9 +2447,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const sessionFills = await storage.getFillsBySession(sessionId);
       
       const totalRealizedPnl = closedPositions.reduce((sum, pos) => {
-        const pnlPercent = parseFloat(pos.unrealizedPnl || '0'); // Contains final P&L at close
-        const totalCost = parseFloat(pos.totalCost || '0');
-        const pnlDollar = (pnlPercent / 100) * totalCost;
+        // CRITICAL: realizedPnl is ALREADY in DOLLARS (not percentage!)
+        const pnlDollar = parseFloat(pos.realizedPnl || '0');
         
         // Calculate total fees for this position (all fills for this symbol)
         // This includes entry and exit fees
