@@ -45,6 +45,7 @@ interface LiveAccountData {
   totalMarginBalance: string;
   availableBalance: string;
   maxWithdrawAmount: string;
+  usdcBalance: string;
 }
 
 interface SessionSummary {
@@ -349,10 +350,10 @@ export default function PerformanceOverview() {
   };
 
   // Calculate unified account metrics (same for both live and paper)
-  // In live mode: Use totalMarginBalance (wallet balance + unrealized PnL) for total equity
+  // In live mode: Use totalMarginBalance (wallet balance + unrealized PnL) + USDC balance for total equity
   // This matches what users expect to see as their "total account value"
   const totalBalance = isLiveMode 
-    ? (liveAccount ? parseFloat(liveAccount.totalMarginBalance) : 0)
+    ? (liveAccount ? parseFloat(liveAccount.totalMarginBalance) + parseFloat(liveAccount.usdcBalance || '0') : 0)
     : (paperSession?.currentBalance || 0);
   
   const unrealizedPnl = isLiveMode 

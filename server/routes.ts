@@ -693,7 +693,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const data = await response.json();
-      res.json(data);
+      
+      // Extract USDC balance from assets array
+      const usdcAsset = data.assets?.find((asset: any) => asset.asset === 'USDC');
+      const usdcBalance = usdcAsset ? parseFloat(usdcAsset.walletBalance) : 0;
+      
+      // Add USDC balance to response
+      res.json({
+        ...data,
+        usdcBalance: usdcBalance.toString()
+      });
     } catch (error) {
       console.error('Error fetching live account data:', error);
       res.status(500).json({ error: "Failed to fetch live account data" });
