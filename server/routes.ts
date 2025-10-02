@@ -1879,17 +1879,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
               ? (unrealizedPnlDollar / totalCost * 100)
               : 0;
 
-            // Debug logging for P&L calculation
-            if (pos.symbol === 'ASTERUSDT') {
-              console.log(`📊 ASTERUSDT P&L Debug:`);
-              console.log(`   Position Amount: ${pos.positionAmt}`);
-              console.log(`   Entry Price: ${pos.entryPrice}`);
-              console.log(`   Mark Price: ${pos.markPrice}`);
-              console.log(`   Exchange unRealizedProfit: ${pos.unRealizedProfit}`);
-              console.log(`   Total Cost: ${totalCost}`);
-              console.log(`   Calculated P&L %: ${unrealizedPnlPercent.toFixed(4)}%`);
-            }
-
             return {
               id: `live-${pos.symbol}-${pos.positionSide}`,
               symbol: pos.symbol,
@@ -2095,24 +2084,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: 'Strategy not found' });
       }
 
-      // Get ALL sessions for this strategy and filter by current trading mode
-      const allSessions = await storage.getSessionsByStrategy(strategyId);
-      const modeSessions = allSessions.filter(s => s.mode === strategy.tradingMode);
+      // Get active session - only show trades from current session
+      const session = await storage.getActiveTradeSession(strategyId);
       
-      if (modeSessions.length === 0) {
+      if (!session || session.mode !== strategy.tradingMode) {
         return res.json([]);
       }
 
-      // Get closed positions from ALL sessions matching the current mode
-      const allClosedPositions: any[] = [];
-      const allFills: any[] = [];
+      // For LIVE mode: filter positions closed AFTER liveSessionStartedAt
+      // For PAPER mode: show all positions from active paper session
+      let allClosedPositions = await storage.getClosedPositions(session.id);
       
-      for (const session of modeSessions) {
-        const sessionClosedPositions = await storage.getClosedPositions(session.id);
-        const sessionFills = await storage.getFillsBySession(session.id);
-        allClosedPositions.push(...sessionClosedPositions);
-        allFills.push(...sessionFills);
+      if (strategy.tradingMode === 'live' && strategy.liveSessionStartedAt) {
+        const sessionStartTime = new Date(strategy.liveSessionStartedAt).getTime();
+        allClosedPositions = allClosedPositions.filter(pos => {
+          const closedTime = pos.closedAt ? new Date(pos.closedAt).getTime() : 0;
+          return closedTime >= sessionStartTime;
+        });
       }
+
+      // Get fills for these positions
+      const allFills = await storage.getFillsBySession(session.id);
       
       // Enhance closed positions with fee information
       const closedPositionsWithFees = allClosedPositions.map(position => {
