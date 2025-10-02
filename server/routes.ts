@@ -1762,32 +1762,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const side = parseFloat(pos.positionAmt) > 0 ? 'long' : 'short';
             const targetSide = side === 'long' ? 'BUY' : 'SELL';
             
-            // Get fills for this position from current session only
+            // Get fills for this position symbol/side, sorted chronologically
             const allSymbolFills = allExchangeFills
               .filter((trade: any) => trade.symbol === pos.symbol && trade.side === targetSide)
               .sort((a, b) => a.time - b.time);
             
-            // Position is considered "open" starting from the first fill after session start
-            // Calculate the position open time: first fill at or after session start
-            const positionOpenTime = allSymbolFills.length > 0 ? allSymbolFills[0].time : sessionStartTime;
+            // Current position quantity
+            const currentQty = Math.abs(parseFloat(pos.positionAmt));
             
-            // Filter to only fills from position open time onwards
-            const positionFills = allSymbolFills
-              .filter((trade: any) => trade.time >= positionOpenTime)
-              .map((trade: any, index: number) => ({
-                id: `exchange-${trade.id}`,
-                orderId: trade.orderId.toString(),
-                sessionId: 'live-session',
-                positionId: null,
-                symbol: trade.symbol,
-                side: trade.side === 'BUY' ? 'buy' : 'sell',
-                quantity: trade.qty,
-                price: trade.price,
-                value: trade.quoteQty,
-                fee: trade.commission || '0',
-                layerNumber: index + 1,
-                filledAt: new Date(trade.time),
-              }));
+            // Work backwards from most recent fills to find which fills built this position
+            const reversedFills = [...allSymbolFills].reverse();
+            const currentPositionFills: any[] = [];
+            let accumulatedQty = 0;
+            
+            for (const fill of reversedFills) {
+              currentPositionFills.unshift(fill);
+              accumulatedQty += parseFloat(fill.qty);
+              
+              // Once we've accumulated enough quantity to match current position, we found all fills
+              if (accumulatedQty >= currentQty) {
+                break;
+              }
+            }
+            
+            // Map to our format with sequential layer numbers
+            const positionFills = currentPositionFills.map((trade: any, index: number) => ({
+              id: `exchange-${trade.id}`,
+              orderId: trade.orderId.toString(),
+              sessionId: 'live-session',
+              positionId: null,
+              symbol: trade.symbol,
+              side: trade.side === 'BUY' ? 'buy' : 'sell',
+              quantity: trade.qty,
+              price: trade.price,
+              value: trade.quoteQty,
+              fee: trade.commission || '0',
+              layerNumber: index + 1,
+              filledAt: new Date(trade.time),
+            }));
 
             return {
               id: `live-${pos.symbol}-${pos.positionSide}`,
@@ -2135,7 +2147,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           } else if (positionSide === 'SHORT' || positionSide.includes('SHORT')) {
             targetSide = 'SELL';
           } else {
-            // For BOTH or unknown, return all fills
+            // For BOTH or unknown, return all fills (rare case)
             const fills = exchangeFills.map((trade: any, index: number) => ({
               id: `exchange-${trade.id}`,
               orderId: trade.orderId.toString(),
@@ -2153,24 +2165,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
             return res.json(fills);
           }
 
-          // Filter and map fills for the specific side
-          const fills = exchangeFills
+          // Get current position quantity from exchange
+          const posTimestamp = Date.now();
+          const posParams = `timestamp=${posTimestamp}`;
+          const posSignature = crypto
+            .createHmac('sha256', secretKey)
+            .update(posParams)
+            .digest('hex');
+
+          const posResponse = await fetch(
+            `https://fapi.asterdex.com/fapi/v2/positionRisk?${posParams}&signature=${posSignature}`,
+            {
+              headers: { 'X-MBX-APIKEY': apiKey },
+            }
+          );
+
+          if (!posResponse.ok) {
+            return res.json([]);
+          }
+
+          const positions = await posResponse.json();
+          const currentPosition = positions.find((p: any) => p.symbol === symbol && p.positionSide === positionSide);
+          
+          if (!currentPosition || parseFloat(currentPosition.positionAmt) === 0) {
+            return res.json([]);
+          }
+
+          const currentQty = Math.abs(parseFloat(currentPosition.positionAmt));
+
+          // Filter to target side and sort chronologically
+          const allSymbolFills = exchangeFills
             .filter((trade: any) => trade.side === targetSide)
-            .map((trade: any, index: number) => ({
-              id: `exchange-${trade.id}`,
-              orderId: trade.orderId.toString(),
-              sessionId: 'live-session',
-              positionId: null,
-              symbol: trade.symbol,
-              side: trade.side === 'BUY' ? 'buy' : 'sell',
-              quantity: trade.qty,
-              price: trade.price,
-              value: trade.quoteQty,
-              fee: trade.commission || '0',
-              layerNumber: index + 1,
-              filledAt: new Date(trade.time),
-            }))
-            .sort((a, b) => new Date(a.filledAt).getTime() - new Date(b.filledAt).getTime());
+            .sort((a: any, b: any) => a.time - b.time);
+
+          // Work backwards from most recent fills to find which fills built this position
+          const reversedFills = [...allSymbolFills].reverse();
+          const currentPositionFills: any[] = [];
+          let accumulatedQty = 0;
+
+          for (const fill of reversedFills) {
+            currentPositionFills.unshift(fill);
+            accumulatedQty += parseFloat(fill.qty);
+
+            // Once we've accumulated enough quantity to match current position, we found all fills
+            if (accumulatedQty >= currentQty) {
+              break;
+            }
+          }
+
+          // Map to our format with sequential layer numbers
+          const fills = currentPositionFills.map((trade: any, index: number) => ({
+            id: `exchange-${trade.id}`,
+            orderId: trade.orderId.toString(),
+            sessionId: 'live-session',
+            positionId: null,
+            symbol: trade.symbol,
+            side: trade.side === 'BUY' ? 'buy' : 'sell',
+            quantity: trade.qty,
+            price: trade.price,
+            value: trade.quoteQty,
+            fee: trade.commission || '0',
+            layerNumber: index + 1,
+            filledAt: new Date(trade.time),
+          }));
 
           return res.json(fills);
         } catch (error) {
