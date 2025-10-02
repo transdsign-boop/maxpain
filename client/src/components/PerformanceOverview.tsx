@@ -84,116 +84,20 @@ export default function PerformanceOverview() {
     retry: 2,
   });
 
-  // Fetch live trade history when in live mode
-  const { data: liveTrades, isLoading: liveTradesLoading } = useQuery<any[]>({
-    queryKey: ['/api/live/trades'],
-    refetchInterval: 5000,
-    enabled: !!isLiveMode && !!activeStrategy,
-    retry: 2,
-  });
-
-  // Calculate live performance metrics from trade history
-  const livePerformance = useMemo(() => {
-    // Sort trades by time (ascending) to ensure correct chronological processing
-    const sortedTrades = (liveTrades || []).slice().sort((a, b) => parseInt(a.time) - parseInt(b.time));
-    
-    let cumulativePnl = 0;
-    let totalFees = 0;
-    let peakPnl = 0;
-    let maxDrawdown = 0;
-    const chartData: TradeDataPoint[] = [];
-    
-    let totalWinPnl = 0;
-    let totalLossPnl = 0;
-    let bestTrade = sortedTrades.length > 0 ? -Infinity : 0;
-    let worstTrade = sortedTrades.length > 0 ? Infinity : 0;
-
-    sortedTrades.forEach((trade, index) => {
-      const pnl = parseFloat(trade.realizedPnl || '0');
-      const fee = parseFloat(trade.commission || '0');
-      
-      cumulativePnl += pnl;
-      totalFees += fee;
-      
-      // Track best/worst trades
-      if (pnl > bestTrade || bestTrade === -Infinity) bestTrade = pnl;
-      if (pnl < worstTrade || worstTrade === Infinity) worstTrade = pnl;
-      
-      // Track win/loss totals for profit factor
-      if (pnl > 0) {
-        totalWinPnl += pnl;
-      } else if (pnl < 0) {
-        totalLossPnl += Math.abs(pnl);
-      }
-      
-      // Track drawdown
-      if (cumulativePnl > peakPnl) {
-        peakPnl = cumulativePnl;
-      }
-      const currentDrawdown = peakPnl - cumulativePnl;
-      if (currentDrawdown > maxDrawdown) {
-        maxDrawdown = currentDrawdown;
-      }
-
-      chartData.push({
-        tradeNumber: index + 1,
-        timestamp: parseInt(trade.time),
-        symbol: trade.symbol,
-        side: trade.side,
-        pnl: pnl,
-        cumulativePnl: cumulativePnl,
-        entryPrice: parseFloat(trade.price),
-        quantity: Math.abs(parseFloat(trade.qty)),
-      });
-    });
-
-    const winningTrades = sortedTrades.filter(t => parseFloat(t.realizedPnl || '0') > 0).length;
-    const losingTrades = sortedTrades.filter(t => parseFloat(t.realizedPnl || '0') < 0).length;
-    const winRate = sortedTrades.length > 0 ? (winningTrades / sortedTrades.length) * 100 : 0;
-    
-    const averageWin = winningTrades > 0 ? totalWinPnl / winningTrades : 0;
-    const averageLoss = losingTrades > 0 ? totalLossPnl / losingTrades : 0;
-    const profitFactor = totalLossPnl > 0 ? totalWinPnl / totalLossPnl : (totalWinPnl > 0 ? 999 : 0);
-
-    // Always return full PerformanceMetrics object, even with zero trades
-    return {
-      totalTrades: sortedTrades.length,
-      openTrades: 0,
-      closedTrades: sortedTrades.length,
-      winningTrades,
-      losingTrades,
-      winRate,
-      totalRealizedPnl: cumulativePnl,
-      totalUnrealizedPnl: 0, // Live trades are all realized
-      totalPnl: cumulativePnl,
-      totalPnlPercent: 0, // Would need initial balance to calculate
-      averageWin,
-      averageLoss,
-      bestTrade: sortedTrades.length > 0 ? (bestTrade === -Infinity ? 0 : bestTrade) : 0,
-      worstTrade: sortedTrades.length > 0 ? (worstTrade === Infinity ? 0 : worstTrade) : 0,
-      profitFactor,
-      totalFees,
-      averageTradeTimeMs: 0,
-      maxDrawdown,
-      maxDrawdownPercent: peakPnl > 0 ? (maxDrawdown / peakPnl) * 100 : 0,
-      chartData,
-    } as PerformanceMetrics & { chartData: TradeDataPoint[] };
-  }, [liveTrades]);
-
+  // Fetch performance overview (works for both modes)
   const { data: performance, isLoading } = useQuery<PerformanceMetrics>({
     queryKey: ['/api/performance/overview'],
     refetchInterval: 5000,
-    enabled: !isLiveMode, // Only fetch paper trading data when not in live mode
   });
 
+  // Fetch chart data - unified endpoint for both modes
   const { data: rawChartData, isLoading: chartLoading } = useQuery<TradeDataPoint[]>({
     queryKey: ['/api/performance/chart'],
     refetchInterval: 5000,
-    enabled: !isLiveMode, // Only fetch paper trading data when not in live mode
   });
 
-  // Use live chart data if in live mode, otherwise use paper trading data
-  const sourceChartData = isLiveMode ? (livePerformance?.chartData || []) : (rawChartData || []);
+  // Use unified chart data for both modes
+  const sourceChartData = rawChartData || [];
   
   // Add interpolated points at zero crossings for smooth color transitions
   const chartData = sourceChartData.flatMap((point, index, arr) => {
@@ -239,9 +143,9 @@ export default function PerformanceOverview() {
     refetchInterval: 10000,
   });
 
-  // Use live performance data if in live mode, otherwise use paper trading data
-  const displayPerformance = isLiveMode ? livePerformance : performance;
-  const displayLoading = isLiveMode ? (liveAccountLoading || liveTradesLoading) : (isLoading || paperSessionLoading);
+  // Use unified performance data for both modes
+  const displayPerformance = performance;
+  const displayLoading = isLoading || chartLoading || (isLiveMode && liveAccountLoading) || (!isLiveMode && paperSessionLoading);
 
   if (displayLoading || !displayPerformance) {
     return (
