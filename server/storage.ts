@@ -321,7 +321,21 @@ export class DatabaseStorage implements IStorage {
       .limit(1);
     
     if (existing.length > 0) {
-      return existing[0];
+      const session = existing[0];
+      
+      // Auto-sync balance if it's zero or very small (< $1)
+      const currentBalance = parseFloat(session.currentBalance);
+      if (currentBalance < 1) {
+        console.log('⚠️ Session balance is zero or very low, auto-syncing with exchange balance...');
+        const exchangeBalance = await this.getExchangeBalance();
+        if (exchangeBalance && parseFloat(exchangeBalance) > 0) {
+          const synced = await this.updateSessionBalance(session.id, parseFloat(exchangeBalance));
+          console.log(`💰 Auto-synced session balance to $${exchangeBalance}`);
+          return synced;
+        }
+      }
+      
+      return session;
     }
 
     // Get real exchange balance for both paper and live trading
