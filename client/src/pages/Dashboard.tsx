@@ -473,7 +473,7 @@ export default function Dashboard() {
   const leverage = activeStrategy?.leverage || 1;
   
   const marginInUse = isLiveMode && liveAccount
-    ? (parseFloat(liveAccount.totalWalletBalance) - parseFloat(liveAccount.availableBalance))
+    ? parseFloat(liveAccount.totalInitialMargin || '0')
     : (positionSummary ? (positionSummary.totalExposure / leverage) : 0);
     
   const totalExposure = isLiveMode && liveAccount
