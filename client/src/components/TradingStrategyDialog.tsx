@@ -93,6 +93,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
   const [activeStrategy, setActiveStrategy] = useState<Strategy | null>(null);
   const [isStrategyRunning, setIsStrategyRunning] = useState(false);
   const [apiTestResult, setApiTestResult] = useState<{ success: boolean; message: string; accountInfo?: any } | null>(null);
+  const [assetSortMode, setAssetSortMode] = useState<"liquidations" | "liquidity" | "alphabetical">("liquidations");
 
   // Fetch available symbols from Aster DEX
   const { data: symbols, isLoading: symbolsLoading } = useQuery({
@@ -121,11 +122,13 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
     }
   });
 
-  // Merge symbols with liquidation counts and sort by count (descending)
-  const availableAssets = symbols?.map((symbol: any) => ({
+  // Merge symbols with liquidation counts (will be sorted after form is initialized)
+  const mergedAssets = symbols?.map((symbol: any) => ({
     ...symbol,
-    liquidationCount: liquidationCounts?.[symbol.symbol] || 0
-  })).sort((a: any, b: any) => b.liquidationCount - a.liquidationCount);
+    liquidationCount: liquidationCounts?.[symbol.symbol] || 0,
+    // Add liquidity score - higher liquidation count suggests better liquidity
+    liquidityScore: liquidationCounts?.[symbol.symbol] || 0
+  }));
 
   const assetsLoading = symbolsLoading || countsLoading;
 
@@ -154,6 +157,24 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
       maxRetryDurationMs: 30000,
       marginAmount: "10.0",
       hedgeMode: false,
+    }
+  });
+
+  // Calculate trade size based on form values for liquidity assessment
+  const currentBalance = parseFloat(form.watch("marginAmount") || "10") / 100 * 10000; // Rough estimate
+  const positionSizePercent = parseFloat(form.watch("positionSizePercent") || "5");
+  const tradeSize = currentBalance * (positionSizePercent / 100);
+
+  // Sort assets based on selected mode
+  const availableAssets = mergedAssets?.slice().sort((a: any, b: any) => {
+    if (assetSortMode === "alphabetical") {
+      return a.symbol.localeCompare(b.symbol);
+    } else if (assetSortMode === "liquidity") {
+      // Sort by liquidation count as proxy for liquidity
+      return b.liquidityScore - a.liquidityScore;
+    } else {
+      // Default: sort by liquidation count
+      return b.liquidationCount - a.liquidationCount;
     }
   });
 
@@ -628,12 +649,33 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                 name="selectedAssets"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel data-testid="label-asset-selection">Assets to Monitor</FormLabel>
+                    <div className="flex items-center justify-between">
+                      <FormLabel data-testid="label-asset-selection">Assets to Monitor</FormLabel>
+                      <Select 
+                        value={assetSortMode} 
+                        onValueChange={(value: any) => setAssetSortMode(value)}
+                      >
+                        <SelectTrigger className="w-[200px]" data-testid="select-asset-sort">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="liquidations">Most Active</SelectItem>
+                          <SelectItem value="liquidity">Best Liquidity</SelectItem>
+                          <SelectItem value="alphabetical">Alphabetical</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                     <FormDescription>
-                      Select which assets to scan for liquidation opportunities
+                      {assetSortMode === "liquidity" ? (
+                        <span>Sorted by best liquidity for your account size (${(tradeSize).toFixed(0)} per trade). High liquidity assets can better handle your position sizes.</span>
+                      ) : assetSortMode === "alphabetical" ? (
+                        <span>Assets sorted alphabetically for easy browsing</span>
+                      ) : (
+                        <span>Sorted by liquidation activity. High activity = better liquidity and more trading opportunities.</span>
+                      )}
                     </FormDescription>
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-2">
-                      {availableAssets?.map((asset) => (
+                      {availableAssets?.map((asset: any) => (
                         <div key={asset.symbol} className="flex items-center space-x-2">
                           <Checkbox
                             data-testid={`checkbox-asset-${asset.symbol}`}
@@ -650,12 +692,22 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                           />
                           <label 
                             htmlFor={`asset-${asset.symbol}`}
-                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer flex items-center gap-1"
                           >
-                            {asset.symbol}
-                            <span className="text-xs text-muted-foreground ml-1">
+                            <span>{asset.symbol}</span>
+                            <span className="text-xs text-muted-foreground">
                               ({asset.liquidationCount})
                             </span>
+                            {asset.liquidationCount >= 50 && (
+                              <Badge variant="outline" className="ml-1 text-[10px] px-1 py-0 h-4 bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20">
+                                High Liquidity
+                              </Badge>
+                            )}
+                            {asset.liquidationCount >= 20 && asset.liquidationCount < 50 && (
+                              <Badge variant="outline" className="ml-1 text-[10px] px-1 py-0 h-4 bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/20">
+                                Medium
+                              </Badge>
+                            )}
                           </label>
                         </div>
                       ))}
