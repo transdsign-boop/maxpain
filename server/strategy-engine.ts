@@ -1159,6 +1159,164 @@ export class StrategyEngine extends EventEmitter {
     }
   }
 
+  // Auto-repair missing TP/SL orders for exchange positions
+  async autoRepairMissingTPSL(): Promise<number> {
+    try {
+      let repairedCount = 0;
+      const liveSessions = Array.from(this.activeSessions.values()).filter(s => s.mode === 'live');
+      
+      if (liveSessions.length === 0) {
+        return 0;
+      }
+
+      // Get all exchange positions
+      const exchangePositions = await this.getExchangePositions();
+      if (exchangePositions.length === 0) {
+        return 0;
+      }
+
+      // Get all open orders
+      const allOrders = await this.getOpenOrders();
+      
+      // Process each position
+      for (const exchangePos of exchangePositions) {
+        const symbol = exchangePos.symbol;
+        const side = exchangePos.side;
+        const entryPrice = parseFloat(exchangePos.entryPrice);
+        const positionAmt = parseFloat(exchangePos.positionAmt);
+        
+        if (positionAmt === 0) continue;
+        
+        const cooldownKey = `${symbol}-${side}`;
+        const lastAttempt = this.recoveryAttempts.get(cooldownKey) || 0;
+        const now = Date.now();
+        
+        // 5 minute cooldown between repair attempts
+        if (now - lastAttempt < 5 * 60 * 1000) {
+          continue;
+        }
+        
+        // Find corresponding database position
+        let dbPosition: Position | undefined;
+        for (const session of liveSessions) {
+          const positions = await storage.getOpenPositions(session.id);
+          dbPosition = positions.find(p => 
+            p.symbol === symbol && 
+            p.positionSide === side && 
+            p.isOpen
+          );
+          if (dbPosition) break;
+        }
+        
+        if (!dbPosition) {
+          console.log(`⚠️ No database position found for ${symbol} ${side}`);
+          continue;
+        }
+        
+        const strategy = this.activeStrategies.get(dbPosition.strategyId);
+        if (!strategy) continue;
+        
+        const stopLossPercent = parseFloat(strategy.stopLossPercent);
+        const profitTargetPercent = parseFloat(strategy.profitTargetPercent);
+        
+        // Calculate TP and SL prices
+        const tpPrice = side === 'LONG' 
+          ? entryPrice * (1 + profitTargetPercent / 100)
+          : entryPrice * (1 - profitTargetPercent / 100);
+        const slPrice = side === 'LONG'
+          ? entryPrice * (1 - stopLossPercent / 100)
+          : entryPrice * (1 + stopLossPercent / 100);
+        
+        // Check if TP and SL orders exist
+        const hasTPOrder = allOrders.some(o => 
+          o.symbol === symbol && 
+          o.positionSide === side &&
+          (o.type === 'TAKE_PROFIT_MARKET' || 
+           (o.type === 'LIMIT' && Math.abs(parseFloat(o.price || '0') - tpPrice) < 1))
+        );
+        
+        const hasSLOrder = allOrders.some(o => 
+          o.symbol === symbol && 
+          o.positionSide === side &&
+          o.type === 'STOP_MARKET'
+        );
+        
+        // Get current price
+        const currentPrice = this.priceCache.get(symbol) || entryPrice;
+        
+        // Check if price already exceeded TP
+        const tpExceeded = side === 'LONG' 
+          ? currentPrice >= tpPrice 
+          : currentPrice <= tpPrice;
+        
+        if (tpExceeded && !hasTPOrder) {
+          console.log(`🚨 TP already hit for ${symbol} ${side}, closing immediately with market order`);
+          
+          // Close position immediately with market order
+          const closeResult = await this.placeExitOrder(
+            dbPosition,
+            'MARKET',
+            currentPrice,
+            Math.abs(positionAmt),
+            'take_profit'
+          );
+          
+          if (closeResult.success) {
+            repairedCount++;
+            this.recoveryAttempts.set(cooldownKey, now);
+          }
+          continue;
+        }
+        
+        // Place missing TP order (LIMIT order)
+        if (!hasTPOrder) {
+          console.log(`🔧 Placing missing TP order for ${symbol} ${side} at ${tpPrice}`);
+          const tpResult = await this.placeExitOrder(
+            dbPosition,
+            'LIMIT',
+            tpPrice,
+            Math.abs(positionAmt),
+            'take_profit'
+          );
+          
+          if (tpResult.success) {
+            repairedCount++;
+          }
+        }
+        
+        // Place missing SL order (STOP_MARKET order)
+        if (!hasSLOrder) {
+          console.log(`🔧 Placing missing SL order for ${symbol} ${side} at ${slPrice}`);
+          const slResult = await this.placeExitOrder(
+            dbPosition,
+            'STOP_MARKET',
+            slPrice,
+            Math.abs(positionAmt),
+            'stop_loss'
+          );
+          
+          if (slResult.success) {
+            repairedCount++;
+          }
+        }
+        
+        // Update cooldown
+        if (repairedCount > 0) {
+          this.recoveryAttempts.set(cooldownKey, now);
+        }
+      }
+
+      if (repairedCount > 0) {
+        console.log(`✅ Auto-repair: Placed ${repairedCount} missing TP/SL orders`);
+      }
+
+      return repairedCount;
+    } catch (error) {
+      console.error('❌ Error in auto-repair missing TP/SL:', error);
+      return 0;
+    }
+  }
+
   // Fill a paper order and create fill record
   private async fillPaperOrder(order: Order, fillPrice: number, fillQuantity: number, tradeType: 'entry' | 'layer' | 'stop_loss' | 'take_profit' = 'entry') {
     // Update order status
