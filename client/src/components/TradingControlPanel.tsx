@@ -117,11 +117,11 @@ export default function TradingControlPanel() {
     }
   });
 
-  // Merge symbols with liquidation counts
+  // Merge symbols with liquidation counts and sort by count (descending)
   const availableAssets = symbols?.map((symbol: any) => ({
     ...symbol,
     liquidationCount: liquidationCounts?.[symbol.symbol] || 0
-  }));
+  })).sort((a: any, b: any) => b.liquidationCount - a.liquidationCount);
 
   const assetsLoading = symbolsLoading || countsLoading;
 
