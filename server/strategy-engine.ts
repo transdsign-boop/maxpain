@@ -857,6 +857,98 @@ export class StrategyEngine extends EventEmitter {
     }
   }
 
+  // Get all open orders from Aster DEX
+  private async getOpenOrders(): Promise<any[]> {
+    try {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+      
+      if (!apiKey || !secretKey) {
+        console.error('❌ Aster DEX API keys not configured');
+        return [];
+      }
+      
+      const timestamp = Date.now();
+      const queryString = `timestamp=${timestamp}&recvWindow=5000`;
+      
+      const signature = createHmac('sha256', secretKey)
+        .update(queryString)
+        .digest('hex');
+      
+      const signedParams = `${queryString}&signature=${signature}`;
+      
+      const response = await fetch(`https://fapi.asterdex.com/fapi/v1/openOrders?${signedParams}`, {
+        method: 'GET',
+        headers: {
+          'X-MBX-APIKEY': apiKey,
+        },
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ Failed to fetch open orders: ${response.status} ${errorText}`);
+        return [];
+      }
+      
+      const orders = await response.json();
+      return orders;
+    } catch (error) {
+      console.error('❌ Error fetching open orders:', error);
+      return [];
+    }
+  }
+
+  // Cancel an order on Aster DEX
+  private async cancelOrder(symbol: string, orderId: string): Promise<boolean> {
+    try {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+      
+      if (!apiKey || !secretKey) {
+        console.error('❌ Aster DEX API keys not configured');
+        return false;
+      }
+      
+      const timestamp = Date.now();
+      const orderParams: Record<string, string | number> = {
+        symbol,
+        orderId,
+        timestamp,
+        recvWindow: 5000,
+      };
+      
+      const queryString = Object.entries(orderParams)
+        .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
+        .map(([k, v]) => `${k}=${v}`)
+        .join('&');
+      
+      const signature = createHmac('sha256', secretKey)
+        .update(queryString)
+        .digest('hex');
+      
+      const signedParams = `${queryString}&signature=${signature}`;
+      
+      const response = await fetch(`https://fapi.asterdex.com/fapi/v1/order?${signedParams}`, {
+        method: 'DELETE',
+        headers: {
+          'X-MBX-APIKEY': apiKey,
+        },
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ Failed to cancel order ${orderId}: ${response.status} ${errorText}`);
+        return false;
+      }
+      
+      console.log(`✅ Canceled order ${orderId} for ${symbol}`);
+      return true;
+    } catch (error) {
+      console.error('❌ Error canceling order:', error);
+      return false;
+    }
+  }
+
   // Fill a paper order and create fill record
   private async fillPaperOrder(order: Order, fillPrice: number, fillQuantity: number, tradeType: 'entry' | 'layer' | 'stop_loss' | 'take_profit' = 'entry') {
     // Update order status
