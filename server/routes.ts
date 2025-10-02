@@ -221,21 +221,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
           name: s.name,
           tradingMode: s.tradingMode,
           selectedAssets: s.selectedAssets,
-          percentileThreshold: s.percentileThreshold,
-          positionSizePercent: s.positionSizePercent,
-          maxLayers: s.maxLayers,
-          profitTargetPercent: s.profitTargetPercent,
-          stopLossPercent: s.stopLossPercent,
+          percentileThreshold: Number(s.percentileThreshold),
+          positionSizePercent: String(s.positionSizePercent),
+          maxLayers: Number(s.maxLayers),
+          profitTargetPercent: String(s.profitTargetPercent),
+          stopLossPercent: String(s.stopLossPercent),
           marginMode: s.marginMode,
-          marginAmount: s.marginAmount,
-          leverage: s.leverage,
+          marginAmount: String(s.marginAmount),
+          leverage: Number(s.leverage),
           orderType: s.orderType,
-          orderDelayMs: s.orderDelayMs,
-          maxRetryDurationMs: s.maxRetryDurationMs,
-          slippageTolerancePercent: s.slippageTolerancePercent,
-          liquidationLookbackHours: s.liquidationLookbackHours,
-          paperAccountSize: s.paperAccountSize,
-          hedgeMode: s.hedgeMode,
+          orderDelayMs: Number(s.orderDelayMs),
+          maxRetryDurationMs: Number(s.maxRetryDurationMs),
+          slippageTolerancePercent: String(s.slippageTolerancePercent),
+          liquidationLookbackHours: Number(s.liquidationLookbackHours),
+          paperAccountSize: String(s.paperAccountSize),
+          hedgeMode: Boolean(s.hedgeMode),
         }))
       };
       
@@ -257,31 +257,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Import user settings (skip if null)
       if (importData.settings) {
-        const validatedSettings = insertUserSettingsSchema.parse({
-          ...importData.settings,
-          userId: DEFAULT_USER_ID
-        });
-        await storage.saveUserSettings(validatedSettings);
+        try {
+          const validatedSettings = insertUserSettingsSchema.parse({
+            ...importData.settings,
+            userId: DEFAULT_USER_ID
+          });
+          await storage.saveUserSettings(validatedSettings);
+        } catch (error: any) {
+          return res.status(400).json({ 
+            error: "Invalid settings data", 
+            details: error.message 
+          });
+        }
       }
       
       // Import strategies (create new or update existing)
       if (importData.strategies && importData.strategies.length > 0) {
-        const existingStrategies = await storage.getStrategiesByUser(DEFAULT_USER_ID);
+        // Get existing strategies (will refresh after each create)
+        let existingStrategies = await storage.getStrategiesByUser(DEFAULT_USER_ID);
         
         for (const strategyData of importData.strategies) {
-          const existingStrategy = existingStrategies.find((s: any) => s.name === strategyData.name);
-          
-          if (existingStrategy) {
-            // Validate and update existing strategy with imported settings
-            const validatedData = updateStrategySchema.parse(strategyData);
-            await storage.updateStrategy(existingStrategy.id, validatedData);
-          } else {
-            // Validate and create new strategy from imported data
-            const validatedData = frontendStrategySchema.parse({
-              ...strategyData,
-              userId: DEFAULT_USER_ID,
+          try {
+            const existingStrategy = existingStrategies.find((s: any) => s.name === strategyData.name);
+            
+            if (existingStrategy) {
+              // Validate and update existing strategy with imported settings
+              const validatedData = updateStrategySchema.parse(strategyData);
+              await storage.updateStrategy(existingStrategy.id, validatedData);
+            } else {
+              // Validate and create new strategy from imported data
+              const validatedData = frontendStrategySchema.parse({
+                ...strategyData,
+                userId: DEFAULT_USER_ID,
+              });
+              await storage.createStrategy(validatedData);
+              
+              // Refresh the list so newly created strategies are visible for subsequent iterations
+              existingStrategies = await storage.getStrategiesByUser(DEFAULT_USER_ID);
+            }
+          } catch (error: any) {
+            return res.status(400).json({ 
+              error: `Invalid strategy data for "${strategyData.name}"`, 
+              details: error.message 
             });
-            await storage.createStrategy(validatedData);
           }
         }
       }
