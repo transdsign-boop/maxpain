@@ -501,8 +501,25 @@ export class DatabaseStorage implements IStorage {
 
   // Fill operations
   async applyFill(fill: InsertFill): Promise<Fill> {
-    const result = await db.insert(fills).values(fill).returning();
-    return result[0];
+    // Idempotency via database unique constraint on (orderId, sessionId)
+    // If a duplicate is attempted, the database will reject it
+    try {
+      const result = await db.insert(fills).values(fill).returning();
+      console.log(`✅ Fill recorded: orderId=${fill.orderId}, qty=${fill.quantity}, price=${fill.price}`);
+      return result[0];
+    } catch (error: any) {
+      // Check if it's a unique constraint violation (duplicate)
+      if (error.code === '23505') {
+        console.log(`⏭️ Skipping duplicate fill (DB constraint): orderId=${fill.orderId}`);
+        // Fetch and return the existing fill
+        const existing = await db.select().from(fills)
+          .where(eq(fills.orderId, fill.orderId))
+          .limit(1);
+        return existing[0];
+      }
+      // Re-throw other errors
+      throw error;
+    }
   }
 
   async getFillsBySession(sessionId: string): Promise<Fill[]> {
