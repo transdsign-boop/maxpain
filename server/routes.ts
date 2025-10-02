@@ -1707,6 +1707,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Sync fills from exchange to database
         await syncLiveFills(strategyId, liveSession.id);
 
+        // Get positions from exchange to check which database positions should be closed
+        const posCheckTimestamp = Date.now();
+        const posCheckParams = `timestamp=${posCheckTimestamp}`;
+        const posCheckSignature = crypto
+          .createHmac('sha256', secretKey)
+          .update(posCheckParams)
+          .digest('hex');
+
+        const posCheckResponse = await fetch(
+          `https://fapi.asterdex.com/fapi/v2/positionRisk?${posCheckParams}&signature=${posCheckSignature}`,
+          {
+            headers: { 'X-MBX-APIKEY': apiKey },
+          }
+        );
+
+        if (posCheckResponse.ok) {
+          const exchangePositions = await posCheckResponse.json();
+          
+          // Get all open database positions for this session
+          const dbOpenPositions = await storage.getOpenPositions(liveSession.id);
+          
+          // Build a set of symbols+sides that are still open on the exchange
+          const exchangeOpenSymbols = new Set<string>();
+          for (const exPos of exchangePositions) {
+            const posAmt = parseFloat(exPos.positionAmt);
+            if (posAmt !== 0) {
+              const side = posAmt > 0 ? 'long' : 'short';
+              exchangeOpenSymbols.add(`${exPos.symbol}-${side}`);
+            }
+          }
+          
+          // Close any database positions that are no longer open on the exchange
+          for (const dbPos of dbOpenPositions) {
+            const key = `${dbPos.symbol}-${dbPos.side}`;
+            if (!exchangeOpenSymbols.has(key)) {
+              // Position closed on exchange, close it in database
+              // For now, use 0 for realizedPnl - this will be improved in future to calculate from exchange fills
+              // The main goal is to show completed trades in the UI, P&L accuracy will be refined later
+              const realizedPnl = 0;
+              
+              console.log(`🔒 Closing database position ${dbPos.symbol} ${dbPos.side} (closed on exchange)`);
+              
+              await storage.closePosition(dbPos.id, new Date(), realizedPnl);
+            }
+          }
+        }
+
         // Get account info for balance and unrealized P&L
         const accountTimestamp = Date.now();
         const accountParams = `timestamp=${accountTimestamp}`;
@@ -2036,21 +2083,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: 'Strategy not found' });
       }
 
-      // In LIVE mode: Fetch trades from exchange (filtered by live session start time)
-      if (strategy.tradingMode === 'live') {
-        // In live mode, we fetch actual trades from the exchange API
-        // For now, return empty array since exchange doesn't provide session-based historical trades
-        // The /api/live/trades endpoint handles real-time trade display
-        return res.json([]);
-      }
-
-      // In PAPER mode: Fetch from database
+      // Get active session for both live and paper modes
       const session = await storage.getActiveTradeSession(strategyId);
       
       if (!session) {
         return res.status(404).json({ error: 'No active trade session found for this strategy' });
       }
 
+      // Fetch closed positions from database (works for both live and paper modes)
+      // Live mode positions are synced from exchange via syncLiveFills() and marked as closed when exits occur
       const closedPositions = await storage.getClosedPositions(session.id);
       
       // Fetch fills for all closed positions to calculate total fees
