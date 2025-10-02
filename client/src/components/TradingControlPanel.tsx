@@ -90,11 +90,10 @@ export default function TradingControlPanel() {
   const [isStrategyRunning, setIsStrategyRunning] = useState(false);
   const [isOpen, setIsOpen] = useState(true);
 
-  // Fetch available assets for selection - use full symbol list from Aster DEX
-  const { data: availableAssets, isLoading: assetsLoading } = useQuery({
+  // Fetch available symbols from Aster DEX
+  const { data: symbols, isLoading: symbolsLoading } = useQuery({
     queryKey: ['/api/symbols'],
     select: (data: any) => {
-      // Filter for TRADING status only and sort alphabetically
       return data.symbols
         .filter((s: any) => s.status === 'TRADING')
         .map((s: any) => ({
@@ -105,6 +104,26 @@ export default function TradingControlPanel() {
         .sort((a: any, b: any) => a.symbol.localeCompare(b.symbol));
     }
   });
+
+  // Fetch liquidation counts from database
+  const { data: liquidationCounts, isLoading: countsLoading } = useQuery({
+    queryKey: ['/api/analytics/assets'],
+    select: (data: any[]) => {
+      const countMap: Record<string, number> = {};
+      data.forEach((asset: any) => {
+        countMap[asset.symbol] = parseInt(asset.count);
+      });
+      return countMap;
+    }
+  });
+
+  // Merge symbols with liquidation counts
+  const availableAssets = symbols?.map((symbol: any) => ({
+    ...symbol,
+    liquidationCount: liquidationCounts?.[symbol.symbol] || 0
+  }));
+
+  const assetsLoading = symbolsLoading || countsLoading;
 
   // Fetch current strategies
   const { data: strategies, isLoading: strategiesLoading } = useQuery<Strategy[]>({
@@ -517,7 +536,7 @@ export default function TradingControlPanel() {
                     Select which assets to scan for liquidation opportunities
                   </FormDescription>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-2">
-                    {availableAssets?.map((asset: { symbol: string; baseAsset: string; quoteAsset: string }) => (
+                    {availableAssets?.map((asset: any) => (
                       <div key={asset.symbol} className="flex items-center space-x-2">
                         <Checkbox
                           data-testid={`checkbox-asset-${asset.symbol}`}
@@ -537,6 +556,9 @@ export default function TradingControlPanel() {
                           className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
                         >
                           {asset.symbol}
+                          <span className="text-xs text-muted-foreground ml-1">
+                            ({asset.liquidationCount})
+                          </span>
                         </label>
                       </div>
                     ))}
