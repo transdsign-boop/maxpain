@@ -929,14 +929,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const data = await response.json();
       
-      // Extract USDC balance from assets array
+      // Extract USDT balance from assets array (most common trading asset)
+      const usdtAsset = data.assets?.find((asset: any) => asset.asset === 'USDT');
+      const usdtBalance = usdtAsset ? parseFloat(usdtAsset.walletBalance) : 0;
+      
+      // Also check for USDC as fallback
       const usdcAsset = data.assets?.find((asset: any) => asset.asset === 'USDC');
       const usdcBalance = usdcAsset ? parseFloat(usdcAsset.walletBalance) : 0;
       
-      // Add USDC balance to response
+      // Use USDT if available, otherwise USDC, otherwise fall back to availableBalance from top-level response
+      const balance = usdtBalance || usdcBalance || parseFloat(data.availableBalance || '0');
+      
+      // Add balance to response
       const result = {
         ...data,
-        usdcBalance: usdcBalance.toString()
+        usdcBalance: balance.toString(), // Keep field name for backwards compatibility
+        usdtBalance: usdtBalance.toString()
       };
 
       // Cache the result
