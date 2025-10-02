@@ -65,7 +65,7 @@ export default function Dashboard() {
   // Fetch live account data when in live mode
   const { data: liveAccount, error: liveAccountError } = useQuery<any>({
     queryKey: ['/api/live/account'],
-    refetchInterval: 5000,
+    refetchInterval: 30000, // Reduced to 30 seconds to avoid rate limiting
     enabled: !!isLiveMode && !!activeStrategy,
     retry: 2,
   });
@@ -73,7 +73,7 @@ export default function Dashboard() {
   // Fetch live positions when in live mode
   const { data: livePositions, error: livePositionsError } = useQuery<any[]>({
     queryKey: ['/api/live/positions'],
-    refetchInterval: 5000,
+    refetchInterval: 15000, // Reduced to 15 seconds to avoid rate limiting
     enabled: !!isLiveMode && !!activeStrategy,
     retry: 2,
   });
@@ -108,7 +108,7 @@ export default function Dashboard() {
       return response.json();
     },
     enabled: !!activeStrategy?.id,
-    refetchInterval: 1000, // Refresh every second for real-time updates
+    refetchInterval: 10000, // Reduced to 10 seconds to avoid rate limiting (was 1 second)
   });
 
   // Pause strategy mutation
