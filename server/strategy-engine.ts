@@ -1866,14 +1866,38 @@ export class StrategyEngine extends EventEmitter {
     const currentAvgPrice = parseFloat(position.avgEntryPrice);
     const leverage = position.leverage || 1; // Use position's leverage
 
-    const newQuantity = currentQuantity + fillQuantity;
+    // Validate current values - if NaN, reset to safe defaults
+    const safeCurrentQuantity = isNaN(currentQuantity) ? 0 : currentQuantity;
+    const safeCurrentCost = isNaN(currentCost) ? 0 : currentCost;
+    const safeCurrentAvgPrice = isNaN(currentAvgPrice) ? 0 : currentAvgPrice;
+
+    const newQuantity = safeCurrentQuantity + fillQuantity;
     
     // Calculate new average entry price using notional values (price-based, not margin-based)
-    const newAvgPrice = ((currentAvgPrice * currentQuantity) + (fillPrice * fillQuantity)) / newQuantity;
+    // If position was corrupted (qty=0, price=NaN), reset to current fill price
+    const newAvgPrice = safeCurrentQuantity > 0 
+      ? ((safeCurrentAvgPrice * safeCurrentQuantity) + (fillPrice * fillQuantity)) / newQuantity
+      : fillPrice;
     
     // Add actual margin for new layer (notional / leverage)
     const newLayerMargin = (fillPrice * fillQuantity) / leverage;
-    const newCost = currentCost + newLayerMargin;
+    const newCost = safeCurrentCost + newLayerMargin;
+
+    // Final validation - ensure no NaN values are saved
+    if (isNaN(newQuantity) || isNaN(newAvgPrice) || isNaN(newCost)) {
+      console.error(`❌ NaN detected in position update for ${position.symbol}:`, {
+        newQuantity,
+        newAvgPrice,
+        newCost,
+        fillPrice,
+        fillQuantity,
+        currentQuantity: safeCurrentQuantity,
+        currentAvgPrice: safeCurrentAvgPrice,
+        currentCost: safeCurrentCost
+      });
+      // Don't update if values are invalid
+      return;
+    }
 
     await storage.updatePosition(position.id, {
       totalQuantity: newQuantity.toString(),
