@@ -1671,10 +1671,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const totalCost = parseFloat(position.totalCost);
           const dollarPnl = (unrealizedPnl / 100) * totalCost;
 
-          // Emergency close = limit order (manual close style) = 0.01% maker fee for paper trading
+          // Emergency close = limit order (manual close style) = 0.01% maker fee (SAME FOR BOTH PAPER AND LIVE)
           const quantity = parseFloat(position.totalQuantity);
           const exitValue = currentPrice * quantity;
-          const exitFee = isPaperTrading ? (exitValue * 0.01) / 100 : 0;
+          const exitFee = (exitValue * 0.01) / 100; // Apply fee for BOTH paper and live
           
           // Create exit fill record
           await storage.applyFill({
@@ -1693,8 +1693,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Close the position with dollar P&L
           await storage.closePosition(position.id, new Date(), dollarPnl);
           
-          // Accumulate P&L (deduct exit fee for paper trading)
-          const netDollarPnl = isPaperTrading ? dollarPnl - exitFee : dollarPnl;
+          // Accumulate P&L (deduct exit fee for BOTH paper and live)
+          const netDollarPnl = dollarPnl - exitFee;
           totalPnl += netDollarPnl;
           
           closedPositions.push({
@@ -2817,10 +2817,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const session = await storage.getTradeSession(position.sessionId);
       const isPaperTrading = session?.mode === 'paper';
       
-      // Manual close = limit order (take profit style) = 0.01% maker fee for paper trading
+      // Manual close = limit order (take profit style) = 0.01% maker fee (SAME FOR BOTH PAPER AND LIVE)
       const quantity = parseFloat(position.totalQuantity);
       const exitValue = currentPrice * quantity;
-      const exitFee = isPaperTrading ? (exitValue * 0.01) / 100 : 0;
+      const exitFee = (exitValue * 0.01) / 100; // Apply fee for BOTH paper and live
       
       // Create exit fill record
       await storage.applyFill({
@@ -2839,11 +2839,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Close the position with dollar P&L
       await storage.closePosition(position.id, new Date(), dollarPnl);
 
-      // Update session balance and stats (deduct exit fee from P&L)
+      // Update session balance and stats (deduct exit fee for BOTH paper and live)
       if (session) {
         const newTotalTrades = session.totalTrades + 1;
         const oldTotalPnl = parseFloat(session.totalPnl);
-        const netDollarPnl = isPaperTrading ? dollarPnl - exitFee : dollarPnl;
+        const netDollarPnl = dollarPnl - exitFee; // Deduct fee for both modes
         const newTotalPnl = oldTotalPnl + netDollarPnl;
         const oldBalance = parseFloat(session.currentBalance);
         const newBalance = oldBalance + netDollarPnl;
@@ -2854,9 +2854,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           currentBalance: newBalance.toString(),
         });
         
-        if (isPaperTrading) {
-          console.log(`💸 Manual exit fee applied: $${exitFee.toFixed(4)} (0.01% maker fee - limit order)`);
-        }
+        console.log(`💸 Manual exit fee applied: $${exitFee.toFixed(4)} (0.01% maker fee - limit order)`)
       }
 
       console.log(`✋ Manually closed position ${position.symbol} at $${currentPrice} via LIMIT (manual/take profit) with ${unrealizedPnl.toFixed(2)}% P&L ($${dollarPnl.toFixed(2)})`);
