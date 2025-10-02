@@ -76,7 +76,6 @@ const strategyFormSchema = z.object({
     const num = parseFloat(val);
     return !isNaN(num) && num >= 1 && num <= 100;
   }, "Account usage must be between 1% and 100%"),
-  tradingMode: z.enum(["paper", "live"]),
   paperAccountSize: z.string().refine((val) => {
     const num = parseFloat(val);
     return !isNaN(num) && num >= 100 && num <= 1000000;
@@ -124,7 +123,6 @@ export default function TradingControlPanel() {
       orderType: "limit",
       maxRetryDurationMs: 30000,
       marginAmount: "10.0",
-      tradingMode: "paper",
       paperAccountSize: "10000.0",
     }
   });
@@ -186,6 +184,7 @@ export default function TradingControlPanel() {
         orderType: strategy.orderType,
         maxRetryDurationMs: strategy.maxRetryDurationMs,
         marginAmount: strategy.marginAmount,
+        paperAccountSize: strategy.paperAccountSize || "10000.0",
       });
     },
     onError: () => {
@@ -385,6 +384,7 @@ export default function TradingControlPanel() {
         orderType: strategy.orderType,
         maxRetryDurationMs: strategy.maxRetryDurationMs,
         marginAmount: strategy.marginAmount,
+        paperAccountSize: strategy.paperAccountSize || "10000.0",
       });
     } else if (strategies && strategies.length === 0) {
       // No strategies available, clear active strategy
