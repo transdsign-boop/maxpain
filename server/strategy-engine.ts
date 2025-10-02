@@ -61,6 +61,7 @@ export class StrategyEngine extends EventEmitter {
   private staleLimitOrderSeconds: number = 180; // 3 minutes default timeout for limit orders
   private recoveryAttempts: Map<string, number> = new Map(); // Track cooldown for auto-repair attempts
   private cleanupInProgress: boolean = false; // Prevent overlapping cleanup runs
+  private exchangePositionMode: 'one-way' | 'dual' | null = null; // Cache exchange position mode
   private lastFillTime: Map<string, number> = new Map(); // "sessionId-symbol-side" -> timestamp of last fill
   private fillCooldownMs: number = 10000; // 10 second cooldown after each fill
 
@@ -161,6 +162,9 @@ export class StrategyEngine extends EventEmitter {
     
     // Fetch exchange info for precision requirements (for live trading)
     await this.fetchExchangeInfo();
+    
+    // Fetch and cache the exchange's position mode setting
+    this.exchangePositionMode = await this.fetchExchangePositionMode();
     
     // Load active strategies and sessions
     await this.loadActiveStrategies();
@@ -620,7 +624,7 @@ export class StrategyEngine extends EventEmitter {
         targetPrice: price,
         triggerLiquidationId: liquidation.id,
         layerNumber: 1,
-        positionSide, // Include for hedge mode
+        positionSide: strategy.hedgeMode ? positionSide : undefined, // Only include positionSide if hedge mode is actually enabled
       });
 
     } catch (error) {
@@ -711,7 +715,7 @@ export class StrategyEngine extends EventEmitter {
           triggerLiquidationId: liquidation.id,
           layerNumber: nextLayer,
           positionId: position.id,
-          positionSide, // Include for hedge mode
+          positionSide: strategy.hedgeMode ? positionSide : undefined, // Only include positionSide if hedge mode is actually enabled
         });
 
         console.log(`✅ Layer ${nextLayer} completed for ${liquidation.symbol}`);
@@ -913,8 +917,9 @@ export class StrategyEngine extends EventEmitter {
         recvWindow: 5000, // 5 second receive window for clock sync tolerance
       };
       
-      // Add positionSide for hedge mode (exchange must be configured for dual position mode)
-      if (positionSide) {
+      // Add positionSide ONLY if the exchange is in dual position mode
+      // The exchange requires positionSide in dual mode and rejects it in one-way mode
+      if (this.exchangePositionMode === 'dual' && positionSide) {
         orderParams.positionSide = positionSide.toUpperCase();
       }
       
@@ -984,6 +989,50 @@ export class StrategyEngine extends EventEmitter {
     } catch (error) {
       console.error('❌ Error executing live order:', error);
       return { success: false, error: String(error) };
+    }
+  }
+
+  // Get the exchange's position mode (one-way or dual)
+  private async fetchExchangePositionMode(): Promise<'one-way' | 'dual'> {
+    try {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+      
+      if (!apiKey || !secretKey) {
+        console.error('❌ Cannot determine position mode: API keys not configured');
+        return 'one-way'; // Default to one-way mode
+      }
+      
+      const timestamp = Date.now();
+      const queryString = `timestamp=${timestamp}&recvWindow=5000`;
+      
+      const signature = createHmac('sha256', secretKey)
+        .update(queryString)
+        .digest('hex');
+      
+      const signedParams = `${queryString}&signature=${signature}`;
+      
+      const response = await fetch(`https://fapi.asterdex.com/fapi/v1/positionSide/dual?${signedParams}`, {
+        method: 'GET',
+        headers: {
+          'X-MBX-APIKEY': apiKey,
+        },
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ Failed to fetch position mode: ${response.status} ${errorText}`);
+        return 'one-way'; // Default to one-way mode on error
+      }
+      
+      const data = await response.json();
+      const isDualMode = data.dualSidePosition === true;
+      
+      console.log(`📊 Exchange position mode: ${isDualMode ? 'dual' : 'one-way'}`);
+      return isDualMode ? 'dual' : 'one-way';
+    } catch (error) {
+      console.error('❌ Error fetching position mode:', error);
+      return 'one-way'; // Default to one-way mode on error
     }
   }
 
