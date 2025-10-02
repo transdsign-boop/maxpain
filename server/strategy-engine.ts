@@ -614,6 +614,7 @@ export class StrategyEngine extends EventEmitter {
       }
 
       // Place order with price chasing
+      // Only pass positionSide if the EXCHANGE is in dual mode (not based on strategy settings)
       await this.placeOrderWithRetry({
         strategy,
         session,
@@ -624,7 +625,7 @@ export class StrategyEngine extends EventEmitter {
         targetPrice: price,
         triggerLiquidationId: liquidation.id,
         layerNumber: 1,
-        positionSide: strategy.hedgeMode ? positionSide : undefined, // Only include positionSide if hedge mode is actually enabled
+        positionSide: this.exchangePositionMode === 'dual' ? positionSide : undefined, // Only include if EXCHANGE is in dual mode
       });
 
     } catch (error) {
@@ -704,6 +705,7 @@ export class StrategyEngine extends EventEmitter {
 
       try {
         // Place layer order with price chasing
+        // Only pass positionSide if the EXCHANGE is in dual mode (not based on strategy settings)
         await this.placeOrderWithRetry({
           strategy,
           session,
@@ -715,7 +717,7 @@ export class StrategyEngine extends EventEmitter {
           triggerLiquidationId: liquidation.id,
           layerNumber: nextLayer,
           positionId: position.id,
-          positionSide: strategy.hedgeMode ? positionSide : undefined, // Only include positionSide if hedge mode is actually enabled
+          positionSide: this.exchangePositionMode === 'dual' ? positionSide : undefined, // Only include if EXCHANGE is in dual mode
         });
 
         console.log(`✅ Layer ${nextLayer} completed for ${liquidation.symbol}`);
@@ -781,14 +783,15 @@ export class StrategyEngine extends EventEmitter {
           // Check if this is live or paper trading
           if (session.mode === 'live') {
             // Execute live order on Aster DEX
+            // Only pass positionSide if the EXCHANGE is in dual mode (not based on strategy settings)
             const liveOrderResult = await this.executeLiveOrder({
               symbol,
               side,
               orderType: strategy.orderType,
               quantity,
               price: orderPrice,
-              // Only include positionSide if hedge mode is actually enabled
-              positionSide: strategy.hedgeMode ? positionSide : undefined,
+              // Only include positionSide if the EXCHANGE is in dual mode
+              positionSide: this.exchangePositionMode === 'dual' ? positionSide : undefined,
             });
             
             if (!liveOrderResult.success) {
@@ -2195,14 +2198,15 @@ export class StrategyEngine extends EventEmitter {
       }
       
       // Place the live order on Aster DEX with automatic precision rounding
+      // Only pass positionSide if the EXCHANGE is in dual mode (not based on strategy settings)
       const liveOrderResult = await this.executeLiveOrder({
         symbol: position.symbol,
         side: exitSide,
         orderType: orderType.toLowerCase(),
         quantity,
         price,
-        // Only include positionSide if hedge mode is enabled
-        positionSide: strategy?.hedgeMode ? position.side : undefined,
+        // Only include positionSide if the EXCHANGE is in dual mode
+        positionSide: this.exchangePositionMode === 'dual' ? position.side : undefined,
       });
       
       if (!liveOrderResult.success) {
