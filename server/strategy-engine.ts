@@ -378,8 +378,13 @@ export class StrategyEngine extends EventEmitter {
     position: Position, 
     liquidation: Liquidation
   ): Promise<boolean> {
-    // Check if we haven't exceeded max layers
-    if (position.layersFilled >= strategy.maxLayers) {
+    // Check if we haven't exceeded max layers (including pending orders)
+    const pendingLayers = this.pendingLayerOrders.get(position.id);
+    const pendingCount = pendingLayers ? pendingLayers.size : 0;
+    const totalLayers = position.layersFilled + pendingCount;
+    
+    if (totalLayers >= strategy.maxLayers) {
+      console.log(`🚫 Max layers reached: ${position.layersFilled} filled + ${pendingCount} pending = ${totalLayers}/${strategy.maxLayers}`);
       return false;
     }
 
