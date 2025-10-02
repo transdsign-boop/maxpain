@@ -2192,8 +2192,11 @@ export class StrategyEngine extends EventEmitter {
       }
 
       // Calculate dollar P&L from percentage
+      // CRITICAL: totalCost stores MARGIN, multiply by leverage to get notional value
       const totalCost = parseFloat(position.totalCost);
-      const dollarPnl = (realizedPnlPercent / 100) * totalCost;
+      const leverage = (position as any).leverage || 1;
+      const notionalValue = totalCost * leverage;
+      const dollarPnl = (realizedPnlPercent / 100) * notionalValue;
       
       // Determine exit order type and fee
       const orderType = exitType === 'take_profit' ? 'limit' : 'stop_market';
