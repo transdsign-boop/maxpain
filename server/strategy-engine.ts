@@ -2271,6 +2271,11 @@ export class StrategyEngine extends EventEmitter {
       const exitValue = exitPrice * quantity;
       const exitFee = (exitValue * feePercent) / 100; // Apply fee for BOTH paper and live
       
+      // Variables to store actual or calculated fill data
+      let actualExitPrice = exitPrice;
+      let actualExitQty = quantity;
+      let actualExitFee = exitFee;
+      
       // For live trading, place the actual exit order on Aster DEX
       if (!isPaperTrading) {
         const exitSide = position.side === 'long' ? 'sell' : 'buy';
@@ -2290,30 +2295,69 @@ export class StrategyEngine extends EventEmitter {
         }
         
         console.log(`✅ Live exit order placed: ${orderType.toUpperCase()} ${exitSide} ${quantity.toFixed(4)} ${position.symbol} at $${exitPrice}`);
+        
+        // Fetch actual fill data from exchange (with retry logic for fill propagation delay)
+        let actualFillData: any = null;
+        let retryCount = 0;
+        const maxRetries = 3;
+        
+        while (retryCount < maxRetries && liveOrderResult.orderId) {
+          // Small delay to allow exchange to process the fill
+          if (retryCount > 0) {
+            await new Promise(resolve => setTimeout(resolve, 500)); // 500ms between retries
+          }
+          
+          const fillResult = await this.fetchActualFills({
+            symbol: position.symbol,
+            orderId: liveOrderResult.orderId,
+          });
+          
+          if (fillResult.success && fillResult.fills && fillResult.fills.length > 0) {
+            actualFillData = fillResult.fills[0]; // Use first fill (most recent)
+            break;
+          }
+          
+          retryCount++;
+        }
+        
+        if (actualFillData) {
+          // Use ACTUAL fill data from exchange for exit
+          actualExitPrice = parseFloat(actualFillData.price);
+          actualExitQty = parseFloat(actualFillData.qty);
+          actualExitFee = parseFloat(actualFillData.commission);
+          
+          console.log(`💎 Using REAL exchange EXIT data - Price: $${actualExitPrice}, Qty: ${actualExitQty}, Fee: $${actualExitFee.toFixed(4)}`);
+          console.log(`📊 Exit fill type: ${actualFillData.maker ? 'MAKER' : 'TAKER'}`);
+        } else {
+          console.warn(`⚠️ Could not fetch actual exit fill data after ${maxRetries} attempts, using calculated values`);
+        }
       }
       
-      // Create exit fill record
+      // Recalculate values based on actual fill data (for live) or calculated data (for paper)
+      const actualExitValue = actualExitPrice * actualExitQty;
+      
+      // Create exit fill record with ACTUAL data
       await storage.applyFill({
         orderId: `exit-${position.id}`, // Synthetic order ID for exit
         sessionId: position.sessionId,
         positionId: position.id, // Link exit fill to position
         symbol: position.symbol,
         side: position.side === 'long' ? 'sell' : 'buy', // Opposite side to close
-        quantity: position.totalQuantity,
-        price: exitPrice.toString(),
-        value: exitValue.toString(),
-        fee: exitFee.toString(),
+        quantity: actualExitQty.toString(), // ✅ Use actual quantity
+        price: actualExitPrice.toString(), // ✅ Use actual price
+        value: actualExitValue.toString(), // ✅ Use actual value
+        fee: actualExitFee.toString(), // ✅ Use actual fee
         layerNumber: 0, // Exit trades don't have layers
       });
 
-      // Broadcast trade notification for exit
+      // Broadcast trade notification for exit with ACTUAL data
       this.broadcastTradeNotification({
         symbol: position.symbol,
         side: position.side as 'long' | 'short',
         tradeType: exitType,
-        price: exitPrice,
-        quantity,
-        value: exitValue
+        price: actualExitPrice, // ✅ Use actual price
+        quantity: actualExitQty, // ✅ Use actual quantity
+        value: actualExitValue // ✅ Use actual value
       });
 
       // Close position in database with dollar P&L
@@ -2325,8 +2369,8 @@ export class StrategyEngine extends EventEmitter {
         const newTotalTrades = latestSession.totalTrades + 1;
         const oldTotalPnl = parseFloat(latestSession.totalPnl);
         
-        // Subtract exit fee from realized P&L (SAME FOR BOTH PAPER AND LIVE)
-        const netDollarPnl = dollarPnl - exitFee;
+        // Subtract ACTUAL exit fee from realized P&L (uses real exchange data in live mode)
+        const netDollarPnl = dollarPnl - actualExitFee; // ✅ Use actual fee
         const newTotalPnl = oldTotalPnl + netDollarPnl;
         
         // Update current balance with net realized P&L
@@ -2346,14 +2390,16 @@ export class StrategyEngine extends EventEmitter {
           session.currentBalance = newBalance.toString();
         }
         
-        // Show detailed fee breakdown for BOTH paper and live
-        console.log(`💸 Exit fee applied: $${exitFee.toFixed(4)} (${feePercent}% ${orderType === 'limit' ? 'maker' : 'taker'} fee - ${exitValue.toFixed(2)} value)`);
-        console.log(`💰 Balance updated: $${oldBalance.toFixed(2)} → $${newBalance.toFixed(2)} (P&L: $${dollarPnl.toFixed(2)}, Fee: -$${exitFee.toFixed(4)}, Net: $${netDollarPnl.toFixed(2)})`);
+        // Show detailed fee breakdown using ACTUAL data
+        const actualFeePercent = (actualExitFee / actualExitValue) * 100;
+        const feeSource = isPaperTrading ? 'calculated' : 'from exchange';
+        console.log(`💸 Exit fee applied: $${actualExitFee.toFixed(4)} (${actualFeePercent.toFixed(3)}% ${orderType === 'limit' ? 'maker' : 'taker'} fee - $${actualExitValue.toFixed(2)} value - ${feeSource})`);
+        console.log(`💰 Balance updated: $${oldBalance.toFixed(2)} → $${newBalance.toFixed(2)} (P&L: $${dollarPnl.toFixed(2)}, Fee: -$${actualExitFee.toFixed(4)}, Net: $${netDollarPnl.toFixed(2)})`);
       } else {
         console.warn(`⚠️ Could not update session stats - session ${position.sessionId} not found in database`);
       }
 
-      console.log(`✅ Position closed: ${position.symbol} - P&L: ${realizedPnlPercent.toFixed(2)}% ($${dollarPnl.toFixed(2)}, Fee: $${exitFee.toFixed(4)})`);
+      console.log(`✅ Position closed: ${position.symbol} - P&L: ${realizedPnlPercent.toFixed(2)}% ($${dollarPnl.toFixed(2)}, Fee: $${actualExitFee.toFixed(4)})`);
     } catch (error) {
       console.error('❌ Error closing position:', error);
     }
