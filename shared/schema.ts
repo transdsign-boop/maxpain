@@ -197,6 +197,7 @@ export const frontendStrategySchema = z.object({
   userId: z.string(),
   selectedAssets: z.array(z.string()).min(1, "Select at least one asset"),
   percentileThreshold: z.number().min(1).max(100),
+  liquidationLookbackHours: z.number().min(1).max(24).default(1), // 1-24 hours
   maxLayers: z.number().min(1).max(10),
   positionSizePercent: z.string().refine((val) => {
     const num = parseFloat(val);
