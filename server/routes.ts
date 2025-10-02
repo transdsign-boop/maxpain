@@ -1622,13 +1622,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
             id: `live-${pos.symbol}-${pos.positionSide}`,
             symbol: pos.symbol,
             side: parseFloat(pos.positionAmt) > 0 ? 'long' : 'short',
-            quantity: Math.abs(parseFloat(pos.positionAmt)),
-            entryPrice: pos.entryPrice,
-            currentPrice: pos.markPrice,
-            unrealizedPnl: ((parseFloat(pos.markPrice) - parseFloat(pos.entryPrice)) / parseFloat(pos.entryPrice) * 100).toFixed(2),
-            totalCost: (Math.abs(parseFloat(pos.positionAmt)) * parseFloat(pos.entryPrice)).toFixed(2),
+            totalQuantity: Math.abs(parseFloat(pos.positionAmt)).toString(),
+            avgEntryPrice: pos.entryPrice,
+            unrealizedPnl: ((parseFloat(pos.markPrice) - parseFloat(pos.entryPrice)) / parseFloat(pos.entryPrice) * 100).toString(),
+            totalCost: (Math.abs(parseFloat(pos.positionAmt)) * parseFloat(pos.entryPrice)).toString(),
             leverage: parseInt(pos.leverage),
             positionSide: pos.positionSide,
+            isOpen: true,
+            openedAt: new Date().toISOString(),
           }));
 
         // Calculate totals from exchange data
