@@ -2382,8 +2382,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const startingBalance = parseFloat(session.startingBalance);
       const currentBalance = startingBalance + totalRealizedPnl;
       
-      const totalExposure = positions.reduce((sum, pos) => 
-        sum + parseFloat(pos.totalCost || '0'), 0);
+      // Calculate total NOTIONAL exposure (margin × leverage)
+      const totalExposure = positions.reduce((sum, pos) => {
+        const margin = parseFloat(pos.totalCost || '0');
+        const leverage = pos.leverage || 1;
+        return sum + (margin * leverage); // Notional = margin × leverage
+      }, 0);
       const activePositions = positions.length;
       const totalTrades = closedPositions.length;
 
@@ -2459,8 +2463,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const startingBalance = parseFloat(session.startingBalance);
       const currentBalance = startingBalance + totalRealizedPnl;
       
-      const totalExposure = positions.reduce((sum, pos) => 
-        sum + parseFloat(pos.totalCost || '0'), 0);
+      // Calculate total NOTIONAL exposure (margin × leverage)
+      const totalExposure = positions.reduce((sum, pos) => {
+        const margin = parseFloat(pos.totalCost || '0');
+        const leverage = pos.leverage || 1;
+        return sum + (margin * leverage); // Notional = margin × leverage
+      }, 0);
       const activePositions = positions.length;
       const totalTrades = closedPositions.length;
 
