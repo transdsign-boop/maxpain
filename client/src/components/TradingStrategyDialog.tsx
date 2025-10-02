@@ -99,14 +99,20 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
   const [isStrategyRunning, setIsStrategyRunning] = useState(false);
   const [apiTestResult, setApiTestResult] = useState<{ success: boolean; message: string; accountInfo?: any } | null>(null);
 
-  // Fetch available assets for selection
+  // Fetch available assets for selection - use full symbol list from Aster DEX
   const { data: availableAssets, isLoading: assetsLoading } = useQuery({
-    queryKey: ['/api/analytics/assets'],
-    select: (data: any[]) => data.map(asset => ({
-      symbol: asset.symbol,
-      count: asset.count,
-      latestTimestamp: asset.latestTimestamp
-    }))
+    queryKey: ['/api/symbols'],
+    select: (data: any) => {
+      // Filter for TRADING status only and sort alphabetically
+      return data.symbols
+        .filter((s: any) => s.status === 'TRADING')
+        .map((s: any) => ({
+          symbol: s.symbol,
+          baseAsset: s.baseAsset,
+          quoteAsset: s.quoteAsset
+        }))
+        .sort((a: any, b: any) => a.symbol.localeCompare(b.symbol));
+    }
   });
 
   // Fetch current strategies
@@ -576,7 +582,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                       Select which assets to scan for liquidation opportunities
                     </FormDescription>
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-2">
-                      {availableAssets?.map((asset) => (
+                      {availableAssets?.map((asset: { symbol: string; baseAsset: string; quoteAsset: string }) => (
                         <div key={asset.symbol} className="flex items-center space-x-2">
                           <Checkbox
                             data-testid={`checkbox-asset-${asset.symbol}`}
@@ -596,9 +602,6 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                             className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
                           >
                             {asset.symbol}
-                            <span className="text-xs text-muted-foreground ml-1">
-                              ({asset.count})
-                            </span>
                           </label>
                         </div>
                       ))}
