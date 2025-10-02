@@ -469,35 +469,6 @@ export default function Dashboard() {
     }).format(value);
   };
 
-  // Calculate metrics - use live data if in live mode, otherwise paper trading data
-  const leverage = activeStrategy?.leverage || 1;
-  
-  const currentBalance = isLiveMode && liveAccount 
-    ? parseFloat(liveAccount.totalWalletBalance)
-    : (positionSummary?.currentBalance || 0);
-    
-  const unrealizedPnl = isLiveMode && liveAccount
-    ? parseFloat(liveAccount.totalUnrealizedProfit)
-    : (positionSummary?.unrealizedPnl || 0);
-    
-  const currentBalanceWithUnrealized = currentBalance + unrealizedPnl;
-  
-  const availableMargin = isLiveMode && liveAccount
-    ? parseFloat(liveAccount.availableBalance)
-    : (positionSummary ? (positionSummary.currentBalance - (positionSummary.totalExposure / leverage)) : 0);
-    
-  const activePositions = isLiveMode && livePositions
-    ? livePositions.length
-    : (positionSummary?.activePositions || 0);
-    
-  const marginInUse = isLiveMode && liveAccount
-    ? (parseFloat(liveAccount.totalWalletBalance) - parseFloat(liveAccount.availableBalance))
-    : (positionSummary ? (positionSummary.totalExposure / leverage) : 0);
-    
-  const totalExposure = isLiveMode && liveAccount
-    ? (marginInUse * leverage)
-    : (positionSummary?.totalExposure || 0);
-
   return (
     <div className="min-h-screen bg-background">
       {/* Header - Optimized for Mobile */}
@@ -510,82 +481,6 @@ export default function Dashboard() {
           </div>
 
           <div className="flex items-center gap-8">
-            {/* Trading Account Metrics with Visual Hierarchy */}
-            {(positionSummary || (isLiveMode && liveAccount)) && (
-              <div className="flex items-center gap-6">
-                {/* PRIMARY: Account Balance (Largest & Most Prominent) */}
-                <div className="flex flex-col">
-                  <div className="flex items-center gap-2">
-                    <div className="text-xs text-muted-foreground">Account Balance</div>
-                    {isLiveMode && (
-                      <Badge 
-                        variant="default" 
-                        className="bg-[rgb(190,242,100)] text-black hover:bg-[rgb(190,242,100)] font-semibold"
-                        data-testid="badge-live-mode"
-                      >
-                        LIVE MODE
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="text-2xl font-mono font-bold" data-testid="text-current-balance">
-                    {formatCurrency(currentBalanceWithUnrealized)}
-                  </div>
-                </div>
-
-                <div className="h-10 w-px bg-border" />
-
-                {/* SECONDARY: Key Metrics (Medium Prominence) */}
-                <div className="flex items-center gap-4">
-                  <div className="flex flex-col">
-                    <div className="text-xs text-muted-foreground">Available</div>
-                    <div className="text-lg font-mono font-semibold text-lime-600 dark:text-lime-400" data-testid="text-available-margin">
-                      {formatCurrency(availableMargin)}
-                    </div>
-                  </div>
-                  <div className="flex flex-col">
-                    <div className="text-xs text-muted-foreground">
-                      {isLiveMode && unrealizedPnl !== 0 ? "Unrealized P&L" : "Positions"}
-                    </div>
-                    <div 
-                      className={`text-lg font-mono font-semibold ${
-                        isLiveMode && unrealizedPnl !== 0 
-                          ? unrealizedPnl >= 0 
-                            ? "text-lime-600 dark:text-lime-400" 
-                            : "text-red-600 dark:text-red-400"
-                          : ""
-                      }`}
-                      data-testid={isLiveMode && unrealizedPnl !== 0 ? "text-unrealized-pnl" : "text-active-positions"}
-                    >
-                      {isLiveMode && unrealizedPnl !== 0 
-                        ? `${unrealizedPnl >= 0 ? '+' : ''}${formatCurrency(unrealizedPnl)}`
-                        : activePositions
-                      }
-                    </div>
-                  </div>
-                </div>
-
-                <div className="h-10 w-px bg-border" />
-
-                {/* TERTIARY: Supporting Details (Smaller) */}
-                <div className="flex items-center gap-3 text-xs">
-                  <div className="flex flex-col">
-                    <div className="text-muted-foreground">In Use</div>
-                    <div className="font-mono font-semibold" data-testid="text-margin-in-use">
-                      {formatCurrency(marginInUse)}
-                    </div>
-                  </div>
-                  <div className="flex flex-col">
-                    <div className="text-muted-foreground">Exposure</div>
-                    <div className="font-mono font-semibold" data-testid="text-total-exposure">
-                      {formatCurrency(totalExposure)}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div className="h-10 w-px bg-border" />
-
             <ConnectionStatus isConnected={isConnected} />
             
             {/* Pause/Resume Button */}
@@ -690,54 +585,6 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Bottom Row: Key Metrics Only (Mobile) */}
-          {(positionSummary || (isLiveMode && liveAccount)) && (
-            <div className="flex flex-col gap-1">
-              {isLiveMode && (
-                <Badge 
-                  variant="default" 
-                  className="bg-[rgb(190,242,100)] text-black hover:bg-[rgb(190,242,100)] font-semibold text-[10px] w-fit"
-                  data-testid="badge-live-mode-mobile"
-                >
-                  LIVE MODE
-                </Badge>
-              )}
-              <div className="flex items-center justify-between gap-2 text-xs">
-                <div className="flex flex-col">
-                  <div className="text-muted-foreground">Balance</div>
-                  <div className="text-lg font-mono font-bold" data-testid="text-current-balance-mobile">
-                    {formatCurrency(currentBalanceWithUnrealized)}
-                  </div>
-                </div>
-                <div className="flex flex-col">
-                  <div className="text-muted-foreground">Available</div>
-                  <div className="text-sm font-mono font-semibold text-lime-600 dark:text-lime-400" data-testid="text-available-margin-mobile">
-                    {formatCurrency(availableMargin)}
-                  </div>
-                </div>
-                <div className="flex flex-col">
-                  <div className="text-muted-foreground">
-                    {isLiveMode && unrealizedPnl !== 0 ? "Unreal P&L" : "Positions"}
-                  </div>
-                  <div 
-                    className={`text-sm font-mono font-semibold ${
-                      isLiveMode && unrealizedPnl !== 0 
-                        ? unrealizedPnl >= 0 
-                          ? "text-lime-600 dark:text-lime-400" 
-                          : "text-red-600 dark:text-red-400"
-                        : ""
-                    }`}
-                    data-testid={isLiveMode && unrealizedPnl !== 0 ? "text-unrealized-pnl-mobile" : "text-active-positions-mobile"}
-                  >
-                    {isLiveMode && unrealizedPnl !== 0 
-                      ? `${unrealizedPnl >= 0 ? '+' : ''}${formatCurrency(unrealizedPnl)}`
-                      : activePositions
-                    }
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </header>
 
