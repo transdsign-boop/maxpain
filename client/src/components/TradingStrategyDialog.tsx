@@ -19,6 +19,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Play, Square, TrendingUp, DollarSign, Layers, Target, Trash2, RotateCcw, Key, CheckCircle2, XCircle, Loader2, Download, Upload } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { localStorageService } from "@/lib/localStorageService";
 
 // Types
 interface Strategy {
@@ -173,6 +174,9 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
       return await response.json() as Strategy;
     },
     onSuccess: (strategy) => {
+      // Backup strategy to localStorage for cross-environment persistence
+      localStorageService.saveStrategy(strategy);
+      
       toast({
         title: "Strategy Created",
         description: `Strategy "${strategy.name}" has been created successfully.`,
@@ -197,6 +201,9 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
       return await response.json() as Strategy;
     },
     onSuccess: (strategy) => {
+      // Backup strategy to localStorage for cross-environment persistence
+      localStorageService.saveStrategy(strategy);
+      
       toast({
         title: "Strategy Updated",
         description: `Strategy "${strategy.name}" has been updated successfully.`,
