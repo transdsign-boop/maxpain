@@ -954,16 +954,40 @@ export class StrategyEngine extends EventEmitter {
       console.log(`⚠️ REAL MONEY: This will place a LIVE order on Aster DEX`);
       
       // Execute the live order on Aster DEX
-      const response = await fetch('https://fapi.asterdex.com/fapi/v1/order', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'X-MBX-APIKEY': apiKey,
-        },
-        body: signedParams,
-      });
+      // Implement exponential backoff for rate limiting
+      let retryAttempt = 0;
+      const maxRetries = 3;
+      let response: Response | null = null;
+      let responseText = '';
       
-      const responseText = await response.text();
+      while (retryAttempt <= maxRetries) {
+        response = await fetch('https://fapi.asterdex.com/fapi/v1/order', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-MBX-APIKEY': apiKey,
+          },
+          body: signedParams,
+        });
+        
+        responseText = await response.text();
+        
+        // Check for rate limiting
+        if (response.status === 429) {
+          retryAttempt++;
+          if (retryAttempt <= maxRetries) {
+            const backoffDelay = Math.min(1000 * Math.pow(2, retryAttempt), 10000); // Exponential backoff, max 10s
+            console.log(`⏱️ Rate limited. Retrying in ${backoffDelay}ms (attempt ${retryAttempt}/${maxRetries})...`);
+            await new Promise(resolve => setTimeout(resolve, backoffDelay));
+            continue;
+          } else {
+            console.error(`❌ Rate limited after ${maxRetries} retries`);
+            return { success: false, error: `Rate limited (429) after ${maxRetries} retries` };
+          }
+        }
+        
+        break; // Exit loop if not rate limited
+      }
       
       if (!response.ok) {
         console.error(`❌ Live order failed (${response.status}): ${responseText}`);
@@ -1056,12 +1080,35 @@ export class StrategyEngine extends EventEmitter {
       
       const signedParams = `${queryString}&signature=${signature}`;
       
-      const response = await fetch(`https://fapi.asterdex.com/fapi/v2/positionRisk?${signedParams}`, {
-        method: 'GET',
-        headers: {
-          'X-MBX-APIKEY': apiKey,
-        },
-      });
+      // Implement exponential backoff for rate limiting
+      let retryAttempt = 0;
+      const maxRetries = 3;
+      let response: Response | null = null;
+      
+      while (retryAttempt <= maxRetries) {
+        response = await fetch(`https://fapi.asterdex.com/fapi/v2/positionRisk?${signedParams}`, {
+          method: 'GET',
+          headers: {
+            'X-MBX-APIKEY': apiKey,
+          },
+        });
+        
+        // Check for rate limiting
+        if (response.status === 429) {
+          retryAttempt++;
+          if (retryAttempt <= maxRetries) {
+            const backoffDelay = Math.min(1000 * Math.pow(2, retryAttempt), 10000); // Exponential backoff, max 10s
+            console.log(`⏱️ Rate limited on position fetch. Retrying in ${backoffDelay}ms (attempt ${retryAttempt}/${maxRetries})...`);
+            await new Promise(resolve => setTimeout(resolve, backoffDelay));
+            continue;
+          } else {
+            console.error(`❌ Rate limited after ${maxRetries} retries`);
+            return [];
+          }
+        }
+        
+        break; // Exit loop if not rate limited
+      }
       
       if (!response.ok) {
         const errorText = await response.text();
