@@ -917,10 +917,13 @@ export class StrategyEngine extends EventEmitter {
         orderParams.positionSide = positionSide.toUpperCase();
       }
       
-      // Add price for limit orders, timeInForce for all orders
+      // Add price/stopPrice for different order types
       if (orderType.toLowerCase() === 'limit') {
         orderParams.price = roundedPrice;
         orderParams.timeInForce = 'GTC'; // Good Till Cancel
+      } else if (orderType.toLowerCase() === 'stop_market') {
+        orderParams.stopPrice = roundedPrice; // Trigger price for stop market orders
+        orderParams.closePosition = 'true'; // Close entire position when triggered
       }
       
       // Create query string for signature (sorted alphabetically for consistency)
@@ -1428,6 +1431,119 @@ export class StrategyEngine extends EventEmitter {
       return repairedCount;
     } catch (error) {
       console.error('❌ Error in auto-repair missing TP/SL:', error);
+      return 0;
+    }
+  }
+
+  // Fix incorrect stop-loss orders (where stopPrice doesn't match calculated SL)
+  private async fixIncorrectStopLossOrders(): Promise<number> {
+    try {
+      // Only run for live sessions
+      const liveSessions = Array.from(this.activeSessions.values()).filter(s => s.mode === 'live');
+      if (liveSessions.length === 0) {
+        return 0;
+      }
+
+      let fixedCount = 0;
+
+      // Get all exchange positions
+      const exchangePositions = await this.getExchangePositions();
+      if (exchangePositions.length === 0) {
+        return 0;
+      }
+
+      // Get all open orders
+      const allOrders = await this.getOpenOrders();
+      
+      // Process each position
+      for (const exchangePos of exchangePositions) {
+        const symbol = exchangePos.symbol;
+        const side = exchangePos.side;
+        const entryPrice = parseFloat(exchangePos.entryPrice);
+        const positionAmt = parseFloat(exchangePos.positionAmt);
+        
+        if (positionAmt === 0) continue;
+        
+        // Find corresponding database position
+        let dbPosition: Position | undefined;
+        for (const session of liveSessions) {
+          const positions = await storage.getOpenPositions(session.id);
+          dbPosition = positions.find(p => 
+            p.symbol === symbol && 
+            p.positionSide?.toUpperCase() === side.toUpperCase() && 
+            p.isOpen
+          );
+          if (dbPosition) break;
+        }
+        
+        if (!dbPosition) {
+          console.log(`⚠️ No database position found for ${symbol} ${side} (exchange has position but no DB entry)`);
+          continue;
+        }
+        
+        const strategy = this.activeStrategies.get(dbPosition.strategyId);
+        if (!strategy) continue;
+        
+        const stopLossPercent = parseFloat(strategy.stopLossPercent);
+        
+        // Calculate CORRECT stop-loss price (without leverage multiplication!)
+        const correctSlPrice = side === 'LONG'
+          ? entryPrice * (1 - stopLossPercent / 100)
+          : entryPrice * (1 + stopLossPercent / 100);
+        
+        // Find existing SL order
+        const existingSlOrder = allOrders.find(o => 
+          o.symbol === symbol && 
+          o.positionSide === side &&
+          o.type === 'STOP_MARKET'
+        );
+        
+        if (!existingSlOrder) continue;
+        
+        const currentSlPrice = parseFloat(existingSlOrder.stopPrice || '0');
+        
+        // Check if the current SL price is significantly wrong (>10% deviation)
+        const priceDifference = Math.abs(currentSlPrice - correctSlPrice);
+        const percentDifference = (priceDifference / correctSlPrice) * 100;
+        
+        if (percentDifference > 10) {
+          console.log(`🔧 Incorrect SL detected for ${symbol} ${side}:`);
+          console.log(`   Current SL: $${currentSlPrice.toFixed(2)}, Correct SL: $${correctSlPrice.toFixed(2)} (${percentDifference.toFixed(1)}% off)`);
+          console.log(`   Entry: $${entryPrice.toFixed(2)}, Stop-loss: ${stopLossPercent}%, Leverage: ${strategy.leverage}x`);
+          
+          // Cancel the incorrect order
+          const cancelResult = await this.cancelExchangeOrder(symbol, existingSlOrder.orderId);
+          if (cancelResult.success) {
+            console.log(`   ✓ Canceled incorrect SL order`);
+            
+            // Place new correct order
+            const placeResult = await this.placeExitOrder(
+              dbPosition,
+              'STOP_MARKET',
+              correctSlPrice,
+              Math.abs(positionAmt),
+              'stop_loss'
+            );
+            
+            if (placeResult.success) {
+              console.log(`   ✓ Placed correct SL order at $${correctSlPrice.toFixed(2)}`);
+              fixedCount++;
+            } else {
+              console.error(`   ✗ Failed to place correct SL order: ${placeResult.error}`);
+            }
+          } else {
+            console.error(`   ✗ Failed to cancel incorrect SL order: ${cancelResult.error}`);
+          }
+        }
+      }
+
+      if (fixedCount > 0) {
+        console.log(`✅ Fixed ${fixedCount} incorrect stop-loss orders`);
+      }
+
+      return fixedCount;
+    } catch (error) {
+      console.error('❌ Error fixing incorrect stop-loss orders:', error);
       return 0;
     }
   }
@@ -1965,7 +2081,13 @@ export class StrategyEngine extends EventEmitter {
           console.log(`  ✓ Placed ${repairedCount} missing TP/SL orders`);
         }
         
-        const totalActions = orphanedCount + staleCount + repairedCount;
+        // 4. Fix incorrect stop-loss orders (wrong stop price calculations)
+        const fixedCount = await this.fixIncorrectStopLossOrders();
+        if (fixedCount > 0) {
+          console.log(`  ✓ Fixed ${fixedCount} incorrect stop-loss orders`);
+        }
+        
+        const totalActions = orphanedCount + staleCount + repairedCount + fixedCount;
         if (totalActions === 0) {
           console.log('  ✓ All systems healthy, no cleanup needed');
         } else {
