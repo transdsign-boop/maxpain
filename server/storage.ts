@@ -275,23 +275,23 @@ export class DatabaseStorage implements IStorage {
 
     // Create default strategy if doesn't exist
     const defaultStrategy: InsertStrategy = {
-      id: randomUUID(),
       userId,
       name: "Liquidation Counter-Trade",
       description: "Automated counter-trend trading on liquidation spikes",
+      selectedAssets: ["BTCUSDT"],
       isActive: true,
-      mode: "paper",
-      paperAccountSize: 10000,
-      positionSizePercent: 10,
+      tradingMode: "paper",
+      paperAccountSize: "10000.00",
+      positionSizePercent: "10.00",
       percentileThreshold: 90,
       liquidationLookbackHours: 1,
-      stopLossPercent: 2,
-      takeProfitPercent: 3,
-      maxPositionLayers: 5,
-      layerSizeMultiplier: 1.5,
+      stopLossPercent: "2.00",
+      profitTargetPercent: "3.00",
+      maxLayers: 5,
+      orderDelayMs: 1000,
       orderType: "market",
       maxRetryDurationMs: 30000,
-      slippageTolerancePercent: 0.5
+      slippageTolerancePercent: "0.50"
     };
 
     const result = await db.insert(strategies).values(defaultStrategy).returning();
@@ -313,13 +313,11 @@ export class DatabaseStorage implements IStorage {
 
     // Create new session if doesn't exist
     const newSession: InsertTradeSession = {
-      id: randomUUID(),
       strategyId: strategy.id,
-      mode: strategy.mode,
+      mode: strategy.tradingMode,
       startingBalance: strategy.paperAccountSize,
       currentBalance: strategy.paperAccountSize,
-      isActive: true,
-      startedAt: new Date()
+      isActive: true
     };
 
     const result = await db.insert(tradeSessions).values(newSession).returning();
@@ -329,8 +327,8 @@ export class DatabaseStorage implements IStorage {
   async updateSessionBalance(sessionId: string, newBalance: number): Promise<TradeSession> {
     const result = await db.update(tradeSessions)
       .set({ 
-        startingBalance: newBalance,
-        currentBalance: newBalance
+        startingBalance: newBalance.toString(),
+        currentBalance: newBalance.toString()
       })
       .where(eq(tradeSessions.id, sessionId))
       .returning();
