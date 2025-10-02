@@ -1874,9 +1874,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // Calculate unrealized P&L percentage from exchange-provided dollar amount
             // Exchange already handles long/short logic correctly
             const totalCost = Math.abs(parseFloat(pos.positionAmt)) * parseFloat(pos.entryPrice);
+            const unrealizedPnlDollar = parseFloat(pos.unRealizedProfit);
             const unrealizedPnlPercent = totalCost > 0 
-              ? (parseFloat(pos.unRealizedProfit) / totalCost * 100)
+              ? (unrealizedPnlDollar / totalCost * 100)
               : 0;
+
+            // Debug logging for P&L calculation
+            if (pos.symbol === 'ASTERUSDT') {
+              console.log(`📊 ASTERUSDT P&L Debug:`);
+              console.log(`   Position Amount: ${pos.positionAmt}`);
+              console.log(`   Entry Price: ${pos.entryPrice}`);
+              console.log(`   Mark Price: ${pos.markPrice}`);
+              console.log(`   Exchange unRealizedProfit: ${pos.unRealizedProfit}`);
+              console.log(`   Total Cost: ${totalCost}`);
+              console.log(`   Calculated P&L %: ${unrealizedPnlPercent.toFixed(4)}%`);
+            }
 
             return {
               id: `live-${pos.symbol}-${pos.positionSide}`,
