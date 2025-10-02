@@ -78,6 +78,10 @@ const strategyFormSchema = z.object({
     const num = parseFloat(val);
     return !isNaN(num) && num >= 1 && num <= 100;
   }, "Account usage must be between 1% and 100%"),
+  accountBalance: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 100 && num <= 1000000;
+  }, "Account balance must be between $100 and $1,000,000"),
   hedgeMode: z.boolean(),
 });
 
@@ -154,6 +158,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
       orderType: "limit",
       maxRetryDurationMs: 30000,
       marginAmount: "10.0",
+      accountBalance: "10000",
       hedgeMode: false,
     }
   });
@@ -161,10 +166,10 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
   // Calculate trade size and account balance based on form values
   const marginPercent = parseFloat(form.watch("marginAmount") || "10");
   const positionSizePercent = parseFloat(form.watch("positionSizePercent") || "5");
+  const accountBalance = parseFloat(form.watch("accountBalance") || "10000");
   
-  // Calculate actual account balance from exchange balance
-  const exchangeBalance = 10000; // This should come from the actual exchange query later
-  const currentBalance = exchangeBalance * (marginPercent / 100);
+  // Calculate actual trading balance (account balance × margin usage %)
+  const currentBalance = accountBalance * (marginPercent / 100);
   const tradeSize = currentBalance * (positionSizePercent / 100);
 
   // Fetch real liquidity data for symbols with account balance for recommendations
@@ -1145,6 +1150,34 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                   <DollarSign className="h-4 w-4" />
                   Account Settings
                 </Label>
+                
+                <FormField
+                  control={form.control}
+                  name="accountBalance"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel data-testid="label-account-balance">Account Balance (USD)</FormLabel>
+                      <FormControl>
+                        <Input
+                          data-testid="input-account-balance"
+                          type="text"
+                          placeholder="10000"
+                          {...field}
+                          disabled={false}
+                        />
+                      </FormControl>
+                      <FormDescription className="text-xs">
+                        Your total account balance for calculating recommendations ($100-$1M)
+                        {accountBalance > 0 && (
+                          <span className="text-primary ml-1">
+                            • Tier: {accountBalance < 1000 ? 'Micro' : accountBalance < 10000 ? 'Small' : accountBalance < 50000 ? 'Mid' : 'Large'}
+                          </span>
+                        )}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
                 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <FormField
