@@ -59,17 +59,6 @@ interface PositionSummary {
   positions: Position[];
 }
 
-interface LivePosition {
-  symbol: string;
-  positionAmt: string;
-  entryPrice: string;
-  markPrice: string;
-  unRealizedProfit: string;
-  liquidationPrice: string;
-  leverage: string;
-  positionSide: string;
-}
-
 interface StrategyStatusProps {}
 
 interface PositionCardProps{
@@ -681,13 +670,6 @@ export function StrategyStatus() {
   // Then fetch positions using the strategy ID
   const isLiveMode = activeStrategy?.tradingMode === 'live';
 
-  // Fetch live positions when in live mode
-  const { data: livePositions } = useQuery<LivePosition[]>({
-    queryKey: ['/api/live/positions'],
-    refetchInterval: 5000,
-    enabled: isLiveMode,
-  });
-
   const { data: summary, isLoading, error } = useQuery<PositionSummary>({
     queryKey: ['/api/strategies', activeStrategy?.id, 'positions', 'summary'],
     queryFn: async () => {
@@ -942,82 +924,23 @@ export function StrategyStatus() {
 
   return (
     <div className="space-y-6">
-    {isLiveMode && livePositions && livePositions.length > 0 && (
-      <Card data-testid="live-positions-card">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2">
-              <Target className="h-5 w-5" />
-              Live Exchange Positions
-            </CardTitle>
-            <Badge variant="default" className="bg-lime-500/20 text-lime-500 hover:bg-lime-500/30">
-              LIVE DATA
-            </Badge>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {livePositions.map((pos, index) => {
-            const quantity = parseFloat(pos.positionAmt);
-            const side = quantity > 0 ? 'long' : 'short';
-            const entryPrice = parseFloat(pos.entryPrice);
-            const markPrice = parseFloat(pos.markPrice);
-            const unrealizedPnl = parseFloat(pos.unRealizedProfit);
-            const pnlPercent = ((markPrice - entryPrice) / entryPrice) * 100 * (quantity > 0 ? 1 : -1);
-            
-            return (
-              <div 
-                key={`${pos.symbol}-${index}`}
-                className="rounded-md border bg-card p-4 space-y-3"
-                data-testid={`live-position-${pos.symbol}`}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <h4 className="font-semibold text-lg">{pos.symbol}</h4>
-                    <Badge variant={side === 'long' ? 'default' : 'destructive'} className="text-xs">
-                      {side.toUpperCase()}
-                    </Badge>
-                    <Badge variant="outline" className="text-xs">
-                      {pos.leverage}x
-                    </Badge>
-                  </div>
-                  <div className={`text-2xl font-mono font-bold ${unrealizedPnl >= 0 ? 'text-primary' : 'text-red-600'}`}>
-                    {unrealizedPnl >= 0 ? '+' : ''}${unrealizedPnl.toFixed(2)}
-                  </div>
-                </div>
-                
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                  <div>
-                    <span className="text-muted-foreground">Quantity:</span>
-                    <div className="font-mono font-semibold">{Math.abs(quantity).toFixed(4)}</div>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Entry:</span>
-                    <div className="font-mono font-semibold">${entryPrice.toFixed(2)}</div>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Mark:</span>
-                    <div className="font-mono font-semibold">${markPrice.toFixed(2)}</div>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">P&L%:</span>
-                    <div className={`font-mono font-semibold ${pnlPercent >= 0 ? 'text-primary' : 'text-red-600'}`}>
-                      {pnlPercent >= 0 ? '+' : ''}{pnlPercent.toFixed(2)}%
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </CardContent>
-      </Card>
-    )}
-
     <Card data-testid="strategy-status">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Target className="h-5 w-5" />
-          {isLiveMode ? 'Paper Trading Positions' : 'Active Positions'}
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            <Target className="h-5 w-5" />
+            Active Positions
+          </CardTitle>
+          {isLiveMode && (
+            <Badge 
+              variant="default" 
+              className="bg-[rgb(190,242,100)] text-black hover:bg-[rgb(190,242,100)] font-semibold"
+              data-testid="badge-live-mode-positions"
+            >
+              LIVE MODE
+            </Badge>
+          )}
+        </div>
       </CardHeader>
       <CardContent className="space-y-6">
 
