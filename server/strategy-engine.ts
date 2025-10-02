@@ -1210,6 +1210,17 @@ export class StrategyEngine extends EventEmitter {
       // Update the strategy in memory
       this.activeStrategies.set(strategyId, updatedStrategy);
       console.log(`🔄 Reloaded strategy: ${updatedStrategy.name} (${strategyId})`);
+      
+      // CRITICAL: Also update session mode if trading mode has changed
+      // This ensures live/paper trades execute correctly after mode toggle
+      const session = this.activeSessions.get(strategyId);
+      if (session && session.mode !== updatedStrategy.tradingMode) {
+        await storage.updateTradeSession(session.id, {
+          mode: updatedStrategy.tradingMode || 'paper',
+        });
+        session.mode = updatedStrategy.tradingMode || 'paper';
+        console.log(`🔄 Updated session mode to: ${session.mode}`);
+      }
     } catch (error) {
       console.error(`❌ Error reloading strategy ${strategyId}:`, error);
     }
