@@ -811,7 +811,7 @@ export class StrategyEngine extends EventEmitter {
             });
             
             // Fetch actual fill data from exchange (with retry logic for fill propagation delay)
-            let actualFillData: any = null;
+            let actualFillsData: any[] | null = null;
             let retryCount = 0;
             const maxRetries = 3;
             
@@ -827,24 +827,22 @@ export class StrategyEngine extends EventEmitter {
               });
               
               if (fillResult.success && fillResult.fills && fillResult.fills.length > 0) {
-                actualFillData = fillResult.fills[0]; // Use first fill (most recent)
+                actualFillsData = fillResult.fills; // Store ALL fills for aggregation
                 break;
               }
               
               retryCount++;
             }
             
-            if (actualFillData) {
-              // Use ACTUAL fill data from exchange
-              const actualPrice = parseFloat(actualFillData.price);
-              const actualQty = parseFloat(actualFillData.qty);
-              const actualCommission = parseFloat(actualFillData.commission);
+            if (actualFillsData && actualFillsData.length > 0) {
+              // Aggregate multiple fills (handles partial fills correctly)
+              const aggregated = this.aggregateFills(actualFillsData);
               
-              console.log(`💎 Using REAL exchange data - Price: $${actualPrice}, Qty: ${actualQty}, Fee: $${actualCommission.toFixed(4)}`);
-              console.log(`📊 Fill type: ${actualFillData.maker ? 'MAKER' : 'TAKER'}`);
+              console.log(`💎 Using REAL exchange data (${actualFillsData.length} fill(s)) - Price: $${aggregated.avgPrice.toFixed(6)}, Qty: ${aggregated.totalQty.toFixed(4)}, Fee: $${aggregated.totalCommission.toFixed(4)}`);
+              console.log(`📊 Fill type: ${aggregated.isMaker ? 'MAKER' : 'TAKER'}`);
               
-              // Record fill with ACTUAL exchange data (price, qty, commission)
-              await this.fillLiveOrder(order, actualPrice, actualQty, actualCommission);
+              // Record fill with AGGREGATED exchange data (weighted avg price, total qty, total commission)
+              await this.fillLiveOrder(order, aggregated.avgPrice, aggregated.totalQty, aggregated.totalCommission);
             } else {
               console.warn(`⚠️ Could not fetch actual fill data after ${maxRetries} attempts, using order price as fallback`);
               // Fallback to order price if we couldn't fetch actual fill
@@ -1123,6 +1121,62 @@ export class StrategyEngine extends EventEmitter {
       console.error('❌ Error fetching actual fills:', error);
       return { success: false, error: String(error) };
     }
+  }
+
+  // Aggregate multiple fills into a single consolidated fill
+  private aggregateFills(fills: Array<{
+    price: string;
+    qty: string;
+    commission: string;
+    commissionAsset: string;
+    realizedPnl: string;
+    time: number;
+    maker: boolean;
+  }>): {
+    avgPrice: number;
+    totalQty: number;
+    totalCommission: number;
+    totalValue: number;
+    isMaker: boolean;
+  } {
+    if (fills.length === 0) {
+      throw new Error('Cannot aggregate empty fills array');
+    }
+
+    let totalQty = 0;
+    let totalValue = 0;
+    let totalCommission = 0;
+    let makerFills = 0;
+
+    for (const fill of fills) {
+      const price = parseFloat(fill.price);
+      const qty = parseFloat(fill.qty);
+      const commission = parseFloat(fill.commission);
+
+      totalQty += qty;
+      totalValue += price * qty;
+      totalCommission += commission;
+      
+      if (fill.maker) {
+        makerFills++;
+      }
+    }
+
+    // Calculate weighted average price
+    const avgPrice = totalValue / totalQty;
+    
+    // Consider it a maker fill if majority are maker fills
+    const isMaker = makerFills > fills.length / 2;
+
+    console.log(`📊 Aggregated ${fills.length} fill(s): Avg Price=$${avgPrice.toFixed(6)}, Total Qty=${totalQty.toFixed(4)}, Total Commission=$${totalCommission.toFixed(4)}`);
+
+    return {
+      avgPrice,
+      totalQty,
+      totalCommission,
+      totalValue,
+      isMaker,
+    };
   }
 
   // Get the exchange's position mode (one-way or dual)
@@ -2297,7 +2351,7 @@ export class StrategyEngine extends EventEmitter {
         console.log(`✅ Live exit order placed: ${orderType.toUpperCase()} ${exitSide} ${quantity.toFixed(4)} ${position.symbol} at $${exitPrice}`);
         
         // Fetch actual fill data from exchange (with retry logic for fill propagation delay)
-        let actualFillData: any = null;
+        let actualFillsData: any[] | null = null;
         let retryCount = 0;
         const maxRetries = 3;
         
@@ -2313,21 +2367,23 @@ export class StrategyEngine extends EventEmitter {
           });
           
           if (fillResult.success && fillResult.fills && fillResult.fills.length > 0) {
-            actualFillData = fillResult.fills[0]; // Use first fill (most recent)
+            actualFillsData = fillResult.fills; // Store ALL fills for aggregation
             break;
           }
           
           retryCount++;
         }
         
-        if (actualFillData) {
-          // Use ACTUAL fill data from exchange for exit
-          actualExitPrice = parseFloat(actualFillData.price);
-          actualExitQty = parseFloat(actualFillData.qty);
-          actualExitFee = parseFloat(actualFillData.commission);
+        if (actualFillsData && actualFillsData.length > 0) {
+          // Aggregate multiple fills (handles partial fills correctly)
+          const aggregated = this.aggregateFills(actualFillsData);
           
-          console.log(`💎 Using REAL exchange EXIT data - Price: $${actualExitPrice}, Qty: ${actualExitQty}, Fee: $${actualExitFee.toFixed(4)}`);
-          console.log(`📊 Exit fill type: ${actualFillData.maker ? 'MAKER' : 'TAKER'}`);
+          actualExitPrice = aggregated.avgPrice;
+          actualExitQty = aggregated.totalQty;
+          actualExitFee = aggregated.totalCommission;
+          
+          console.log(`💎 Using REAL exchange EXIT data (${actualFillsData.length} fill(s)) - Price: $${actualExitPrice.toFixed(6)}, Qty: ${actualExitQty.toFixed(4)}, Fee: $${actualExitFee.toFixed(4)}`);
+          console.log(`📊 Exit fill type: ${aggregated.isMaker ? 'MAKER' : 'TAKER'}`);
         } else {
           console.warn(`⚠️ Could not fetch actual exit fill data after ${maxRetries} attempts, using calculated values`);
         }
