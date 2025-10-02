@@ -2360,6 +2360,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Handle LIVE positions (from exchange, not database)
       if (positionId.startsWith('live-')) {
+        console.log(`🔴 Attempting to close LIVE position: ${positionId}`);
+        
         const apiKey = process.env.ASTER_API_KEY;
         const secretKey = process.env.ASTER_SECRET_KEY;
 
@@ -2371,6 +2373,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const parts = positionId.substring(5).split('-');
         const positionSide = parts.pop() || 'BOTH';
         const symbol = parts.join('-');
+        
+        console.log(`📊 Extracted symbol: ${symbol}, side: ${positionSide}`);
 
         // Get current position from exchange
         const posTimestamp = Date.now();
@@ -2389,16 +2393,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         if (!posResponse.ok) {
           const errorText = await posResponse.text();
-          console.error('Failed to fetch position from exchange:', errorText);
+          console.error('❌ Failed to fetch position from exchange:', errorText);
           return res.status(posResponse.status).json({ error: 'Failed to fetch position from exchange' });
         }
 
         const positions = await posResponse.json();
+        console.log(`📋 Found ${positions.length} positions on exchange:`, positions.map((p: any) => `${p.symbol}: ${p.positionAmt}`).join(', '));
+        
         const targetPosition = positions.find((p: any) => p.symbol === symbol);
 
         if (!targetPosition || parseFloat(targetPosition.positionAmt) === 0) {
-          return res.status(404).json({ error: 'Position not found on exchange or already closed' });
+          console.log(`❌ Position ${symbol} not found or has zero quantity on exchange`);
+          return res.status(404).json({ 
+            error: `Position ${symbol} not found on exchange or already closed. This position may have been closed manually or no longer exists.` 
+          });
         }
+        
+        console.log(`✅ Found target position: ${symbol} with amount ${targetPosition.positionAmt}`);
 
         const quantity = Math.abs(parseFloat(targetPosition.positionAmt));
         const side = parseFloat(targetPosition.positionAmt) > 0 ? 'SELL' : 'BUY'; // Opposite side to close
