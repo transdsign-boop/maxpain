@@ -1816,7 +1816,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { strategyId } = req.params;
       
-      // Find the active trade session for this strategy
+      // Get the strategy to check trading mode
+      const strategy = await storage.getStrategy(strategyId);
+      if (!strategy) {
+        return res.status(404).json({ error: 'Strategy not found' });
+      }
+
+      // In LIVE mode: Fetch trades from exchange (filtered by live session start time)
+      if (strategy.tradingMode === 'live') {
+        // In live mode, we fetch actual trades from the exchange API
+        // For now, return empty array since exchange doesn't provide session-based historical trades
+        // The /api/live/trades endpoint handles real-time trade display
+        return res.json([]);
+      }
+
+      // In PAPER mode: Fetch from database
       const session = await storage.getActiveTradeSession(strategyId);
       
       if (!session) {

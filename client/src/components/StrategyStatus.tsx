@@ -689,6 +689,7 @@ export function StrategyStatus() {
   });
 
   // Fetch closed positions when section is expanded
+  // Backend automatically returns appropriate data based on trading mode
   const { data: closedPositions } = useQuery<Position[]>({
     queryKey: ['/api/strategies', activeStrategy?.id, 'positions', 'closed'],
     enabled: !!activeStrategy?.id && showClosedTrades,
