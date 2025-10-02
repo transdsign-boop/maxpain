@@ -25,10 +25,12 @@ Preferred communication style: Simple, everyday language.
 - **API Design**: RESTful endpoints with `/api` prefix.
 
 ### Data Storage
-- **Database**: PostgreSQL with Neon serverless hosting.
+- **Database**: Shared PostgreSQL with Neon serverless hosting (works across dev and production).
+- **Configuration**: Uses `NEON_DATABASE_URL` environment variable for shared database access.
 - **Schema**: Dedicated tables for liquidations and users with indexing.
 - **Connection**: Connection pooling with `@neondatabase/serverless`.
 - **Migrations**: Drizzle Kit.
+- **Environment Setup**: Application prioritizes `NEON_DATABASE_URL` over `DATABASE_URL` to ensure consistent data across all environments. Clear startup logging indicates which database is being used.
 
 ### Real-time Data Features
 - Live WebSocket connection to Aster DEX for real-time liquidation streaming.
