@@ -159,12 +159,13 @@ export const positions = pgTable("positions", {
   side: text("side").notNull(), // "long" or "short"
   totalQuantity: decimal("total_quantity", { precision: 18, scale: 8 }).notNull(),
   avgEntryPrice: decimal("avg_entry_price", { precision: 18, scale: 8 }).notNull(),
-  totalCost: decimal("total_cost", { precision: 18, scale: 8 }).notNull(),
+  totalCost: decimal("total_cost", { precision: 18, scale: 8 }).notNull(), // Actual margin used (notional / leverage)
   unrealizedPnl: decimal("unrealized_pnl", { precision: 18, scale: 8 }).notNull().default("0.0"),
   realizedPnl: decimal("realized_pnl", { precision: 18, scale: 8 }).notNull().default("0.0"),
   layersFilled: integer("layers_filled").notNull().default(1),
   maxLayers: integer("max_layers").notNull(),
   lastLayerPrice: decimal("last_layer_price", { precision: 18, scale: 8 }),
+  leverage: integer("leverage").notNull().default(1), // Leverage multiplier (1-125x)
   isOpen: boolean("is_open").notNull().default(true),
   openedAt: timestamp("opened_at").notNull().defaultNow(),
   closedAt: timestamp("closed_at"),
