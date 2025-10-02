@@ -248,8 +248,15 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
   const unrealizedPnlPercent = parseFloat(position.unrealizedPnl);
   const totalCost = parseFloat(position.totalCost);
   
-  // Calculate dollar P&L from percentage and leveraged position size
-  const unrealizedPnlDollar = (unrealizedPnlPercent / 100) * totalCost;
+  // Get leverage first (needed for notional value calculation)
+  const rawLeverage = Number(strategy?.leverage);
+  const leverage = Number.isFinite(rawLeverage) && rawLeverage > 0 ? rawLeverage : 1;
+  
+  // Calculate notional value (totalCost stores margin, multiply by leverage for notional)
+  const notionalValue = totalCost * leverage;
+  
+  // Calculate dollar P&L from percentage and NOTIONAL position size (not margin)
+  const unrealizedPnlDollar = (unrealizedPnlPercent / 100) * notionalValue;
   
   const avgEntry = parseFloat(position.avgEntryPrice);
   
@@ -265,9 +272,6 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
   const rawTP = Number(strategy?.profitTargetPercent);
   const sanitizedTP = Number.isFinite(rawTP) && rawTP > 0 ? rawTP : 1;
   
-  const rawLeverage = Number(strategy?.leverage);
-  const leverage = Number.isFinite(rawLeverage) && rawLeverage > 0 ? rawLeverage : 1;
-  
   // Calculate SL and TP prices using sanitized values
   const stopLossPrice = position.side === 'long'
     ? avgEntry * (1 - sanitizedSL / 100)
@@ -276,9 +280,6 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
   const takeProfitPrice = position.side === 'long'
     ? avgEntry * (1 + sanitizedTP / 100)
     : avgEntry * (1 - sanitizedTP / 100);
-  
-  // Calculate notional value (totalCost stores margin, multiply by leverage for notional)
-  const notionalValue = totalCost * leverage;
 
   // Calculate liquidation price based on leverage (isolated margin)
   const maintenanceMarginFactor = 0.95;
