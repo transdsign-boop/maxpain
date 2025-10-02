@@ -1755,8 +1755,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
 
           // Calculate dollar P&L
+          // CRITICAL: totalCost stores MARGIN, multiply by leverage to get notional value
           const totalCost = parseFloat(position.totalCost);
-          const dollarPnl = (unrealizedPnl / 100) * totalCost;
+          const leverage = (position as any).leverage || 1;
+          const notionalValue = totalCost * leverage;
+          const dollarPnl = (unrealizedPnl / 100) * notionalValue;
 
           // Emergency close = limit order (manual close style) = 0.01% maker fee (SAME FOR BOTH PAPER AND LIVE)
           const quantity = parseFloat(position.totalQuantity);
@@ -2905,8 +2908,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Calculate dollar P&L
+      // CRITICAL: totalCost stores MARGIN, multiply by leverage to get notional value
       const totalCost = parseFloat(position.totalCost);
-      const dollarPnl = (unrealizedPnl / 100) * totalCost;
+      const leverage = (position as any).leverage || 1;
+      const notionalValue = totalCost * leverage;
+      const dollarPnl = (unrealizedPnl / 100) * notionalValue;
 
       // Get session to check trading mode
       const session = await storage.getTradeSession(position.sessionId);
