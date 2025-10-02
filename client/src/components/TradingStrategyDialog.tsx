@@ -78,10 +78,6 @@ const strategyFormSchema = z.object({
     const num = parseFloat(val);
     return !isNaN(num) && num >= 1 && num <= 100;
   }, "Account usage must be between 1% and 100%"),
-  accountBalance: z.string().refine((val) => {
-    const num = parseFloat(val);
-    return !isNaN(num) && num >= 100 && num <= 1000000;
-  }, "Account balance must be between $100 and $1,000,000"),
   hedgeMode: z.boolean(),
 });
 
@@ -139,6 +135,13 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
     queryKey: ['/api/strategies'],
   });
 
+  // Fetch exchange account balance
+  const { data: exchangeAccount, isLoading: accountLoading } = useQuery<any>({
+    queryKey: ['/api/live/account'],
+    staleTime: 10000, // Cache for 10 seconds
+    retry: false, // Don't retry if API keys not configured
+  });
+
   // Form setup with default values
   const form = useForm<StrategyFormData>({
     resolver: zodResolver(strategyFormSchema),
@@ -158,15 +161,18 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
       orderType: "limit",
       maxRetryDurationMs: 30000,
       marginAmount: "10.0",
-      accountBalance: "10000",
       hedgeMode: false,
     }
   });
 
-  // Calculate trade size and account balance based on form values
+  // Calculate trade size and account balance based on form values and exchange account
   const marginPercent = parseFloat(form.watch("marginAmount") || "10");
   const positionSizePercent = parseFloat(form.watch("positionSizePercent") || "5");
-  const accountBalance = parseFloat(form.watch("accountBalance") || "10000");
+  
+  // Get account balance from exchange, fallback to 10000 for calculations
+  const accountBalance = exchangeAccount?.availableBalance 
+    ? parseFloat(exchangeAccount.availableBalance) 
+    : 10000;
   
   // Calculate actual trading balance (account balance × margin usage %)
   const currentBalance = accountBalance * (marginPercent / 100);
@@ -860,8 +866,8 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                           onClick={() => {
                             form.setValue("positionSizePercent", recommendedPositionSizePercent.toString());
                             form.setValue("stopLossPercent", recommendedStopLoss.toString());
-                            form.setValue("takeProfitPercent", recommendedTakeProfit.toString());
-                            form.setValue("maxLayers", recommendedMaxLayers.toString());
+                            form.setValue("profitTargetPercent", recommendedTakeProfit.toString());
+                            form.setValue("maxLayers", recommendedMaxLayers);
                           }}
                         >
                           Apply Recommended Settings
@@ -989,7 +995,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                       <FormItem>
                         <div className="flex items-center gap-2">
                           <FormLabel data-testid="label-max-layers">Max Layers</FormLabel>
-                          {limitingAsset && parseInt(field.value) > recommendedMaxLayers && (
+                          {limitingAsset && field.value > recommendedMaxLayers && (
                             <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20">
                               ⚠ High for liquidity
                             </Badge>
@@ -1151,33 +1157,40 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                   Account Settings
                 </Label>
                 
-                <FormField
-                  control={form.control}
-                  name="accountBalance"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel data-testid="label-account-balance">Account Balance (USD)</FormLabel>
-                      <FormControl>
-                        <Input
-                          data-testid="input-account-balance"
-                          type="text"
-                          placeholder="10000"
-                          {...field}
-                          disabled={false}
-                        />
-                      </FormControl>
-                      <FormDescription className="text-xs">
-                        Your total account balance for calculating recommendations ($100-$1M)
-                        {accountBalance > 0 && (
-                          <span className="text-primary ml-1">
-                            • Tier: {accountBalance < 1000 ? 'Micro' : accountBalance < 10000 ? 'Small' : accountBalance < 50000 ? 'Mid' : 'Large'}
-                          </span>
-                        )}
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                <div className="space-y-2">
+                  <FormLabel>
+                    Exchange Account Balance
+                    {accountLoading && <span className="text-xs text-muted-foreground ml-2">Loading...</span>}
+                  </FormLabel>
+                  <div className="flex items-center gap-2 p-3 rounded-md bg-muted/50 border">
+                    {accountLoading ? (
+                      <div className="text-muted-foreground">Fetching from Aster DEX...</div>
+                    ) : exchangeAccount?.availableBalance ? (
+                      <>
+                        <div className="flex-1">
+                          <div className="text-2xl font-semibold font-mono" data-testid="text-account-balance">
+                            ${parseFloat(exchangeAccount.availableBalance).toFixed(2)}
+                          </div>
+                          <div className="text-xs text-muted-foreground mt-1">
+                            Tier: {accountBalance < 1000 ? 'Micro' : accountBalance < 10000 ? 'Small' : accountBalance < 50000 ? 'Mid' : 'Large'} Account
+                          </div>
+                        </div>
+                        <div className="text-green-600 dark:text-green-400">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="text-muted-foreground">
+                        Unable to fetch balance. Please check API credentials.
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Automatically fetched from your Aster DEX account for both paper and live trading
+                  </p>
+                </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <FormField
