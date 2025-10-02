@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, decimal, timestamp, boolean, integer, index, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, decimal, timestamp, boolean, integer, index, jsonb, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -146,7 +146,10 @@ export const fills = pgTable("fills", {
   fee: decimal("fee", { precision: 18, scale: 8 }).notNull().default("0.0"),
   layerNumber: integer("layer_number").notNull(),
   filledAt: timestamp("filled_at").notNull().defaultNow(),
-});
+}, (table) => ({
+  // Unique constraint to prevent duplicate fills from race conditions
+  uniqueOrderSession: unique().on(table.orderId, table.sessionId),
+}));
 
 // Current Positions
 export const positions = pgTable("positions", {
