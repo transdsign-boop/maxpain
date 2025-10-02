@@ -475,7 +475,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Batch liquidity endpoint - fetch order book depth for multiple symbols
   app.post("/api/analytics/liquidity/batch", async (req, res) => {
     try {
-      const { symbols, tradeSize } = req.body as { symbols: string[]; tradeSize?: number };
+      const { symbols, tradeSize, accountBalance } = req.body as { symbols: string[]; tradeSize?: number; accountBalance?: number };
       
       if (!symbols || !Array.isArray(symbols) || symbols.length === 0) {
         return res.status(400).json({ error: "symbols array required" });
@@ -521,6 +521,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const minSideLiquidity = Math.min(bidDepth, askDepth);
             const canHandleTradeSize = tradeSize ? minSideLiquidity >= tradeSize * 2 : true;
 
+            // Calculate suitability metrics for recommendations
+            const liquidityRatio = tradeSize ? minSideLiquidity / tradeSize : 0;
+            const maxSafeOrderSize = parseFloat((minSideLiquidity * 0.4).toFixed(2)); // 40% of min side liquidity
+            
+            // Determine account size tier and suitability
+            let recommended = false;
+            if (accountBalance) {
+              const tier = accountBalance < 1000 ? 'micro' : 
+                          accountBalance < 10000 ? 'small' : 
+                          accountBalance < 50000 ? 'mid' : 'large';
+              const tierMultiplier = tier === 'micro' ? 5 : tier === 'small' ? 10 : tier === 'mid' ? 15 : 25;
+              recommended = tradeSize ? minSideLiquidity >= tradeSize * tierMultiplier : false;
+            }
+
             return {
               symbol,
               totalLiquidity: parseFloat(totalLiquidity.toFixed(2)),
@@ -529,6 +543,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
               minSideLiquidity: parseFloat(minSideLiquidity.toFixed(2)),
               canHandleTradeSize,
               limitingSide: bidDepth < askDepth ? 'bid' : 'ask',
+              liquidityRatio: parseFloat(liquidityRatio.toFixed(2)),
+              maxSafeOrderSize,
+              recommended,
               error: false
             };
           } catch (error) {

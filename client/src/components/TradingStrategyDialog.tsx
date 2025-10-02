@@ -16,7 +16,7 @@ import { Switch } from "@/components/ui/switch";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Play, Square, TrendingUp, DollarSign, Layers, Target, Trash2, RotateCcw, Key, CheckCircle2, XCircle, Loader2, Download, Upload } from "lucide-react";
+import { Play, Square, TrendingUp, DollarSign, Layers, Target, Trash2, RotateCcw, Key, CheckCircle2, XCircle, Loader2, Download, Upload, Lightbulb, AlertCircle } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -158,21 +158,26 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
     }
   });
 
-  // Calculate trade size based on form values for liquidity assessment
-  const currentBalance = parseFloat(form.watch("marginAmount") || "10") / 100 * 10000; // Rough estimate
+  // Calculate trade size and account balance based on form values
+  const marginPercent = parseFloat(form.watch("marginAmount") || "10");
   const positionSizePercent = parseFloat(form.watch("positionSizePercent") || "5");
+  
+  // Calculate actual account balance from exchange balance
+  const exchangeBalance = 10000; // This should come from the actual exchange query later
+  const currentBalance = exchangeBalance * (marginPercent / 100);
   const tradeSize = currentBalance * (positionSizePercent / 100);
 
-  // Fetch real liquidity data for symbols
+  // Fetch real liquidity data for symbols with account balance for recommendations
   const { data: liquidityData, isLoading: liquidityLoading } = useQuery({
-    queryKey: ['/api/analytics/liquidity/batch', symbols?.map((s: any) => s.symbol), tradeSize],
+    queryKey: ['/api/analytics/liquidity/batch', symbols?.map((s: any) => s.symbol), tradeSize, currentBalance],
     enabled: !!symbols && symbols.length > 0,
     queryFn: async () => {
       if (!symbols || symbols.length === 0) return [];
       
       const response = await apiRequest('POST', '/api/analytics/liquidity/batch', {
         symbols: symbols.map((s: any) => s.symbol),
-        tradeSize: tradeSize
+        tradeSize: tradeSize,
+        accountBalance: currentBalance
       });
       return await response.json();
     },
@@ -188,8 +193,48 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
   // Merge liquidity data with assets
   const assetsWithLiquidity = mergedAssets?.map((asset: any) => ({
     ...asset,
-    liquidity: liquidityMap[asset.symbol] || { totalLiquidity: 0, canHandleTradeSize: false },
+    liquidity: liquidityMap[asset.symbol] || { totalLiquidity: 0, canHandleTradeSize: false, recommended: false },
   }));
+
+  // Calculate recommendations based on selected assets
+  const selectedSymbols = form.watch("selectedAssets") || [];
+  const selectedAssetsWithLiquidity = assetsWithLiquidity?.filter((a: any) => selectedSymbols.includes(a.symbol)) || [];
+  
+  // Find the asset with lowest liquidity (the limiting factor)
+  const limitingAsset = selectedAssetsWithLiquidity.length > 0 
+    ? selectedAssetsWithLiquidity.reduce((min: any, asset: any) => 
+        (asset.liquidity?.minSideLiquidity || 0) < (min.liquidity?.minSideLiquidity || Infinity) 
+          ? asset 
+          : min
+      )
+    : null;
+
+  // Calculate recommended order size based on limiting asset
+  const recommendedOrderSize = limitingAsset?.liquidity?.maxSafeOrderSize || 0;
+  const recommendedPositionSizePercent = currentBalance > 0 
+    ? Math.min(100, Math.floor((recommendedOrderSize / currentBalance) * 100))
+    : 0;
+
+  // Calculate recommended risk parameters based on account tier
+  const accountTier = currentBalance < 1000 ? 'micro' : 
+                     currentBalance < 10000 ? 'small' : 
+                     currentBalance < 50000 ? 'mid' : 'large';
+  
+  const recommendedStopLoss = accountTier === 'micro' ? 1.0 : 
+                             accountTier === 'small' ? 1.5 : 
+                             accountTier === 'mid' ? 2.0 : 2.5;
+  
+  const recommendedTakeProfit = recommendedStopLoss * (limitingAsset?.liquidity?.liquidityRatio > 10 ? 2 : 1.5);
+  
+  const recommendedMaxLayers = limitingAsset && recommendedOrderSize > 0
+    ? Math.min(
+        accountTier === 'micro' ? 2 : accountTier === 'small' ? 3 : accountTier === 'mid' ? 5 : 7,
+        Math.floor((limitingAsset.liquidity?.minSideLiquidity || 0) / (recommendedOrderSize * 1.5))
+      )
+    : 1;
+
+  // Get list of recommended assets for this account size
+  const recommendedAssets = assetsWithLiquidity?.filter((a: any) => a.liquidity?.recommended) || [];
 
   // Sort assets based on selected mode
   const availableAssets = assetsWithLiquidity?.slice().sort((a: any, b: any) => {
@@ -745,6 +790,107 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                 )}
               />
 
+              {/* Recommendations Section */}
+              {!liquidityLoading && selectedSymbols.length > 0 && (
+                <>
+                  <div className="rounded-lg border p-4 space-y-3 bg-card" data-testid="recommendations-card">
+                    <div className="flex items-center gap-2">
+                      <Lightbulb className="h-4 w-4 text-primary" />
+                      <h3 className="font-medium">Recommendations Based on Your Selection</h3>
+                    </div>
+                    
+                    {limitingAsset && (
+                      <div className="space-y-2 text-sm">
+                        <div className="flex items-start gap-2 text-muted-foreground">
+                          <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                          <div>
+                            <span className="font-medium text-foreground">{limitingAsset.symbol}</span> has the lowest liquidity 
+                            (${(limitingAsset.liquidity?.minSideLiquidity / 1000).toFixed(1)}k on {limitingAsset.liquidity?.limitingSide} side). 
+                            All settings optimized for this asset.
+                          </div>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-3 pt-2">
+                          <div className="space-y-1">
+                            <div className="text-xs text-muted-foreground">Recommended Order Size</div>
+                            <div className="text-lg font-semibold text-primary" data-testid="text-recommended-order-size">
+                              ${recommendedOrderSize.toFixed(0)}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              ({recommendedPositionSizePercent}% of balance)
+                            </div>
+                          </div>
+                          
+                          <div className="space-y-1">
+                            <div className="text-xs text-muted-foreground">Account Tier</div>
+                            <div className="text-lg font-semibold capitalize" data-testid="text-account-tier">
+                              {accountTier}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              ${currentBalance.toFixed(0)} balance
+                            </div>
+                          </div>
+                          
+                          <div className="space-y-1">
+                            <div className="text-xs text-muted-foreground">Stop Loss / Take Profit</div>
+                            <div className="text-base font-medium" data-testid="text-recommended-sl-tp">
+                              {recommendedStopLoss.toFixed(1)}% / {recommendedTakeProfit.toFixed(1)}%
+                            </div>
+                          </div>
+                          
+                          <div className="space-y-1">
+                            <div className="text-xs text-muted-foreground">Max Layers</div>
+                            <div className="text-base font-medium" data-testid="text-recommended-max-layers">
+                              {recommendedMaxLayers}
+                            </div>
+                          </div>
+                        </div>
+
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="w-full mt-2"
+                          data-testid="button-apply-recommendations"
+                          onClick={() => {
+                            form.setValue("positionSizePercent", recommendedPositionSizePercent.toString());
+                            form.setValue("stopLossPercent", recommendedStopLoss.toString());
+                            form.setValue("takeProfitPercent", recommendedTakeProfit.toString());
+                            form.setValue("maxLayers", recommendedMaxLayers.toString());
+                          }}
+                        >
+                          Apply Recommended Settings
+                        </Button>
+                      </div>
+                    )}
+
+                    {recommendedAssets.length > 0 && recommendedAssets.length < availableAssets.length && (
+                      <div className="pt-2 border-t">
+                        <div className="text-xs text-muted-foreground mb-2">
+                          Recommended assets for ${currentBalance.toFixed(0)} account ({recommendedAssets.length} assets):
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {recommendedAssets.slice(0, 10).map((asset: any) => (
+                            <Badge 
+                              key={asset.symbol} 
+                              variant="outline" 
+                              className="text-[10px] bg-green-500/5 text-green-600 dark:text-green-400 border-green-500/20"
+                            >
+                              {asset.symbol}
+                            </Badge>
+                          ))}
+                          {recommendedAssets.length > 10 && (
+                            <Badge variant="outline" className="text-[10px]">
+                              +{recommendedAssets.length - 10} more
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+
               <Separator />
 
               {/* Liquidation Threshold */}
@@ -836,7 +982,14 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                     name="maxLayers"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel data-testid="label-max-layers">Max Layers</FormLabel>
+                        <div className="flex items-center gap-2">
+                          <FormLabel data-testid="label-max-layers">Max Layers</FormLabel>
+                          {limitingAsset && parseInt(field.value) > recommendedMaxLayers && (
+                            <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20">
+                              ⚠ High for liquidity
+                            </Badge>
+                          )}
+                        </div>
                         <FormControl>
                           <Select 
                             value={field.value.toString()} 
@@ -862,6 +1015,9 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                         </FormControl>
                         <FormDescription className="text-xs">
                           Maximum positions to open for averaging
+                          {limitingAsset && recommendedMaxLayers > 0 && (
+                            <span className="text-primary ml-1">(Recommended: {recommendedMaxLayers})</span>
+                          )}
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -873,7 +1029,14 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                     name="positionSizePercent"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel data-testid="label-position-size">Position Size %</FormLabel>
+                        <div className="flex items-center gap-2">
+                          <FormLabel data-testid="label-position-size">Position Size %</FormLabel>
+                          {limitingAsset && parseFloat(field.value) > recommendedPositionSizePercent && recommendedPositionSizePercent > 0 && (
+                            <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20">
+                              ⚠ Exceeds safe size
+                            </Badge>
+                          )}
+                        </div>
                         <FormControl>
                           <Input
                             data-testid="input-position-size"
@@ -885,6 +1048,9 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                         </FormControl>
                         <FormDescription className="text-xs">
                           % of available margin per layer (0.1-50%)
+                          {limitingAsset && recommendedPositionSizePercent > 0 && (
+                            <span className="text-primary ml-1">(Recommended: {recommendedPositionSizePercent}%)</span>
+                          )}
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -908,7 +1074,14 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                     name="profitTargetPercent"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel data-testid="label-profit-target">Take Profit %</FormLabel>
+                        <div className="flex items-center gap-2">
+                          <FormLabel data-testid="label-profit-target">Take Profit %</FormLabel>
+                          {limitingAsset && parseFloat(field.value) < recommendedTakeProfit * 0.8 && recommendedTakeProfit > 0 && (
+                            <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20">
+                              ⚠ Too tight
+                            </Badge>
+                          )}
+                        </div>
                         <FormControl>
                           <Input
                             data-testid="input-profit-target"
@@ -920,6 +1093,9 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                         </FormControl>
                         <FormDescription className="text-xs">
                           Close when profit reaches this % (0.1-20%)
+                          {limitingAsset && recommendedTakeProfit > 0 && (
+                            <span className="text-primary ml-1">(Recommended: {recommendedTakeProfit.toFixed(1)}%)</span>
+                          )}
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -931,7 +1107,14 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                     name="stopLossPercent"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel data-testid="label-stop-loss">Stop Loss %</FormLabel>
+                        <div className="flex items-center gap-2">
+                          <FormLabel data-testid="label-stop-loss">Stop Loss %</FormLabel>
+                          {limitingAsset && parseFloat(field.value) > recommendedStopLoss * 1.5 && recommendedStopLoss > 0 && (
+                            <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20">
+                              ⚠ Too wide
+                            </Badge>
+                          )}
+                        </div>
                         <FormControl>
                           <Input
                             data-testid="input-stop-loss"
@@ -943,6 +1126,9 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                         </FormControl>
                         <FormDescription className="text-xs">
                           Close when loss reaches this % (0.1-50%)
+                          {limitingAsset && recommendedStopLoss > 0 && (
+                            <span className="text-primary ml-1">(Recommended: {recommendedStopLoss.toFixed(1)}%)</span>
+                          )}
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
