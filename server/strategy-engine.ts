@@ -60,6 +60,7 @@ export class StrategyEngine extends EventEmitter {
   private wsClients: Set<any> = new Set(); // WebSocket clients for broadcasting trade notifications
   private staleLimitOrderSeconds: number = 180; // 3 minutes default timeout for limit orders
   private recoveryAttempts: Map<string, number> = new Map(); // Track cooldown for auto-repair attempts
+  private cleanupInProgress: boolean = false; // Prevent overlapping cleanup runs
 
   constructor() {
     super();
@@ -1775,23 +1776,55 @@ export class StrategyEngine extends EventEmitter {
     }
   }
 
-  // Start periodic cleanup of orphaned TP/SL orders
+  // Start periodic cleanup and auto-repair monitoring
   private startCleanupMonitoring() {
-    // Run cleanup every 5 minutes
+    // Run all cleanup tasks every 5 minutes
     this.cleanupInterval = setInterval(async () => {
       if (!this.isRunning) return;
       
+      // Prevent overlapping cleanup runs
+      if (this.cleanupInProgress) {
+        console.log('⏭️ Skipping cleanup - previous run still in progress');
+        return;
+      }
+      
+      this.cleanupInProgress = true;
+      
       try {
-        const canceledCount = await this.cleanupOrphanedTPSL();
-        if (canceledCount > 0) {
-          console.log(`🧹 Cleanup: Removed ${canceledCount} orphaned TP/SL orders`);
+        console.log('🧹 Starting periodic cleanup and auto-repair...');
+        
+        // 1. Clean up orphaned TP/SL orders (missing parent positions)
+        const orphanedCount = await this.cleanupOrphanedTPSL();
+        if (orphanedCount > 0) {
+          console.log(`  ✓ Removed ${orphanedCount} orphaned TP/SL orders`);
+        }
+        
+        // 2. Clean up stale limit orders (older than 3 minutes)
+        const staleCount = await this.cleanupStaleLimitOrders();
+        if (staleCount > 0) {
+          console.log(`  ✓ Canceled ${staleCount} stale limit orders`);
+        }
+        
+        // 3. Auto-repair missing TP/SL orders for open positions
+        const repairedCount = await this.autoRepairMissingTPSL();
+        if (repairedCount > 0) {
+          console.log(`  ✓ Placed ${repairedCount} missing TP/SL orders`);
+        }
+        
+        const totalActions = orphanedCount + staleCount + repairedCount;
+        if (totalActions === 0) {
+          console.log('  ✓ All systems healthy, no cleanup needed');
+        } else {
+          console.log(`🧹 Cleanup complete: ${totalActions} total actions taken`);
         }
       } catch (error) {
         console.error('❌ Error in cleanup monitoring:', error);
+      } finally {
+        this.cleanupInProgress = false;
       }
     }, 5 * 60 * 1000); // 5 minutes
     
-    console.log('🧹 Orphaned order cleanup monitoring started (5 minute intervals)');
+    console.log('🧹 Safety monitoring started: Orphaned cleanup + Stale orders + Auto-repair (5 min intervals)');
   }
 
   // Remove a pending paper order from tracking
