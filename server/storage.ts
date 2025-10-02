@@ -71,6 +71,7 @@ export interface IStorage {
   applyFill(fill: InsertFill): Promise<Fill>;
   getFillsBySession(sessionId: string): Promise<Fill[]>;
   getFillsByOrder(orderId: string): Promise<Fill[]>;
+  getRecentFills(symbol: string, since: Date): Promise<Fill[]>;
   clearFillsBySession(sessionId: string): Promise<void>;
 
   // Position operations
@@ -436,6 +437,15 @@ export class DatabaseStorage implements IStorage {
   async getFillsByOrder(orderId: string): Promise<Fill[]> {
     return await db.select().from(fills)
       .where(eq(fills.orderId, orderId))
+      .orderBy(desc(fills.filledAt));
+  }
+
+  async getRecentFills(symbol: string, since: Date): Promise<Fill[]> {
+    return await db.select().from(fills)
+      .where(and(
+        eq(fills.symbol, symbol),
+        gte(fills.filledAt, since)
+      ))
       .orderBy(desc(fills.filledAt));
   }
 

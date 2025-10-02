@@ -949,6 +949,148 @@ export class StrategyEngine extends EventEmitter {
     }
   }
 
+  // Clean up orphaned TP/SL orders on Aster DEX
+  async cleanupOrphanedTPSL(): Promise<number> {
+    try {
+      console.log('🧹 Starting orphaned TP/SL order cleanup...');
+      
+      // Only run cleanup for live trading sessions
+      const liveSessions = Array.from(this.activeSessions.values()).filter(s => s.mode === 'live');
+      if (liveSessions.length === 0) {
+        console.log('⏭️ No active live trading sessions, skipping cleanup');
+        return 0;
+      }
+
+      // Get all open orders from Aster DEX
+      const allOrders = await this.getOpenOrders();
+      if (allOrders.length === 0) {
+        console.log('✅ No open orders found on exchange');
+        return 0;
+      }
+
+      console.log(`📋 Found ${allOrders.length} open orders on exchange`);
+      
+      let canceledCount = 0;
+      const currentTime = Date.now();
+
+      // Get all active positions for all live sessions
+      const positionsMap = new Map<string, Map<string, Position>>();
+      for (const session of liveSessions) {
+        const positions = await storage.getActivePositions(session.id);
+        const sessionPositions = new Map<string, Position>();
+        
+        for (const position of positions) {
+          // Find strategy for this session to check hedge mode
+          let hedgeMode = false;
+          this.activeStrategies.forEach((strategy) => {
+            if (strategy.id === session.strategyId) {
+              hedgeMode = strategy.hedgeMode;
+            }
+          });
+
+          // Create key for position lookup
+          const key = hedgeMode 
+            ? `${position.symbol}_${position.side.toUpperCase()}`
+            : position.symbol;
+          
+          sessionPositions.set(key, position);
+        }
+        
+        positionsMap.set(session.id, sessionPositions);
+      }
+
+      // Check each order
+      for (const order of allOrders) {
+        const orderType = order.type || '';
+        const symbol = order.symbol;
+        const orderId = String(order.orderId);
+        const positionSide = order.positionSide || 'BOTH';
+        const orderTime = order.time || 0;
+        const orderAgeSeconds = (currentTime - orderTime) / 1000;
+
+        // Check if this is a TP/SL order
+        const isTPSL = [
+          'TAKE_PROFIT_MARKET',
+          'STOP_MARKET',
+          'TAKE_PROFIT',
+          'STOP',
+          'STOP_LOSS'
+        ].includes(orderType);
+
+        if (!isTPSL) continue;
+
+        // Don't cancel orders younger than 60 seconds (prevents race conditions)
+        if (orderAgeSeconds < 60) {
+          console.log(`⏰ Skipping young TP/SL order ${orderId} (${orderAgeSeconds.toFixed(0)}s old)`);
+          continue;
+        }
+
+        // Check if matching position exists across all live sessions
+        let shouldCancel = true;
+        
+        for (const [sessionId, sessionPositions] of positionsMap.entries()) {
+          // Find strategy for this session to check hedge mode
+          let hedgeMode = false;
+          this.activeStrategies.forEach((strategy) => {
+            const session = this.activeSessions.get(strategy.id);
+            if (session && session.id === sessionId) {
+              hedgeMode = strategy.hedgeMode;
+            }
+          });
+
+          if (hedgeMode) {
+            // Hedge mode: check position side
+            const sideKey = `${symbol}_${positionSide}`;
+            const position = sessionPositions.get(sideKey);
+            
+            if (position && position.isOpen) {
+              shouldCancel = false;
+              break;
+            }
+          } else {
+            // One-way mode: check symbol only
+            const position = sessionPositions.get(symbol);
+            
+            if (position && position.isOpen) {
+              shouldCancel = false;
+              break;
+            }
+          }
+        }
+
+        if (!shouldCancel) continue;
+
+        console.log(`⚠️ Found orphaned ${orderType} order ${orderId} for ${symbol} ${positionSide}`);
+
+        // Safety check: don't cancel if recent fills exist in database (last 5 minutes)
+        const fiveMinutesAgo = new Date(currentTime - 5 * 60 * 1000);
+        const recentFills = await storage.getRecentFills(symbol, fiveMinutesAgo);
+        
+        if (recentFills.length > 0) {
+          console.log(`🛡️ Skipping cancellation - ${recentFills.length} recent fills exist for ${symbol}`);
+          continue;
+        }
+
+        // Cancel the orphaned order
+        const canceled = await this.cancelOrder(symbol, orderId);
+        if (canceled) {
+          canceledCount++;
+        }
+      }
+
+      if (canceledCount > 0) {
+        console.log(`✅ Cleanup complete: Canceled ${canceledCount} orphaned TP/SL orders`);
+      } else {
+        console.log(`✅ Cleanup complete: No orphaned orders found`);
+      }
+
+      return canceledCount;
+    } catch (error) {
+      console.error('❌ Error in orphaned order cleanup:', error);
+      return 0;
+    }
+  }
+
   // Fill a paper order and create fill record
   private async fillPaperOrder(order: Order, fillPrice: number, fillQuantity: number, tradeType: 'entry' | 'layer' | 'stop_loss' | 'take_profit' = 'entry') {
     // Update order status
