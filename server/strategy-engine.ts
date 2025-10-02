@@ -64,7 +64,7 @@ export class StrategyEngine extends EventEmitter {
   private cleanupInProgress: boolean = false; // Prevent overlapping cleanup runs
   private exchangePositionMode: 'one-way' | 'dual' | null = null; // Cache exchange position mode
   private lastFillTime: Map<string, number> = new Map(); // "sessionId-symbol-side" -> timestamp of last fill
-  private fillCooldownMs: number = 10000; // 10 second cooldown after each fill
+  private fillCooldownMs: number = 30000; // 30 second cooldown between layers/entries
 
   constructor() {
     super();
@@ -403,6 +403,11 @@ export class StrategyEngine extends EventEmitter {
         // Position was created by the concurrent process, check if we should layer
         const shouldLayer = await this.shouldAddLayer(strategy, positionAfterWait, liquidation);
         if (shouldLayer) {
+          // Set cooldown IMMEDIATELY to prevent duplicate layers
+          const cooldownKey = `${session.id}-${liquidation.symbol}-${positionSide}`;
+          this.lastFillTime.set(cooldownKey, Date.now());
+          console.log(`🔒 Layer cooldown locked for ${liquidation.symbol} ${positionSide} (${this.fillCooldownMs / 1000}s)`);
+          
           await this.executeLayer(strategy, session, positionAfterWait, liquidation, positionSide);
         }
       }
@@ -426,12 +431,22 @@ export class StrategyEngine extends EventEmitter {
         // We have an open position - check if we should add a layer
         const shouldLayer = await this.shouldAddLayer(strategy, existingPosition, liquidation);
         if (shouldLayer) {
+          // Set cooldown IMMEDIATELY to prevent duplicate layers
+          const cooldownKey = `${session.id}-${liquidation.symbol}-${positionSide}`;
+          this.lastFillTime.set(cooldownKey, Date.now());
+          console.log(`🔒 Layer cooldown locked for ${liquidation.symbol} ${positionSide} (${this.fillCooldownMs / 1000}s)`);
+          
           await this.executeLayer(strategy, session, existingPosition, liquidation, positionSide);
         }
       } else {
         // No open position - check if we should enter a new position
         const shouldEnter = await this.shouldEnterPosition(strategy, liquidation, recentLiquidations, session, positionSide);
         if (shouldEnter) {
+          // Set cooldown IMMEDIATELY to prevent duplicate entries from concurrent liquidations
+          const cooldownKey = `${session.id}-${liquidation.symbol}-${positionSide}`;
+          this.lastFillTime.set(cooldownKey, Date.now());
+          console.log(`🔒 Entry cooldown locked for ${liquidation.symbol} ${positionSide} (${this.fillCooldownMs / 1000}s)`);
+          
           await this.executeEntry(strategy, session, liquidation, positionSide);
         }
       }
