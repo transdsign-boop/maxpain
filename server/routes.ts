@@ -1596,11 +1596,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .filter(Boolean)
       );
 
-      // Group fills by symbol and positionSide to track layers per position
-      const layerCounts = new Map<string, number>();
+      // Track max layer number per symbol-side to ensure sequential numbering
+      const maxLayerNumbers = new Map<string, number>();
       existingFills.forEach(f => {
         const key = `${f.symbol}-${f.side}`;
-        layerCounts.set(key, (layerCounts.get(key) || 0) + 1);
+        const currentMax = maxLayerNumbers.get(key) || 0;
+        maxLayerNumbers.set(key, Math.max(currentMax, f.layerNumber));
       });
 
       // Process and store new fills
@@ -1613,8 +1614,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         const side = trade.side === 'BUY' ? 'buy' : 'sell';
         const key = `${trade.symbol}-${side}`;
-        const layerNumber = (layerCounts.get(key) || 0) + 1;
-        layerCounts.set(key, layerNumber);
+        const layerNumber = (maxLayerNumbers.get(key) || 0) + 1;
+        maxLayerNumbers.set(key, layerNumber);
 
         const fillData: InsertFill = {
           orderId: `trade-${tradeId}`,
@@ -1630,8 +1631,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           filledAt: new Date(trade.time),
         };
 
-        await storage.applyFill(fillData);
-        existingTradeIds.add(tradeId);
+        try {
+          await storage.applyFill(fillData);
+          existingTradeIds.add(tradeId);
+        } catch (fillError: any) {
+          // Ignore unique constraint violations (duplicate fills from race conditions)
+          if (fillError?.code === '23505') { // PostgreSQL unique violation error code
+            continue;
+          }
+          throw fillError;
+        }
       }
     } catch (error) {
       console.error('Error syncing live fills:', error);
@@ -2061,9 +2070,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.json(fills);
         }
 
-        const fills = sessionFills.filter(f => 
-          f.symbol === symbol && f.side === fillSide
-        );
+        const fills = sessionFills
+          .filter(f => f.symbol === symbol && f.side === fillSide)
+          .sort((a, b) => new Date(a.filledAt).getTime() - new Date(b.filledAt).getTime());
         
         return res.json(fills);
       }
@@ -2078,20 +2087,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // New fills will have position_id set; legacy fills will use time-range fallback
       const sessionFills = await storage.getFillsBySession(position.sessionId);
       
-      const positionFills = sessionFills.filter(fill => {
-        // Primary: Use position_id if available (new data model)
-        if (fill.positionId) {
-          return fill.positionId === positionId;
-        }
-        
-        // Fallback: Use time-range filtering for legacy fills without position_id
-        const positionOpenTime = new Date(position.openedAt).getTime();
-        const positionCloseTime = position.closedAt ? new Date(position.closedAt).getTime() : Date.now();
-        
-        return fill.symbol === position.symbol && 
-          new Date(fill.filledAt).getTime() >= positionOpenTime &&
-          new Date(fill.filledAt).getTime() <= positionCloseTime;
-      });
+      const positionFills = sessionFills
+        .filter(fill => {
+          // Primary: Use position_id if available (new data model)
+          if (fill.positionId) {
+            return fill.positionId === positionId;
+          }
+          
+          // Fallback: Use time-range filtering for legacy fills without position_id
+          const positionOpenTime = new Date(position.openedAt).getTime();
+          const positionCloseTime = position.closedAt ? new Date(position.closedAt).getTime() : Date.now();
+          
+          return fill.symbol === position.symbol && 
+            new Date(fill.filledAt).getTime() >= positionOpenTime &&
+            new Date(fill.filledAt).getTime() <= positionCloseTime;
+        })
+        .sort((a, b) => new Date(a.filledAt).getTime() - new Date(b.filledAt).getTime());
 
       res.json(positionFills);
     } catch (error) {
