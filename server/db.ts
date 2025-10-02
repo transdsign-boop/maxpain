@@ -13,5 +13,11 @@ if (!databaseUrl) {
   );
 }
 
+if (process.env.NEON_DATABASE_URL) {
+  console.log('✅ Using shared Neon database (NEON_DATABASE_URL)');
+} else if (process.env.DATABASE_URL) {
+  console.log('⚠️ Using local database (DATABASE_URL) - Consider setting NEON_DATABASE_URL for shared data');
+}
+
 export const pool = new Pool({ connectionString: databaseUrl });
 export const db = drizzle({ client: pool, schema });
