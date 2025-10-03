@@ -701,23 +701,30 @@ export function StrategyStatus() {
   const livePositionsSummary: PositionSummary | undefined = livePositionsData ? {
     positions: livePositionsData
       .filter(p => parseFloat(p.positionAmt) !== 0) // Filter out zero positions
-      .map(p => ({
-        id: `live-${p.symbol}-${parseFloat(p.positionAmt) > 0 ? 'LONG' : 'SHORT'}`,
-        symbol: p.symbol,
-        side: parseFloat(p.positionAmt) > 0 ? 'long' as const : 'short' as const,
-        avgEntryPrice: p.entryPrice,
-        totalQuantity: Math.abs(parseFloat(p.positionAmt)).toString(),
-        totalCost: Math.abs(parseFloat(p.positionAmt) * parseFloat(p.entryPrice)).toString(),
-        unrealizedPnl: p.unRealizedProfit && parseFloat(p.entryPrice) > 0 
-          ? ((parseFloat(p.unRealizedProfit) / (Math.abs(parseFloat(p.positionAmt)) * parseFloat(p.entryPrice))) * 100).toString()
-          : '0',
-        layersFilled: 1,
-        maxLayers: 1,
-        openedAt: new Date(),
-        updatedAt: new Date(),
-        closedAt: null,
-        sessionId: activeStrategy.id,
-      })),
+      .map(p => {
+        const notional = Math.abs(parseFloat(p.positionAmt) * parseFloat(p.entryPrice));
+        const leverage = activeStrategy?.leverage || 1;
+        // CRITICAL: totalCost must store MARGIN (notional / leverage), not notional!
+        const margin = notional / leverage;
+        
+        return {
+          id: `live-${p.symbol}-${parseFloat(p.positionAmt) > 0 ? 'LONG' : 'SHORT'}`,
+          symbol: p.symbol,
+          side: parseFloat(p.positionAmt) > 0 ? 'long' as const : 'short' as const,
+          avgEntryPrice: p.entryPrice,
+          totalQuantity: Math.abs(parseFloat(p.positionAmt)).toString(),
+          totalCost: margin.toString(), // Store margin, not notional!
+          unrealizedPnl: p.unRealizedProfit && parseFloat(p.entryPrice) > 0 
+            ? ((parseFloat(p.unRealizedProfit) / notional) * 100).toString()
+            : '0',
+          layersFilled: 1,
+          maxLayers: 1,
+          openedAt: new Date(),
+          updatedAt: new Date(),
+          closedAt: null,
+          sessionId: activeStrategy.id,
+        };
+      }),
     totalExposure: livePositionsData.reduce((sum, p) => 
       sum + Math.abs(parseFloat(p.positionAmt) * parseFloat(p.markPrice || p.entryPrice || 0)), 0
     ),
