@@ -6,6 +6,7 @@ import LiquidationAnalyticsModal from "@/components/LiquidationAnalyticsModal";
 import PerformanceOverview from "@/components/PerformanceOverview";
 import TradingStrategyDialog from "@/components/TradingStrategyDialog";
 import { StrategyStatus } from "@/components/StrategyStatus";
+import CascadeRiskIndicator from "@/components/CascadeRiskIndicator";
 import ThemeToggle from "@/components/ThemeToggle";
 import AsterLogo from "@/components/AsterLogo";
 import LiveModeToggle from "@/components/LiveModeToggle";
@@ -627,6 +628,9 @@ export default function Dashboard() {
         }`}
         style={{ paddingTop: 'calc(73px + 1.5rem)' }}
       >
+        {/* Cascade Risk Indicator */}
+        <CascadeRiskIndicator />
+        
         {/* Performance Overview */}
         <PerformanceOverview />
         
