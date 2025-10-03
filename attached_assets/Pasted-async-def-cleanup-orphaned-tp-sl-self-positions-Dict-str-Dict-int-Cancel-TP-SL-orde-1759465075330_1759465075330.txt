@@ -1,0 +1,316 @@
+async def cleanup_orphaned_tp_sl(self, positions: Dict[str, Dict]) -> int:
+    """Cancel TP/SL orders that don't have matching positions."""
+    canceled_count = 0
+    all_orders = await self.get_open_orders()
+    current_time = time.time() * 1000
+    
+    for order in all_orders:
+        order_type = order.get('type', '')
+        symbol = order['symbol']
+        order_id = str(order['orderId'])
+        position_side = order.get('positionSide', 'BOTH')
+        order_time = order.get('time', 0)
+        order_age_seconds = (current_time - order_time) / 1000
+        
+        # Check if this is a TP/SL order
+        is_tp_sl = order_type in [
+            'TAKE_PROFIT_MARKET',
+            'STOP_MARKET',
+            'TAKE_PROFIT',
+            'STOP',
+            'STOP_LOSS'
+        ]
+        
+        if is_tp_sl:
+            # Don't cancel orders younger than 60 seconds
+            # (prevents race conditions)
+            if order_age_seconds < 60:
+                continue
+            
+            # Check if matching position exists
+            should_cancel = False
+            
+            if config.GLOBAL_SETTINGS.get('hedge_mode', False):
+                # Hedge mode: check position side
+                side_key = f"{symbol}_{position_side}"
+                side_position = positions.get(side_key)
+                
+                if not side_position or not side_position.get('has_position', False):
+                    should_cancel = True
+                    log.warning(f"Found orphaned {order_type} order {order_id} for {symbol}")
+            else:
+                # One-way mode: check symbol
+                position = positions.get(symbol)
+                if not position or not position.get('has_position', False):
+                    should_cancel = True
+                    log.warning(f"Found orphaned {order_type} order {order_id}")
+            
+            if should_cancel:
+                # Safety check: don't cancel if recent fills exist
+                conn = sqlite3.connect(config.DB_PATH)
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT COUNT(*) FROM trades
+                    WHERE symbol = ? AND status = 'FILLED'
+                    AND timestamp > ?
+                """, (symbol, current_time - 300000))  # Last 5 minutes
+                
+                recent_fills = cursor.fetchone()[0]
+                conn.close()
+                
+                if recent_fills > 0:
+                    log.info(f"Skipping cancellation - recent fills exist")
+                    continue
+                
+                # Cancel the orphaned order
+                if await self.cancel_order(symbol, order_id):
+                    canceled_count += 1
+    
+    return canceled_count
+2. Cleanup Stale Limit Orders
+Removes limit orders older than configured timeout (default 3 minutes):
+
+async def cleanup_stale_limit_orders(self) -> int:
+    """Cancel limit orders that are too old."""
+    canceled_count = 0
+    all_orders = await self.get_open_orders()
+    current_time = time.time() * 1000
+    
+    for order in all_orders:
+        order_type = order.get('type', '')
+        symbol = order['symbol']
+        order_id = str(order['orderId'])
+        
+        # Only check LIMIT orders
+        if order_type == 'LIMIT':
+            order_time = order.get('time', 0)
+            age_seconds = (current_time - order_time) / 1000
+            
+            # Check if older than timeout
+            if age_seconds > self.stale_limit_order_seconds:
+                # Skip if it's a tracked TP/SL order
+                if self.is_order_related_to_position(order_id, symbol):
+                    log.debug(f"Skipping tracked TP/SL order")
+                    continue
+                
+                log.warning(f"Found stale limit order {order_id}, age: {age_seconds:.0f}s")
+                
+                if await self.cancel_order(symbol, order_id):
+                    canceled_count += 1
+    
+    return canceled_count
+3. Auto-Repair Missing TP/SL Orders
+The most sophisticated feature - automatically places missing protection orders:
+
+async def check_and_repair_position_protection(self) -> int:
+    """Check all positions have TP/SL orders and place missing ones."""
+    repaired_count = 0
+    
+    # Get all positions with full details
+    url = f"{config.BASE_URL}/fapi/v2/positionRisk"
+    response = make_authenticated_request('GET', url)
+    
+    if response.status_code != 200:
+        return 0
+    
+    position_details = {}
+    for pos in response.json():
+        symbol = pos['symbol']
+        position_amt = float(pos.get('positionAmt', 0))
+        position_side = pos.get('positionSide', 'BOTH')
+        
+        if position_amt != 0:
+            key = f"{symbol}_{position_side}"
+            position_details[key] = {
+                'symbol': symbol,
+                'amount': position_amt,
+                'entry_price': float(pos.get('entryPrice', 0)),
+                'position_side': position_side,
+                'mark_price': float(pos.get('markPrice', 0))
+            }
+    
+    # Get all open orders
+    all_orders = await self.get_open_orders()
+    
+    # Build map of existing TP/SL orders
+    symbol_orders = {}
+    for order in all_orders:
+        symbol = order['symbol']
+        order_type = order.get('type', '')
+        position_side = order.get('positionSide', 'BOTH')
+        order_qty = float(order.get('origQty', 0))
+        
+        if symbol not in symbol_orders:
+            symbol_orders[symbol] = {}
+        
+        side_key = position_side if position_side != 'BOTH' else 'ANY'
+        if side_key not in symbol_orders[symbol]:
+            symbol_orders[symbol][side_key] = []
+        
+        symbol_orders[symbol][side_key].append({
+            'type': order_type,
+            'quantity': order_qty,
+            'side': order.get('side', ''),
+            'order_id': order.get('orderId')
+        })
+    
+    # Check each position for missing TP/SL
+    for pos_key, pos_detail in position_details.items():
+        symbol = pos_detail['symbol']
+        position_amount = pos_detail['amount']
+        entry_price = pos_detail['entry_price']
+        position_side = pos_detail['position_side']
+        current_price = pos_detail['mark_price']
+        
+        if entry_price == 0:
+            continue
+        
+        # Get symbol configuration
+        symbol_config = config.SYMBOL_SETTINGS.get(symbol, {})
+        if not symbol_config:
+            continue
+        
+        # Check existing orders
+        existing_orders = symbol_orders.get(symbol, {}).get(position_side, [])
+        
+        # Calculate what's covered
+        tp_qty_covered = 0
+        sl_qty_covered = 0
+        
+        for order in existing_orders:
+            if order['type'] in ['TAKE_PROFIT_MARKET', 'TAKE_PROFIT', 'LIMIT']:
+                tp_qty_covered += order['quantity']
+            elif order['type'] in ['STOP_MARKET', 'STOP', 'STOP_LOSS']:
+                sl_qty_covered += order['quantity']
+        
+        position_qty = abs(position_amount)
+        has_tp = tp_qty_covered >= position_qty * 0.99  # 1% tolerance
+        has_sl = sl_qty_covered >= position_qty * 0.99
+        
+        # If fully protected, skip
+        if has_tp and has_sl:
+            log.debug(f"Position {symbol} fully protected")
+            continue
+        
+        # Check cooldown to prevent spam
+        position_key = f"{symbol}_{position_side}"
+        last_attempt = self.recovery_attempts.get(position_key, 0)
+        current_time = time.time()
+        
+        if current_time - last_attempt < 60:  # 1 minute cooldown
+            continue
+        
+        log.warning(f"Position {symbol} {position_side} missing protection!")
+        self.recovery_attempts[position_key] = current_time
+        
+        orders_to_place = []
+        
+        # Place missing TP order
+        if symbol_config.get('take_profit_enabled', False) and not has_tp:
+            tp_pct = symbol_config.get('take_profit_pct', 2.0)
+            
+            if position_amount > 0:  # LONG
+                tp_price = entry_price * (1 + tp_pct / 100.0)
+                tp_side = 'SELL'
+            else:  # SHORT
+                tp_price = entry_price * (1 - tp_pct / 100.0)
+                tp_side = 'BUY'
+            
+            # Check if price already exceeded TP - close immediately!
+            should_close_now = False
+            if position_amount > 0 and current_price > tp_price:
+                should_close_now = True
+            elif position_amount < 0 and current_price < tp_price:
+                should_close_now = True
+            
+            if should_close_now:
+                profit_pct = abs((current_price - entry_price) / entry_price) * 100
+                log.warning(f"Price already exceeded TP! Closing at {profit_pct:.2f}% profit")
+                
+                # Close with market order
+                close_order = {
+                    'symbol': symbol,
+                    'side': tp_side,
+                    'type': 'MARKET',
+                    'quantity': str(abs(position_amount)),
+                    'positionSide': position_side
+                }
+                
+                resp = make_authenticated_request('POST', f"{config.BASE_URL}/fapi/v1/order", data=close_order)
+                if resp.status_code == 200:
+                    log.info(f"Successfully closed position at profit")
+                continue
+            
+            # Format and place TP order
+            formatted_tp_price = format_price(symbol, tp_price)
+            tp_order = {
+                'symbol': symbol,
+                'side': tp_side,
+                'type': 'LIMIT',
+                'price': formatted_tp_price,
+                'quantity': str(abs(position_amount)),
+                'positionSide': position_side,
+                'timeInForce': 'GTC'
+            }
+            orders_to_place.append(tp_order)
+            log.info(f"Will place recovery TP at {tp_price}")
+        
+        # Place missing SL order
+        if symbol_config.get('stop_loss_enabled', False) and not has_sl:
+            sl_pct = symbol_config.get('stop_loss_pct', 5.0)
+            
+            if position_amount > 0:  # LONG
+                sl_price = entry_price * (1 - sl_pct / 100.0)
+                sl_side = 'SELL'
+            else:  # SHORT
+                sl_price = entry_price * (1 + sl_pct / 100.0)
+                sl_side = 'BUY'
+            
+            formatted_sl_price = format_price(symbol, sl_price)
+            sl_order = {
+                'symbol': symbol,
+                'side': sl_side,
+                'type': 'STOP_MARKET',
+                'stopPrice': formatted_sl_price,
+                'quantity': str(abs(position_amount)),
+                'positionSide': position_side
+            }
+            orders_to_place.append(sl_order)
+            log.info(f"Will place recovery SL at {sl_price}")
+        
+        # Execute recovery orders
+        if orders_to_place:
+            for order in orders_to_place:
+                resp = make_authenticated_request('POST', f"{config.BASE_URL}/fapi/v1/order", data=order)
+                if resp.status_code == 200:
+                    repaired_count += 1
+                    log.info(f"Placed recovery order for {symbol}")
+                else:
+                    log.error(f"Failed to place recovery order: {resp.text}")
+    
+    return repaired_count
+4. Main Cleanup Loop
+All cleanup functions run automatically:
+
+async def run_cleanup_loop(self):
+    """Main cleanup loop that runs periodically."""
+    log.info("Order cleanup loop started")
+    
+    while self.running:
+        try:
+            # Get current positions
+            positions = await self.get_positions()
+            
+            # Run all cleanup tasks
+            orphaned = await self.cleanup_orphaned_tp_sl(positions)
+            stale = await self.cleanup_stale_limit_orders()
+            repaired = await self.check_and_repair_position_protection()
+            
+            if orphaned > 0 or stale > 0 or repaired > 0:
+                log.info(f"Cleanup complete: {orphaned} orphaned, {stale} stale, {repaired} repaired")
+            
+        except Exception as e:
+            log.error(f"Error in cleanup loop: {e}")
+        
+        # Wait for next interval
+        await asyncio.sleep(self.cleanup_interval_seconds)

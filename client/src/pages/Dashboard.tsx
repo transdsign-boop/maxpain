@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Settings2, Pause, Play, AlertTriangle, BarChart3, Menu } from "lucide-react";
+import { Settings2, Pause, Play, AlertTriangle, BarChart3, Menu, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -109,6 +109,31 @@ export default function Dashboard() {
     },
     enabled: !!activeStrategy?.id,
     refetchInterval: 10000, // Reduced to 10 seconds to avoid rate limiting (was 1 second)
+  });
+
+  // Manual cleanup mutation
+  const cleanupMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest('POST', '/api/cleanup/manual');
+      return response.json();
+    },
+    onSuccess: (data) => {
+      // Invalidate positions and open orders to reflect cleanup
+      queryClient.invalidateQueries({ queryKey: ['/api/live/positions'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/live/open-orders'] });
+      
+      toast({
+        title: "Cleanup Complete",
+        description: data.message || `${data.totalActions} actions taken`,
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Cleanup Failed",
+        description: error.message || "Failed to run cleanup",
+        variant: "destructive",
+      });
+    },
   });
 
   // Pause strategy mutation
@@ -547,6 +572,20 @@ export default function Dashboard() {
               </Button>
             )}
             
+            {/* Manual Cleanup Button */}
+            {isLiveMode && (
+              <Button 
+                variant="outline" 
+                size="icon"
+                onClick={() => cleanupMutation.mutate()}
+                disabled={cleanupMutation.isPending}
+                data-testid="button-cleanup"
+                title="Cleanup Orphaned Orders"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            )}
+            
             {/* Trading Strategy Button */}
             <Button 
               variant="default" 
@@ -603,6 +642,18 @@ export default function Dashboard() {
                   data-testid="button-emergency-stop-mobile"
                 >
                   <AlertTriangle className="h-4 w-4" />
+                </Button>
+              )}
+              {/* Manual Cleanup Button */}
+              {isLiveMode && (
+                <Button 
+                  variant="outline" 
+                  size="icon"
+                  onClick={() => cleanupMutation.mutate()}
+                  disabled={cleanupMutation.isPending}
+                  data-testid="button-cleanup-mobile"
+                >
+                  <Trash2 className="h-4 w-4" />
                 </Button>
               )}
               <Button 

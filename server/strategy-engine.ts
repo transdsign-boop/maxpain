@@ -2846,6 +2846,71 @@ export class StrategyEngine extends EventEmitter {
   removePendingOrder(orderId: string) {
     this.pendingPaperOrders.delete(orderId);
   }
+
+  // Manual cleanup trigger - run all cleanup tasks immediately
+  async runManualCleanup(): Promise<{
+    orphanedOrders: number;
+    staleOrders: number;
+    repairedOrders: number;
+    fixedOrders: number;
+    deletedLiquidations: number;
+    totalActions: number;
+  }> {
+    console.log('🧹 Manual cleanup triggered...');
+    
+    // Prevent overlapping cleanup
+    if (this.cleanupInProgress) {
+      throw new Error('Cleanup already in progress');
+    }
+    
+    this.cleanupInProgress = true;
+    
+    try {
+      // 1. Clean up orphaned TP/SL orders
+      const orphanedCount = await this.cleanupOrphanedTPSL();
+      if (orphanedCount > 0) {
+        console.log(`  ✓ Removed ${orphanedCount} orphaned TP/SL orders`);
+      }
+      
+      // 2. Clean up stale limit orders
+      const staleCount = await this.cleanupStaleLimitOrders();
+      if (staleCount > 0) {
+        console.log(`  ✓ Canceled ${staleCount} stale limit orders`);
+      }
+      
+      // 3. Auto-repair missing TP/SL orders
+      const repairedCount = await this.autoRepairMissingTPSL();
+      if (repairedCount > 0) {
+        console.log(`  ✓ Placed ${repairedCount} missing TP/SL orders`);
+      }
+      
+      // 4. Fix incorrect stop-loss orders
+      const fixedCount = await this.fixIncorrectStopLossOrders();
+      if (fixedCount > 0) {
+        console.log(`  ✓ Fixed ${fixedCount} incorrect stop-loss orders`);
+      }
+      
+      // 5. Delete old liquidations
+      const deletedCount = await storage.deleteOldLiquidations(5);
+      if (deletedCount > 0) {
+        console.log(`  ✓ Deleted ${deletedCount} liquidations older than 5 days`);
+      }
+      
+      const totalActions = orphanedCount + staleCount + repairedCount + fixedCount + deletedCount;
+      console.log(`🧹 Manual cleanup complete: ${totalActions} total actions taken`);
+      
+      return {
+        orphanedOrders: orphanedCount,
+        staleOrders: staleCount,
+        repairedOrders: repairedCount,
+        fixedOrders: fixedCount,
+        deletedLiquidations: deletedCount,
+        totalActions
+      };
+    } finally {
+      this.cleanupInProgress = false;
+    }
+  }
 }
 
 // Export singleton instance
