@@ -165,6 +165,11 @@ export const positions = pgTable("positions", {
   maxLayers: integer("max_layers").notNull(),
   lastLayerPrice: decimal("last_layer_price", { precision: 18, scale: 8 }),
   leverage: integer("leverage").notNull().default(1), // Leverage multiplier (1-125x)
+  // Protective order tracking (live mode only)
+  tpOrderId: varchar("tp_order_id"), // Exchange order ID for take profit
+  slOrderId: varchar("sl_order_id"), // Exchange order ID for stop loss
+  tpPrice: decimal("tp_price", { precision: 18, scale: 8 }), // Current TP trigger price
+  slPrice: decimal("sl_price", { precision: 18, scale: 8 }), // Current SL trigger price
   isOpen: boolean("is_open").notNull().default(true),
   openedAt: timestamp("opened_at").notNull().defaultNow(),
   closedAt: timestamp("closed_at"),

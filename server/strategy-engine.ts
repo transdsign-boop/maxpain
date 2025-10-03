@@ -2320,10 +2320,8 @@ export class StrategyEngine extends EventEmitter {
     this.lastFillTime.set(cooldownKey, Date.now());
     console.log(`⏰ Fill cooldown started for ${position.symbol} ${position.side} (${this.fillCooldownMs / 1000}s)`);
     
-    // AUTOMATICALLY place TP/SL orders for live mode entry orders (Layer 1 only)
-    if (order.layerNumber === 1) {
-      await this.placeTPSLOrdersForPosition(position, order.sessionId);
-    }
+    // AUTOMATICALLY update TP/SL orders for live mode (all layers)
+    await this.updateProtectiveOrders(position, order.sessionId);
   }
 
   // Ensure position exists and return it (create or update as needed)
@@ -2758,8 +2756,9 @@ export class StrategyEngine extends EventEmitter {
     }
   }
 
-  // Automatically place TP/SL orders immediately after position opens (live mode only)
-  private async placeTPSLOrdersForPosition(position: Position, sessionId: string) {
+  // Update protective orders (TP/SL) using place-then-cancel strategy
+  // This function is called after entry AND after each layer to update orders for the new position size
+  private async updateProtectiveOrders(position: Position, sessionId: string) {
     try {
       // Find the strategy to get TP/SL percentages
       let strategy: Strategy | undefined;
@@ -2771,13 +2770,12 @@ export class StrategyEngine extends EventEmitter {
       }
       
       if (!strategy) {
-        console.warn(`⚠️ Could not find strategy for session ${sessionId}, skipping TP/SL placement`);
+        console.warn(`⚠️ Could not find strategy for session ${sessionId}, skipping TP/SL update`);
         return;
       }
       
-      // Only place TP/SL for live trading mode
+      // Only update TP/SL for live trading mode
       if (strategy.tradingMode !== 'live') {
-        console.log(`📝 Paper mode detected, skipping automatic TP/SL placement for ${position.symbol}`);
         return;
       }
       
@@ -2800,19 +2798,26 @@ export class StrategyEngine extends EventEmitter {
         slPrice = entryPrice * (1 + slPercent / 100);
       }
       
-      console.log(`🎯 Placing automatic TP/SL orders for ${position.symbol} ${position.side}:`);
-      console.log(`   Entry: $${entryPrice.toFixed(2)} | TP: $${tpPrice.toFixed(2)} (+${tpPercent}%) | SL: $${slPrice.toFixed(2)} (-${slPercent}%)`);
+      const hasExistingOrders = position.tpOrderId || position.slOrderId;
+      
+      if (hasExistingOrders) {
+        console.log(`🔄 Updating protective orders for ${position.symbol} ${position.side} (Qty: ${quantity}):`);
+        console.log(`   Avg Entry: $${entryPrice.toFixed(2)} | New TP: $${tpPrice.toFixed(2)} | New SL: $${slPrice.toFixed(2)}`);
+        console.log(`   Old TP Order: ${position.tpOrderId || 'none'} | Old SL Order: ${position.slOrderId || 'none'}`);
+      } else {
+        console.log(`🎯 Placing initial protective orders for ${position.symbol} ${position.side}:`);
+        console.log(`   Entry: $${entryPrice.toFixed(2)} | TP: $${tpPrice.toFixed(2)} (+${tpPercent}%) | SL: $${slPrice.toFixed(2)} (-${slPercent}%)`);
+      }
       
       // Determine exit side (opposite of position side)
       const exitSide = position.side === 'long' ? 'sell' : 'buy';
       
-      // Place TP and SL orders in a SINGLE batch API call (more efficient!)
-      // Using closePosition='true' - automatically closes entire position when triggered
+      // STEP 1: Place NEW orders first (place-then-cancel to avoid exposure)
       const batchOrders = [
         {
           symbol: position.symbol,
           side: exitSide,
-          orderType: 'TAKE_PROFIT_MARKET', // TP uses TAKE_PROFIT_MARKET with closePosition
+          orderType: 'TAKE_PROFIT_MARKET',
           quantity,
           price: tpPrice,
           positionSide: this.exchangePositionMode === 'dual' ? position.side : undefined,
@@ -2820,7 +2825,7 @@ export class StrategyEngine extends EventEmitter {
         {
           symbol: position.symbol,
           side: exitSide,
-          orderType: 'STOP_MARKET', // SL uses STOP_MARKET with closePosition
+          orderType: 'STOP_MARKET',
           quantity,
           price: slPrice,
           positionSide: this.exchangePositionMode === 'dual' ? position.side : undefined,
@@ -2829,14 +2834,96 @@ export class StrategyEngine extends EventEmitter {
       
       const batchResult = await this.executeBatchOrders(batchOrders);
       
-      if (batchResult.success) {
-        console.log(`✅ TP/SL orders placed automatically for ${position.symbol} (batch: 2 orders in 1 API call)`);
-      } else {
-        console.error(`❌ Failed to place automatic TP/SL orders: ${batchResult.error}`);
+      if (!batchResult.success) {
+        console.error(`❌ Failed to place new protective orders: ${batchResult.error}`);
+        // Keep existing orders if new ones fail
+        if (hasExistingOrders) {
+          console.warn(`⚠️ Keeping existing orders: TP=${position.tpOrderId}, SL=${position.slOrderId}`);
+        }
+        return;
       }
       
+      // Extract new order IDs from successful results
+      const newTpOrderId = batchResult.results?.[0]?.orderId?.toString();
+      const newSlOrderId = batchResult.results?.[1]?.orderId?.toString();
+      
+      if (!newTpOrderId || !newSlOrderId) {
+        console.error(`❌ Failed to extract order IDs from batch result`);
+        return;
+      }
+      
+      console.log(`✅ New protective orders placed: TP=${newTpOrderId}, SL=${newSlOrderId}`);
+      
+      // STEP 2: Cancel OLD orders (only if they exist)
+      const oldOrders = [];
+      if (position.tpOrderId) oldOrders.push({ orderId: position.tpOrderId, type: 'TP' });
+      if (position.slOrderId) oldOrders.push({ orderId: position.slOrderId, type: 'SL' });
+      
+      for (const oldOrder of oldOrders) {
+        try {
+          await this.cancelExchangeOrder(position.symbol, oldOrder.orderId);
+          console.log(`✅ Cancelled old ${oldOrder.type} order: ${oldOrder.orderId}`);
+        } catch (error) {
+          console.warn(`⚠️ Failed to cancel old ${oldOrder.type} order ${oldOrder.orderId}:`, error);
+          // Continue anyway - new orders are already in place
+        }
+      }
+      
+      // STEP 3: Update position with new order IDs and prices
+      await storage.updatePosition(position.id, {
+        tpOrderId: newTpOrderId,
+        slOrderId: newSlOrderId,
+        tpPrice: tpPrice.toString(),
+        slPrice: slPrice.toString(),
+      });
+      
+      console.log(`✅ Protective orders updated successfully for ${position.symbol}`);
+      
     } catch (error) {
-      console.error('❌ Error placing automatic TP/SL orders:', error);
+      console.error('❌ Error updating protective orders:', error);
+    }
+  }
+
+  // Cancel an order on the exchange
+  private async cancelExchangeOrder(symbol: string, orderId: string): Promise<void> {
+    const apiKey = process.env.ASTER_API_KEY;
+    const secretKey = process.env.ASTER_SECRET_KEY;
+    
+    if (!apiKey || !secretKey) {
+      throw new Error('API keys not configured');
+    }
+    
+    const timestamp = Date.now();
+    const params: Record<string, string | number> = {
+      symbol,
+      orderId,
+      timestamp,
+      recvWindow: 5000,
+    };
+    
+    // Create query string for signature
+    const queryString = Object.entries(params)
+      .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
+      .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
+      .join('&');
+    
+    // Generate signature
+    const signature = createHmac('sha256', secretKey)
+      .update(queryString)
+      .digest('hex');
+    
+    const signedParams = `${queryString}&signature=${signature}`;
+    
+    const response = await fetch(`https://fapi.asterdex.com/fapi/v1/order?${signedParams}`, {
+      method: 'DELETE',
+      headers: {
+        'X-MBX-APIKEY': apiKey,
+      },
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Cancel order failed (${response.status}): ${errorText}`);
     }
   }
 
