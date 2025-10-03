@@ -1812,8 +1812,6 @@ export class StrategyEngine extends EventEmitter {
           side = positionAmt > 0 ? 'long' : 'short';
         }
         
-        const entryPrice = parseFloat(exchangePos.entryPrice);
-        
         const cooldownKey = `${symbol}-${side}`;
         const lastAttempt = this.recoveryAttempts.get(cooldownKey) || 0;
         const now = Date.now();
@@ -1853,10 +1851,15 @@ export class StrategyEngine extends EventEmitter {
         
         if (!strategy) continue;
         
+        // CRITICAL FIX: Use DATABASE position's entry price, NOT exchange position's entry price
+        // The exchange position may have stale/incorrect entry price after layers
+        // Database tracks the true weighted average entry price from all fills
+        const entryPrice = parseFloat(dbPosition.entryPrice);
+        
         const stopLossPercent = parseFloat(strategy.stopLossPercent);
         const profitTargetPercent = parseFloat(strategy.profitTargetPercent);
         
-        // Calculate TP and SL prices
+        // Calculate TP and SL prices using CORRECT entry price from database
         const tpPrice = side === 'LONG' 
           ? entryPrice * (1 + profitTargetPercent / 100)
           : entryPrice * (1 - profitTargetPercent / 100);
