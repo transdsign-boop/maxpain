@@ -5,6 +5,7 @@ import crypto from "crypto";
 import { randomUUID } from "crypto";
 import { storage } from "./storage";
 import { strategyEngine } from "./strategy-engine";
+import { cascadeDetectorService } from "./cascade-detector-service";
 import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySchema, updateStrategySchema, type Position, type Liquidation, type InsertFill, positions } from "@shared/schema";
 import { db } from "./db";
 import { desc } from "drizzle-orm";
@@ -2295,6 +2296,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Cascade Detector API routes
+  app.get("/api/cascade/status", async (req, res) => {
+    try {
+      const status = cascadeDetectorService.getCurrentStatus();
+      res.json(status);
+    } catch (error) {
+      console.error('Error fetching cascade status:', error);
+      res.status(500).json({ error: "Failed to fetch cascade status" });
+    }
+  });
+
+  app.post("/api/cascade/auto", async (req, res) => {
+    try {
+      const { autoEnabled } = req.body;
+      
+      if (typeof autoEnabled !== 'boolean') {
+        return res.status(400).json({ error: "autoEnabled must be a boolean" });
+      }
+      
+      cascadeDetectorService.setAutoEnabled(autoEnabled);
+      
+      res.json({ 
+        success: true, 
+        autoEnabled: cascadeDetectorService.getAutoEnabled() 
+      });
+    } catch (error) {
+      console.error('Error setting cascade auto mode:', error);
+      res.status(500).json({ error: "Failed to set cascade auto mode" });
+    }
+  });
+
   const httpServer = createServer(app);
 
   // WebSocket server for real-time liquidation updates
@@ -2320,6 +2352,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Connect strategy engine with WebSocket clients for trade notifications
   strategyEngine.setWebSocketClients(clients);
+  
+  // Initialize cascade detector service
+  cascadeDetectorService.setClients(clients);
+  cascadeDetectorService.start();
   
   // Connect to Aster DEX WebSocket and relay data
   connectToAsterDEX(clients);
