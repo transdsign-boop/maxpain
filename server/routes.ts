@@ -1031,6 +1031,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Scan for missing TP/SL orders (reporting only, no auto-repair)
+  app.get("/api/live/scan-tpsl", async (req, res) => {
+    try {
+      console.log('🔍 TP/SL scan requested via API');
+      const results = await strategyEngine.scanMissingTPSL();
+      res.json({
+        success: true,
+        positions: results,
+        count: results.length,
+        message: results.length > 0
+          ? `Found ${results.length} position(s) with missing TP/SL orders`
+          : 'All positions have proper TP/SL orders'
+      });
+    } catch (error: any) {
+      console.error('Error scanning for missing TP/SL:', error);
+      res.status(500).json({ 
+        success: false,
+        error: error.message || "Failed to scan for missing TP/SL" 
+      });
+    }
+  });
+
   // Get open orders from Aster DEX
   app.get("/api/live/open-orders", async (req, res) => {
     try {
