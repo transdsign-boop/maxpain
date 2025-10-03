@@ -1010,6 +1010,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Manual cleanup trigger - run all cleanup tasks immediately
+  app.post("/api/cleanup/manual", async (req, res) => {
+    try {
+      console.log('🧹 Manual cleanup requested via API');
+      const result = await strategyEngine.runManualCleanup();
+      res.json({
+        success: true,
+        ...result,
+        message: result.totalActions > 0 
+          ? `Cleanup complete: ${result.totalActions} actions taken`
+          : 'All systems healthy, no cleanup needed'
+      });
+    } catch (error: any) {
+      console.error('Error running manual cleanup:', error);
+      res.status(500).json({ 
+        success: false,
+        error: error.message || "Failed to run cleanup" 
+      });
+    }
+  });
+
   // Get open orders from Aster DEX
   app.get("/api/live/open-orders", async (req, res) => {
     try {
