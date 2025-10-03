@@ -1,0 +1,251 @@
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { FolderOpen, Plus, AlertCircle } from "lucide-react";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { format } from "date-fns";
+
+interface TradeSession {
+  id: string;
+  name: string | null;
+  mode: string;
+  startingBalance: string;
+  currentBalance: string;
+  totalPnl: string;
+  totalTrades: number;
+  isActive: boolean;
+  startedAt: string;
+  endedAt: string | null;
+}
+
+export default function SessionManager() {
+  const [isNewSessionOpen, setIsNewSessionOpen] = useState(false);
+  const [isLoadSessionOpen, setIsLoadSessionOpen] = useState(false);
+  const [selectedMode, setSelectedMode] = useState<'paper' | 'live'>('paper');
+  const [sessionName, setSessionName] = useState('');
+  const { toast } = useToast();
+
+  const { data: sessions = [] } = useQuery<TradeSession[]>({
+    queryKey: ['/api/sessions'],
+  });
+
+  const newSessionMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest('POST', '/api/sessions/new', {
+        mode: selectedMode,
+        name: sessionName || undefined,
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/sessions'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/strategies'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/performance/overview'] });
+      setIsNewSessionOpen(false);
+      setSessionName('');
+      toast({
+        title: "New session started",
+        description: `${selectedMode === 'live' ? 'Live' : 'Paper'} trading session created successfully`,
+      });
+      window.location.reload();
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to create session",
+        description: error.message || "An error occurred",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const loadSessionMutation = useMutation({
+    mutationFn: async (sessionId: string) => {
+      const response = await apiRequest('POST', `/api/sessions/${sessionId}/load`);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/sessions'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/strategies'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/performance/overview'] });
+      setIsLoadSessionOpen(false);
+      toast({
+        title: "Session loaded",
+        description: "Previous session loaded successfully",
+      });
+      window.location.reload();
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to load session",
+        description: error.message || "An error occurred",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const activeSession = sessions.find(s => s.isActive);
+  const previousSessions = sessions.filter(s => !s.isActive).slice(0, 10);
+
+  const formatSessionLabel = (session: TradeSession) => {
+    const name = session.name || `${session.mode === 'live' ? 'Live' : 'Paper'} Session`;
+    const dateRange = session.endedAt
+      ? `${format(new Date(session.startedAt), 'MMM d, yyyy')} - ${format(new Date(session.endedAt), 'MMM d, yyyy')}`
+      : `Started ${format(new Date(session.startedAt), 'MMM d, yyyy')}`;
+    const pnl = parseFloat(session.totalPnl);
+    const pnlColor = pnl >= 0 ? 'text-lime-500' : 'text-orange-500';
+    return (
+      <div className="flex flex-col">
+        <span className="font-medium">{name}</span>
+        <span className="text-xs text-muted-foreground">{dateRange}</span>
+        <span className={`text-xs font-mono ${pnlColor}`}>
+          P&L: ${pnl.toFixed(2)} ({session.totalTrades} trades)
+        </span>
+      </div>
+    );
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      {/* New Session */}
+      <Dialog open={isNewSessionOpen} onOpenChange={setIsNewSessionOpen}>
+        <DialogTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            data-testid="button-new-session"
+          >
+            <Plus className="h-4 w-4" />
+            <span className="hidden sm:inline">New Session</span>
+          </Button>
+        </DialogTrigger>
+        <DialogContent data-testid="dialog-new-session">
+          <DialogHeader>
+            <DialogTitle>Start New Trading Session</DialogTitle>
+            <DialogDescription>
+              Create a fresh session with reset performance metrics. Your current session will be saved.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="mode">Trading Mode</Label>
+              <Select
+                value={selectedMode}
+                onValueChange={(value) => setSelectedMode(value as 'paper' | 'live')}
+              >
+                <SelectTrigger id="mode" data-testid="select-mode">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="paper">Paper Trading</SelectItem>
+                  <SelectItem value="live">Live Trading</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="name">Session Name (Optional)</Label>
+              <Input
+                id="name"
+                data-testid="input-session-name"
+                placeholder="e.g., December Strategy Test"
+                value={sessionName}
+                onChange={(e) => setSessionName(e.target.value)}
+              />
+            </div>
+
+            {selectedMode === 'live' && (
+              <div className="flex items-start gap-2 p-3 bg-orange-500/10 border border-orange-500/20 rounded-md">
+                <AlertCircle className="h-5 w-5 text-orange-500 mt-0.5" />
+                <div className="text-sm text-orange-500">
+                  <strong>REAL MONEY WARNING:</strong> This will start a live trading session using real funds.
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setIsNewSessionOpen(false)}
+              data-testid="button-cancel-new-session"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => newSessionMutation.mutate()}
+              disabled={newSessionMutation.isPending}
+              data-testid="button-confirm-new-session"
+            >
+              {newSessionMutation.isPending ? 'Creating...' : 'Start New Session'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Load Previous Session */}
+      <Dialog open={isLoadSessionOpen} onOpenChange={setIsLoadSessionOpen}>
+        <DialogTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            data-testid="button-load-session"
+          >
+            <FolderOpen className="h-4 w-4" />
+            <span className="hidden sm:inline">Load Session</span>
+          </Button>
+        </DialogTrigger>
+        <DialogContent className="max-w-2xl" data-testid="dialog-load-session">
+          <DialogHeader>
+            <DialogTitle>Load Previous Session</DialogTitle>
+            <DialogDescription>
+              Select a previous session to review or continue trading. Your current session will be saved.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4 max-h-96 overflow-y-auto">
+            {previousSessions.length === 0 ? (
+              <p className="text-center text-muted-foreground py-8">
+                No previous sessions found
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {previousSessions.map((session) => (
+                  <button
+                    key={session.id}
+                    onClick={() => loadSessionMutation.mutate(session.id)}
+                    disabled={loadSessionMutation.isPending}
+                    className="w-full p-3 text-left border rounded-md hover-elevate active-elevate-2 transition-colors"
+                    data-testid={`button-load-session-${session.id}`}
+                  >
+                    {formatSessionLabel(session)}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

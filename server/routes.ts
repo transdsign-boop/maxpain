@@ -1930,11 +1930,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all sessions for user
   app.get("/api/sessions", async (req, res) => {
     try {
-      if (!req.user?.id) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-
-      const sessions = await storage.getAllTradeSessions(req.user.id);
+      const sessions = await storage.getAllTradeSessions(DEFAULT_USER_ID);
       res.json(sessions);
     } catch (error) {
       console.error('Error fetching sessions:', error);
@@ -1945,20 +1941,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Start a new session
   app.post("/api/sessions/new", async (req, res) => {
     try {
-      if (!req.user?.id) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-
       const { mode, name } = req.body;
 
       if (!mode || !['paper', 'live'].includes(mode)) {
         return res.status(400).json({ error: "Invalid mode. Must be 'paper' or 'live'" });
       }
 
-      const newSession = await storage.startNewSession(req.user.id, mode, name);
+      const newSession = await storage.startNewSession(DEFAULT_USER_ID, mode, name);
       
       // Update strategy mode to match session
-      const strategy = await storage.getOrCreateDefaultStrategy(req.user.id);
+      const strategy = await storage.getOrCreateDefaultStrategy(DEFAULT_USER_ID);
       await storage.updateStrategy(strategy.id, { tradingMode: mode });
 
       res.json(newSession);
@@ -1971,15 +1963,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Load a previous session
   app.post("/api/sessions/:id/load", async (req, res) => {
     try {
-      if (!req.user?.id) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-
       const { id } = req.params;
       const loadedSession = await storage.loadPreviousSession(id);
       
       // Update strategy mode to match loaded session
-      const strategy = await storage.getOrCreateDefaultStrategy(req.user.id);
+      const strategy = await storage.getOrCreateDefaultStrategy(DEFAULT_USER_ID);
       await storage.updateStrategy(strategy.id, { tradingMode: loadedSession.mode });
 
       res.json(loadedSession);
