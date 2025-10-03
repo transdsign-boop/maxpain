@@ -2201,8 +2201,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
               }
               
               // Convert percentage to dollar amount
+              // CRITICAL: totalCost stores MARGIN, multiply by leverage to get notional value
               const totalCost = parseFloat(dbPos.totalCost);
-              const realizedPnlDollar = (realizedPnlPercent / 100) * totalCost;
+              const leverage = (dbPos as any).leverage || 1;
+              const notionalValue = totalCost * leverage;
+              const realizedPnlDollar = (realizedPnlPercent / 100) * notionalValue;
               
               console.log(`🔒 Closing database position ${dbPos.symbol} ${dbPos.side} with ${realizedPnlPercent.toFixed(2)}% P&L ($${realizedPnlDollar.toFixed(2)}) (closed on exchange)`);
               
