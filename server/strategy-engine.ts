@@ -1064,9 +1064,46 @@ export class StrategyEngine extends EventEmitter {
       }
       
       const results = JSON.parse(responseText);
-      console.log(`✅ Batch order executed successfully: ${orders.length} orders placed`);
       
-      return { success: true, results };
+      // Validate each order in the batch result
+      // Binance/Aster batch API returns array where each item can be:
+      // - Success: { orderId: 123, ... }
+      // - Error: { code: -4003, msg: "..." }
+      const failures: any[] = [];
+      const successes: any[] = [];
+      
+      if (Array.isArray(results)) {
+        results.forEach((result, index) => {
+          if (result.code && result.code < 0) {
+            // Error response
+            failures.push({ index, code: result.code, msg: result.msg });
+            console.error(`❌ Batch order ${index + 1} failed: ${result.code} - ${result.msg}`);
+          } else if (result.orderId) {
+            // Success response
+            successes.push(result);
+            console.log(`✅ Batch order ${index + 1} placed: Order ID ${result.orderId}`);
+          } else {
+            // Unknown response format
+            failures.push({ index, error: 'Unknown response format', data: result });
+            console.error(`❌ Batch order ${index + 1} unknown response:`, result);
+          }
+        });
+      } else {
+        console.error(`❌ Unexpected batch response format (not an array):`, results);
+        return { success: false, error: 'Unexpected response format' };
+      }
+      
+      if (failures.length > 0) {
+        console.error(`❌ Batch order partially failed: ${successes.length} succeeded, ${failures.length} failed`);
+        return { 
+          success: false, 
+          error: `${failures.length} order(s) failed: ${failures.map(f => f.msg || f.error).join('; ')}`,
+          results: { successes, failures }
+        };
+      }
+      
+      console.log(`✅ Batch order executed successfully: ${successes.length} orders placed`);
+      return { success: true, results: successes };
     } catch (error) {
       console.error('❌ Error executing batch order:', error);
       return { success: false, error: String(error) };
