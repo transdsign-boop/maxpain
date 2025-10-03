@@ -974,14 +974,16 @@ export class StrategyEngine extends EventEmitter {
         }
         
         // Add price/stopPrice based on order type
-        // Use closePosition='true' for TP/SL orders - more reliable than reduceOnly with quantity
+        // CRITICAL: Use reduceOnly='true' for ALL TP/SL orders to prevent opening opposite positions
         if (order.orderType.toLowerCase() === 'take_profit_market') {
           orderParams.stopPrice = roundedPrice;
-          orderParams.closePosition = 'true'; // Automatically close entire position
+          orderParams.quantity = roundedQuantity;
+          orderParams.reduceOnly = 'true'; // Can only close positions, not open new ones
           orderParams.workingType = 'CONTRACT_PRICE'; // Use contract price, not mark price
         } else if (order.orderType.toLowerCase() === 'stop_market') {
           orderParams.stopPrice = roundedPrice;
-          orderParams.closePosition = 'true'; // Automatically close entire position
+          orderParams.quantity = roundedQuantity;
+          orderParams.reduceOnly = 'true'; // Can only close positions, not open new ones
           orderParams.workingType = 'CONTRACT_PRICE'; // Use contract price, not mark price
         } else if (order.orderType.toLowerCase() === 'limit') {
           orderParams.price = roundedPrice;
@@ -1170,6 +1172,7 @@ export class StrategyEngine extends EventEmitter {
       }
       
       // Add price/stopPrice for different order types
+      // CRITICAL: ALL TP/SL orders MUST use reduceOnly='true' to prevent opening opposite positions
       if (orderType.toLowerCase() === 'limit') {
         orderParams.price = roundedPrice;
         orderParams.timeInForce = 'GTC'; // Good Till Cancel
@@ -1177,6 +1180,10 @@ export class StrategyEngine extends EventEmitter {
       } else if (orderType.toLowerCase() === 'stop_market') {
         orderParams.stopPrice = roundedPrice; // Trigger price for stop market orders
         orderParams.reduceOnly = 'true'; // SL orders can only reduce positions
+      } else if (orderType.toLowerCase() === 'take_profit_market') {
+        orderParams.stopPrice = roundedPrice; // Trigger price for TP market orders
+        orderParams.reduceOnly = 'true'; // TP orders can only reduce positions
+        orderParams.workingType = 'CONTRACT_PRICE'; // Use contract price, not mark price
       }
       
       // Create query string for signature (sorted alphabetically for consistency)
