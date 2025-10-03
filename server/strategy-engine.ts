@@ -2438,6 +2438,12 @@ export class StrategyEngine extends EventEmitter {
         const strategy = this.activeStrategies.get(strategyId);
         if (!strategy) return;
 
+        // CRITICAL: Only monitor PAPER positions - LIVE positions use exchange TP/SL orders
+        // Exit monitoring for live positions would compete with exchange orders and cause premature closes
+        if (session.mode === 'live') {
+          return; // Skip live positions - they have TP/SL orders on exchange
+        }
+
         const openPositions = await storage.getOpenPositions(session.id);
         for (const position of openPositions) {
           await this.checkExitCondition(strategy, position);
