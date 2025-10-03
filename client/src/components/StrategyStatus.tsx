@@ -695,6 +695,46 @@ export function StrategyStatus() {
     retry: 2,
   });
 
+  // Fetch fills for each live position to get layer counts
+  const livePositionIds = livePositionsData
+    ?.filter(p => parseFloat(p.positionAmt) !== 0)
+    .map(p => `live-${p.symbol}-${parseFloat(p.positionAmt) > 0 ? 'LONG' : 'SHORT'}`) || [];
+
+  // Create a map of position fills
+  const livePositionFills = useQuery({
+    queryKey: ['/api/live/position-fills', livePositionIds],
+    queryFn: async () => {
+      if (!livePositionIds.length) return {};
+      
+      const fillsMap: Record<string, any[]> = {};
+      
+      // Fetch fills for all positions in parallel
+      const results = await Promise.all(
+        livePositionIds.map(async (positionId) => {
+          try {
+            const response = await fetch(`/api/positions/${positionId}/fills`);
+            if (response.ok) {
+              const fills = await response.json();
+              return { positionId, fills };
+            }
+          } catch (error) {
+            console.error(`Failed to fetch fills for ${positionId}:`, error);
+          }
+          return { positionId, fills: [] };
+        })
+      );
+      
+      results.forEach(({ positionId, fills }) => {
+        fillsMap[positionId] = fills;
+      });
+      
+      return fillsMap;
+    },
+    enabled: !!isLiveMode && livePositionIds.length > 0,
+    refetchInterval: 20000,
+    retry: 2,
+  });
+
   // Transform live positions to match Position interface for display
   const livePositionsSummary: PositionSummary | undefined = livePositionsData ? {
     positions: livePositionsData
@@ -705,8 +745,15 @@ export function StrategyStatus() {
         // CRITICAL: totalCost must store MARGIN (notional / leverage), not notional!
         const margin = notional / leverage;
         
+        const positionId = `live-${p.symbol}-${parseFloat(p.positionAmt) > 0 ? 'LONG' : 'SHORT'}`;
+        const fills = livePositionFills.data?.[positionId] || [];
+        
+        // Calculate layers from fills - count unique layer numbers
+        const uniqueLayers = new Set(fills.map((f: any) => f.layerNumber));
+        const layersFilled = uniqueLayers.size || 1; // Default to 1 if no fills data
+        
         return {
-          id: `live-${p.symbol}-${parseFloat(p.positionAmt) > 0 ? 'LONG' : 'SHORT'}`,
+          id: positionId,
           symbol: p.symbol,
           side: parseFloat(p.positionAmt) > 0 ? 'long' as const : 'short' as const,
           avgEntryPrice: p.entryPrice,
@@ -715,23 +762,29 @@ export function StrategyStatus() {
           unrealizedPnl: p.unRealizedProfit && parseFloat(p.entryPrice) > 0 
             ? ((parseFloat(p.unRealizedProfit) / notional) * 100).toString()
             : '0',
+          realizedPnl: '0', // Live positions from exchange don't have realized P&L
           leverage, // Include leverage for liquidation donut calculation
-          layersFilled: 1,
-          maxLayers: 1,
+          layersFilled,
+          maxLayers: activeStrategy?.maxLayers || 5,
+          lastLayerPrice: p.entryPrice, // Use entry price as last layer price
+          isOpen: true,
           openedAt: new Date(),
           updatedAt: new Date(),
           closedAt: null,
           sessionId: activeStrategy.id,
         };
       }),
+    sessionId: activeStrategy?.id || '',
     totalExposure: livePositionsData.reduce((sum, p) => 
       sum + Math.abs(parseFloat(p.positionAmt) * parseFloat(p.markPrice || p.entryPrice || 0)), 0
     ),
     currentBalance: 0, // Will be updated from account data
     startingBalance: 0,
     totalPnl: 0,
+    realizedPnl: 0,
     winRate: 0,
     totalTrades: 0,
+    activePositions: livePositionsData.filter(p => parseFloat(p.positionAmt) !== 0).length,
     unrealizedPnl: livePositionsData.reduce((sum, p) => sum + parseFloat(p.unRealizedProfit || '0'), 0),
   } : undefined;
 
