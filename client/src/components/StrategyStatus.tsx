@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +10,7 @@ import { TrendingUp, TrendingDown, DollarSign, Target, Layers, X, ChevronDown, C
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
+import { soundNotifications } from "@/lib/soundNotifications";
 
 interface Fill {
   id: string;
@@ -899,6 +900,59 @@ export function StrategyStatus() {
     
     return hedged;
   }, [displaySummary?.positions]);
+
+  // Track previous positions for sound notifications
+  const prevPositionsRef = useRef<Map<string, { layersFilled: number; isOpen: boolean }>>(new Map());
+  const prevClosedCountRef = useRef<number>(0);
+
+  // Sound notifications for trading events
+  useEffect(() => {
+    if (!displaySummary?.positions) return;
+
+    const currentPositionsMap = new Map<string, { layersFilled: number; isOpen: boolean }>();
+    
+    // Build map of current positions
+    displaySummary.positions.forEach(pos => {
+      currentPositionsMap.set(pos.id, {
+        layersFilled: pos.layersFilled,
+        isOpen: pos.isOpen
+      });
+    });
+
+    // Check for new positions (new trades)
+    currentPositionsMap.forEach((current, positionId) => {
+      const prev = prevPositionsRef.current.get(positionId);
+      
+      if (!prev) {
+        // New position detected
+        soundNotifications.newTrade();
+      } else if (current.layersFilled > prev.layersFilled) {
+        // Layer added to existing position
+        soundNotifications.layerAdded();
+      }
+    });
+
+    // Check for closed positions (TP or SL hit)
+    // Use closedPositions count instead of tracking individual closes to avoid false positives
+    if (closedPositions && closedPositions.length > prevClosedCountRef.current) {
+      // A position was closed - check the most recent one
+      const recentlyClosed = closedPositions[0]; // Already sorted newest first
+      if (recentlyClosed) {
+        const pnlPercent = parseFloat(recentlyClosed.unrealizedPnl);
+        if (pnlPercent > 0) {
+          soundNotifications.takeProfitHit();
+        } else if (pnlPercent < 0) {
+          soundNotifications.stopLossHit();
+        }
+      }
+    }
+
+    // Update refs
+    prevPositionsRef.current = currentPositionsMap;
+    if (closedPositions) {
+      prevClosedCountRef.current = closedPositions.length;
+    }
+  }, [displaySummary?.positions, closedPositions]);
 
   // Close position mutation - must be defined before any early returns
   const closePositionMutation = useMutation({
