@@ -946,11 +946,10 @@ export class StrategyEngine extends EventEmitter {
         const roundedQuantity = this.roundQuantity(order.symbol, order.quantity);
         const roundedPrice = this.roundPrice(order.symbol, order.price);
         
-        const orderParams: Record<string, string | number> = {
+        const orderParams: Record<string, string | number | boolean> = {
           symbol: order.symbol,
           side: order.side.toUpperCase(),
           type: order.orderType.toUpperCase(),
-          quantity: roundedQuantity,
         };
         
         // Add positionSide if in dual mode
@@ -959,12 +958,19 @@ export class StrategyEngine extends EventEmitter {
         }
         
         // Add price/stopPrice based on order type
-        if (order.orderType.toLowerCase() === 'limit') {
-          orderParams.price = roundedPrice;
-          orderParams.timeInForce = 'GTC';
-          orderParams.reduceOnly = 'true';
+        // Use closePosition='true' for TP/SL orders - more reliable than reduceOnly with quantity
+        if (order.orderType.toLowerCase() === 'take_profit_market') {
+          orderParams.stopPrice = roundedPrice;
+          orderParams.closePosition = 'true'; // Automatically close entire position
+          orderParams.workingType = 'CONTRACT_PRICE'; // Use contract price, not mark price
         } else if (order.orderType.toLowerCase() === 'stop_market') {
           orderParams.stopPrice = roundedPrice;
+          orderParams.closePosition = 'true'; // Automatically close entire position
+          orderParams.workingType = 'CONTRACT_PRICE'; // Use contract price, not mark price
+        } else if (order.orderType.toLowerCase() === 'limit') {
+          orderParams.price = roundedPrice;
+          orderParams.quantity = roundedQuantity;
+          orderParams.timeInForce = 'GTC';
           orderParams.reduceOnly = 'true';
         }
         
@@ -2544,11 +2550,12 @@ export class StrategyEngine extends EventEmitter {
       const exitSide = position.side === 'long' ? 'sell' : 'buy';
       
       // Place TP and SL orders in a SINGLE batch API call (more efficient!)
+      // Using closePosition='true' - automatically closes entire position when triggered
       const batchOrders = [
         {
           symbol: position.symbol,
           side: exitSide,
-          orderType: 'LIMIT', // TP uses LIMIT order with reduceOnly
+          orderType: 'TAKE_PROFIT_MARKET', // TP uses TAKE_PROFIT_MARKET with closePosition
           quantity,
           price: tpPrice,
           positionSide: this.exchangePositionMode === 'dual' ? position.side : undefined,
@@ -2556,7 +2563,7 @@ export class StrategyEngine extends EventEmitter {
         {
           symbol: position.symbol,
           side: exitSide,
-          orderType: 'STOP_MARKET', // SL uses STOP_MARKET with reduceOnly
+          orderType: 'STOP_MARKET', // SL uses STOP_MARKET with closePosition
           quantity,
           price: slPrice,
           positionSide: this.exchangePositionMode === 'dual' ? position.side : undefined,
