@@ -1076,16 +1076,18 @@ export class StrategyEngine extends EventEmitter {
       
       if (Array.isArray(results)) {
         results.forEach((result, index) => {
-          if (result.code && result.code < 0) {
-            // Error response
-            failures.push({ index, code: result.code, msg: result.msg });
-            console.error(`❌ Batch order ${index + 1} failed: ${result.code} - ${result.msg}`);
-          } else if (result.orderId) {
-            // Success response
+          // CRITICAL FIX: Error codes can be POSITIVE (like 400) or NEGATIVE (like -4003)
+          // Check for orderId first to identify success, then treat everything else as error
+          if (result.orderId) {
+            // Success response - has orderId
             successes.push(result);
             console.log(`✅ Batch order ${index + 1} placed: Order ID ${result.orderId}`);
+          } else if (result.code) {
+            // Error response - has code but no orderId (catches both positive and negative codes)
+            failures.push({ index, code: result.code, msg: result.msg || 'No error message' });
+            console.error(`❌ Batch order ${index + 1} failed: Code ${result.code} - ${result.msg || 'No error message'}`);
           } else {
-            // Unknown response format
+            // Unknown response format - no orderId and no code
             failures.push({ index, error: 'Unknown response format', data: result });
             console.error(`❌ Batch order ${index + 1} unknown response:`, result);
           }
@@ -1876,32 +1878,9 @@ export class StrategyEngine extends EventEmitter {
           o.type === 'STOP_MARKET'
         );
         
-        // Get current price
-        const currentPrice = this.priceCache.get(symbol) || entryPrice;
-        
-        // Check if price already exceeded TP
-        const tpExceeded = side === 'LONG' 
-          ? currentPrice >= tpPrice 
-          : currentPrice <= tpPrice;
-        
-        if (tpExceeded && !hasTPOrder) {
-          console.log(`🚨 TP already hit for ${symbol} ${side}, closing immediately with market order`);
-          
-          // Close position immediately with market order
-          const closeResult = await this.placeExitOrder(
-            dbPosition,
-            'MARKET',
-            currentPrice,
-            Math.abs(positionAmt),
-            'take_profit'
-          );
-          
-          if (closeResult.success) {
-            repairedCount++;
-            this.recoveryAttempts.set(cooldownKey, now);
-          }
-          continue;
-        }
+        // CRITICAL FIX: Don't close positions just because price moved past TP
+        // If TP order is missing, it's because batch API failed - place it now!
+        // The TP order was never there to catch the price, so we shouldn't assume it filled
         
         // Place missing TP order (LIMIT order)
         if (!hasTPOrder) {
