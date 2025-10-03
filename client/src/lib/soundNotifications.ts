@@ -9,6 +9,14 @@ class SoundNotificationService {
     return this.audioContext;
   }
 
+  private async resumeAudioContext(): Promise<AudioContext> {
+    const ctx = this.getAudioContext();
+    if (ctx.state === 'suspended') {
+      await ctx.resume();
+    }
+    return ctx;
+  }
+
   setEnabled(enabled: boolean) {
     this.enabled = enabled;
   }
@@ -17,11 +25,11 @@ class SoundNotificationService {
     return this.enabled;
   }
 
-  private playTone(frequency: number, duration: number, volume: number = 0.3, type: OscillatorType = 'sine') {
+  private async playTone(frequency: number, duration: number, volume: number = 0.3, type: OscillatorType = 'sine', startDelay: number = 0) {
     if (!this.enabled) return;
 
     try {
-      const ctx = this.getAudioContext();
+      const ctx = await this.resumeAudioContext();
       const oscillator = ctx.createOscillator();
       const gainNode = ctx.createGain();
 
@@ -30,23 +38,27 @@ class SoundNotificationService {
 
       oscillator.type = type;
       oscillator.frequency.value = frequency;
-      gainNode.gain.setValueAtTime(volume, ctx.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
+      
+      const startTime = ctx.currentTime + startDelay;
+      const endTime = startTime + duration;
+      
+      gainNode.gain.setValueAtTime(volume, startTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, endTime);
 
-      oscillator.start(ctx.currentTime);
-      oscillator.stop(ctx.currentTime + duration);
+      oscillator.start(startTime);
+      oscillator.stop(endTime);
     } catch (error) {
       console.warn('Failed to play sound:', error);
     }
   }
 
-  private playMultiTone(tones: Array<{ freq: number; delay: number; duration: number; volume?: number; type?: OscillatorType }>) {
+  private async playMultiTone(tones: Array<{ freq: number; delay: number; duration: number; volume?: number; type?: OscillatorType }>) {
     if (!this.enabled) return;
 
+    const ctx = await this.resumeAudioContext();
+
     tones.forEach(({ freq, delay, duration, volume, type }) => {
-      setTimeout(() => {
-        this.playTone(freq, duration, volume, type);
-      }, delay);
+      this.playTone(freq, duration, volume, type, delay / 1000);
     });
   }
 
