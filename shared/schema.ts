@@ -104,6 +104,7 @@ export const strategies = pgTable("strategies", {
 export const tradeSessions = pgTable("trade_sessions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   strategyId: varchar("strategy_id").notNull(), // References strategies.id
+  name: text("name"), // Optional session name for easier identification
   mode: text("mode").notNull().default("paper"), // "paper" or "live"
   startingBalance: decimal("starting_balance", { precision: 18, scale: 8 }).notNull().default("10000.0"),
   currentBalance: decimal("current_balance", { precision: 18, scale: 8 }).notNull(),
