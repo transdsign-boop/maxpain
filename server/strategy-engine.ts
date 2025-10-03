@@ -58,6 +58,7 @@ export class StrategyEngine extends EventEmitter {
   private isRunning = false;
   private orderMonitorInterval?: NodeJS.Timeout;
   private cleanupInterval?: NodeJS.Timeout;
+  private tpslMonitorInterval?: NodeJS.Timeout;
   private wsClients: Set<any> = new Set(); // WebSocket clients for broadcasting trade notifications
   private staleLimitOrderSeconds: number = 180; // 3 minutes default timeout for limit orders
   private recoveryAttempts: Map<string, number> = new Map(); // Track cooldown for auto-repair attempts
@@ -177,6 +178,9 @@ export class StrategyEngine extends EventEmitter {
     // Start monitoring pending paper orders for limit order simulation
     this.startPaperOrderMonitoring();
     
+    // Start monitoring TP/SL orders for live positions (every 2 minutes)
+    this.startTPSLMonitoring();
+    
     // Start periodic cleanup of orphaned TP/SL orders (every 5 minutes)
     this.startCleanupMonitoring();
     
@@ -197,6 +201,11 @@ export class StrategyEngine extends EventEmitter {
     if (this.cleanupInterval) {
       clearInterval(this.cleanupInterval);
       this.cleanupInterval = undefined;
+    }
+    
+    if (this.tpslMonitorInterval) {
+      clearInterval(this.tpslMonitorInterval);
+      this.tpslMonitorInterval = undefined;
     }
     
     this.activeStrategies.clear();
@@ -2910,6 +2919,65 @@ export class StrategyEngine extends EventEmitter {
     await updatePromise;
   }
   
+  // Fetch all open orders for a symbol from the exchange
+  private async fetchExchangeOrders(symbol: string): Promise<Array<{ 
+    symbol: string; 
+    type: string; 
+    positionSide: string;
+    price?: string;
+    stopPrice?: string;
+  }>> {
+    try {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+      
+      if (!apiKey || !secretKey) {
+        return [];
+      }
+      
+      const timestamp = Date.now();
+      const params: Record<string, string | number> = {
+        symbol,
+        timestamp,
+        recvWindow: 5000,
+      };
+      
+      const queryString = Object.entries(params)
+        .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
+        .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
+        .join('&');
+      
+      const signature = createHmac('sha256', secretKey)
+        .update(queryString)
+        .digest('hex');
+      
+      const signedParams = `${queryString}&signature=${signature}`;
+      
+      const response = await fetch(`https://fapi.asterdex.com/fapi/v1/openOrders?${signedParams}`, {
+        headers: {
+          'X-MBX-APIKEY': apiKey,
+        },
+      });
+      
+      if (!response.ok) {
+        return [];
+      }
+      
+      const orders = await response.json();
+      
+      return orders.map((order: any) => ({
+        symbol: order.symbol,
+        type: order.type,
+        positionSide: (order.positionSide || '').toLowerCase(),
+        price: order.price,
+        stopPrice: order.stopPrice,
+      }));
+    } catch (error) {
+      console.error(`❌ Error fetching exchange orders for ${symbol}:`, error);
+      return [];
+    }
+  }
+
   // Get active TP/SL orders for a specific position (symbol + side) from the exchange
   private async getActiveTPSLOrders(symbol: string, positionSide: string): Promise<Array<{ orderId: string; type: string }>> {
     try {
@@ -3124,6 +3192,98 @@ export class StrategyEngine extends EventEmitter {
     } catch (error) {
       console.error(`❌ Error reloading strategy ${strategyId}:`, error);
     }
+  }
+
+  // Start monitoring TP/SL orders for live positions
+  private startTPSLMonitoring() {
+    this.tpslMonitorInterval = setInterval(async () => {
+      if (!this.isRunning) return;
+      
+      try {
+        // Check all active live sessions
+        for (const [strategyId, session] of this.activeSessions.entries()) {
+          // Only monitor LIVE positions
+          if (session.mode !== 'live') continue;
+          
+          const strategy = this.activeStrategies.get(strategyId);
+          if (!strategy) continue;
+          
+          // Get all open positions for this session
+          const openPositions = await storage.getOpenPositions(session.id);
+          
+          for (const position of openPositions) {
+            try {
+              // Fetch current exchange orders for this symbol
+              const exchangeOrders = await this.fetchExchangeOrders(position.symbol);
+              
+              // Calculate TP and SL prices based on current entry price
+              const entryPrice = parseFloat(position.avgEntryPrice);
+              const tpPercent = parseFloat(strategy.profitTargetPercent);
+              const slPercent = parseFloat(strategy.stopLossPercent);
+              
+              let tpPrice: number;
+              let slPrice: number;
+              
+              if (position.side === 'long') {
+                tpPrice = entryPrice * (1 + tpPercent / 100);
+                slPrice = entryPrice * (1 - slPercent / 100);
+              } else {
+                tpPrice = entryPrice * (1 - tpPercent / 100);
+                slPrice = entryPrice * (1 + slPercent / 100);
+              }
+              
+              // Check if TP order exists (either TAKE_PROFIT_MARKET or LIMIT near TP price)
+              const hasTPOrder = exchangeOrders.some(o => 
+                o.symbol === position.symbol &&
+                o.positionSide === position.side &&
+                (o.type === 'TAKE_PROFIT_MARKET' || 
+                 (o.type === 'LIMIT' && Math.abs(parseFloat(o.price || '0') - tpPrice) < tpPrice * 0.001)) // Within 0.1%
+              );
+              
+              // Check if SL order exists
+              const hasSLOrder = exchangeOrders.some(o => 
+                o.symbol === position.symbol &&
+                o.positionSide === position.side &&
+                o.type === 'STOP_MARKET'
+              );
+              
+              const quantity = parseFloat(position.totalQuantity);
+              
+              // Place missing TP order
+              if (!hasTPOrder) {
+                console.log(`🔧 [TP/SL Monitor] Placing missing TP order for ${position.symbol} ${position.side} at $${tpPrice.toFixed(4)}`);
+                await this.placeExitOrder(
+                  position,
+                  'LIMIT',
+                  tpPrice,
+                  quantity,
+                  'take_profit'
+                );
+              }
+              
+              // Place missing SL order
+              if (!hasSLOrder) {
+                console.log(`🔧 [TP/SL Monitor] Placing missing SL order for ${position.symbol} ${position.side} at $${slPrice.toFixed(4)}`);
+                await this.placeExitOrder(
+                  position,
+                  'STOP_MARKET',
+                  slPrice,
+                  quantity,
+                  'stop_loss'
+                );
+              }
+              
+            } catch (error) {
+              console.error(`❌ [TP/SL Monitor] Error checking position ${position.symbol}:`, error);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('❌ [TP/SL Monitor] Error in TP/SL monitoring:', error);
+      }
+    }, 2 * 60 * 1000); // Check every 2 minutes
+    
+    console.log('🛡️ TP/SL monitoring started: Checking for missing exit orders every 2 minutes');
   }
 
   // Start periodic cleanup and auto-repair monitoring
