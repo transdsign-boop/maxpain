@@ -10,6 +10,7 @@ import {
   type Fill 
 } from '@shared/schema';
 import { fetchActualFills, aggregateFills } from './exchange-utils';
+import { orderProtectionService } from './order-protection-service';
 
 // Aster DEX fee schedule
 const ASTER_MAKER_FEE_PERCENT = 0.01;  // 0.01% for limit orders (adds liquidity) 
@@ -2774,135 +2775,35 @@ export class StrategyEngine extends EventEmitter {
   // Lock map to prevent concurrent TP/SL updates for the same position
   private tpslUpdateLocks = new Map<string, Promise<void>>();
   
-  // Update protective orders (TP/SL) using place-then-cancel strategy
+  // Update protective orders (TP/SL) using the new OrderProtectionService
   // This function is called after entry AND after each layer to update orders for the new position size
   private async updateProtectiveOrders(position: Position, sessionId: string) {
-    // Create a lock key based on symbol and side to prevent concurrent updates
-    const lockKey = `${position.symbol}-${position.side}`;
-    
-    // Loop until we can acquire the lock (queue-based approach)
-    while (this.tpslUpdateLocks.has(lockKey)) {
-      console.log(`⏳ TP/SL update queued for ${lockKey}, waiting...`);
-      await this.tpslUpdateLocks.get(lockKey);
+    try {
+      // Find the strategy to get TP/SL percentages
+      let strategy: Strategy | undefined;
+      for (const [stratId, sess] of Array.from(this.activeSessions.entries())) {
+        if (sess.id === sessionId) {
+          strategy = this.activeStrategies.get(stratId);
+          if (strategy) break;
+        }
+      }
+      
+      if (!strategy) {
+        console.warn(`⚠️ Could not find strategy for session ${sessionId}, skipping TP/SL update`);
+        return;
+      }
+      
+      // Only update TP/SL for live trading mode
+      if (strategy.tradingMode !== 'live') {
+        return;
+      }
+      
+      // Use the new OrderProtectionService for atomic, safe updates
+      await orderProtectionService.updateProtectiveOrders(position, strategy);
+      
+    } catch (error) {
+      console.error('❌ Error updating protective orders:', error);
     }
-    
-    // Now we have the lock - create a promise for this update and store it
-    const updatePromise = (async () => {
-      try {
-        // Find the strategy to get TP/SL percentages
-        let strategy: Strategy | undefined;
-        for (const [stratId, sess] of Array.from(this.activeSessions.entries())) {
-          if (sess.id === sessionId) {
-            strategy = this.activeStrategies.get(stratId);
-            if (strategy) break;
-          }
-        }
-        
-        if (!strategy) {
-          console.warn(`⚠️ Could not find strategy for session ${sessionId}, skipping TP/SL update`);
-          return;
-        }
-        
-        // Only update TP/SL for live trading mode
-        if (strategy.tradingMode !== 'live') {
-          return;
-        }
-      
-      const entryPrice = parseFloat(position.avgEntryPrice);
-      const quantity = parseFloat(position.totalQuantity);
-      const tpPercent = parseFloat(strategy.profitTargetPercent);
-      const slPercent = parseFloat(strategy.stopLossPercent);
-      
-      // Calculate TP and SL prices
-      let tpPrice: number;
-      let slPrice: number;
-      
-      if (position.side === 'long') {
-        // Long position: TP above entry, SL below entry
-        tpPrice = entryPrice * (1 + tpPercent / 100);
-        slPrice = entryPrice * (1 - slPercent / 100);
-      } else {
-        // Short position: TP below entry, SL above entry
-        tpPrice = entryPrice * (1 - tpPercent / 100);
-        slPrice = entryPrice * (1 + slPercent / 100);
-      }
-      
-      // Query exchange for existing TP/SL orders for this specific position (symbol + side)
-      const existingOrders = await this.getActiveTPSLOrders(position.symbol, position.side);
-      
-      if (existingOrders.length > 0) {
-        console.log(`🔄 Updating protective orders for ${position.symbol} ${position.side} (Qty: ${quantity}):`);
-        console.log(`   Avg Entry: $${entryPrice.toFixed(2)} | New TP: $${tpPrice.toFixed(2)} | New SL: $${slPrice.toFixed(2)}`);
-        console.log(`   Found ${existingOrders.length} existing TP/SL orders to cancel FIRST`);
-        
-        // CRITICAL: Cancel OLD orders FIRST to prevent duplicate TP/SL orders
-        for (const oldOrder of existingOrders) {
-          try {
-            await this.cancelExchangeOrder(position.symbol, oldOrder.orderId);
-            console.log(`✅ Cancelled old ${oldOrder.type} order: ${oldOrder.orderId}`);
-          } catch (error) {
-            console.warn(`⚠️ Failed to cancel old ${oldOrder.type} order ${oldOrder.orderId}:`, error);
-            // Continue anyway - we'll try to place new orders
-          }
-        }
-      } else {
-        console.log(`🎯 Placing initial protective orders for ${position.symbol} ${position.side}:`);
-        console.log(`   Entry: $${entryPrice.toFixed(2)} | TP: $${tpPrice.toFixed(2)} (+${tpPercent}%) | SL: $${slPrice.toFixed(2)} (-${slPercent}%)`);
-      }
-      
-      // STEP 2: Now place NEW orders (after old ones are cancelled)
-      // Place LIMIT order for take profit
-      console.log(`📤 Placing LIMIT order for TP at $${tpPrice.toFixed(2)}`);
-      const tpResult = await this.placeExitOrder(
-        position,
-        'LIMIT',
-        tpPrice,
-        quantity,
-        'take_profit'
-      );
-      
-      if (!tpResult.success) {
-        console.error(`❌ Failed to place TP order: ${tpResult.error}`);
-        return;
-      }
-      
-      // Place STOP_MARKET order for stop loss
-      console.log(`📤 Placing STOP_MARKET order for SL at $${slPrice.toFixed(2)}`);
-      const slResult = await this.placeExitOrder(
-        position,
-        'STOP_MARKET',
-        slPrice,
-        quantity,
-        'stop_loss'
-      );
-      
-      if (!slResult.success) {
-        console.error(`❌ Failed to place SL order: ${slResult.error}`);
-        // Cancel the TP order we just placed since SL failed
-        if (tpResult.orderId) {
-          console.log(`🔄 Cancelling TP order ${tpResult.orderId} since SL failed`);
-          await this.cancelOrderById(position.symbol, tpResult.orderId);
-        }
-        return;
-      }
-      
-      console.log(`✅ Both protective orders placed successfully (TP: ${tpResult.orderId}, SL: ${slResult.orderId})`)
-      
-        console.log(`✅ Protective orders updated successfully for ${position.symbol}`);
-        
-      } catch (error) {
-        console.error('❌ Error updating protective orders:', error);
-      } finally {
-        // Only remove the lock if it's still pointing to our promise
-        if (this.tpslUpdateLocks.get(lockKey) === updatePromise) {
-          this.tpslUpdateLocks.delete(lockKey);
-        }
-      }
-    })();
-    
-    // Store the promise and await it
-    this.tpslUpdateLocks.set(lockKey, updatePromise);
-    await updatePromise;
   }
   
   // Fetch all open orders for a symbol from the exchange
@@ -3185,42 +3086,47 @@ export class StrategyEngine extends EventEmitter {
 
   // Start periodic cleanup and auto-repair monitoring
   private startCleanupMonitoring() {
-    // Run all cleanup tasks every 5 minutes
+    // Run reconciliation every 1 minute
     this.cleanupInterval = setInterval(async () => {
       if (!this.isRunning) return;
       
       // Prevent overlapping cleanup runs
       if (this.cleanupInProgress) {
-        console.log('⏭️ Skipping cleanup - previous run still in progress');
+        console.log('⏭️ Skipping reconciliation - previous run still in progress');
         return;
       }
       
       this.cleanupInProgress = true;
       
       try {
-        console.log('🧹 CLEANUP/AUTO-REPAIR PAUSED FOR DEBUGGING');
+        console.log('🔄 Starting order reconciliation...');
         
-        // TEMPORARILY DISABLED - Testing batch orders without interference
-        // const orphanedCount = await this.cleanupOrphanedTPSL();
-        // const staleCount = await this.cleanupStaleLimitOrders();
-        // const repairedCount = await this.autoRepairMissingTPSL();
-        // const fixedCount = await this.fixIncorrectStopLossOrders();
+        // Get active session and strategy
+        const DEFAULT_USER_ID = "personal_user";
+        const strategy = await storage.getOrCreateDefaultStrategy(DEFAULT_USER_ID);
+        const session = await storage.getOrCreateActiveSession(DEFAULT_USER_ID);
         
-        // 5. Keep data retention active (delete old liquidations)
+        // 1. Clean up orphaned orders (orders for closed positions)
+        const orphanedCount = await orderProtectionService.reconcileOrphanedOrders(session.id);
+        
+        // 2. Verify all open positions have correct TP/SL orders (self-healing)
+        await orderProtectionService.verifyAllPositions(session.id, strategy);
+        
+        // 3. Keep data retention active (delete old liquidations)
         const deletedCount = await storage.deleteOldLiquidations(5);
         if (deletedCount > 0) {
           console.log(`  ✓ Deleted ${deletedCount} liquidations older than 5 days`);
         }
         
-        console.log('  ✓ Cleanup/auto-repair paused - only data retention active');
+        console.log(`✅ Reconciliation complete: ${orphanedCount} orphaned orders cleaned`);
       } catch (error) {
-        console.error('❌ Error in cleanup monitoring:', error);
+        console.error('❌ Error in reconciliation:', error);
       } finally {
         this.cleanupInProgress = false;
       }
-    }, 2 * 60 * 1000); // 2 minutes
+    }, 60 * 1000); // 1 minute
     
-    console.log('🧹 Safety monitoring started: Orphaned cleanup + Stale orders + Auto-repair + Data retention (2 min intervals)');
+    console.log('🔄 Order reconciliation started: Orphan cleanup + Position verification (1 min intervals)');
   }
 
   // Remove a pending paper order from tracking
