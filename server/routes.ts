@@ -1089,6 +1089,110 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // One-time cleanup: Cancel all open TP/SL orders on the exchange
+  app.post("/api/live/cleanup-orders", async (req, res) => {
+    try {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+
+      if (!apiKey || !secretKey) {
+        return res.status(400).json({ error: "Aster DEX API keys not configured" });
+      }
+
+      console.log('🧹 Starting manual cleanup of all open TP/SL orders...');
+
+      // Fetch all open orders from exchange
+      const timestamp = Date.now();
+      const params = `timestamp=${timestamp}&recvWindow=5000`;
+      const signature = crypto
+        .createHmac('sha256', secretKey)
+        .update(params)
+        .digest('hex');
+
+      const response = await fetch(
+        `https://fapi.asterdex.com/fapi/v1/openOrders?${params}&signature=${signature}`,
+        {
+          headers: {
+            'X-MBX-APIKEY': apiKey,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Failed to fetch open orders:', errorText);
+        return res.status(response.status).json({ error: `Failed to fetch orders: ${errorText}` });
+      }
+
+      const orders = await response.json();
+      console.log(`📋 Found ${orders.length} total open orders`);
+
+      // Filter for TP/SL orders only
+      const tpslOrders = orders.filter((order: any) => 
+        order.type === 'LIMIT' || 
+        order.type === 'STOP_MARKET' || 
+        order.type === 'TAKE_PROFIT_MARKET'
+      );
+
+      console.log(`🎯 Found ${tpslOrders.length} TP/SL orders to cancel`);
+
+      let cancelledCount = 0;
+      let failedCount = 0;
+
+      // Cancel each TP/SL order
+      for (const order of tpslOrders) {
+        try {
+          const cancelTimestamp = Date.now();
+          const cancelParams = `symbol=${order.symbol}&orderId=${order.orderId}&timestamp=${cancelTimestamp}&recvWindow=5000`;
+          const cancelSignature = crypto
+            .createHmac('sha256', secretKey)
+            .update(cancelParams)
+            .digest('hex');
+
+          const cancelResponse = await fetch(
+            `https://fapi.asterdex.com/fapi/v1/order?${cancelParams}&signature=${cancelSignature}`,
+            {
+              method: 'DELETE',
+              headers: {
+                'X-MBX-APIKEY': apiKey,
+              },
+            }
+          );
+
+          if (cancelResponse.ok) {
+            cancelledCount++;
+            console.log(`✅ Cancelled ${order.type} order for ${order.symbol} (ID: ${order.orderId})`);
+          } else {
+            failedCount++;
+            const errorText = await cancelResponse.text();
+            console.error(`❌ Failed to cancel order ${order.orderId}: ${errorText}`);
+          }
+
+          // Small delay to avoid rate limiting
+          await new Promise(resolve => setTimeout(resolve, 100));
+        } catch (error) {
+          failedCount++;
+          console.error(`❌ Error cancelling order ${order.orderId}:`, error);
+        }
+      }
+
+      console.log(`🎉 Cleanup complete: ${cancelledCount} cancelled, ${failedCount} failed`);
+
+      res.json({
+        success: true,
+        totalOrders: orders.length,
+        tpslOrders: tpslOrders.length,
+        cancelled: cancelledCount,
+        failed: failedCount,
+        message: `Cancelled ${cancelledCount} TP/SL orders. The system will recreate proper exit orders automatically.`
+      });
+
+    } catch (error) {
+      console.error('❌ Error during order cleanup:', error);
+      res.status(500).json({ error: "Failed to cleanup orders" });
+    }
+  });
+
   // Get account trade history from Aster DEX (filtered by live session start time)
   app.get("/api/live/trades", async (req, res) => {
     try {
