@@ -1,0 +1,212 @@
+Build brief: Liquidation Cascade Detector with Green-to-Red Light and Auto Gating Switch
+Goal
+
+Add a “cascade risk” detector to my trading app. Show a light that goes green, yellow, orange, red. Provide a switch to enable or disable automatic gating of new counter-trades. When risk is orange or red and auto is enabled, block new entries.
+
+Stack
+
+Backend: Python, FastAPI, Uvicorn
+
+Frontend: a single static HTML page served by FastAPI with minimal CSS and vanilla JS
+
+Transport: WebSocket for live status updates
+
+Files to create
+
+requirements.txt
+
+fastapi
+
+uvicorn[standard]
+
+pydantic
+
+cascade_detector.py
+
+Create a CascadeDetector class with:
+
+Rolling windows sampled once per second:
+
+_liq_1m_same_side: deque length 60 for same-side liquidation notional per second
+
+_ret_1m: deque length 60 for 1-second returns
+
+_oi_5m: deque length 300 for open interest snapshots per second
+
+Baselines updated from rolling windows:
+
+median_liq_1m: median of last 60 seconds of same-side liquidation notional
+
+ret_1m_sigma: standard deviation of last 60 seconds of returns
+
+Features computed each tick:
+
+LQ = sum(_liq_1m_same_side) / median_liq_1m
+
+RET = abs(sum(_ret_1m)) / ret_1m_sigma
+
+OI = percent drop over last 5 minutes = max(0, (oi_prev - oi_now) / oi_prev * 100)
+
+Scoring rules per tick:
+
+LQ: +2 if LQ ≥ 8, +1 if LQ ≥ 4
+
+RET (only if return side matches liquidation side): +2 if RET ≥ 4, +1 if RET ≥ 2.5
+
+OI: +2 if OI ≥ 4, +1 if OI ≥ 2
+
+Color mapping:
+
+0 to 1 green, 2 to 3 yellow, 4 to 5 orange, 6 or more red
+
+Hysteresis to avoid flicker:
+
+Light can heat up instantly
+
+Cooling down requires the score to stay below the lower band for 6 seconds
+
+Public API:
+
+ingest_tick(liq_notional_same_side: float, ret_1s: float, oi_snapshot: float, ret_side_matches_liq: bool) -> dict
+
+returns dict with score, LQ, RET, OI, light, auto_block, auto_enabled
+
+set_auto_enabled(bool)
+
+auto_block = auto_enabled and light in {"orange", "red"}
+
+main.py
+
+Create FastAPI app
+
+Global instance det = CascadeDetector(auto_enabled=True)
+
+Endpoints:
+
+GET / returns a simple HTML page with:
+
+A colored dot that shows current light color
+
+A pill showing “entries allowed” or “auto blocking”
+
+Three tiles that show Score, LQ x median, OI drop 5m
+
+A toggle switch labeled “Auto detect”
+
+The page connects to a WebSocket at /ws and live-updates UI
+
+POST /api/cascade/auto accepts JSON with {"auto_enabled": true|false} and calls det.set_auto_enabled(...)
+
+WebSocket:
+
+@app.websocket("/ws") tracks connected clients
+
+A background task broadcasts the latest status as JSON once per second
+
+Market loop:
+
+Once per second:
+
+Pull data from three functions that you will replace with real feeds:
+
+get_liq_notional_last_sec() returns float notional for last second on the move side
+
+get_return_and_alignment() returns tuple (ret_1s: float, ret_side_matches_liq: bool)
+
+get_open_interest() returns float snapshot
+
+Call det.ingest_tick(...) to get status
+
+Broadcast status JSON to all WebSocket clients
+
+Provide a simple simulator for now:
+
+Random normal values for returns and liquidation notional
+
+Random walk or small noise for OI
+
+You will later replace these three functions with exchange data
+
+.replit
+
+run = "uvicorn main:app --host 0.0.0.0 --port 8000"
+
+UI behavior
+
+Dot color matches light from the detector: green, yellow, orange, red
+
+Pill text
+
+If auto_block true, show “auto blocking”
+
+Else show “entries allowed”
+
+Three tiles show:
+
+Score integer
+
+“LQ x median” with one decimal
+
+“OI drop 5m” in percent with one decimal
+
+Toggle switch
+
+On click, POST to /api/cascade/auto with new auto_enabled value
+
+Reflect backend auto_enabled state received over WebSocket
+
+Integration into the bot
+
+In your trading engine, read the detector status once per second or on each decision
+
+Gate new counter entries:
+
+If auto_enabled and light is orange or red, block new entries
+
+Otherwise allow entries if your normal signals fire
+
+Do not change your stop loss or take profit logic
+
+Data wiring checklist
+
+Replace the three simulator functions with real feeds:
+
+get_liq_notional_last_sec()
+
+Sum liquidation notional on the side of the current price move over the last second
+
+If your stream gives individual events, accumulate for one second and pass that sum
+
+get_return_and_alignment()
+
+ret_1s is the last-second return, for example (price_now / price_prev_sec) - 1
+
+ret_side_matches_liq is True if the sign of the return matches the liquidation side
+
+get_open_interest()
+
+Pass the latest OI snapshot as a positive number
+
+Thresholds to start with
+
+Liquidations: LQ mid 4, LQ high 8
+
+Returns: RET mid 2.5, RET high 4
+
+OI drop percent over 5 minutes: mid 2, high 4
+
+Hysteresis downshift confirm seconds: 6
+
+Acceptance tests
+
+With the simulator running, occasionally push the score to 6 or more. The light must turn red and auto_block must be true when auto is enabled
+
+Toggle auto off, ensure auto_block becomes false even if light is red
+
+Reduce simulated noise so the score decays below thresholds for 6 seconds. The light should step down one color at a time
+
+Logging
+
+Print or log each broadcasted status as CSV fields: ts, score, LQ, RET, OI, light, auto_block
+
+This helps you tune per symbol later
