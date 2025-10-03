@@ -84,7 +84,7 @@ export interface IStorage {
   getClosedPositions(sessionId: string): Promise<Position[]>;
   getPositionsBySession(sessionId: string): Promise<Position[]>;
   updatePosition(id: string, updates: Partial<InsertPosition>): Promise<Position>;
-  closePosition(id: string, closedAt: Date, realizedPnl: number): Promise<Position>;
+  closePosition(id: string, closedAt: Date, realizedPnl: number, realizedPnlPercent?: number): Promise<Position>;
   clearPositionsBySession(sessionId: string): Promise<void>;
 
   // P&L Snapshot operations
@@ -607,14 +607,21 @@ export class DatabaseStorage implements IStorage {
     return result[0];
   }
 
-  async closePosition(id: string, closedAt: Date, realizedPnl: number): Promise<Position> {
+  async closePosition(id: string, closedAt: Date, realizedPnl: number, realizedPnlPercent?: number): Promise<Position> {
+    const updates: any = {
+      isOpen: false,
+      closedAt,
+      realizedPnl: realizedPnl.toString(),
+      updatedAt: new Date()
+    };
+    
+    // Preserve the percentage P&L at close time in unrealizedPnl field for display
+    if (realizedPnlPercent !== undefined) {
+      updates.unrealizedPnl = realizedPnlPercent.toString();
+    }
+    
     const result = await db.update(positions)
-      .set({
-        isOpen: false,
-        closedAt,
-        realizedPnl: realizedPnl.toString(),
-        updatedAt: new Date()
-      })
+      .set(updates)
       .where(eq(positions.id, id))
       .returning();
     return result[0];

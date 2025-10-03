@@ -102,6 +102,9 @@ function CompletedTradeCard({ position, formatCurrency, formatPercentage, getPnl
   const exitFees = exitFills.reduce((sum, f) => sum + parseFloat(f.fee || '0'), 0);
   const totalFees = entryFees + exitFees;
   
+  // Use actual entry fills count if we have fills data, otherwise fall back to database value
+  const actualLayersFilled = fills && entryFills.length > 0 ? entryFills.length : position.layersFilled;
+  
   return (
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
       <div className="rounded-lg border bg-card hover-elevate" data-testid={`completed-trade-${position.id}`}>
@@ -125,7 +128,7 @@ function CompletedTradeCard({ position, formatCurrency, formatPercentage, getPnl
                 </Badge>
               )}
               <Badge variant="outline" className="text-xs">
-                {position.layersFilled}/{position.maxLayers} layers
+                {actualLayersFilled}/{position.maxLayers} layers
               </Badge>
             </div>
             <div className={`text-sm font-semibold ${getPnlColor(realizedPnlDollar)}`}>
@@ -243,6 +246,10 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
     queryKey: ['/api/positions', position.id, 'fills'],
     enabled: isExpanded,
   });
+  
+  // Calculate actual layers from entry fills (layerNumber > 0)
+  const entryFills = fills?.filter(f => f.layerNumber > 0) || [];
+  const actualLayersFilled = fills && entryFills.length > 0 ? entryFills.length : position.layersFilled;
 
   // unrealizedPnl is stored as percentage in the database (e.g., 0.36292126 = 0.36%)
   const unrealizedPnlPercent = parseFloat(position.unrealizedPnl);
@@ -399,7 +406,7 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
                 {/* Layers and leverage info */}
                 <div className="flex items-center gap-2">
                   <span className="px-2 py-1 rounded-lg text-xs text-muted-foreground bg-muted/50 border border-border/50">
-                    {position.layersFilled}/{position.maxLayers} Layers
+                    {actualLayersFilled}/{position.maxLayers} Layers
                   </span>
                   <span className="px-2 py-1 rounded-lg text-xs text-muted-foreground bg-muted/50 border border-border/50">
                     {leverage}× • {formatCurrency(notionalValue)}
@@ -515,7 +522,7 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
                   {position.side.toUpperCase()}
                 </Badge>
                 <span className="px-1.5 py-0.5 rounded-lg text-[10px] text-muted-foreground bg-muted/50 border border-border/50">
-                  {position.layersFilled}/{position.maxLayers}
+                  {actualLayersFilled}/{position.maxLayers}
                 </span>
                 <span className="px-1.5 py-0.5 rounded-lg text-[10px] text-muted-foreground bg-muted/50 border border-border/50">
                   {leverage}× • {formatCurrency(notionalValue)}

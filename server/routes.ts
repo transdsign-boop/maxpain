@@ -2219,8 +2219,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             layerNumber: 0,
           });
 
-          // Close the position with dollar P&L
-          await storage.closePosition(position.id, new Date(), dollarPnl);
+          // Close the position with dollar P&L and percentage (preserve percentage for display)
+          await storage.closePosition(position.id, new Date(), dollarPnl, unrealizedPnl);
           
           // Accumulate P&L (deduct exit fee for BOTH paper and live)
           const netDollarPnl = dollarPnl - exitFee;
@@ -2569,7 +2569,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               
               console.log(`🔒 Closing database position ${dbPos.symbol} ${dbPos.side} with ${realizedPnlPercent.toFixed(2)}% P&L ($${realizedPnlDollar.toFixed(2)}) (closed on exchange)`);
               
-              await storage.closePosition(dbPos.id, new Date(), realizedPnlDollar);
+              await storage.closePosition(dbPos.id, new Date(), realizedPnlDollar, realizedPnlPercent);
             }
           }
           
@@ -3384,8 +3384,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         layerNumber: 0,
       });
 
-      // Close the position with dollar P&L
-      await storage.closePosition(position.id, new Date(), dollarPnl);
+      // Close the position with dollar P&L and percentage (preserve percentage for display)
+      await storage.closePosition(position.id, new Date(), dollarPnl, unrealizedPnl);
 
       // Update session balance and stats (deduct exit fee for BOTH paper and live)
       if (session) {
