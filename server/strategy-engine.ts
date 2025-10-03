@@ -1193,11 +1193,11 @@ export class StrategyEngine extends EventEmitter {
       }
       
       // Add price/stopPrice for different order types
-      // CRITICAL: ALL TP/SL orders MUST use reduceOnly='true' to prevent opening opposite positions
       if (orderType.toLowerCase() === 'limit') {
         orderParams.price = roundedPrice;
         orderParams.timeInForce = 'GTC'; // Good Till Cancel
-        orderParams.reduceOnly = 'true'; // TP orders can only reduce positions
+        // NO reduceOnly - LIMIT orders with opposite side naturally close positions
+        // reduceOnly causes exchange to auto-cancel orders when position size changes
       } else if (orderType.toLowerCase() === 'stop_market') {
         orderParams.stopPrice = roundedPrice; // Trigger price for stop market orders
         orderParams.reduceOnly = 'true'; // SL orders can only reduce positions
