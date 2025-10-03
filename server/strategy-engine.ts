@@ -2727,8 +2727,8 @@ export class StrategyEngine extends EventEmitter {
         value: actualExitValue // ✅ Use actual value
       });
 
-      // Close position in database with dollar P&L
-      await storage.closePosition(position.id, new Date(), dollarPnl);
+      // Close position in database with dollar P&L and percentage (preserve percentage for display)
+      await storage.closePosition(position.id, new Date(), dollarPnl, realizedPnlPercent);
 
       // Always fetch latest session from database (not memory) to update stats
       const latestSession = await storage.getTradeSession(position.sessionId);
