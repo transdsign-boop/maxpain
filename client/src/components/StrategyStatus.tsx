@@ -242,6 +242,8 @@ function CompletedTradeCard({ position, formatCurrency, formatPercentage, getPnl
 
 function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, formatPercentage, getPnlColor, isHedge }: PositionCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isFlashing, setIsFlashing] = useState(false);
+  const prevLayersRef = useRef(position.layersFilled);
   
   const { data: fills } = useQuery<Fill[]>({
     queryKey: ['/api/positions', position.id, 'fills'],
@@ -250,7 +252,19 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
   
   // Calculate actual layers from entry fills (layerNumber > 0)
   const entryFills = fills?.filter(f => f.layerNumber > 0) || [];
+  const exitFills = fills?.filter(f => f.layerNumber === 0) || [];
   const actualLayersFilled = fills && entryFills.length > 0 ? entryFills.length : position.layersFilled;
+  
+  // Flash effect when layers increase
+  useEffect(() => {
+    if (actualLayersFilled > prevLayersRef.current) {
+      setIsFlashing(true);
+      const timer = setTimeout(() => setIsFlashing(false), 600);
+      prevLayersRef.current = actualLayersFilled;
+      return () => clearTimeout(timer);
+    }
+    prevLayersRef.current = actualLayersFilled;
+  }, [actualLayersFilled]);
 
   // unrealizedPnl is stored as percentage in the database (e.g., 0.36292126 = 0.36%)
   const unrealizedPnlPercent = parseFloat(position.unrealizedPnl);
@@ -340,7 +354,7 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
   return (
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
       <div 
-        className="relative rounded-2xl overflow-hidden ring-1 ring-border shadow-lg transition-all duration-300" 
+        className={`relative rounded-2xl overflow-hidden ring-1 ring-border shadow-lg transition-all duration-300 ${isFlashing ? 'animate-layer-flash' : ''}`}
         data-testid={`position-${position.symbol}`}
       >
         {/* Position pressure indicator line */}
@@ -631,23 +645,59 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
 
         <CollapsibleContent>
           <div className="border-t px-3 py-2 relative z-10 bg-background/30">
-            <p className="text-xs font-medium text-muted-foreground mb-2">Layer Entries</p>
+            <p className="text-xs font-medium text-muted-foreground mb-2">Layer Details</p>
             {fills && fills.length > 0 ? (
-              <div className="space-y-1">
-                {fills.map((fill) => (
-                  <div key={fill.id} className="flex items-center justify-between text-xs py-1">
-                    <div className="flex items-center gap-2 flex-1">
-                      <Badge variant="outline" className="text-xs h-5">L{fill.layerNumber}</Badge>
-                      <span className="text-muted-foreground">
-                        {parseFloat(fill.quantity).toFixed(4)} @ {formatCurrency(parseFloat(fill.price))}
-                      </span>
-                      <span className="text-xs text-muted-foreground/70">
-                        {format(new Date(fill.filledAt), 'MMM d, h:mm:ss a')}
-                      </span>
+              <div className="space-y-2">
+                {entryFills.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground/70 mb-1">Entry Layers ({entryFills.length})</p>
+                    <div className="space-y-1">
+                      {entryFills.sort((a, b) => a.layerNumber - b.layerNumber).map((fill) => (
+                        <div key={fill.id} className="flex items-center justify-between text-xs py-1 px-2 rounded bg-muted/30">
+                          <div className="flex items-center gap-2 flex-1">
+                            <Badge variant="outline" className="text-xs h-5">L{fill.layerNumber}</Badge>
+                            <span className="text-foreground">
+                              {parseFloat(fill.quantity).toFixed(4)} @ {formatCurrency(parseFloat(fill.price))}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground/70">
+                              {format(new Date(fill.filledAt), 'MMM d, h:mm:ss a')}
+                            </span>
+                            <span className="text-muted-foreground text-xs">
+                              Fee: {formatCurrency(parseFloat(fill.fee || '0'))}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                    <span className="text-muted-foreground">{formatCurrency(parseFloat(fill.value))}</span>
                   </div>
-                ))}
+                )}
+                {exitFills.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground/70 mb-1">Exit</p>
+                    <div className="space-y-1">
+                      {exitFills.map((fill) => (
+                        <div key={fill.id} className="flex items-center justify-between text-xs py-1 px-2 rounded bg-muted/30">
+                          <div className="flex items-center gap-2 flex-1">
+                            <Badge variant="outline" className="text-xs h-5">Exit</Badge>
+                            <span className="text-foreground">
+                              {parseFloat(fill.quantity).toFixed(4)} @ {formatCurrency(parseFloat(fill.price))}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground/70">
+                              {format(new Date(fill.filledAt), 'MMM d, h:mm:ss a')}
+                            </span>
+                            <span className="text-muted-foreground text-xs">
+                              Fee: {formatCurrency(parseFloat(fill.fee || '0'))}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <p className="text-xs text-muted-foreground">No layer details available</p>
