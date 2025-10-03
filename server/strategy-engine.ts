@@ -1566,7 +1566,7 @@ export class StrategyEngine extends EventEmitter {
           const positions = await storage.getOpenPositions(session.id);
           dbPosition = positions.find(p => 
             p.symbol === symbol && 
-            p.side.toLowerCase() === side.toLowerCase() && 
+            p.side && p.side.toLowerCase() === side.toLowerCase() && 
             p.isOpen
           );
           if (dbPosition) {
@@ -1726,7 +1726,7 @@ export class StrategyEngine extends EventEmitter {
           const positions = await storage.getOpenPositions(session.id);
           dbPosition = positions.find(p => 
             p.symbol === symbol && 
-            p.side.toLowerCase() === side.toLowerCase() && 
+            p.side && p.side.toLowerCase() === side.toLowerCase() && 
             p.isOpen
           );
           if (dbPosition) {
@@ -1922,6 +1922,11 @@ export class StrategyEngine extends EventEmitter {
     const cooldownKey = `${order.sessionId}-${order.symbol}-${position.side}`;
     this.lastFillTime.set(cooldownKey, Date.now());
     console.log(`⏰ Fill cooldown started for ${position.symbol} ${position.side} (${this.fillCooldownMs / 1000}s)`);
+    
+    // AUTOMATICALLY place TP/SL orders for live mode entry orders (Layer 1 only)
+    if (order.layerNumber === 1) {
+      await this.placeTPSLOrdersForPosition(position, order.sessionId);
+    }
   }
 
   // Ensure position exists and return it (create or update as needed)
@@ -2353,6 +2358,86 @@ export class StrategyEngine extends EventEmitter {
       console.log(`✅ Position closed: ${position.symbol} - P&L: ${realizedPnlPercent.toFixed(2)}% ($${dollarPnl.toFixed(2)}, Fee: $${actualExitFee.toFixed(4)})`);
     } catch (error) {
       console.error('❌ Error closing position:', error);
+    }
+  }
+
+  // Automatically place TP/SL orders immediately after position opens (live mode only)
+  private async placeTPSLOrdersForPosition(position: Position, sessionId: string) {
+    try {
+      // Find the strategy to get TP/SL percentages
+      let strategy: Strategy | undefined;
+      for (const [stratId, sess] of Array.from(this.activeSessions.entries())) {
+        if (sess.id === sessionId) {
+          strategy = this.activeStrategies.get(stratId);
+          if (strategy) break;
+        }
+      }
+      
+      if (!strategy) {
+        console.warn(`⚠️ Could not find strategy for session ${sessionId}, skipping TP/SL placement`);
+        return;
+      }
+      
+      // Only place TP/SL for live trading mode
+      if (strategy.tradingMode !== 'live') {
+        console.log(`📝 Paper mode detected, skipping automatic TP/SL placement for ${position.symbol}`);
+        return;
+      }
+      
+      const entryPrice = parseFloat(position.avgEntryPrice);
+      const quantity = parseFloat(position.totalQuantity);
+      const tpPercent = parseFloat(strategy.profitTargetPercent);
+      const slPercent = parseFloat(strategy.stopLossPercent);
+      
+      // Calculate TP and SL prices
+      let tpPrice: number;
+      let slPrice: number;
+      
+      if (position.side === 'long') {
+        // Long position: TP above entry, SL below entry
+        tpPrice = entryPrice * (1 + tpPercent / 100);
+        slPrice = entryPrice * (1 - slPercent / 100);
+      } else {
+        // Short position: TP below entry, SL above entry
+        tpPrice = entryPrice * (1 - tpPercent / 100);
+        slPrice = entryPrice * (1 + slPercent / 100);
+      }
+      
+      console.log(`🎯 Placing automatic TP/SL orders for ${position.symbol} ${position.side}:`);
+      console.log(`   Entry: $${entryPrice.toFixed(2)} | TP: $${tpPrice.toFixed(2)} (+${tpPercent}%) | SL: $${slPrice.toFixed(2)} (-${slPercent}%)`);
+      
+      // Place TP order (LIMIT)
+      const tpResult = await this.placeExitOrder(
+        position,
+        'LIMIT',
+        tpPrice,
+        quantity,
+        'take_profit'
+      );
+      
+      if (tpResult.success) {
+        console.log(`✅ Take Profit order placed automatically for ${position.symbol}`);
+      } else {
+        console.error(`❌ Failed to place automatic TP order: ${tpResult.error}`);
+      }
+      
+      // Place SL order (STOP_MARKET)
+      const slResult = await this.placeExitOrder(
+        position,
+        'STOP_MARKET',
+        slPrice,
+        quantity,
+        'stop_loss'
+      );
+      
+      if (slResult.success) {
+        console.log(`✅ Stop Loss order placed automatically for ${position.symbol}`);
+      } else {
+        console.error(`❌ Failed to place automatic SL order: ${slResult.error}`);
+      }
+      
+    } catch (error) {
+      console.error('❌ Error placing automatic TP/SL orders:', error);
     }
   }
 
