@@ -122,6 +122,17 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
     }
   });
 
+  // Fetch asset performance data (wins/losses)
+  const { data: performanceData, isLoading: performanceLoading } = useQuery<any[]>({
+    queryKey: ['/api/analytics/asset-performance'],
+    refetchInterval: 30000,
+  });
+
+  // Create a map for quick performance lookup
+  const performanceMap = new Map(
+    performanceData?.map(p => [p.symbol, p]) || []
+  );
+
   // Merge symbols with liquidation counts (will be sorted after form is initialized)
   const mergedAssets = symbols?.map((symbol: any) => ({
     ...symbol,
@@ -776,12 +787,30 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                           />
                           <label 
                             htmlFor={`asset-${asset.symbol}`}
-                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer flex items-center gap-1"
+                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer flex items-center gap-1 flex-wrap"
                           >
                             <span>{asset.symbol}</span>
                             <span className="text-xs text-muted-foreground">
                               ({asset.liquidationCount})
                             </span>
+                            {!performanceLoading && performanceMap.get(asset.symbol) && performanceMap.get(asset.symbol).wins + performanceMap.get(asset.symbol).losses > 0 && (
+                              <>
+                                <Badge 
+                                  variant="secondary" 
+                                  className="text-[10px] px-1 py-0 h-4 bg-chart-2/10 text-chart-2 hover:bg-chart-2/20 border-chart-2/20"
+                                  data-testid={`badge-wins-${asset.symbol}`}
+                                >
+                                  {performanceMap.get(asset.symbol).wins}W
+                                </Badge>
+                                <Badge 
+                                  variant="secondary" 
+                                  className="text-[10px] px-1 py-0 h-4 bg-destructive/10 text-destructive hover:bg-destructive/20 border-destructive/20"
+                                  data-testid={`badge-losses-${asset.symbol}`}
+                                >
+                                  {performanceMap.get(asset.symbol).losses}L
+                                </Badge>
+                              </>
+                            )}
                             {!liquidityLoading && asset.liquidity && asset.liquidity.canHandleTradeSize && (
                               <Badge variant="outline" className="ml-1 text-[10px] px-1 py-0 h-4 bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20">
                                 ✓ ${(asset.liquidity.minSideLiquidity / 1000).toFixed(0)}k
