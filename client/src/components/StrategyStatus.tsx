@@ -681,7 +681,7 @@ export function StrategyStatus() {
       return response.json();
     },
     enabled: !!activeStrategy?.id && !isLiveMode, // Only fetch database positions in paper mode
-    refetchInterval: 1000, // Refresh every 1 second for real-time P&L
+    refetchInterval: 10000, // Reduced to 10 seconds to avoid rate limiting
     retry: (failureCount, error: any) => {
       // Don't retry 404 errors - they indicate no trade session exists
       if (error?.status === 404) return false;
@@ -692,7 +692,7 @@ export function StrategyStatus() {
   // Fetch live exchange positions when in live mode
   const { data: livePositionsData } = useQuery<any[]>({
     queryKey: ['/api/live/positions'],
-    refetchInterval: 2000, // Refresh every 2 seconds
+    refetchInterval: 20000, // Reduced to 20 seconds to avoid rate limiting
     enabled: !!isLiveMode && !!activeStrategy,
     retry: 2,
   });

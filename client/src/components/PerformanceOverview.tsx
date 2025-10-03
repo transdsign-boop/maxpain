@@ -63,7 +63,7 @@ export default function PerformanceOverview() {
   // Fetch active strategy to check if live trading is enabled
   const { data: strategies } = useQuery<any[]>({
     queryKey: ['/api/strategies'],
-    refetchInterval: 5000,
+    refetchInterval: 15000, // Reduced to 15 seconds to avoid rate limiting
   });
   const activeStrategy = strategies?.find(s => s.isActive);
   const isLiveMode = activeStrategy?.tradingMode === 'live';
@@ -71,7 +71,7 @@ export default function PerformanceOverview() {
   // Fetch paper session data
   const { data: paperSession, isLoading: paperSessionLoading } = useQuery<SessionSummary>({
     queryKey: ['/api/strategies', activeStrategy?.id, 'positions', 'summary'],
-    refetchInterval: 5000,
+    refetchInterval: 15000, // Reduced to 15 seconds to avoid rate limiting
     enabled: !isLiveMode && !!activeStrategy,
     retry: 2,
   });
@@ -79,7 +79,7 @@ export default function PerformanceOverview() {
   // Fetch live account data when in live mode
   const { data: liveAccount, isLoading: liveAccountLoading } = useQuery<LiveAccountData>({
     queryKey: ['/api/live/account'],
-    refetchInterval: 5000,
+    refetchInterval: 30000, // Reduced to 30 seconds to avoid rate limiting
     enabled: !!isLiveMode && !!activeStrategy,
     retry: 2,
   });
@@ -87,13 +87,13 @@ export default function PerformanceOverview() {
   // Fetch performance overview (works for both modes)
   const { data: performance, isLoading } = useQuery<PerformanceMetrics>({
     queryKey: ['/api/performance/overview'],
-    refetchInterval: 5000,
+    refetchInterval: 15000, // Reduced to 15 seconds to avoid rate limiting
   });
 
   // Fetch chart data - unified endpoint for both modes
   const { data: rawChartData, isLoading: chartLoading } = useQuery<TradeDataPoint[]>({
     queryKey: ['/api/performance/chart'],
-    refetchInterval: 5000,
+    refetchInterval: 15000, // Reduced to 15 seconds to avoid rate limiting
   });
 
   // Use unified chart data for both modes
