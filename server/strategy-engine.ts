@@ -2756,28 +2756,42 @@ export class StrategyEngine extends EventEmitter {
     }
   }
 
+  // Lock map to prevent concurrent TP/SL updates for the same position
+  private tpslUpdateLocks = new Map<string, Promise<void>>();
+  
   // Update protective orders (TP/SL) using place-then-cancel strategy
   // This function is called after entry AND after each layer to update orders for the new position size
   private async updateProtectiveOrders(position: Position, sessionId: string) {
-    try {
-      // Find the strategy to get TP/SL percentages
-      let strategy: Strategy | undefined;
-      for (const [stratId, sess] of Array.from(this.activeSessions.entries())) {
-        if (sess.id === sessionId) {
-          strategy = this.activeStrategies.get(stratId);
-          if (strategy) break;
+    // Create a lock key based on symbol and side to prevent concurrent updates
+    const lockKey = `${position.symbol}-${position.side}`;
+    
+    // Loop until we can acquire the lock (queue-based approach)
+    while (this.tpslUpdateLocks.has(lockKey)) {
+      console.log(`⏳ TP/SL update queued for ${lockKey}, waiting...`);
+      await this.tpslUpdateLocks.get(lockKey);
+    }
+    
+    // Now we have the lock - create a promise for this update and store it
+    const updatePromise = (async () => {
+      try {
+        // Find the strategy to get TP/SL percentages
+        let strategy: Strategy | undefined;
+        for (const [stratId, sess] of Array.from(this.activeSessions.entries())) {
+          if (sess.id === sessionId) {
+            strategy = this.activeStrategies.get(stratId);
+            if (strategy) break;
+          }
         }
-      }
-      
-      if (!strategy) {
-        console.warn(`⚠️ Could not find strategy for session ${sessionId}, skipping TP/SL update`);
-        return;
-      }
-      
-      // Only update TP/SL for live trading mode
-      if (strategy.tradingMode !== 'live') {
-        return;
-      }
+        
+        if (!strategy) {
+          console.warn(`⚠️ Could not find strategy for session ${sessionId}, skipping TP/SL update`);
+          return;
+        }
+        
+        // Only update TP/SL for live trading mode
+        if (strategy.tradingMode !== 'live') {
+          return;
+        }
       
       const entryPrice = parseFloat(position.avgEntryPrice);
       const quantity = parseFloat(position.totalQuantity);
@@ -2798,12 +2812,13 @@ export class StrategyEngine extends EventEmitter {
         slPrice = entryPrice * (1 + slPercent / 100);
       }
       
-      const hasExistingOrders = position.tpOrderId || position.slOrderId;
+      // Query exchange for existing TP/SL orders for this specific position (symbol + side)
+      const existingOrders = await this.getActiveTPSLOrders(position.symbol, position.side);
       
-      if (hasExistingOrders) {
+      if (existingOrders.length > 0) {
         console.log(`🔄 Updating protective orders for ${position.symbol} ${position.side} (Qty: ${quantity}):`);
         console.log(`   Avg Entry: $${entryPrice.toFixed(2)} | New TP: $${tpPrice.toFixed(2)} | New SL: $${slPrice.toFixed(2)}`);
-        console.log(`   Old TP Order: ${position.tpOrderId || 'none'} | Old SL Order: ${position.slOrderId || 'none'}`);
+        console.log(`   Found ${existingOrders.length} existing TP/SL orders to cancel`);
       } else {
         console.log(`🎯 Placing initial protective orders for ${position.symbol} ${position.side}:`);
         console.log(`   Entry: $${entryPrice.toFixed(2)} | TP: $${tpPrice.toFixed(2)} (+${tpPercent}%) | SL: $${slPrice.toFixed(2)} (-${slPercent}%)`);
@@ -2836,30 +2851,16 @@ export class StrategyEngine extends EventEmitter {
       
       if (!batchResult.success) {
         console.error(`❌ Failed to place new protective orders: ${batchResult.error}`);
-        // Keep existing orders if new ones fail
-        if (hasExistingOrders) {
-          console.warn(`⚠️ Keeping existing orders: TP=${position.tpOrderId}, SL=${position.slOrderId}`);
+        if (existingOrders.length > 0) {
+          console.warn(`⚠️ Keeping existing ${existingOrders.length} TP/SL orders`);
         }
         return;
       }
       
-      // Extract new order IDs from successful results
-      const newTpOrderId = batchResult.results?.[0]?.orderId?.toString();
-      const newSlOrderId = batchResult.results?.[1]?.orderId?.toString();
-      
-      if (!newTpOrderId || !newSlOrderId) {
-        console.error(`❌ Failed to extract order IDs from batch result`);
-        return;
-      }
-      
-      console.log(`✅ New protective orders placed: TP=${newTpOrderId}, SL=${newSlOrderId}`);
+      console.log(`✅ New protective orders placed successfully`);
       
       // STEP 2: Cancel OLD orders (only if they exist)
-      const oldOrders = [];
-      if (position.tpOrderId) oldOrders.push({ orderId: position.tpOrderId, type: 'TP' });
-      if (position.slOrderId) oldOrders.push({ orderId: position.slOrderId, type: 'SL' });
-      
-      for (const oldOrder of oldOrders) {
+      for (const oldOrder of existingOrders) {
         try {
           await this.cancelExchangeOrder(position.symbol, oldOrder.orderId);
           console.log(`✅ Cancelled old ${oldOrder.type} order: ${oldOrder.orderId}`);
@@ -2869,18 +2870,87 @@ export class StrategyEngine extends EventEmitter {
         }
       }
       
-      // STEP 3: Update position with new order IDs and prices
-      await storage.updatePosition(position.id, {
-        tpOrderId: newTpOrderId,
-        slOrderId: newSlOrderId,
-        tpPrice: tpPrice.toString(),
-        slPrice: slPrice.toString(),
+        console.log(`✅ Protective orders updated successfully for ${position.symbol}`);
+        
+      } catch (error) {
+        console.error('❌ Error updating protective orders:', error);
+      } finally {
+        // Only remove the lock if it's still pointing to our promise
+        if (this.tpslUpdateLocks.get(lockKey) === updatePromise) {
+          this.tpslUpdateLocks.delete(lockKey);
+        }
+      }
+    })();
+    
+    // Store the promise and await it
+    this.tpslUpdateLocks.set(lockKey, updatePromise);
+    await updatePromise;
+  }
+  
+  // Get active TP/SL orders for a specific position (symbol + side) from the exchange
+  private async getActiveTPSLOrders(symbol: string, positionSide: string): Promise<Array<{ orderId: string; type: string }>> {
+    try {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+      
+      if (!apiKey || !secretKey) {
+        return [];
+      }
+      
+      const timestamp = Date.now();
+      const params: Record<string, string | number> = {
+        symbol,
+        timestamp,
+        recvWindow: 5000,
+      };
+      
+      const queryString = Object.entries(params)
+        .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
+        .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
+        .join('&');
+      
+      const signature = createHmac('sha256', secretKey)
+        .update(queryString)
+        .digest('hex');
+      
+      const signedParams = `${queryString}&signature=${signature}`;
+      
+      const response = await fetch(`https://fapi.asterdex.com/fapi/v1/openOrders?${signedParams}`, {
+        headers: {
+          'X-MBX-APIKEY': apiKey,
+        },
       });
       
-      console.log(`✅ Protective orders updated successfully for ${position.symbol}`);
+      if (!response.ok) {
+        return [];
+      }
       
+      const orders = await response.json();
+      
+      // Filter for TP/SL orders matching this position
+      return orders
+        .filter((order: any) => {
+          // Must be TP or SL order type
+          if (order.type !== 'TAKE_PROFIT_MARKET' && order.type !== 'STOP_MARKET') {
+            return false;
+          }
+          
+          // In dual mode, filter by positionSide
+          if (this.exchangePositionMode === 'dual') {
+            const orderPositionSide = (order.positionSide || '').toLowerCase();
+            return orderPositionSide === positionSide.toLowerCase();
+          }
+          
+          // In one-way mode, all TP/SL orders for this symbol belong to the same position
+          return true;
+        })
+        .map((order: any) => ({
+          orderId: order.orderId.toString(),
+          type: order.type === 'TAKE_PROFIT_MARKET' ? 'TP' : 'SL',
+        }));
     } catch (error) {
-      console.error('❌ Error updating protective orders:', error);
+      console.error('❌ Error fetching active TP/SL orders:', error);
+      return [];
     }
   }
 
