@@ -61,10 +61,6 @@ export interface IStorage {
   getAllTradeSessions(userId: string): Promise<TradeSession[]>;
   updateTradeSession(id: string, updates: Partial<InsertTradeSession>): Promise<TradeSession>;
   endTradeSession(id: string): Promise<TradeSession>;
-  
-  // Session management (multi-session support)
-  startNewSession(userId: string, mode: string, name?: string): Promise<TradeSession>;
-  loadPreviousSession(sessionId: string): Promise<TradeSession>;
 
   // Order operations
   placePaperOrder(order: InsertOrder): Promise<Order>;
@@ -471,66 +467,6 @@ export class DatabaseStorage implements IStorage {
       .set({ isActive: false, endedAt: new Date() })
       .where(eq(tradeSessions.id, id))
       .returning();
-    return result[0];
-  }
-
-  // Session management - multi-session support
-  async startNewSession(userId: string, mode: string, name?: string): Promise<TradeSession> {
-    // Get the user's default strategy
-    const strategy = await this.getOrCreateDefaultStrategy(userId);
-
-    // End all active sessions for this strategy
-    await db.update(tradeSessions)
-      .set({ isActive: false, endedAt: new Date() })
-      .where(and(
-        eq(tradeSessions.strategyId, strategy.id),
-        eq(tradeSessions.isActive, true)
-      ));
-
-    // Get real exchange balance for both paper and live trading
-    const exchangeBalance = await this.getExchangeBalance();
-    const initialBalance = exchangeBalance || "10000.00"; // Fallback to $10k if API unavailable
-
-    // Generate default name if not provided
-    const sessionName = name || `${mode === 'live' ? 'Live' : 'Paper'} Trading - ${new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
-
-    // Create new session
-    const newSession: InsertTradeSession = {
-      strategyId: strategy.id,
-      name: sessionName,
-      mode: mode,
-      startingBalance: initialBalance,
-      currentBalance: initialBalance,
-      isActive: true
-    };
-
-    const result = await db.insert(tradeSessions).values(newSession).returning();
-    console.log(`🆕 New session created: ${sessionName} (mode: ${mode}, balance: $${initialBalance})`);
-    return result[0];
-  }
-
-  async loadPreviousSession(sessionId: string): Promise<TradeSession> {
-    // Get the session to load
-    const sessionToLoad = await this.getTradeSession(sessionId);
-    if (!sessionToLoad) {
-      throw new Error('Session not found');
-    }
-
-    // End all active sessions for this strategy
-    await db.update(tradeSessions)
-      .set({ isActive: false, endedAt: new Date() })
-      .where(and(
-        eq(tradeSessions.strategyId, sessionToLoad.strategyId),
-        eq(tradeSessions.isActive, true)
-      ));
-
-    // Activate the selected session and reset endedAt
-    const result = await db.update(tradeSessions)
-      .set({ isActive: true, endedAt: null })
-      .where(eq(tradeSessions.id, sessionId))
-      .returning();
-
-    console.log(`🔄 Loaded previous session: ${sessionToLoad.name || sessionId} (mode: ${sessionToLoad.mode})`);
     return result[0];
   }
 

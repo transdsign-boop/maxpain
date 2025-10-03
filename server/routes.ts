@@ -1926,57 +1926,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Session Management Routes
-  // Get all sessions for user
-  app.get("/api/sessions", async (req, res) => {
-    try {
-      const sessions = await storage.getAllTradeSessions(DEFAULT_USER_ID);
-      res.json(sessions);
-    } catch (error) {
-      console.error('Error fetching sessions:', error);
-      res.status(500).json({ error: "Failed to fetch sessions" });
-    }
-  });
-
-  // Start a new session
-  app.post("/api/sessions/new", async (req, res) => {
-    try {
-      const { mode, name } = req.body;
-
-      if (!mode || !['paper', 'live'].includes(mode)) {
-        return res.status(400).json({ error: "Invalid mode. Must be 'paper' or 'live'" });
-      }
-
-      const newSession = await storage.startNewSession(DEFAULT_USER_ID, mode, name);
-      
-      // Update strategy mode to match session
-      const strategy = await storage.getOrCreateDefaultStrategy(DEFAULT_USER_ID);
-      await storage.updateStrategy(strategy.id, { tradingMode: mode });
-
-      res.json(newSession);
-    } catch (error) {
-      console.error('Error creating new session:', error);
-      res.status(500).json({ error: "Failed to create new session" });
-    }
-  });
-
-  // Load a previous session
-  app.post("/api/sessions/:id/load", async (req, res) => {
-    try {
-      const { id } = req.params;
-      const loadedSession = await storage.loadPreviousSession(id);
-      
-      // Update strategy mode to match loaded session
-      const strategy = await storage.getOrCreateDefaultStrategy(DEFAULT_USER_ID);
-      await storage.updateStrategy(strategy.id, { tradingMode: loadedSession.mode });
-
-      res.json(loadedSession);
-    } catch (error) {
-      console.error('Error loading session:', error);
-      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to load session" });
-    }
-  });
-
   const httpServer = createServer(app);
 
   // WebSocket server for real-time liquidation updates
