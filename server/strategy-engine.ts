@@ -1078,7 +1078,12 @@ export class StrategyEngine extends EventEmitter {
         }
       }
       
+      // Log full successful response
+      console.log(`✅ Batch API returned HTTP 200`);
+      console.log(`📦 Full response body:`, responseText);
+      
       const results = JSON.parse(responseText);
+      console.log(`📋 Parsed results:`, JSON.stringify(results, null, 2));
       
       // Validate each order in the batch result
       // Binance/Aster batch API returns array where each item can be:
@@ -1099,6 +1104,7 @@ export class StrategyEngine extends EventEmitter {
             // Error response - has code but no orderId (catches both positive and negative codes)
             failures.push({ index, code: result.code, msg: result.msg || 'No error message' });
             console.error(`❌ Batch order ${index + 1} failed: Code ${result.code} - ${result.msg || 'No error message'}`);
+            console.error(`   Full error object:`, JSON.stringify(result, null, 2));
           } else {
             // Unknown response format - no orderId and no code
             failures.push({ index, error: 'Unknown response format', data: result });
