@@ -1319,9 +1319,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         let cumulativePnl = 0;
         
         for (const p of closedPositions) {
-          const pnlPercent = parseFloat(p.realizedPnl || '0');
-          const totalCost = parseFloat(p.totalCost || '0');
-          const pnlDollar = (pnlPercent / 100) * totalCost;
+          // CRITICAL: realizedPnl is ALREADY in DOLLARS (not percentage!)
+          const pnlDollar = parseFloat(p.realizedPnl || '0');
           cumulativePnl += pnlDollar;
           
           // Update peak if we reached a new high
@@ -1341,7 +1340,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const maxDrawdownPercent = startingBalance > 0 ? (maxDrawdown / startingBalance) * 100 : 0;
 
       res.json({
-        totalTrades: closedPositions.length, // Only closed positions are completed trades
+        totalTrades: allPositions.length, // Total trades includes both open and closed positions
         openTrades: openPositions.length,
         closedTrades: closedPositions.length,
         winningTrades: winningTrades.length,
