@@ -11,6 +11,7 @@ import {
 } from '@shared/schema';
 import { fetchActualFills, aggregateFills } from './exchange-utils';
 import { orderProtectionService } from './order-protection-service';
+import { cascadeDetectorService } from './cascade-detector-service';
 
 // Aster DEX fee schedule
 const ASTER_MAKER_FEE_PERCENT = 0.01;  // 0.01% for limit orders (adds liquidity) 
@@ -477,6 +478,13 @@ export class StrategyEngine extends EventEmitter {
         console.log(`⏸️ Entry cooldown active for ${liquidation.symbol} ${positionSide} - wait ${waitTime}s before new entry`);
         return false;
       }
+    }
+    
+    // CASCADE DETECTOR CHECK: Block new entries when cascade risk is high
+    const cascadeStatus = cascadeDetectorService.getCurrentStatus();
+    if (cascadeStatus.autoEnabled && cascadeStatus.autoBlock) {
+      console.log(`🚫 CASCADE RISK GATE: Entry blocked due to ${cascadeStatus.light.toUpperCase()} risk level (score: ${cascadeStatus.score})`);
+      return false;
     }
     
     // Calculate percentile threshold: current liquidation must exceed specified percentile
