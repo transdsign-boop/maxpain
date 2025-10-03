@@ -1933,6 +1933,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Connect to Aster DEX WebSocket and relay data
   connectToAsterDEX(clients);
+  
+  // Connect to User Data Stream for real-time position/balance updates
+  connectToUserDataStream();
 
   // Positions API Routes
   app.get('/api/positions/:sessionId', async (req, res) => {
@@ -3107,6 +3110,12 @@ const recentLiquidations = new Map<string, number>(); // Maps eventTimestamp -> 
 const processingQueue = new Map<string, Promise<void>>(); // Maps eventTimestamp -> processing promise
 const DEDUP_WINDOW_MS = 5000; // 5 second window for in-memory cache cleanup
 
+// User Data Stream management
+let currentListenKey: string | null = null;
+let listenKeyExpiry: number = 0;
+let userDataWs: WebSocket | null = null;
+let keepaliveInterval: NodeJS.Timeout | null = null;
+
 async function connectToAsterDEX(clients: Set<WebSocket>) {
   try {
     console.log('Connecting to Aster DEX WebSocket...');
@@ -3283,5 +3292,173 @@ async function connectToAsterDEX(clients: Set<WebSocket>) {
   } catch (error) {
     console.error('❌ Failed to connect to Aster DEX:', error);
     console.log('❌ Real-time liquidation data unavailable');
+  }
+}
+
+// Get or create a listen key for User Data Stream
+async function getOrCreateListenKey(): Promise<string | null> {
+  const apiKey = process.env.ASTER_API_KEY;
+  
+  if (!apiKey) {
+    console.error('❌ ASTER_API_KEY not configured - cannot create User Data Stream');
+    return null;
+  }
+
+  // Return existing key if still valid (with 5 minute buffer)
+  const now = Date.now();
+  if (currentListenKey && listenKeyExpiry > now + 5 * 60 * 1000) {
+    console.log('♻️ Reusing existing listen key (expires in', Math.floor((listenKeyExpiry - now) / 60000), 'minutes)');
+    return currentListenKey;
+  }
+
+  try {
+    console.log('🔑 Creating new User Data Stream listen key...');
+    const response = await fetch('https://fapi.asterdex.com/fapi/v1/listenKey', {
+      method: 'POST',
+      headers: {
+        'X-MBX-APIKEY': apiKey,
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Failed to create listen key:', errorText);
+      return null;
+    }
+
+    const data = await response.json();
+    currentListenKey = data.listenKey;
+    listenKeyExpiry = Date.now() + 60 * 60 * 1000; // Expires in 60 minutes
+    
+    console.log('✅ Listen key created successfully (expires in 60 minutes)');
+    return currentListenKey;
+  } catch (error) {
+    console.error('❌ Error creating listen key:', error);
+    return null;
+  }
+}
+
+// Send keepalive to extend listen key validity
+async function sendKeepalive(): Promise<boolean> {
+  const apiKey = process.env.ASTER_API_KEY;
+  
+  if (!apiKey || !currentListenKey) {
+    return false;
+  }
+
+  try {
+    console.log('💓 Sending User Data Stream keepalive...');
+    const response = await fetch('https://fapi.asterdex.com/fapi/v1/listenKey', {
+      method: 'PUT',
+      headers: {
+        'X-MBX-APIKEY': apiKey,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: `listenKey=${currentListenKey}`,
+    });
+
+    if (!response.ok) {
+      console.error('❌ Keepalive failed:', await response.text());
+      return false;
+    }
+
+    listenKeyExpiry = Date.now() + 60 * 60 * 1000; // Extended by 60 minutes
+    console.log('✅ Keepalive sent successfully (extended for 60 minutes)');
+    return true;
+  } catch (error) {
+    console.error('❌ Error sending keepalive:', error);
+    return false;
+  }
+}
+
+// Start keepalive interval (every 30 minutes)
+function startKeepalive() {
+  if (keepaliveInterval) {
+    clearInterval(keepaliveInterval);
+  }
+
+  keepaliveInterval = setInterval(async () => {
+    const success = await sendKeepalive();
+    if (!success) {
+      console.error('❌ Keepalive failed - reconnecting User Data Stream...');
+      connectToUserDataStream();
+    }
+  }, 30 * 60 * 1000); // Every 30 minutes
+
+  console.log('⏰ Keepalive scheduled every 30 minutes');
+}
+
+// Connect to User Data Stream for real-time account/position updates
+async function connectToUserDataStream() {
+  try {
+    // Close existing connection
+    if (userDataWs) {
+      userDataWs.close();
+      userDataWs = null;
+    }
+
+    // Get listen key
+    const listenKey = await getOrCreateListenKey();
+    if (!listenKey) {
+      console.error('❌ Cannot connect to User Data Stream without listen key');
+      return;
+    }
+
+    console.log('🔌 Connecting to User Data Stream WebSocket...');
+    userDataWs = new WebSocket(`wss://fstream.asterdex.com/ws/${listenKey}`);
+
+    userDataWs.on('open', () => {
+      console.log('✅ Connected to User Data Stream - real-time position/balance updates enabled');
+      startKeepalive();
+    });
+
+    userDataWs.on('message', (data) => {
+      try {
+        const event = JSON.parse(data.toString());
+        
+        // Handle account updates (position/balance changes)
+        if (event.e === 'ACCOUNT_UPDATE') {
+          console.log('📊 Account Update:', JSON.stringify(event, null, 2));
+          
+          // Clear cache to force fresh data fetch on next request
+          apiCache.delete('live_account');
+          apiCache.delete('live_positions');
+          
+          // Broadcast to all connected WebSocket clients
+          // The frontend will refetch the data through existing endpoints
+        }
+        
+        // Handle order updates
+        else if (event.e === 'ORDER_TRADE_UPDATE') {
+          console.log('📋 Order Update:', JSON.stringify(event.o, null, 2));
+          
+          // Clear cache to get fresh order data
+          apiCache.delete('live_open_orders');
+          apiCache.delete('live_positions');
+        }
+        
+        // Handle listen key expiration
+        else if (event.e === 'listenKeyExpired') {
+          console.error('⚠️ Listen key expired - reconnecting...');
+          currentListenKey = null;
+          connectToUserDataStream();
+        }
+      } catch (error) {
+        console.error('❌ Error processing User Data Stream message:', error);
+      }
+    });
+
+    userDataWs.on('error', (error) => {
+      console.error('❌ User Data Stream error:', error);
+    });
+
+    userDataWs.on('close', (code, reason) => {
+      console.log(`❌ User Data Stream closed - Code: ${code}, Reason: ${reason}`);
+      console.log('🔄 Reconnecting in 5 seconds...');
+      setTimeout(() => connectToUserDataStream(), 5000);
+    });
+
+  } catch (error) {
+    console.error('❌ Failed to connect to User Data Stream:', error);
   }
 }
