@@ -918,6 +918,139 @@ export class StrategyEngine extends EventEmitter {
     console.log(`❌ Order retry timeout: Failed to place order within ${maxRetryDuration}ms due to price movement`);
   }
 
+  // Execute batch orders on Aster DEX (more efficient, reduces API calls)
+  private async executeBatchOrders(orders: Array<{
+    symbol: string;
+    side: string;
+    orderType: string;
+    quantity: number;
+    price: number;
+    positionSide?: string;
+  }>): Promise<{ success: boolean; results?: any[]; error?: string }> {
+    try {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+      
+      if (!apiKey || !secretKey) {
+        console.error('❌ Aster DEX API keys not configured');
+        return { success: false, error: 'API keys not configured' };
+      }
+      
+      if (orders.length === 0 || orders.length > 5) {
+        console.error('❌ Batch orders must contain 1-5 orders');
+        return { success: false, error: 'Invalid batch size (must be 1-5)' };
+      }
+      
+      // Build batch orders array
+      const batchOrders = orders.map(order => {
+        const roundedQuantity = this.roundQuantity(order.symbol, order.quantity);
+        const roundedPrice = this.roundPrice(order.symbol, order.price);
+        
+        const orderParams: Record<string, string | number> = {
+          symbol: order.symbol,
+          side: order.side.toUpperCase(),
+          type: order.orderType.toUpperCase(),
+          quantity: roundedQuantity,
+        };
+        
+        // Add positionSide if in dual mode
+        if (this.exchangePositionMode === 'dual' && order.positionSide) {
+          orderParams.positionSide = order.positionSide.toUpperCase();
+        }
+        
+        // Add price/stopPrice based on order type
+        if (order.orderType.toLowerCase() === 'limit') {
+          orderParams.price = roundedPrice;
+          orderParams.timeInForce = 'GTC';
+          orderParams.reduceOnly = 'true';
+        } else if (order.orderType.toLowerCase() === 'stop_market') {
+          orderParams.stopPrice = roundedPrice;
+          orderParams.reduceOnly = 'true';
+        }
+        
+        return orderParams;
+      });
+      
+      const timestamp = Date.now();
+      const params: Record<string, string | number> = {
+        batchOrders: JSON.stringify(batchOrders),
+        timestamp,
+        recvWindow: 5000,
+      };
+      
+      // Create query string for signature
+      const queryString = Object.entries(params)
+        .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
+        .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
+        .join('&');
+      
+      // Generate signature
+      const signature = createHmac('sha256', secretKey)
+        .update(queryString)
+        .digest('hex');
+      
+      const signedParams = `${queryString}&signature=${signature}`;
+      
+      console.log(`🔴 BATCH ORDER: Placing ${orders.length} orders in one API call`);
+      console.log(`⚠️ REAL MONEY: This will place ${orders.length} LIVE orders on Aster DEX`);
+      
+      // Execute with retry logic
+      let retryAttempt = 0;
+      const maxRetries = 3;
+      let response: Response | null = null;
+      let responseText = '';
+      
+      while (retryAttempt <= maxRetries) {
+        response = await fetch('https://fapi.asterdex.com/fapi/v1/batchOrders', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-MBX-APIKEY': apiKey,
+          },
+          body: signedParams,
+        });
+        
+        responseText = await response.text();
+        
+        if (response.status === 429) {
+          retryAttempt++;
+          if (retryAttempt <= maxRetries) {
+            const backoffDelay = Math.min(1000 * Math.pow(2, retryAttempt), 10000);
+            console.log(`⏱️ Rate limited. Retrying in ${backoffDelay}ms (attempt ${retryAttempt}/${maxRetries})...`);
+            await new Promise(resolve => setTimeout(resolve, backoffDelay));
+            continue;
+          } else {
+            console.error(`❌ Rate limited after ${maxRetries} retries`);
+            return { success: false, error: `Rate limited (429) after ${maxRetries} retries` };
+          }
+        }
+        
+        break;
+      }
+      
+      if (!response.ok) {
+        console.error(`❌ Batch order failed (${response.status}): ${responseText}`);
+        try {
+          const errorData = JSON.parse(responseText);
+          return { 
+            success: false, 
+            error: `API Error ${errorData.code || response.status}: ${errorData.msg || responseText}` 
+          };
+        } catch {
+          return { success: false, error: `HTTP ${response.status}: ${responseText}` };
+        }
+      }
+      
+      const results = JSON.parse(responseText);
+      console.log(`✅ Batch order executed successfully: ${orders.length} orders placed`);
+      
+      return { success: true, results };
+    } catch (error) {
+      console.error('❌ Error executing batch order:', error);
+      return { success: false, error: String(error) };
+    }
+  }
+
   // Execute live order on Aster DEX with proper HMAC-SHA256 signature
   private async executeLiveOrder(params: {
     symbol: string;
@@ -981,9 +1114,10 @@ export class StrategyEngine extends EventEmitter {
       if (orderType.toLowerCase() === 'limit') {
         orderParams.price = roundedPrice;
         orderParams.timeInForce = 'GTC'; // Good Till Cancel
+        orderParams.reduceOnly = 'true'; // TP orders can only reduce positions
       } else if (orderType.toLowerCase() === 'stop_market') {
         orderParams.stopPrice = roundedPrice; // Trigger price for stop market orders
-        orderParams.closePosition = 'true'; // Close entire position when triggered
+        orderParams.reduceOnly = 'true'; // SL orders can only reduce positions
       }
       
       // Create query string for signature (sorted alphabetically for consistency)
@@ -2406,34 +2540,35 @@ export class StrategyEngine extends EventEmitter {
       console.log(`🎯 Placing automatic TP/SL orders for ${position.symbol} ${position.side}:`);
       console.log(`   Entry: $${entryPrice.toFixed(2)} | TP: $${tpPrice.toFixed(2)} (+${tpPercent}%) | SL: $${slPrice.toFixed(2)} (-${slPercent}%)`);
       
-      // Place TP order (LIMIT)
-      const tpResult = await this.placeExitOrder(
-        position,
-        'LIMIT',
-        tpPrice,
-        quantity,
-        'take_profit'
-      );
+      // Determine exit side (opposite of position side)
+      const exitSide = position.side === 'long' ? 'sell' : 'buy';
       
-      if (tpResult.success) {
-        console.log(`✅ Take Profit order placed automatically for ${position.symbol}`);
+      // Place TP and SL orders in a SINGLE batch API call (more efficient!)
+      const batchOrders = [
+        {
+          symbol: position.symbol,
+          side: exitSide,
+          orderType: 'LIMIT', // TP uses LIMIT order with reduceOnly
+          quantity,
+          price: tpPrice,
+          positionSide: this.exchangePositionMode === 'dual' ? position.side : undefined,
+        },
+        {
+          symbol: position.symbol,
+          side: exitSide,
+          orderType: 'STOP_MARKET', // SL uses STOP_MARKET with reduceOnly
+          quantity,
+          price: slPrice,
+          positionSide: this.exchangePositionMode === 'dual' ? position.side : undefined,
+        }
+      ];
+      
+      const batchResult = await this.executeBatchOrders(batchOrders);
+      
+      if (batchResult.success) {
+        console.log(`✅ TP/SL orders placed automatically for ${position.symbol} (batch: 2 orders in 1 API call)`);
       } else {
-        console.error(`❌ Failed to place automatic TP order: ${tpResult.error}`);
-      }
-      
-      // Place SL order (STOP_MARKET)
-      const slResult = await this.placeExitOrder(
-        position,
-        'STOP_MARKET',
-        slPrice,
-        quantity,
-        'stop_loss'
-      );
-      
-      if (slResult.success) {
-        console.log(`✅ Stop Loss order placed automatically for ${position.symbol}`);
-      } else {
-        console.error(`❌ Failed to place automatic SL order: ${slResult.error}`);
+        console.error(`❌ Failed to place automatic TP/SL orders: ${batchResult.error}`);
       }
       
     } catch (error) {
