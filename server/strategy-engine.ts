@@ -996,17 +996,26 @@ export class StrategyEngine extends EventEmitter {
       });
       
       const timestamp = Date.now();
+      
+      // CRITICAL FIX: Build query string manually to avoid double-encoding JSON
+      // The batchOrders parameter needs special handling - it's already a JSON string
+      const batchOrdersJson = JSON.stringify(batchOrders);
+      
+      // Build params object without the batchOrders first
       const params: Record<string, string | number> = {
-        batchOrders: JSON.stringify(batchOrders),
         timestamp,
         recvWindow: 5000,
       };
       
       // Create query string for signature
-      const queryString = Object.entries(params)
+      // Sort all params alphabetically, then manually add batchOrders
+      const sortedParams = Object.entries(params)
         .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
-        .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
+        .map(([k, v]) => `${k}=${v}`)
         .join('&');
+      
+      // Add batchOrders with proper encoding (only encode special chars, not the whole JSON)
+      const queryString = `batchOrders=${encodeURIComponent(batchOrdersJson)}&${sortedParams}`;
       
       // Generate signature
       const signature = createHmac('sha256', secretKey)
@@ -1016,6 +1025,7 @@ export class StrategyEngine extends EventEmitter {
       const signedParams = `${queryString}&signature=${signature}`;
       
       console.log(`🔴 BATCH ORDER: Placing ${orders.length} orders in one API call`);
+      console.log(`📦 Batch payload sample:`, batchOrdersJson.substring(0, 200));
       console.log(`⚠️ REAL MONEY: This will place ${orders.length} LIVE orders on Aster DEX`);
       
       // Execute with retry logic
