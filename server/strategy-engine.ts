@@ -65,6 +65,7 @@ export class StrategyEngine extends EventEmitter {
   private exchangePositionMode: 'one-way' | 'dual' | null = null; // Cache exchange position mode
   private lastFillTime: Map<string, number> = new Map(); // "sessionId-symbol-side" -> timestamp of last fill
   private fillCooldownMs: number = 30000; // 30 second cooldown between layers/entries
+  private leverageSetForSymbols: Set<string> = new Set(); // Track symbols that have leverage configured on exchange
 
   constructor() {
     super();
@@ -618,6 +619,17 @@ export class StrategyEngine extends EventEmitter {
       const quantity = positionValue / price;
 
       console.log(`🎯 Entering ${orderSide} position for ${liquidation.symbol} at $${price} (Capital: ${marginPercent}% of $${currentBalance} = $${availableCapital}, Position: ${positionSizePercent}% = $${basePositionValue}, Leverage: ${leverage}x = $${positionValue})`);
+
+      // Set leverage on exchange if in live mode and not already set for this symbol
+      if (session.mode === 'live' && !this.leverageSetForSymbols.has(liquidation.symbol)) {
+        console.log(`⚙️ Setting ${liquidation.symbol} leverage to ${leverage}x on exchange...`);
+        const leverageSet = await this.setLeverage(liquidation.symbol, leverage);
+        if (leverageSet) {
+          this.leverageSetForSymbols.add(liquidation.symbol);
+        } else {
+          console.error(`❌ Failed to set leverage for ${liquidation.symbol}, continuing anyway...`);
+        }
+      }
 
       // Apply order delay for smart placement
       if (strategy.orderDelayMs > 0) {
@@ -1408,6 +1420,58 @@ export class StrategyEngine extends EventEmitter {
     } catch (error) {
       console.error('❌ Error fetching open orders:', error);
       return [];
+    }
+  }
+
+  // Set leverage for a symbol on Aster DEX
+  private async setLeverage(symbol: string, leverage: number): Promise<boolean> {
+    try {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+      
+      if (!apiKey || !secretKey) {
+        console.error('❌ Aster DEX API keys not configured');
+        return false;
+      }
+      
+      const timestamp = Date.now();
+      const leverageParams: Record<string, string | number> = {
+        symbol,
+        leverage,
+        timestamp,
+        recvWindow: 5000,
+      };
+      
+      const queryString = Object.entries(leverageParams)
+        .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
+        .map(([k, v]) => `${k}=${v}`)
+        .join('&');
+      
+      const signature = createHmac('sha256', secretKey)
+        .update(queryString)
+        .digest('hex');
+      
+      const signedParams = `${queryString}&signature=${signature}`;
+      
+      const response = await fetch(`https://fapi.asterdex.com/fapi/v1/leverage?${signedParams}`, {
+        method: 'POST',
+        headers: {
+          'X-MBX-APIKEY': apiKey,
+        },
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ Failed to set leverage for ${symbol}: ${response.status} ${errorText}`);
+        return false;
+      }
+      
+      const result = await response.json();
+      console.log(`✅ Set ${symbol} leverage to ${leverage}x:`, result);
+      return true;
+    } catch (error) {
+      console.error('❌ Error setting leverage:', error);
+      return false;
     }
   }
 
