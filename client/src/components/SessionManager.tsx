@@ -39,7 +39,6 @@ interface TradeSession {
 export default function SessionManager() {
   const [isNewSessionOpen, setIsNewSessionOpen] = useState(false);
   const [isLoadSessionOpen, setIsLoadSessionOpen] = useState(false);
-  const [selectedMode, setSelectedMode] = useState<'paper' | 'live'>('paper');
   const [sessionName, setSessionName] = useState('');
   const { toast } = useToast();
 
@@ -47,10 +46,15 @@ export default function SessionManager() {
     queryKey: ['/api/sessions'],
   });
 
+  const { data: strategies = [] } = useQuery<any[]>({
+    queryKey: ['/api/strategies'],
+  });
+  const activeStrategy = strategies.find(s => s.isActive);
+
   const newSessionMutation = useMutation({
     mutationFn: async () => {
       const response = await apiRequest('POST', '/api/sessions/new', {
-        mode: selectedMode,
+        mode: activeStrategy?.tradingMode || 'paper',
         name: sessionName || undefined,
       });
       return response.json();
@@ -63,7 +67,7 @@ export default function SessionManager() {
       setSessionName('');
       toast({
         title: "New session started",
-        description: `${selectedMode === 'live' ? 'Live' : 'Paper'} trading session created successfully`,
+        description: "Trading session created successfully",
       });
       window.location.reload();
     },
@@ -105,15 +109,19 @@ export default function SessionManager() {
   const previousSessions = sessions.filter(s => !s.isActive).slice(0, 10);
 
   const formatSessionLabel = (session: TradeSession) => {
-    const name = session.name || `${session.mode === 'live' ? 'Live' : 'Paper'} Session`;
+    const name = session.name || `Session ${format(new Date(session.startedAt), 'MMM d, h:mm a')}`;
     const dateRange = session.endedAt
       ? `${format(new Date(session.startedAt), 'MMM d, yyyy')} - ${format(new Date(session.endedAt), 'MMM d, yyyy')}`
       : `Started ${format(new Date(session.startedAt), 'MMM d, yyyy')}`;
     const pnl = parseFloat(session.totalPnl);
     const pnlColor = pnl >= 0 ? 'text-lime-500' : 'text-orange-500';
+    const modeLabel = session.mode === 'live' ? '🔴 Live' : '📄 Paper';
     return (
       <div className="flex flex-col">
-        <span className="font-medium">{name}</span>
+        <div className="flex items-center gap-2">
+          <span className="font-medium">{name}</span>
+          <span className="text-xs text-muted-foreground">{modeLabel}</span>
+        </div>
         <span className="text-xs text-muted-foreground">{dateRange}</span>
         <span className={`text-xs font-mono ${pnlColor}`}>
           P&L: ${pnl.toFixed(2)} ({session.totalTrades} trades)
@@ -139,29 +147,13 @@ export default function SessionManager() {
         </DialogTrigger>
         <DialogContent data-testid="dialog-new-session">
           <DialogHeader>
-            <DialogTitle>Start New Trading Session</DialogTitle>
+            <DialogTitle>Start New Session</DialogTitle>
             <DialogDescription>
               Create a fresh session with reset performance metrics. Your current session will be saved.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="mode">Trading Mode</Label>
-              <Select
-                value={selectedMode}
-                onValueChange={(value) => setSelectedMode(value as 'paper' | 'live')}
-              >
-                <SelectTrigger id="mode" data-testid="select-mode">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="paper">Paper Trading</SelectItem>
-                  <SelectItem value="live">Live Trading</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
             <div className="space-y-2">
               <Label htmlFor="name">Session Name (Optional)</Label>
               <Input
@@ -171,16 +163,10 @@ export default function SessionManager() {
                 value={sessionName}
                 onChange={(e) => setSessionName(e.target.value)}
               />
+              <p className="text-xs text-muted-foreground">
+                Session will use your current trading mode: {activeStrategy?.tradingMode === 'live' ? '🔴 Live' : '📄 Paper'}
+              </p>
             </div>
-
-            {selectedMode === 'live' && (
-              <div className="flex items-start gap-2 p-3 bg-orange-500/10 border border-orange-500/20 rounded-md">
-                <AlertCircle className="h-5 w-5 text-orange-500 mt-0.5" />
-                <div className="text-sm text-orange-500">
-                  <strong>REAL MONEY WARNING:</strong> This will start a live trading session using real funds.
-                </div>
-              </div>
-            )}
           </div>
 
           <div className="flex justify-end gap-2">
@@ -217,9 +203,9 @@ export default function SessionManager() {
         </DialogTrigger>
         <DialogContent className="max-w-2xl" data-testid="dialog-load-session">
           <DialogHeader>
-            <DialogTitle>Load Previous Session</DialogTitle>
+            <DialogTitle>Load Session</DialogTitle>
             <DialogDescription>
-              Select a previous session to review or continue trading. Your current session will be saved.
+              Select a previous session to review or continue. Your current session will be saved.
             </DialogDescription>
           </DialogHeader>
 
