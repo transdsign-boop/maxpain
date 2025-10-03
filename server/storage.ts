@@ -207,6 +207,29 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
+  async getAssetPerformance(): Promise<{ symbol: string; wins: number; losses: number; winRate: number }[]> {
+    const result = await db.select({
+      symbol: positions.symbol,
+      wins: sql<number>`COUNT(CASE WHEN ${positions.realizedPnl} > 0 THEN 1 END)`,
+      losses: sql<number>`COUNT(CASE WHEN ${positions.realizedPnl} < 0 THEN 1 END)`,
+    })
+    .from(positions)
+    .where(eq(positions.isOpen, false))
+    .groupBy(positions.symbol);
+    
+    return result.map(r => {
+      const wins = parseInt(String(r.wins));
+      const losses = parseInt(String(r.losses));
+      const total = wins + losses;
+      return {
+        symbol: r.symbol,
+        wins,
+        losses,
+        winRate: total > 0 ? (wins / total) * 100 : 0
+      };
+    });
+  }
+
   async deleteOldLiquidations(olderThanDays: number): Promise<number> {
     const cutoffDate = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000);
     
