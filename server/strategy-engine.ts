@@ -3115,44 +3115,21 @@ export class StrategyEngine extends EventEmitter {
       this.cleanupInProgress = true;
       
       try {
-        console.log('🧹 Starting periodic cleanup and auto-repair...');
+        console.log('🧹 CLEANUP/AUTO-REPAIR PAUSED FOR DEBUGGING');
         
-        // 1. Clean up orphaned TP/SL orders (missing parent positions)
-        const orphanedCount = await this.cleanupOrphanedTPSL();
-        if (orphanedCount > 0) {
-          console.log(`  ✓ Removed ${orphanedCount} orphaned TP/SL orders`);
-        }
+        // TEMPORARILY DISABLED - Testing batch orders without interference
+        // const orphanedCount = await this.cleanupOrphanedTPSL();
+        // const staleCount = await this.cleanupStaleLimitOrders();
+        // const repairedCount = await this.autoRepairMissingTPSL();
+        // const fixedCount = await this.fixIncorrectStopLossOrders();
         
-        // 2. Clean up stale limit orders (older than 3 minutes)
-        const staleCount = await this.cleanupStaleLimitOrders();
-        if (staleCount > 0) {
-          console.log(`  ✓ Canceled ${staleCount} stale limit orders`);
-        }
-        
-        // 3. Auto-repair missing TP/SL orders for open positions
-        const repairedCount = await this.autoRepairMissingTPSL();
-        if (repairedCount > 0) {
-          console.log(`  ✓ Placed ${repairedCount} missing TP/SL orders`);
-        }
-        
-        // 4. Fix incorrect stop-loss orders (wrong stop price calculations)
-        const fixedCount = await this.fixIncorrectStopLossOrders();
-        if (fixedCount > 0) {
-          console.log(`  ✓ Fixed ${fixedCount} incorrect stop-loss orders`);
-        }
-        
-        // 5. Delete liquidations older than 5 days
+        // 5. Keep data retention active (delete old liquidations)
         const deletedCount = await storage.deleteOldLiquidations(5);
         if (deletedCount > 0) {
           console.log(`  ✓ Deleted ${deletedCount} liquidations older than 5 days`);
         }
         
-        const totalActions = orphanedCount + staleCount + repairedCount + fixedCount + deletedCount;
-        if (totalActions === 0) {
-          console.log('  ✓ All systems healthy, no cleanup needed');
-        } else {
-          console.log(`🧹 Cleanup complete: ${totalActions} total actions taken`);
-        }
+        console.log('  ✓ Cleanup/auto-repair paused - only data retention active');
       } catch (error) {
         console.error('❌ Error in cleanup monitoring:', error);
       } finally {
