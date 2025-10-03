@@ -2497,7 +2497,7 @@ export class StrategyEngine extends EventEmitter {
     }
   }
 
-  // Update unrealized P&L for positions (monitoring only - no programmatic exits)
+  // Check if position should be closed
   private async checkExitCondition(strategy: Strategy, position: Position) {
     // Fetch real-time current price from Aster DEX API (no cache)
     let currentPrice: number | null = null;
@@ -2517,6 +2517,7 @@ export class StrategyEngine extends EventEmitter {
     if (!currentPrice) return;
 
     const avgEntryPrice = parseFloat(position.avgEntryPrice);
+    const profitTargetPercent = parseFloat(strategy.profitTargetPercent);
     
     let unrealizedPnl = 0;
     if (position.side === 'long') {
@@ -2525,11 +2526,24 @@ export class StrategyEngine extends EventEmitter {
       unrealizedPnl = ((avgEntryPrice - currentPrice) / avgEntryPrice) * 100;
     }
 
-    // Update position with latest unrealized P&L (based on real-time price)
-    // NOTE: We only update P&L for display - the exchange handles TP/SL execution via placed orders
+    // Update position with latest unrealized PnL (based on real-time price)
     await storage.updatePosition(position.id, {
       unrealizedPnl: unrealizedPnl.toString(),
     });
+
+    // Check if profit target is reached (exit with limit order - 0.01% maker fee)
+    if (unrealizedPnl >= profitTargetPercent) {
+      await this.closePosition(position, currentPrice, unrealizedPnl, 'take_profit');
+      return;
+    }
+
+    // Check if stop loss is triggered (exit with stop market order - 0.035% taker fee)
+    const stopLossPercent = parseFloat(strategy.stopLossPercent);
+    if (unrealizedPnl <= -stopLossPercent) {
+      console.log(`🛑 Stop loss triggered for ${position.symbol}: ${unrealizedPnl.toFixed(2)}% loss exceeds -${stopLossPercent}% threshold`);
+      await this.closePosition(position, currentPrice, unrealizedPnl, 'stop_loss');
+      return;
+    }
   }
 
   // Close a position at current market price
@@ -2835,15 +2849,12 @@ export class StrategyEngine extends EventEmitter {
     }
   }
 
-  // Handle position update events (DISABLED - no programmatic exits)
-  // The exchange handles TP/SL execution via placed orders
+  // Handle position update events
   private async handlePositionUpdate(update: PositionUpdate) {
-    // Position updates are monitored for unrealized P&L only
-    // Positions only close when the exchange executes TP/SL orders
     if (update.shouldExit) {
       const position = await storage.getPosition(update.positionId);
       if (position && position.isOpen) {
-        console.log(`📊 Position ${position.symbol} exit condition met (P&L: ${update.unrealizedPnl.toFixed(2)}%) - waiting for exchange TP/SL execution`);
+        await this.closePosition(position, update.currentPrice, update.unrealizedPnl);
       }
     }
   }
