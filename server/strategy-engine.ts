@@ -403,11 +403,7 @@ export class StrategyEngine extends EventEmitter {
         // Position was created by the concurrent process, check if we should layer
         const shouldLayer = await this.shouldAddLayer(strategy, positionAfterWait, liquidation);
         if (shouldLayer) {
-          // Set cooldown IMMEDIATELY to prevent duplicate layers
-          const cooldownKey = `${session.id}-${liquidation.symbol}-${positionSide}`;
-          this.lastFillTime.set(cooldownKey, Date.now());
-          console.log(`🔒 Layer cooldown locked for ${liquidation.symbol} ${positionSide} (${this.fillCooldownMs / 1000}s)`);
-          
+          // NOTE: executeLayer() atomically checks and sets cooldown at the start
           await this.executeLayer(strategy, session, positionAfterWait, liquidation, positionSide);
         }
       }
@@ -431,22 +427,14 @@ export class StrategyEngine extends EventEmitter {
         // We have an open position - check if we should add a layer
         const shouldLayer = await this.shouldAddLayer(strategy, existingPosition, liquidation);
         if (shouldLayer) {
-          // Set cooldown IMMEDIATELY to prevent duplicate layers
-          const cooldownKey = `${session.id}-${liquidation.symbol}-${positionSide}`;
-          this.lastFillTime.set(cooldownKey, Date.now());
-          console.log(`🔒 Layer cooldown locked for ${liquidation.symbol} ${positionSide} (${this.fillCooldownMs / 1000}s)`);
-          
+          // NOTE: executeLayer() atomically checks and sets cooldown at the start
           await this.executeLayer(strategy, session, existingPosition, liquidation, positionSide);
         }
       } else {
         // No open position - check if we should enter a new position
+        // NOTE: shouldEnterPosition() atomically sets cooldown if it returns true
         const shouldEnter = await this.shouldEnterPosition(strategy, liquidation, recentLiquidations, session, positionSide);
         if (shouldEnter) {
-          // Set cooldown IMMEDIATELY to prevent duplicate entries from concurrent liquidations
-          const cooldownKey = `${session.id}-${liquidation.symbol}-${positionSide}`;
-          this.lastFillTime.set(cooldownKey, Date.now());
-          console.log(`🔒 Entry cooldown locked for ${liquidation.symbol} ${positionSide} (${this.fillCooldownMs / 1000}s)`);
-          
           await this.executeEntry(strategy, session, liquidation, positionSide);
         }
       }
@@ -468,6 +456,7 @@ export class StrategyEngine extends EventEmitter {
   }
 
   // Determine if we should enter a new position based on percentile threshold
+  // ATOMIC OPERATION: This function checks conditions AND sets cooldown if passing
   private async shouldEnterPosition(
     strategy: Strategy, 
     liquidation: Liquidation, 
@@ -475,7 +464,7 @@ export class StrategyEngine extends EventEmitter {
     session: TradeSession,
     positionSide: string
   ): Promise<boolean> {
-    // Check cooldown: prevent rapid entries on same symbol+side
+    // ATOMIC COOLDOWN CHECK: Must be first check to prevent race conditions
     const cooldownKey = `${session.id}-${liquidation.symbol}-${positionSide}`;
     const lastFill = this.lastFillTime.get(cooldownKey);
     if (lastFill) {
@@ -504,8 +493,17 @@ export class StrategyEngine extends EventEmitter {
     
     console.log(`📊 Percentile Analysis: Current liquidation $${currentLiquidationValue.toFixed(2)} vs ${strategy.percentileThreshold}% threshold $${percentileValue.toFixed(2)} (${liquidationValues.length} liquidations in ${strategy.liquidationLookbackHours}h window)`);
     
-    // Only enter if current liquidation equals or exceeds the percentile threshold
-    return currentLiquidationValue >= percentileValue;
+    // Check if we should enter based on percentile
+    const shouldEnter = currentLiquidationValue >= percentileValue;
+    
+    if (shouldEnter) {
+      // ATOMICALLY set cooldown IMMEDIATELY when decision is made (before returning)
+      // This prevents race condition where two threads both pass the check before either sets cooldown
+      this.lastFillTime.set(cooldownKey, Date.now());
+      console.log(`🔒 Entry cooldown locked ATOMICALLY for ${liquidation.symbol} ${positionSide} (${this.fillCooldownMs / 1000}s)`);
+    }
+    
+    return shouldEnter;
   }
 
   // Determine if we should add a layer to existing position
@@ -656,18 +654,8 @@ export class StrategyEngine extends EventEmitter {
     positionSide: string
   ) {
     try {
-      const side = position.side === 'long' ? 'buy' : 'sell';
-      const price = parseFloat(liquidation.price);
-      const nextLayer = position.layersFilled + 1;
-      
-      // Check if we already have a pending order for this layer
-      const pendingLayers = this.pendingLayerOrders.get(position.id);
-      if (pendingLayers && pendingLayers.has(nextLayer)) {
-        console.log(`⏭️ Skipping layer ${nextLayer} for ${liquidation.symbol} - already pending`);
-        return;
-      }
-      
-      // Check cooldown: wait 10 seconds after last fill before adding another layer
+      // ATOMIC COOLDOWN CHECK: Must be FIRST to prevent race conditions
+      // Check cooldown and set it atomically if passing
       const cooldownKey = `${session.id}-${liquidation.symbol}-${positionSide}`;
       const lastFill = this.lastFillTime.get(cooldownKey);
       if (lastFill) {
@@ -677,6 +665,22 @@ export class StrategyEngine extends EventEmitter {
           console.log(`⏸️ Layer cooldown active for ${liquidation.symbol} ${positionSide} - wait ${waitTime}s before next layer`);
           return;
         }
+      }
+      
+      // ATOMICALLY set cooldown IMMEDIATELY after passing check
+      // This prevents race condition where two threads both pass the check before either sets cooldown
+      this.lastFillTime.set(cooldownKey, Date.now());
+      console.log(`🔒 Layer cooldown locked ATOMICALLY for ${liquidation.symbol} ${positionSide} (${this.fillCooldownMs / 1000}s)`);
+      
+      const side = position.side === 'long' ? 'buy' : 'sell';
+      const price = parseFloat(liquidation.price);
+      const nextLayer = position.layersFilled + 1;
+      
+      // Check if we already have a pending order for this layer
+      const pendingLayers = this.pendingLayerOrders.get(position.id);
+      if (pendingLayers && pendingLayers.has(nextLayer)) {
+        console.log(`⏭️ Skipping layer ${nextLayer} for ${liquidation.symbol} - already pending`);
+        return;
       }
       
       // Mark this layer as pending
