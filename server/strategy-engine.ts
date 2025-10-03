@@ -58,7 +58,6 @@ export class StrategyEngine extends EventEmitter {
   private isRunning = false;
   private orderMonitorInterval?: NodeJS.Timeout;
   private cleanupInterval?: NodeJS.Timeout;
-  private tpslMonitorInterval?: NodeJS.Timeout;
   private wsClients: Set<any> = new Set(); // WebSocket clients for broadcasting trade notifications
   private staleLimitOrderSeconds: number = 180; // 3 minutes default timeout for limit orders
   private recoveryAttempts: Map<string, number> = new Map(); // Track cooldown for auto-repair attempts
@@ -178,10 +177,8 @@ export class StrategyEngine extends EventEmitter {
     // Start monitoring pending paper orders for limit order simulation
     this.startPaperOrderMonitoring();
     
-    // Start monitoring TP/SL orders for live positions (every 2 minutes)
-    this.startTPSLMonitoring();
-    
     // Start periodic cleanup of orphaned TP/SL orders (every 5 minutes)
+    // NOTE: TP/SL updates are handled by updateProtectiveOrders() after each fill
     this.startCleanupMonitoring();
     
     console.log(`✅ StrategyEngine started with ${this.activeStrategies.size} active strategies`);
@@ -201,11 +198,6 @@ export class StrategyEngine extends EventEmitter {
     if (this.cleanupInterval) {
       clearInterval(this.cleanupInterval);
       this.cleanupInterval = undefined;
-    }
-    
-    if (this.tpslMonitorInterval) {
-      clearInterval(this.tpslMonitorInterval);
-      this.tpslMonitorInterval = undefined;
     }
     
     this.activeStrategies.clear();
@@ -2841,13 +2833,24 @@ export class StrategyEngine extends EventEmitter {
       if (existingOrders.length > 0) {
         console.log(`🔄 Updating protective orders for ${position.symbol} ${position.side} (Qty: ${quantity}):`);
         console.log(`   Avg Entry: $${entryPrice.toFixed(2)} | New TP: $${tpPrice.toFixed(2)} | New SL: $${slPrice.toFixed(2)}`);
-        console.log(`   Found ${existingOrders.length} existing TP/SL orders to cancel`);
+        console.log(`   Found ${existingOrders.length} existing TP/SL orders to cancel FIRST`);
+        
+        // CRITICAL: Cancel OLD orders FIRST to prevent duplicate TP/SL orders
+        for (const oldOrder of existingOrders) {
+          try {
+            await this.cancelExchangeOrder(position.symbol, oldOrder.orderId);
+            console.log(`✅ Cancelled old ${oldOrder.type} order: ${oldOrder.orderId}`);
+          } catch (error) {
+            console.warn(`⚠️ Failed to cancel old ${oldOrder.type} order ${oldOrder.orderId}:`, error);
+            // Continue anyway - we'll try to place new orders
+          }
+        }
       } else {
         console.log(`🎯 Placing initial protective orders for ${position.symbol} ${position.side}:`);
         console.log(`   Entry: $${entryPrice.toFixed(2)} | TP: $${tpPrice.toFixed(2)} (+${tpPercent}%) | SL: $${slPrice.toFixed(2)} (-${slPercent}%)`);
       }
       
-      // STEP 1: Place TWO INDIVIDUAL ORDERS (not batch - simpler and more reliable)
+      // STEP 2: Now place NEW orders (after old ones are cancelled)
       // Place LIMIT order for take profit
       console.log(`📤 Placing LIMIT order for TP at $${tpPrice.toFixed(2)}`);
       const tpResult = await this.placeExitOrder(
@@ -2860,9 +2863,6 @@ export class StrategyEngine extends EventEmitter {
       
       if (!tpResult.success) {
         console.error(`❌ Failed to place TP order: ${tpResult.error}`);
-        if (existingOrders.length > 0) {
-          console.warn(`⚠️ Keeping existing ${existingOrders.length} TP/SL orders`);
-        }
         return;
       }
       
@@ -2883,24 +2883,10 @@ export class StrategyEngine extends EventEmitter {
           console.log(`🔄 Cancelling TP order ${tpResult.orderId} since SL failed`);
           await this.cancelOrderById(position.symbol, tpResult.orderId);
         }
-        if (existingOrders.length > 0) {
-          console.warn(`⚠️ Keeping existing ${existingOrders.length} TP/SL orders`);
-        }
         return;
       }
       
-      console.log(`✅ Both protective orders placed successfully (TP: ${tpResult.orderId}, SL: ${slResult.orderId})`);
-      
-      // STEP 2: Cancel OLD orders (only if they exist)
-      for (const oldOrder of existingOrders) {
-        try {
-          await this.cancelExchangeOrder(position.symbol, oldOrder.orderId);
-          console.log(`✅ Cancelled old ${oldOrder.type} order: ${oldOrder.orderId}`);
-        } catch (error) {
-          console.warn(`⚠️ Failed to cancel old ${oldOrder.type} order ${oldOrder.orderId}:`, error);
-          // Continue anyway - new orders are already in place
-        }
-      }
+      console.log(`✅ Both protective orders placed successfully (TP: ${tpResult.orderId}, SL: ${slResult.orderId})`)
       
         console.log(`✅ Protective orders updated successfully for ${position.symbol}`);
         
@@ -3194,97 +3180,8 @@ export class StrategyEngine extends EventEmitter {
     }
   }
 
-  // Start monitoring TP/SL orders for live positions
-  private startTPSLMonitoring() {
-    this.tpslMonitorInterval = setInterval(async () => {
-      if (!this.isRunning) return;
-      
-      try {
-        // Check all active live sessions
-        for (const [strategyId, session] of this.activeSessions.entries()) {
-          // Only monitor LIVE positions
-          if (session.mode !== 'live') continue;
-          
-          const strategy = this.activeStrategies.get(strategyId);
-          if (!strategy) continue;
-          
-          // Get all open positions for this session
-          const openPositions = await storage.getOpenPositions(session.id);
-          
-          for (const position of openPositions) {
-            try {
-              // Fetch current exchange orders for this symbol
-              const exchangeOrders = await this.fetchExchangeOrders(position.symbol);
-              
-              // Calculate TP and SL prices based on current entry price
-              const entryPrice = parseFloat(position.avgEntryPrice);
-              const tpPercent = parseFloat(strategy.profitTargetPercent);
-              const slPercent = parseFloat(strategy.stopLossPercent);
-              
-              let tpPrice: number;
-              let slPrice: number;
-              
-              if (position.side === 'long') {
-                tpPrice = entryPrice * (1 + tpPercent / 100);
-                slPrice = entryPrice * (1 - slPercent / 100);
-              } else {
-                tpPrice = entryPrice * (1 - tpPercent / 100);
-                slPrice = entryPrice * (1 + slPercent / 100);
-              }
-              
-              // Check if TP order exists (either TAKE_PROFIT_MARKET or LIMIT near TP price)
-              const hasTPOrder = exchangeOrders.some(o => 
-                o.symbol === position.symbol &&
-                o.positionSide === position.side &&
-                (o.type === 'TAKE_PROFIT_MARKET' || 
-                 (o.type === 'LIMIT' && Math.abs(parseFloat(o.price || '0') - tpPrice) < tpPrice * 0.001)) // Within 0.1%
-              );
-              
-              // Check if SL order exists
-              const hasSLOrder = exchangeOrders.some(o => 
-                o.symbol === position.symbol &&
-                o.positionSide === position.side &&
-                o.type === 'STOP_MARKET'
-              );
-              
-              const quantity = parseFloat(position.totalQuantity);
-              
-              // Place missing TP order
-              if (!hasTPOrder) {
-                console.log(`🔧 [TP/SL Monitor] Placing missing TP order for ${position.symbol} ${position.side} at $${tpPrice.toFixed(4)}`);
-                await this.placeExitOrder(
-                  position,
-                  'LIMIT',
-                  tpPrice,
-                  quantity,
-                  'take_profit'
-                );
-              }
-              
-              // Place missing SL order
-              if (!hasSLOrder) {
-                console.log(`🔧 [TP/SL Monitor] Placing missing SL order for ${position.symbol} ${position.side} at $${slPrice.toFixed(4)}`);
-                await this.placeExitOrder(
-                  position,
-                  'STOP_MARKET',
-                  slPrice,
-                  quantity,
-                  'stop_loss'
-                );
-              }
-              
-            } catch (error) {
-              console.error(`❌ [TP/SL Monitor] Error checking position ${position.symbol}:`, error);
-            }
-          }
-        }
-      } catch (error) {
-        console.error('❌ [TP/SL Monitor] Error in TP/SL monitoring:', error);
-      }
-    }, 2 * 60 * 1000); // Check every 2 minutes
-    
-    console.log('🛡️ TP/SL monitoring started: Checking for missing exit orders every 2 minutes');
-  }
+  // NOTE: TP/SL monitoring is handled by updateProtectiveOrders() which is called after each fill
+  // No need for separate monitoring - the system already updates TP/SL after every entry/layer
 
   // Start periodic cleanup and auto-repair monitoring
   private startCleanupMonitoring() {
