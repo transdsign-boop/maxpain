@@ -1772,8 +1772,8 @@ export class StrategyEngine extends EventEmitter {
         const lastAttempt = this.recoveryAttempts.get(cooldownKey) || 0;
         const now = Date.now();
         
-        // 5 minute cooldown between repair attempts
-        if (now - lastAttempt < 5 * 60 * 1000) {
+        // 2 minute cooldown between repair attempts
+        if (now - lastAttempt < 2 * 60 * 1000) {
           continue;
         }
         
@@ -2967,9 +2967,9 @@ export class StrategyEngine extends EventEmitter {
       } finally {
         this.cleanupInProgress = false;
       }
-    }, 5 * 60 * 1000); // 5 minutes
+    }, 2 * 60 * 1000); // 2 minutes
     
-    console.log('🧹 Safety monitoring started: Orphaned cleanup + Stale orders + Auto-repair + Data retention (5 min intervals)');
+    console.log('🧹 Safety monitoring started: Orphaned cleanup + Stale orders + Auto-repair + Data retention (2 min intervals)');
   }
 
   // Remove a pending paper order from tracking
