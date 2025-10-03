@@ -1193,6 +1193,263 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Ensure all open positions have TP/SL orders
+  app.post("/api/live/ensure-tpsl", async (req, res) => {
+    try {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+
+      if (!apiKey || !secretKey) {
+        return res.status(400).json({ error: "Aster DEX API keys not configured" });
+      }
+
+      console.log('🛡️ Ensuring all open positions have TP/SL orders...');
+
+      // Get the active strategy to get TP/SL percentages
+      const strategies = await storage.getStrategiesByUser(DEFAULT_USER_ID);
+      const activeStrategy = strategies.find(s => s.isActive);
+
+      if (!activeStrategy) {
+        return res.status(400).json({ error: "No active strategy found" });
+      }
+
+      if (activeStrategy.tradingMode !== 'live') {
+        return res.json({ 
+          success: false, 
+          message: "Strategy is not in live mode - TP/SL orders only for live trading" 
+        });
+      }
+
+      // Get active session
+      const session = await storage.getActiveTradeSession(activeStrategy.id);
+      if (!session) {
+        return res.status(400).json({ error: "No active session found" });
+      }
+
+      // Get all open positions for this session
+      const openPositions = await storage.getOpenPositions(session.id);
+      console.log(`📊 Found ${openPositions.length} open positions to check`);
+
+      // Fetch exchange precision info once for all symbols
+      const precisionResponse = await fetch('https://fapi.asterdex.com/fapi/v1/exchangeInfo');
+      const precisionData = await precisionResponse.json();
+      const symbolPrecisionMap = new Map();
+      
+      for (const symbolInfo of precisionData.symbols) {
+        const tickSize = parseFloat(symbolInfo.filters.find((f: any) => f.filterType === 'PRICE_FILTER')?.tickSize || '0.01');
+        const stepSize = parseFloat(symbolInfo.filters.find((f: any) => f.filterType === 'LOT_SIZE')?.stepSize || '0.01');
+        symbolPrecisionMap.set(symbolInfo.symbol, { tickSize, stepSize });
+      }
+      
+      // Helper function to round to tick size
+      const roundToTickSize = (price: number, tickSize: number): number => {
+        return Math.round(price / tickSize) * tickSize;
+      };
+      
+      // Helper function to round to step size
+      const roundToStepSize = (qty: number, stepSize: number): number => {
+        return Math.floor(qty / stepSize) * stepSize;
+      };
+
+      let placedTP = 0;
+      let placedSL = 0;
+      let alreadyProtected = 0;
+
+      for (const position of openPositions) {
+        try {
+          // Fetch existing orders for this symbol
+          const timestamp = Date.now();
+          const params = `symbol=${position.symbol}&timestamp=${timestamp}&recvWindow=5000`;
+          const signature = crypto
+            .createHmac('sha256', secretKey)
+            .update(params)
+            .digest('hex');
+
+          const response = await fetch(
+            `https://fapi.asterdex.com/fapi/v1/openOrders?${params}&signature=${signature}`,
+            {
+              headers: {
+                'X-MBX-APIKEY': apiKey,
+              },
+            }
+          );
+
+          if (!response.ok) {
+            console.error(`❌ Failed to fetch orders for ${position.symbol}`);
+            continue;
+          }
+
+          const orders = await response.json();
+
+          // Get precision info from map
+          const precisionInfo = symbolPrecisionMap.get(position.symbol);
+          if (!precisionInfo) {
+            console.error(`❌ No precision info for ${position.symbol}`);
+            continue;
+          }
+
+          const { tickSize, stepSize } = precisionInfo;
+
+          // Get precision for formatting
+          const pricePrecision = tickSize.toString().split('.')[1]?.length || 0;
+          const qtyPrecision = stepSize.toString().split('.')[1]?.length || 0;
+
+          // Calculate TP and SL prices
+          const entryPrice = parseFloat(position.avgEntryPrice);
+          let quantity = parseFloat(position.totalQuantity);
+          const tpPercent = parseFloat(activeStrategy.profitTargetPercent);
+          const slPercent = parseFloat(activeStrategy.stopLossPercent);
+
+          let tpPrice: number;
+          let slPrice: number;
+
+          if (position.side === 'long') {
+            tpPrice = roundToTickSize(entryPrice * (1 + tpPercent / 100), tickSize);
+            slPrice = roundToTickSize(entryPrice * (1 - slPercent / 100), tickSize);
+          } else {
+            tpPrice = roundToTickSize(entryPrice * (1 - tpPercent / 100), tickSize);
+            slPrice = roundToTickSize(entryPrice * (1 + slPercent / 100), tickSize);
+          }
+          
+          // Round quantity to step size
+          quantity = roundToStepSize(quantity, stepSize);
+
+          // Check for existing TP order
+          const hasTPOrder = orders.some((o: any) => 
+            o.positionSide?.toLowerCase() === position.side &&
+            (o.type === 'TAKE_PROFIT_MARKET' || 
+             (o.type === 'LIMIT' && Math.abs(parseFloat(o.price || '0') - tpPrice) < tpPrice * 0.01))
+          );
+
+          // Check for existing SL order
+          const hasSLOrder = orders.some((o: any) => 
+            o.positionSide?.toLowerCase() === position.side &&
+            o.type === 'STOP_MARKET'
+          );
+
+          if (hasTPOrder && hasSLOrder) {
+            alreadyProtected++;
+            console.log(`✅ ${position.symbol} ${position.side} already has TP/SL orders`);
+            continue;
+          }
+
+          // Place missing TP order (LIMIT order)
+          if (!hasTPOrder) {
+            console.log(`📤 Placing TP order for ${position.symbol} ${position.side} at $${tpPrice.toFixed(4)}`);
+            
+            const tpSide = position.side === 'long' ? 'SELL' : 'BUY';
+            const tpTimestamp = Date.now();
+            const tpParams = {
+              symbol: position.symbol,
+              side: tpSide,
+              type: 'LIMIT',
+              quantity: quantity.toFixed(qtyPrecision),
+              price: tpPrice.toFixed(pricePrecision),
+              timeInForce: 'GTC',
+              timestamp: tpTimestamp,
+              recvWindow: 5000,
+            };
+            
+            const tpQueryString = Object.entries(tpParams)
+              .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
+              .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
+              .join('&');
+            
+            const tpSignature = crypto
+              .createHmac('sha256', secretKey)
+              .update(tpQueryString)
+              .digest('hex');
+            
+            const tpResponse = await fetch(
+              `https://fapi.asterdex.com/fapi/v1/order?${tpQueryString}&signature=${tpSignature}`,
+              {
+                method: 'POST',
+                headers: {
+                  'X-MBX-APIKEY': apiKey,
+                },
+              }
+            );
+            
+            if (tpResponse.ok) {
+              placedTP++;
+              console.log(`✅ TP order placed for ${position.symbol} ${position.side}`);
+            } else {
+              const errorText = await tpResponse.text();
+              console.error(`❌ Failed to place TP order: ${errorText}`);
+            }
+            
+            await new Promise(resolve => setTimeout(resolve, 200)); // Delay to avoid rate limits
+          }
+
+          // Place missing SL order (STOP_MARKET order)
+          if (!hasSLOrder) {
+            console.log(`📤 Placing SL order for ${position.symbol} ${position.side} at $${slPrice.toFixed(4)}`);
+            
+            const slSide = position.side === 'long' ? 'SELL' : 'BUY';
+            const slTimestamp = Date.now();
+            const slParams = {
+              symbol: position.symbol,
+              side: slSide,
+              type: 'STOP_MARKET',
+              quantity: quantity.toFixed(qtyPrecision),
+              stopPrice: slPrice.toFixed(pricePrecision),
+              timestamp: slTimestamp,
+              recvWindow: 5000,
+            };
+            
+            const slQueryString = Object.entries(slParams)
+              .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
+              .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
+              .join('&');
+            
+            const slSignature = crypto
+              .createHmac('sha256', secretKey)
+              .update(slQueryString)
+              .digest('hex');
+            
+            const slResponse = await fetch(
+              `https://fapi.asterdex.com/fapi/v1/order?${slQueryString}&signature=${slSignature}`,
+              {
+                method: 'POST',
+                headers: {
+                  'X-MBX-APIKEY': apiKey,
+                },
+              }
+            );
+            
+            if (slResponse.ok) {
+              placedSL++;
+              console.log(`✅ SL order placed for ${position.symbol} ${position.side}`);
+            } else {
+              const errorText = await slResponse.text();
+              console.error(`❌ Failed to place SL order: ${errorText}`);
+            }
+            
+            await new Promise(resolve => setTimeout(resolve, 200)); // Delay to avoid rate limits
+          }
+
+        } catch (error) {
+          console.error(`❌ Error ensuring TP/SL for ${position.symbol}:`, error);
+        }
+      }
+
+      console.log(`✅ TP/SL check complete: ${placedTP} TP orders placed, ${placedSL} SL orders placed, ${alreadyProtected} already protected`);
+
+      res.json({
+        success: true,
+        totalPositions: openPositions.length,
+        placedTP,
+        placedSL,
+        alreadyProtected,
+        message: `Placed ${placedTP} TP and ${placedSL} SL orders. ${alreadyProtected} positions already protected.`
+      });
+
+    } catch (error) {
+      console.error('❌ Error ensuring TP/SL orders:', error);
+      res.status(500).json({ error: "Failed to ensure TP/SL orders" });
+    }
+  });
+
   // Get account trade history from Aster DEX (filtered by live session start time)
   app.get("/api/live/trades", async (req, res) => {
     try {
