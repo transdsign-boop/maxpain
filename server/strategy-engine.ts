@@ -65,7 +65,7 @@ export class StrategyEngine extends EventEmitter {
   private exchangePositionMode: 'one-way' | 'dual' | null = null; // Cache exchange position mode
   private lastFillTime: Map<string, number> = new Map(); // "sessionId-symbol-side" -> timestamp of last fill
   private fillCooldownMs: number = 30000; // 30 second cooldown between layers/entries
-  private leverageSetForSymbols: Set<string> = new Set(); // Track symbols that have leverage configured on exchange
+  private leverageSetForSymbols: Map<string, number> = new Map(); // symbol -> leverage value (track actual leverage configured on exchange)
 
   constructor() {
     super();
@@ -620,14 +620,18 @@ export class StrategyEngine extends EventEmitter {
 
       console.log(`🎯 Entering ${orderSide} position for ${liquidation.symbol} at $${price} (Capital: ${marginPercent}% of $${currentBalance} = $${availableCapital}, Position: ${positionSizePercent}% = $${basePositionValue}, Leverage: ${leverage}x = $${positionValue})`);
 
-      // Set leverage on exchange if in live mode and not already set for this symbol
-      if (session.mode === 'live' && !this.leverageSetForSymbols.has(liquidation.symbol)) {
-        console.log(`⚙️ Setting ${liquidation.symbol} leverage to ${leverage}x on exchange...`);
-        const leverageSet = await this.setLeverage(liquidation.symbol, leverage);
-        if (leverageSet) {
-          this.leverageSetForSymbols.add(liquidation.symbol);
-        } else {
-          console.error(`❌ Failed to set leverage for ${liquidation.symbol}, continuing anyway...`);
+      // Set leverage on exchange if in live mode and leverage has changed
+      if (session.mode === 'live') {
+        const currentLeverage = this.leverageSetForSymbols.get(liquidation.symbol);
+        if (currentLeverage !== leverage) {
+          console.log(`⚙️ Setting ${liquidation.symbol} leverage to ${leverage}x on exchange...`);
+          const leverageSet = await this.setLeverage(liquidation.symbol, leverage);
+          if (leverageSet) {
+            this.leverageSetForSymbols.set(liquidation.symbol, leverage);
+          } else {
+            console.error(`❌ Failed to set leverage for ${liquidation.symbol}, aborting order to prevent trading with wrong leverage`);
+            throw new Error(`Failed to set leverage for ${liquidation.symbol}`);
+          }
         }
       }
 
