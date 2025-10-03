@@ -2832,40 +2832,49 @@ export class StrategyEngine extends EventEmitter {
         console.log(`   Entry: $${entryPrice.toFixed(2)} | TP: $${tpPrice.toFixed(2)} (+${tpPercent}%) | SL: $${slPrice.toFixed(2)} (-${slPercent}%)`);
       }
       
-      // Determine exit side (opposite of position side)
-      const exitSide = position.side === 'long' ? 'sell' : 'buy';
+      // STEP 1: Place TWO INDIVIDUAL ORDERS (not batch - simpler and more reliable)
+      // Place LIMIT order for take profit
+      console.log(`📤 Placing LIMIT order for TP at $${tpPrice.toFixed(2)}`);
+      const tpResult = await this.placeExitOrder(
+        position,
+        'LIMIT',
+        tpPrice,
+        quantity,
+        'take_profit'
+      );
       
-      // STEP 1: Place NEW orders first (place-then-cancel to avoid exposure)
-      const batchOrders = [
-        {
-          symbol: position.symbol,
-          side: exitSide,
-          orderType: 'TAKE_PROFIT_MARKET',
-          quantity,
-          price: tpPrice,
-          positionSide: this.exchangePositionMode === 'dual' ? position.side : undefined,
-        },
-        {
-          symbol: position.symbol,
-          side: exitSide,
-          orderType: 'STOP_MARKET',
-          quantity,
-          price: slPrice,
-          positionSide: this.exchangePositionMode === 'dual' ? position.side : undefined,
-        }
-      ];
-      
-      const batchResult = await this.executeBatchOrders(batchOrders);
-      
-      if (!batchResult.success) {
-        console.error(`❌ Failed to place new protective orders: ${batchResult.error}`);
+      if (!tpResult.success) {
+        console.error(`❌ Failed to place TP order: ${tpResult.error}`);
         if (existingOrders.length > 0) {
           console.warn(`⚠️ Keeping existing ${existingOrders.length} TP/SL orders`);
         }
         return;
       }
       
-      console.log(`✅ New protective orders placed successfully`);
+      // Place STOP_MARKET order for stop loss
+      console.log(`📤 Placing STOP_MARKET order for SL at $${slPrice.toFixed(2)}`);
+      const slResult = await this.placeExitOrder(
+        position,
+        'STOP_MARKET',
+        slPrice,
+        quantity,
+        'stop_loss'
+      );
+      
+      if (!slResult.success) {
+        console.error(`❌ Failed to place SL order: ${slResult.error}`);
+        // Cancel the TP order we just placed since SL failed
+        if (tpResult.orderId) {
+          console.log(`🔄 Cancelling TP order ${tpResult.orderId} since SL failed`);
+          await this.cancelOrderById(position.symbol, tpResult.orderId);
+        }
+        if (existingOrders.length > 0) {
+          console.warn(`⚠️ Keeping existing ${existingOrders.length} TP/SL orders`);
+        }
+        return;
+      }
+      
+      console.log(`✅ Both protective orders placed successfully (TP: ${tpResult.orderId}, SL: ${slResult.orderId})`);
       
       // STEP 2: Cancel OLD orders (only if they exist)
       for (const oldOrder of existingOrders) {
