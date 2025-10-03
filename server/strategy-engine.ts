@@ -1023,7 +1023,8 @@ export class StrategyEngine extends EventEmitter {
       const signedParams = `${queryString}&signature=${signature}`;
       
       console.log(`🔴 BATCH ORDER: Placing ${orders.length} orders in one API call`);
-      console.log(`📦 Batch payload sample:`, batchOrdersJson.substring(0, 200));
+      console.log(`📦 FULL batch payload:`, JSON.stringify(batchOrders, null, 2));
+      console.log(`📝 Full query string (first 500 chars):`, queryString.substring(0, 500));
       console.log(`⚠️ REAL MONEY: This will place ${orders.length} LIVE orders on Aster DEX`);
       
       // Execute with retry logic
@@ -1061,14 +1062,18 @@ export class StrategyEngine extends EventEmitter {
       }
       
       if (!response.ok) {
-        console.error(`❌ Batch order failed (${response.status}): ${responseText}`);
+        console.error(`❌ Batch order failed (${response.status})`);
+        console.error(`📄 Full response body:`, responseText);
+        console.error(`📋 Response headers:`, JSON.stringify(Object.fromEntries(response.headers.entries())));
         try {
           const errorData = JSON.parse(responseText);
+          console.error(`🔍 Parsed error:`, JSON.stringify(errorData, null, 2));
           return { 
             success: false, 
             error: `API Error ${errorData.code || response.status}: ${errorData.msg || responseText}` 
           };
-        } catch {
+        } catch (parseError) {
+          console.error(`⚠️ Could not parse response as JSON:`, parseError);
           return { success: false, error: `HTTP ${response.status}: ${responseText}` };
         }
       }
