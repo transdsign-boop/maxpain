@@ -1908,6 +1908,136 @@ export class StrategyEngine extends EventEmitter {
     }
   }
 
+  // Scan for missing TP/SL orders without auto-repair (reporting only)
+  async scanMissingTPSL(): Promise<Array<{
+    symbol: string;
+    side: string;
+    positionSize: number;
+    entryPrice: number;
+    missingTP: boolean;
+    missingSL: boolean;
+    tpPrice?: number;
+    slPrice?: number;
+  }>> {
+    try {
+      const results: Array<{
+        symbol: string;
+        side: string;
+        positionSize: number;
+        entryPrice: number;
+        missingTP: boolean;
+        missingSL: boolean;
+        tpPrice?: number;
+        slPrice?: number;
+      }> = [];
+      
+      const liveSessions = Array.from(this.activeSessions.values()).filter(s => s.mode === 'live');
+      
+      if (liveSessions.length === 0) {
+        return results;
+      }
+
+      // Get all exchange positions
+      const exchangePositions = await this.getExchangePositions();
+      if (exchangePositions.length === 0) {
+        return results;
+      }
+
+      // Get all open orders
+      const allOrders = await this.getOpenOrders();
+      
+      // Process each position
+      for (const exchangePos of exchangePositions) {
+        const symbol = exchangePos.symbol;
+        const positionAmt = parseFloat(exchangePos.positionAmt);
+        
+        if (positionAmt === 0) continue;
+        
+        // Derive side from positionSide (dual mode) or positionAmt sign (one-way mode)
+        let side: string;
+        if (exchangePos.positionSide === 'LONG') {
+          side = 'long';
+        } else if (exchangePos.positionSide === 'SHORT') {
+          side = 'short';
+        } else {
+          // One-way mode: derive from positionAmt sign
+          side = positionAmt > 0 ? 'long' : 'short';
+        }
+        
+        const entryPrice = parseFloat(exchangePos.entryPrice);
+        
+        // Find corresponding database position and strategy
+        let dbPosition: Position | undefined;
+        let strategy: Strategy | undefined;
+        
+        for (const session of liveSessions) {
+          const positions = await storage.getOpenPositions(session.id);
+          dbPosition = positions.find(p => 
+            p.symbol === symbol && 
+            p.side && side && p.side.toLowerCase() === side.toLowerCase() && 
+            p.isOpen
+          );
+          if (dbPosition) {
+            // Get strategy from session
+            for (const [stratId, sess] of Array.from(this.activeSessions.entries())) {
+              if (sess.id === session.id) {
+                strategy = this.activeStrategies.get(stratId);
+                if (strategy) break;
+              }
+            }
+            break;
+          }
+        }
+        
+        if (!dbPosition || !strategy) continue;
+        
+        const stopLossPercent = parseFloat(strategy.stopLossPercent);
+        const profitTargetPercent = parseFloat(strategy.profitTargetPercent);
+        
+        // Calculate TP and SL prices
+        const tpPrice = side === 'LONG' 
+          ? entryPrice * (1 + profitTargetPercent / 100)
+          : entryPrice * (1 - profitTargetPercent / 100);
+        const slPrice = side === 'LONG'
+          ? entryPrice * (1 - stopLossPercent / 100)
+          : entryPrice * (1 + stopLossPercent / 100);
+        
+        // Check if TP and SL orders exist
+        const hasTPOrder = allOrders.some(o => 
+          o.symbol === symbol && 
+          o.positionSide === side &&
+          (o.type === 'TAKE_PROFIT_MARKET' || 
+           (o.type === 'LIMIT' && Math.abs(parseFloat(o.price || '0') - tpPrice) < 1))
+        );
+        
+        const hasSLOrder = allOrders.some(o => 
+          o.symbol === symbol && 
+          o.positionSide === side &&
+          o.type === 'STOP_MARKET'
+        );
+        
+        // If either TP or SL is missing, add to results
+        if (!hasTPOrder || !hasSLOrder) {
+          results.push({
+            symbol,
+            side: side.toUpperCase(),
+            positionSize: Math.abs(positionAmt),
+            entryPrice,
+            missingTP: !hasTPOrder,
+            missingSL: !hasSLOrder,
+            tpPrice,
+            slPrice
+          });
+        }
+      }
+
+      return results;
+    } catch (error) {
+      console.error('❌ Error scanning for missing TP/SL:', error);
+      return [];
+    }
+  }
+
   // Fix incorrect stop-loss orders (where stopPrice doesn't match calculated SL)
   private async fixIncorrectStopLossOrders(): Promise<number> {
     try {
