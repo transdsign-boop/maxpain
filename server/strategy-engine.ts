@@ -974,22 +974,22 @@ export class StrategyEngine extends EventEmitter {
         }
         
         // Add price/stopPrice based on order type
-        // CRITICAL: Use reduceOnly='true' for ALL TP/SL orders to prevent opening opposite positions
+        // CRITICAL: Use reduceOnly=true (BOOLEAN!) for ALL TP/SL orders to prevent opening opposite positions
         if (order.orderType.toLowerCase() === 'take_profit_market') {
           orderParams.stopPrice = roundedPrice;
           orderParams.quantity = roundedQuantity;
-          orderParams.reduceOnly = 'true'; // Can only close positions, not open new ones
+          orderParams.reduceOnly = true; // BOOLEAN true, not string "true"
           orderParams.workingType = 'CONTRACT_PRICE'; // Use contract price, not mark price
         } else if (order.orderType.toLowerCase() === 'stop_market') {
           orderParams.stopPrice = roundedPrice;
           orderParams.quantity = roundedQuantity;
-          orderParams.reduceOnly = 'true'; // Can only close positions, not open new ones
+          orderParams.reduceOnly = true; // BOOLEAN true, not string "true"
           orderParams.workingType = 'CONTRACT_PRICE'; // Use contract price, not mark price
         } else if (order.orderType.toLowerCase() === 'limit') {
           orderParams.price = roundedPrice;
           orderParams.quantity = roundedQuantity;
           orderParams.timeInForce = 'GTC';
-          orderParams.reduceOnly = 'true';
+          orderParams.reduceOnly = true; // BOOLEAN true, not string "true"
         }
         
         return orderParams;
