@@ -1058,8 +1058,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const data = await response.json();
 
-      // Cache the result for 3 seconds (shorter than positions since orders can change quickly)
-      setCache('live_open_orders', data, 3000);
+      // Cache the result (same TTL as positions)
+      setCache('live_open_orders', data);
 
       res.json(data);
     } catch (error) {

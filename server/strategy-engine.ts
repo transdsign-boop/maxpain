@@ -1683,11 +1683,22 @@ export class StrategyEngine extends EventEmitter {
       // Process each position
       for (const exchangePos of exchangePositions) {
         const symbol = exchangePos.symbol;
-        const side = exchangePos.side;
-        const entryPrice = parseFloat(exchangePos.entryPrice);
         const positionAmt = parseFloat(exchangePos.positionAmt);
         
         if (positionAmt === 0) continue;
+        
+        // Derive side from positionSide (dual mode) or positionAmt sign (one-way mode)
+        let side: string;
+        if (exchangePos.positionSide === 'LONG') {
+          side = 'long';
+        } else if (exchangePos.positionSide === 'SHORT') {
+          side = 'short';
+        } else {
+          // One-way mode: derive from positionAmt sign
+          side = positionAmt > 0 ? 'long' : 'short';
+        }
+        
+        const entryPrice = parseFloat(exchangePos.entryPrice);
         
         const cooldownKey = `${symbol}-${side}`;
         const lastAttempt = this.recoveryAttempts.get(cooldownKey) || 0;
@@ -1706,7 +1717,7 @@ export class StrategyEngine extends EventEmitter {
           const positions = await storage.getOpenPositions(session.id);
           dbPosition = positions.find(p => 
             p.symbol === symbol && 
-            p.side && p.side.toLowerCase() === side.toLowerCase() && 
+            p.side && side && p.side.toLowerCase() === side.toLowerCase() && 
             p.isOpen
           );
           if (dbPosition) {
@@ -1852,11 +1863,22 @@ export class StrategyEngine extends EventEmitter {
       // Process each position
       for (const exchangePos of exchangePositions) {
         const symbol = exchangePos.symbol;
-        const side = exchangePos.side;
-        const entryPrice = parseFloat(exchangePos.entryPrice);
         const positionAmt = parseFloat(exchangePos.positionAmt);
         
         if (positionAmt === 0) continue;
+        
+        // Derive side from positionSide (dual mode) or positionAmt sign (one-way mode)
+        let side: string;
+        if (exchangePos.positionSide === 'LONG') {
+          side = 'long';
+        } else if (exchangePos.positionSide === 'SHORT') {
+          side = 'short';
+        } else {
+          // One-way mode: derive from positionAmt sign
+          side = positionAmt > 0 ? 'long' : 'short';
+        }
+        
+        const entryPrice = parseFloat(exchangePos.entryPrice);
         
         // Find corresponding database position and strategy
         let dbPosition: Position | undefined;
@@ -1866,7 +1888,7 @@ export class StrategyEngine extends EventEmitter {
           const positions = await storage.getOpenPositions(session.id);
           dbPosition = positions.find(p => 
             p.symbol === symbol && 
-            p.side && p.side.toLowerCase() === side.toLowerCase() && 
+            p.side && side && p.side.toLowerCase() === side.toLowerCase() && 
             p.isOpen
           );
           if (dbPosition) {
