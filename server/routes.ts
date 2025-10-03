@@ -1010,6 +1010,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get open orders from Aster DEX
+  app.get("/api/live/open-orders", async (req, res) => {
+    try {
+      // Check cache first to prevent rate limiting
+      const cached = getCached<any[]>('live_open_orders');
+      if (cached) {
+        return res.json(cached);
+      }
+
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+
+      if (!apiKey || !secretKey) {
+        return res.status(400).json({ error: "Aster DEX API keys not configured" });
+      }
+
+      // Optional query parameter for symbol filtering
+      const symbol = req.query.symbol as string | undefined;
+
+      // Create signed request to get open orders
+      const timestamp = Date.now();
+      let params = `timestamp=${timestamp}`;
+      if (symbol) {
+        params += `&symbol=${symbol}`;
+      }
+      
+      const signature = crypto
+        .createHmac('sha256', secretKey)
+        .update(params)
+        .digest('hex');
+
+      const response = await fetch(
+        `https://fapi.asterdex.com/fapi/v1/openOrders?${params}&signature=${signature}`,
+        {
+          headers: {
+            'X-MBX-APIKEY': apiKey,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Failed to fetch Aster DEX open orders:', errorText);
+        return res.status(response.status).json({ error: `Aster DEX API error: ${errorText}` });
+      }
+
+      const data = await response.json();
+
+      // Cache the result for 3 seconds (shorter than positions since orders can change quickly)
+      setCache('live_open_orders', data, 3000);
+
+      res.json(data);
+    } catch (error) {
+      console.error('Error fetching live open orders:', error);
+      res.status(500).json({ error: "Failed to fetch live open orders" });
+    }
+  });
+
   // Get account trade history from Aster DEX (filtered by live session start time)
   app.get("/api/live/trades", async (req, res) => {
     try {
