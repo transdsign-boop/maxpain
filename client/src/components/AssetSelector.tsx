@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Search, Plus, X, TrendingUp, RotateCcw, Loader2 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 
 interface Asset {
   symbol: string;
@@ -12,6 +13,13 @@ interface Asset {
   quoteAsset: string;
   status: string;
   contractType?: string;
+}
+
+interface AssetPerformance {
+  symbol: string;
+  wins: number;
+  losses: number;
+  winRate: number;
 }
 
 interface AssetSelectorProps {
@@ -27,6 +35,17 @@ export default function AssetSelector({ selectedAssets, onAssetsChange }: AssetS
   const [availableAssets, setAvailableAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Fetch asset performance data
+  const { data: performanceData, isLoading: performanceLoading, isError: performanceError } = useQuery<AssetPerformance[]>({
+    queryKey: ['/api/analytics/asset-performance'],
+    refetchInterval: 30000,
+  });
+
+  // Create a map for quick performance lookup
+  const performanceMap = new Map(
+    performanceData?.map(p => [p.symbol, p]) || []
+  );
 
   // Fetch available assets from Aster DEX
   useEffect(() => {
@@ -219,6 +238,7 @@ export default function AssetSelector({ selectedAssets, onAssetsChange }: AssetS
               
               {!loading && !error && filteredAssets.map(asset => {
                 const isSelected = selectedAssets.includes(asset.symbol);
+                const performance = performanceMap.get(asset.symbol);
                 return (
                   <div
                     key={asset.symbol}
@@ -226,13 +246,39 @@ export default function AssetSelector({ selectedAssets, onAssetsChange }: AssetS
                     data-testid={`asset-item-${asset.symbol.replace('/', '-')}`}
                   >
                     <div className="flex items-center gap-3 flex-1">
-                      <div>
+                      <div className="flex-1">
                         <div className="flex items-center gap-2">
                           <span className="font-medium text-sm">{asset.symbol}</span>
+                          {!performanceLoading && !performanceError && performance && performance.wins + performance.losses > 0 && (
+                            <div className="flex items-center gap-1">
+                              <Badge 
+                                variant="secondary" 
+                                className="text-xs px-1.5 py-0 h-5 bg-chart-2/10 text-chart-2 hover:bg-chart-2/20 border-chart-2/20"
+                                data-testid={`badge-wins-${asset.symbol.replace('/', '-')}`}
+                              >
+                                {performance.wins}W
+                              </Badge>
+                              <Badge 
+                                variant="secondary" 
+                                className="text-xs px-1.5 py-0 h-5 bg-destructive/10 text-destructive hover:bg-destructive/20 border-destructive/20"
+                                data-testid={`badge-losses-${asset.symbol.replace('/', '-')}`}
+                              >
+                                {performance.losses}L
+                              </Badge>
+                            </div>
+                          )}
                         </div>
                         <div className="text-xs text-muted-foreground flex items-center gap-2">
                           <span>{asset.baseAsset}/{asset.quoteAsset}</span>
                           <span className="text-chart-1">{asset.contractType || 'PERPETUAL'}</span>
+                          {!performanceLoading && !performanceError && performance && performance.wins + performance.losses > 0 && (
+                            <span 
+                              className={performance.winRate >= 50 ? "text-chart-2" : "text-destructive"}
+                              data-testid={`text-winrate-${asset.symbol.replace('/', '-')}`}
+                            >
+                              {performance.winRate.toFixed(0)}% win rate
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>

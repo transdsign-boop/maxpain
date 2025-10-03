@@ -352,6 +352,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/analytics/asset-performance", async (req, res) => {
+    try {
+      const performance = await storage.getAssetPerformance();
+      res.json(performance);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch asset performance" });
+    }
+  });
+
   app.get("/api/analytics/percentiles", async (req, res) => {
     try {
       const symbol = req.query.symbol as string;
