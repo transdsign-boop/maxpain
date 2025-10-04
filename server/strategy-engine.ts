@@ -3132,6 +3132,13 @@ export class StrategyEngine extends EventEmitter {
         return;
       }
 
+      // CRITICAL: Only update if strategy is still registered (active)
+      // This prevents stopped strategies from being reactivated by settings updates
+      if (!this.activeStrategies.has(strategyId)) {
+        console.log(`⏸️ Strategy ${strategyId} is not active, skipping reload`);
+        return;
+      }
+
       // Update the strategy in memory
       this.activeStrategies.set(strategyId, updatedStrategy);
       console.log(`🔄 Reloaded strategy: ${updatedStrategy.name} (${strategyId})`);
