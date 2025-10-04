@@ -138,6 +138,7 @@ function DCASettingsSection({ strategyId, isStrategyRunning }: { strategyId: str
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     updateDCAMutation.mutate(formValues);
   };
 
