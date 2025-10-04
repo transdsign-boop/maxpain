@@ -140,36 +140,36 @@ export default function CascadeRiskIndicator() {
       `}</style>
       <CardContent className="p-2 md:p-3 space-y-2">
         {/* Row 1: Metrics & Numbers */}
-        <div className="flex items-center gap-1 md:gap-2 overflow-x-auto">
-          {/* Pulsating Bar */}
+        <div className="flex items-stretch gap-1.5 md:gap-2 overflow-x-auto">
+          {/* Pulsating Bar - Full Height */}
           <div 
-            className={`w-1 md:w-2 h-8 md:h-10 rounded-full flex-shrink-0 ${getPulsatingBarColor()} pulsating-bar transition-colors duration-300`}
+            className={`w-1.5 md:w-2 rounded-full flex-shrink-0 ${getPulsatingBarColor()} pulsating-bar transition-colors duration-300`}
             data-testid="indicator-light"
             style={{ color: status.light === 'green' ? '#22c55e' : status.light === 'yellow' ? '#eab308' : status.light === 'orange' ? '#f97316' : '#ef4444' }}
           />
 
           {/* Risk Status */}
-          <div className="flex items-center gap-0.5 flex-shrink-0">
-            <TrendingDown className="h-3 w-3 md:h-4 md:w-4" />
-            <span className="text-[11px] md:text-xs font-semibold whitespace-nowrap">
-              {status.score >= 6 ? 'Extreme' : status.score >= 4 ? 'High' : status.score >= 2 ? 'Risk' : 'OK'}
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <TrendingDown className="h-4 md:h-4 w-4 md:w-4" />
+            <span className="text-sm md:text-sm font-semibold whitespace-nowrap">
+              {status.score >= 6 ? 'Extreme Risk' : status.score >= 4 ? 'High Risk' : status.score >= 2 ? 'Elevated Risk' : 'Normal Conditions'}
             </span>
           </div>
 
-          {/* Metrics - Ultra Compact */}
-          <Badge variant="outline" className="flex-shrink-0 font-mono text-[10px] md:text-xs px-1.5 md:px-2 h-6">
+          {/* Metrics */}
+          <Badge variant="outline" className="flex-shrink-0 font-mono text-xs md:text-xs px-2 md:px-2 h-7">
             {status.score}
           </Badge>
 
-          <Badge variant="secondary" className="flex-shrink-0 font-mono text-[10px] md:text-xs px-1.5 md:px-2 h-6" data-testid="tile-lq">
+          <Badge variant="secondary" className="flex-shrink-0 font-mono text-xs md:text-xs px-2 md:px-2 h-7" data-testid="tile-lq">
             LQ {status.LQ.toFixed(1)}
           </Badge>
           
-          <Badge variant="secondary" className="flex-shrink-0 font-mono text-[10px] md:text-xs px-1.5 md:px-2 h-6" data-testid="tile-ret">
+          <Badge variant="secondary" className="flex-shrink-0 font-mono text-xs md:text-xs px-2 md:px-2 h-7" data-testid="tile-ret">
             RT {status.RET.toFixed(1)}
           </Badge>
           
-          <Badge variant="secondary" className="flex-shrink-0 font-mono text-[10px] md:text-xs px-1.5 md:px-2 h-6" data-testid="tile-oi">
+          <Badge variant="secondary" className="flex-shrink-0 font-mono text-xs md:text-xs px-2 md:px-2 h-7" data-testid="tile-oi">
             OI {status.OI.toFixed(1)}%
           </Badge>
         </div>
