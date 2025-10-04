@@ -182,8 +182,8 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
   const positionSizePercent = parseFloat(form.watch("positionSizePercent") || "5");
   
   // Get account balance from exchange, fallback to 10000 for calculations
-  const accountBalance = exchangeAccount?.availableBalance 
-    ? parseFloat(exchangeAccount.availableBalance) 
+  const accountBalance = exchangeAccount?.totalWalletBalance 
+    ? parseFloat(exchangeAccount.totalWalletBalance) 
     : 10000;
   
   // Calculate actual trading balance (account balance × margin usage %)
@@ -1195,11 +1195,11 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                   <div className="flex items-center gap-2 p-3 rounded-md bg-muted/50 border">
                     {accountLoading ? (
                       <div className="text-muted-foreground">Fetching from Aster DEX...</div>
-                    ) : exchangeAccount?.availableBalance ? (
+                    ) : exchangeAccount?.totalWalletBalance ? (
                       <>
                         <div className="flex-1">
                           <div className="text-2xl font-semibold font-mono" data-testid="text-account-balance">
-                            ${parseFloat(exchangeAccount.availableBalance).toFixed(2)}
+                            ${parseFloat(exchangeAccount.totalWalletBalance).toFixed(2)}
                           </div>
                           <div className="text-xs text-muted-foreground mt-1">
                             Tier: {accountBalance < 1000 ? 'Micro' : accountBalance < 10000 ? 'Small' : accountBalance < 50000 ? 'Mid' : 'Large'} Account
