@@ -165,6 +165,7 @@ export const positions = pgTable("positions", {
   side: text("side").notNull(), // "long" or "short"
   totalQuantity: decimal("total_quantity", { precision: 18, scale: 8 }).notNull(),
   avgEntryPrice: decimal("avg_entry_price", { precision: 18, scale: 8 }).notNull(),
+  initialEntryPrice: decimal("initial_entry_price", { precision: 18, scale: 8 }), // P0: Initial signal price for DCA calculations
   totalCost: decimal("total_cost", { precision: 18, scale: 8 }).notNull(), // Actual margin used (notional / leverage)
   unrealizedPnl: decimal("unrealized_pnl", { precision: 18, scale: 8 }).notNull().default("0.0"),
   realizedPnl: decimal("realized_pnl", { precision: 18, scale: 8 }).notNull().default("0.0"),
