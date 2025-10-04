@@ -60,7 +60,7 @@ export default function Dashboard() {
     refetchInterval: 5000,
   });
 
-  const activeStrategy = strategies?.find(s => s.isActive);
+  const activeStrategy = strategies?.find(s => s.isActive) || strategies?.[0];
   const isLiveMode = activeStrategy?.tradingMode === 'live';
 
   // Fetch live account data when in live mode
