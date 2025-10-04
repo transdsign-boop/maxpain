@@ -63,13 +63,13 @@ export function HistoricalSessions({ strategyId }: HistoricalSessionsProps) {
           View Historical Sessions
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto" data-testid="dialog-historical-sessions">
+      <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto" data-testid="dialog-historical-sessions" aria-describedby="dialog-description">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <History className="h-5 w-5" />
             Trading History
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription id="dialog-description">
             All your trading sessions are permanently preserved. You can review past performance at any time.
           </DialogDescription>
         </DialogHeader>
