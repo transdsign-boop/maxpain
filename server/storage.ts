@@ -35,6 +35,7 @@ export interface IStorage {
   // Analytics operations
   getAvailableAssets(): Promise<{ symbol: string; count: number; latestTimestamp: Date }[]>;
   getLiquidationAnalytics(symbol: string, sinceTimestamp: Date): Promise<Liquidation[]>;
+  getAssetPerformance(): Promise<{ symbol: string; wins: number; losses: number; winRate: number; totalPnl: number; totalTrades: number }[]>;
   
   // User settings operations
   getUserSettings(userId: string): Promise<UserSettings | undefined>;
@@ -207,11 +208,13 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async getAssetPerformance(): Promise<{ symbol: string; wins: number; losses: number; winRate: number }[]> {
+  async getAssetPerformance(): Promise<{ symbol: string; wins: number; losses: number; winRate: number; totalPnl: number; totalTrades: number }[]> {
     const result = await db.select({
       symbol: positions.symbol,
       wins: sql<number>`COUNT(CASE WHEN ${positions.realizedPnl} > 0 THEN 1 END)`,
       losses: sql<number>`COUNT(CASE WHEN ${positions.realizedPnl} < 0 THEN 1 END)`,
+      totalPnl: sql<number>`COALESCE(SUM(${positions.realizedPnl}), 0)`,
+      totalTrades: sql<number>`COUNT(*)`,
     })
     .from(positions)
     .where(eq(positions.isOpen, false))
@@ -221,10 +224,13 @@ export class DatabaseStorage implements IStorage {
       const wins = parseInt(String(r.wins));
       const losses = parseInt(String(r.losses));
       const total = wins + losses;
+      const totalPnl = parseFloat(String(r.totalPnl));
       return {
         symbol: r.symbol,
         wins,
         losses,
+        totalPnl,
+        totalTrades: parseInt(String(r.totalTrades)),
         winRate: total > 0 ? (wins / total) * 100 : 0
       };
     });

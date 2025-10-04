@@ -58,6 +58,15 @@ interface SessionSummary {
   totalExposure: number;
 }
 
+interface AssetPerformance {
+  symbol: string;
+  wins: number;
+  losses: number;
+  winRate: number;
+  totalPnl: number;
+  totalTrades: number;
+}
+
 export default function PerformanceOverview() {
   
   // Fetch active strategy to check if live trading is enabled
@@ -95,6 +104,20 @@ export default function PerformanceOverview() {
     queryKey: ['/api/performance/chart'],
     refetchInterval: 15000,
   });
+
+  // Fetch asset performance data
+  const { data: assetPerformance } = useQuery<AssetPerformance[]>({
+    queryKey: ['/api/analytics/asset-performance'],
+    refetchInterval: 15000,
+  });
+
+  // Calculate top 3 performing assets by total P&L
+  const top3Assets = useMemo(() => {
+    if (!assetPerformance || assetPerformance.length === 0) return [];
+    return [...assetPerformance]
+      .sort((a, b) => b.totalPnl - a.totalPnl)
+      .slice(0, 3);
+  }, [assetPerformance]);
 
   // Use unified chart data for both modes
   const sourceChartData = rawChartData || [];
@@ -297,6 +320,44 @@ export default function PerformanceOverview() {
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
+        {/* Top 3 Performing Assets */}
+        {top3Assets.length > 0 && (
+          <div className="border-b border-border pb-4">
+            <div className="text-xs text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
+              <Award className="h-3 w-3" />
+              Top 3 Performing Assets
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {top3Assets.map((asset, index) => (
+                <div 
+                  key={asset.symbol} 
+                  className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border border-border"
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="font-mono text-xs">
+                        #{index + 1}
+                      </Badge>
+                      <span className="font-semibold">{asset.symbol}</span>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {asset.wins}W-{asset.losses}L · {asset.winRate.toFixed(1)}%
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className={`text-lg font-mono font-bold ${asset.totalPnl >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`}>
+                      {asset.totalPnl >= 0 ? '+' : ''}${asset.totalPnl.toFixed(2)}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {asset.totalTrades} trades
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Main Balance Section */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Total Balance - Prominent */}
