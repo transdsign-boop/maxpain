@@ -16,7 +16,8 @@ import { Switch } from "@/components/ui/switch";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Play, Square, TrendingUp, DollarSign, Layers, Target, Trash2, RotateCcw, Key, CheckCircle2, XCircle, Loader2, Download, Upload, Lightbulb, AlertCircle, History } from "lucide-react";
+import { Play, Square, TrendingUp, DollarSign, Layers, Target, Trash2, RotateCcw, Key, CheckCircle2, XCircle, Loader2, Download, Upload, Lightbulb, AlertCircle, History, Activity, ChevronDown } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { HistoricalSessions } from "./HistoricalSessions";
@@ -83,6 +84,238 @@ const strategyFormSchema = z.object({
 });
 
 type StrategyFormData = z.infer<typeof strategyFormSchema>;
+
+// DCA Settings Types
+interface DCASettings {
+  dcaStartStepPercent: string;
+  dcaSpacingConvexity: string;
+  dcaSizeGrowth: string;
+  dcaMaxRiskPercent: string;
+  dcaVolatilityRef: string;
+  dcaExitCushionMultiplier: string;
+}
+
+// DCA Settings Component
+function DCASettingsSection({ strategyId, isStrategyRunning }: { strategyId: string; isStrategyRunning: boolean }) {
+  const { toast } = useToast();
+  const [isExpanded, setIsExpanded] = useState(true);
+  
+  // Fetch DCA settings
+  const { data: dcaSettings, isLoading } = useQuery<DCASettings>({
+    queryKey: [`/api/strategies/${strategyId}/dca`],
+    enabled: !!strategyId,
+  });
+
+  // Update DCA settings mutation
+  const updateDCAMutation = useMutation({
+    mutationFn: async (data: Partial<DCASettings>) => {
+      const response = await apiRequest('PUT', `/api/strategies/${strategyId}/dca`, data);
+      return await response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "DCA Settings Updated",
+        description: "Your DCA parameters have been saved successfully.",
+      });
+      queryClient.invalidateQueries({ queryKey: [`/api/strategies/${strategyId}/dca`] });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to update DCA settings. Please try again.",
+        variant: "destructive",
+      });
+    }
+  });
+
+  const [formValues, setFormValues] = useState<Partial<DCASettings>>({});
+
+  // Initialize form when DCA settings load
+  useEffect(() => {
+    if (dcaSettings) {
+      setFormValues(dcaSettings);
+    }
+  }, [dcaSettings]);
+
+  const handleInputChange = (field: keyof DCASettings, value: string) => {
+    setFormValues(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    updateDCAMutation.mutate(formValues);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-2">
+        <div className="h-4 bg-muted animate-pulse rounded" />
+        <div className="h-4 bg-muted animate-pulse rounded" />
+      </div>
+    );
+  }
+
+  return (
+    <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
+      <div className="space-y-4">
+        <CollapsibleTrigger className="w-full" data-testid="button-toggle-dca">
+          <div className="flex items-center justify-between cursor-pointer hover-elevate p-3 rounded-md">
+            <Label className="text-base font-medium flex items-center gap-2 cursor-pointer">
+              <Activity className="h-4 w-4" />
+              DCA Settings (Advanced)
+              <ChevronDown className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+            </Label>
+          </div>
+        </CollapsibleTrigger>
+
+        <CollapsibleContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="text-sm text-muted-foreground bg-muted/30 p-3 rounded-md">
+              Configure Dollar Cost Averaging parameters for position sizing and spacing
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="dcaStartStepPercent" data-testid="label-dca-start-step">
+                  Start Step (%)
+                </Label>
+                <Input
+                  id="dcaStartStepPercent"
+                  data-testid="input-dca-start-step"
+                  type="number"
+                  step="0.1"
+                  min="0.1"
+                  max="5.0"
+                  value={formValues.dcaStartStepPercent || ''}
+                  onChange={(e) => handleInputChange('dcaStartStepPercent', e.target.value)}
+                  disabled={isStrategyRunning}
+                  placeholder="0.4"
+                />
+                <div className="text-xs text-muted-foreground">
+                  First DCA level distance from entry
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="dcaSpacingConvexity" data-testid="label-dca-spacing-convexity">
+                  Spacing Convexity
+                </Label>
+                <Input
+                  id="dcaSpacingConvexity"
+                  data-testid="input-dca-spacing-convexity"
+                  type="number"
+                  step="0.1"
+                  min="1.0"
+                  max="2.0"
+                  value={formValues.dcaSpacingConvexity || ''}
+                  onChange={(e) => handleInputChange('dcaSpacingConvexity', e.target.value)}
+                  disabled={isStrategyRunning}
+                  placeholder="1.2"
+                />
+                <div className="text-xs text-muted-foreground">
+                  How fast spacing increases (1.0 = linear)
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="dcaSizeGrowth" data-testid="label-dca-size-growth">
+                  Size Growth Ratio
+                </Label>
+                <Input
+                  id="dcaSizeGrowth"
+                  data-testid="input-dca-size-growth"
+                  type="number"
+                  step="0.1"
+                  min="1.0"
+                  max="3.0"
+                  value={formValues.dcaSizeGrowth || ''}
+                  onChange={(e) => handleInputChange('dcaSizeGrowth', e.target.value)}
+                  disabled={isStrategyRunning}
+                  placeholder="1.8"
+                />
+                <div className="text-xs text-muted-foreground">
+                  How much each level grows (1.0 = equal size)
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="dcaMaxRiskPercent" data-testid="label-dca-max-risk">
+                  Max Risk (%)
+                </Label>
+                <Input
+                  id="dcaMaxRiskPercent"
+                  data-testid="input-dca-max-risk"
+                  type="number"
+                  step="0.1"
+                  min="0.1"
+                  max="10.0"
+                  value={formValues.dcaMaxRiskPercent || ''}
+                  onChange={(e) => handleInputChange('dcaMaxRiskPercent', e.target.value)}
+                  disabled={isStrategyRunning}
+                  placeholder="1.0"
+                />
+                <div className="text-xs text-muted-foreground">
+                  Maximum account risk per position
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="dcaVolatilityRef" data-testid="label-dca-volatility-ref">
+                  Volatility Reference (%)
+                </Label>
+                <Input
+                  id="dcaVolatilityRef"
+                  data-testid="input-dca-volatility-ref"
+                  type="number"
+                  step="0.1"
+                  min="0.1"
+                  max="10.0"
+                  value={formValues.dcaVolatilityRef || ''}
+                  onChange={(e) => handleInputChange('dcaVolatilityRef', e.target.value)}
+                  disabled={isStrategyRunning}
+                  placeholder="1.0"
+                />
+                <div className="text-xs text-muted-foreground">
+                  Reference volatility for scaling
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="dcaExitCushionMultiplier" data-testid="label-dca-exit-cushion">
+                  Exit Cushion Multiplier
+                </Label>
+                <Input
+                  id="dcaExitCushionMultiplier"
+                  data-testid="input-dca-exit-cushion"
+                  type="number"
+                  step="0.1"
+                  min="0.1"
+                  max="2.0"
+                  value={formValues.dcaExitCushionMultiplier || ''}
+                  onChange={(e) => handleInputChange('dcaExitCushionMultiplier', e.target.value)}
+                  disabled={isStrategyRunning}
+                  placeholder="0.6"
+                />
+                <div className="text-xs text-muted-foreground">
+                  Exit target as fraction of DCA distance
+                </div>
+              </div>
+            </div>
+
+            <Button
+              data-testid="button-update-dca"
+              type="submit"
+              disabled={updateDCAMutation.isPending || isStrategyRunning}
+              className="w-full"
+            >
+              {updateDCAMutation.isPending ? "Updating..." : "Update DCA Settings"}
+            </Button>
+          </form>
+        </CollapsibleContent>
+      </div>
+    </Collapsible>
+  );
+}
 
 interface TradingStrategyDialogProps {
   open: boolean;
@@ -1421,6 +1654,16 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                   />
                 </div>
               </div>
+
+              <Separator />
+
+              {/* DCA Settings (Advanced) */}
+              {activeStrategy && (
+                <DCASettingsSection 
+                  strategyId={activeStrategy.id} 
+                  isStrategyRunning={isStrategyRunning}
+                />
+              )}
 
               <Separator />
 
