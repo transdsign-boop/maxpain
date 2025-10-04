@@ -181,7 +181,6 @@ function DCASettingsSection({ strategyId, isStrategyRunning }: { strategyId: str
                   max="5.0"
                   value={formValues.dcaStartStepPercent || ''}
                   onChange={(e) => handleInputChange('dcaStartStepPercent', e.target.value)}
-                  disabled={isStrategyRunning}
                   placeholder="0.4"
                 />
                 <div className="text-xs text-muted-foreground">
@@ -202,7 +201,6 @@ function DCASettingsSection({ strategyId, isStrategyRunning }: { strategyId: str
                   max="2.0"
                   value={formValues.dcaSpacingConvexity || ''}
                   onChange={(e) => handleInputChange('dcaSpacingConvexity', e.target.value)}
-                  disabled={isStrategyRunning}
                   placeholder="1.2"
                 />
                 <div className="text-xs text-muted-foreground">
@@ -223,7 +221,6 @@ function DCASettingsSection({ strategyId, isStrategyRunning }: { strategyId: str
                   max="3.0"
                   value={formValues.dcaSizeGrowth || ''}
                   onChange={(e) => handleInputChange('dcaSizeGrowth', e.target.value)}
-                  disabled={isStrategyRunning}
                   placeholder="1.8"
                 />
                 <div className="text-xs text-muted-foreground">
@@ -244,7 +241,6 @@ function DCASettingsSection({ strategyId, isStrategyRunning }: { strategyId: str
                   max="10.0"
                   value={formValues.dcaMaxRiskPercent || ''}
                   onChange={(e) => handleInputChange('dcaMaxRiskPercent', e.target.value)}
-                  disabled={isStrategyRunning}
                   placeholder="1.0"
                 />
                 <div className="text-xs text-muted-foreground">
@@ -265,7 +261,6 @@ function DCASettingsSection({ strategyId, isStrategyRunning }: { strategyId: str
                   max="10.0"
                   value={formValues.dcaVolatilityRef || ''}
                   onChange={(e) => handleInputChange('dcaVolatilityRef', e.target.value)}
-                  disabled={isStrategyRunning}
                   placeholder="1.0"
                 />
                 <div className="text-xs text-muted-foreground">
@@ -286,7 +281,6 @@ function DCASettingsSection({ strategyId, isStrategyRunning }: { strategyId: str
                   max="2.0"
                   value={formValues.dcaExitCushionMultiplier || ''}
                   onChange={(e) => handleInputChange('dcaExitCushionMultiplier', e.target.value)}
-                  disabled={isStrategyRunning}
                   placeholder="0.6"
                 />
                 <div className="text-xs text-muted-foreground">
@@ -299,7 +293,7 @@ function DCASettingsSection({ strategyId, isStrategyRunning }: { strategyId: str
               data-testid="button-update-dca"
               type="button"
               onClick={handleSubmit}
-              disabled={updateDCAMutation.isPending || isStrategyRunning}
+              disabled={updateDCAMutation.isPending}
               className="w-full"
             >
               {updateDCAMutation.isPending ? "Updating..." : "Update DCA Settings"}
