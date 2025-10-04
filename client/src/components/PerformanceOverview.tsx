@@ -1,8 +1,9 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, TrendingDown, Target, Award, Activity, LineChart, DollarSign, Percent } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { TrendingUp, TrendingDown, Target, Award, Activity, LineChart, DollarSign, Percent, ChevronLeft, ChevronRight } from "lucide-react";
 import { ComposedChart, Line, Area, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, Label } from "recharts";
 import { format } from "date-fns";
 
@@ -68,6 +69,9 @@ interface AssetPerformance {
 }
 
 export default function PerformanceOverview() {
+  // Pagination state for chart
+  const [chartEndIndex, setChartEndIndex] = useState<number | null>(null);
+  const TRADES_PER_PAGE = 50;
   
   // Fetch active strategy to check if live trading is enabled
   const { data: strategies } = useQuery<any[]>({
@@ -130,8 +134,29 @@ export default function PerformanceOverview() {
   // Use unified chart data for both modes
   const sourceChartData = rawChartData || [];
   
+  // Calculate pagination
+  const totalTrades = sourceChartData.length;
+  
+  // Set initial end index when data loads and update when viewing latest trades
+  useMemo(() => {
+    if (sourceChartData.length > 0) {
+      if (chartEndIndex === null) {
+        // Initial load - show latest trades
+        setChartEndIndex(sourceChartData.length);
+      } else if (chartEndIndex === totalTrades && totalTrades < sourceChartData.length) {
+        // User is viewing latest trades and new trades arrived - update to show them
+        setChartEndIndex(sourceChartData.length);
+      }
+    }
+  }, [sourceChartData.length, chartEndIndex, totalTrades]);
+  const actualEndIndex = chartEndIndex ?? totalTrades;
+  const startIndex = Math.max(0, actualEndIndex - TRADES_PER_PAGE);
+  const paginatedSourceData = sourceChartData.slice(startIndex, actualEndIndex);
+  const canGoBack = startIndex > 0;
+  const canGoForward = actualEndIndex < totalTrades;
+  
   // Add interpolated points at zero crossings for smooth color transitions
-  const chartData = sourceChartData.flatMap((point, index, arr) => {
+  const chartData = paginatedSourceData.flatMap((point, index, arr) => {
     if (index === 0) return [point];
     
     const prev = arr[index - 1];
@@ -488,10 +513,42 @@ export default function PerformanceOverview() {
         </div>
 
         {/* Performance Chart */}
-        <div className="relative h-64 md:h-80 -mx-8 mb-8" style={{
-          maskImage: 'linear-gradient(to right, transparent, black 5%, black 95%, transparent)',
-          WebkitMaskImage: 'linear-gradient(to right, transparent, black 5%, black 95%, transparent)'
-        }}>
+        <div className="space-y-3">
+          {/* Chart Navigation Controls */}
+          {totalTrades > TRADES_PER_PAGE && (
+            <div className="flex items-center justify-between px-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setChartEndIndex(Math.max(TRADES_PER_PAGE, actualEndIndex - TRADES_PER_PAGE))}
+                disabled={!canGoBack}
+                data-testid="button-chart-previous"
+              >
+                <ChevronLeft className="h-4 w-4 mr-1" />
+                Previous {TRADES_PER_PAGE}
+              </Button>
+              
+              <div className="text-xs text-muted-foreground">
+                Showing trades {startIndex + 1}-{actualEndIndex} of {totalTrades}
+              </div>
+              
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setChartEndIndex(Math.min(totalTrades, actualEndIndex + TRADES_PER_PAGE))}
+                disabled={!canGoForward}
+                data-testid="button-chart-next"
+              >
+                Next {TRADES_PER_PAGE}
+                <ChevronRight className="h-4 w-4 ml-1" />
+              </Button>
+            </div>
+          )}
+          
+          <div className="relative h-64 md:h-80 -mx-8" style={{
+            maskImage: 'linear-gradient(to right, transparent, black 5%, black 95%, transparent)',
+            WebkitMaskImage: 'linear-gradient(to right, transparent, black 5%, black 95%, transparent)'
+          }}>
           {!chartLoading && chartData && chartData.length > 0 ? (
             <>
               <ResponsiveContainer width="100%" height="100%">
@@ -646,6 +703,7 @@ export default function PerformanceOverview() {
               </div>
             </div>
           )}
+          </div>
         </div>
 
         {/* Additional Metrics Ticker */}
