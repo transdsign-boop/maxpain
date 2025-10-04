@@ -622,14 +622,50 @@ export class StrategyEngine extends EventEmitter {
       const marginPercent = parseFloat(strategy.marginAmount);
       const availableCapital = (marginPercent / 100) * currentBalance;
       
-      // Calculate position size as percentage of available capital with leverage
-      const positionSizePercent = parseFloat(strategy.positionSizePercent);
+      // Use DCA calculator to determine optimal position sizing for Layer 1
       const leverage = strategy.leverage;
-      const basePositionValue = (positionSizePercent / 100) * availableCapital;
-      const positionValue = basePositionValue * leverage;
-      const quantity = positionValue / price;
+      const atrPercent = await calculateATRPercent(liquidation.symbol, 10, process.env.ASTER_API_KEY, process.env.ASTER_SECRET_KEY);
+      
+      // Import DCA calculator
+      const { calculateDCALevels } = await import('./dca-calculator');
+      const { getStrategyWithDCA } = await import('./dca-sql');
+      
+      // Fetch DCA parameters
+      const strategyWithDCA = await getStrategyWithDCA(strategy.id);
+      if (!strategyWithDCA) {
+        console.error(`⚠️  Strategy ${strategy.id} missing DCA parameters, skipping entry`);
+        return;
+      }
+      
+      // Build full strategy with DCA params
+      const fullStrategy = {
+        ...strategy,
+        dcaStartStepPercent: String(strategyWithDCA.dca_start_step_percent),
+        dcaSpacingConvexity: String(strategyWithDCA.dca_spacing_convexity),
+        dcaSizeGrowth: String(strategyWithDCA.dca_size_growth),
+        dcaMaxRiskPercent: String(strategyWithDCA.dca_max_risk_percent),
+        dcaVolatilityRef: String(strategyWithDCA.dca_volatility_ref),
+        dcaExitCushionMultiplier: String(strategyWithDCA.dca_exit_cushion_multiplier),
+      };
+      
+      // Calculate all DCA levels - we'll use Level 1 for initial entry
+      const dcaResult = calculateDCALevels(fullStrategy, {
+        entryPrice: price,
+        side: positionSide as 'long' | 'short',
+        currentBalance,
+        leverage,
+        atrPercent,
+      });
+      
+      const firstLevel = dcaResult.levels[0];
+      if (!firstLevel) {
+        console.error(`⚠️  DCA calculator failed to generate Level 1, skipping entry`);
+        return;
+      }
+      
+      const quantity = firstLevel.quantity;
 
-      console.log(`🎯 Entering ${orderSide} position for ${liquidation.symbol} at $${price} (Capital: ${marginPercent}% of $${currentBalance} = $${availableCapital}, Position: ${positionSizePercent}% = $${basePositionValue}, Leverage: ${leverage}x = $${positionValue})`);
+      console.log(`🎯 Entering ${orderSide} position for ${liquidation.symbol} at $${price} using DCA Layer 1 (qty: ${quantity.toFixed(6)} units)`);
 
       // Set leverage on exchange if in live mode and leverage has changed
       if (session.mode === 'live') {
