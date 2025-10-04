@@ -447,7 +447,12 @@ export default function PerformanceOverview() {
                   axisLine={false}
                 />
                 <Tooltip content={<CustomTooltip />} />
-                <Legend verticalAlign="bottom" height={52} wrapperStyle={{ paddingTop: '16px' }} />
+                <Legend 
+                  verticalAlign="bottom" 
+                  height={28} 
+                  wrapperStyle={{ paddingTop: '8px', fontSize: '11px' }} 
+                  iconSize={10}
+                />
                 <ReferenceLine yAxisId="left" y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
                 <ReferenceLine yAxisId="right" y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
                 {/* Vertical lines for strategy changes */}
