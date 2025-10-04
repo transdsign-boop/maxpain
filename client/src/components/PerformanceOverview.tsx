@@ -384,24 +384,24 @@ export default function PerformanceOverview() {
             </div>
           </div>
 
-          {/* Secondary Metrics Row - Smaller */}
-          <div className="flex gap-6 md:gap-8 flex-wrap">
-            <div className="space-y-0.5">
-              <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Max Drawdown</div>
-              <div className="text-lg md:text-xl font-mono font-bold text-red-600" data-testid="text-max-drawdown">
+          {/* Secondary Metrics Row - Compact */}
+          <div className="flex gap-3 md:gap-4">
+            <div className="space-y-0">
+              <div className="text-[9px] text-muted-foreground uppercase tracking-wider">Max Drawdown</div>
+              <div className="text-sm md:text-base font-mono font-bold text-red-600" data-testid="text-max-drawdown">
                 ${(displayPerformance.maxDrawdown || 0).toFixed(2)}
               </div>
-              <div className="text-[10px] text-muted-foreground">
+              <div className="text-[9px] text-muted-foreground">
                 {(displayPerformance.maxDrawdownPercent || 0).toFixed(1)}% peak
               </div>
             </div>
 
-            <div className="space-y-0.5">
-              <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Avg Time</div>
-              <div className="text-lg md:text-xl font-mono font-bold" data-testid="text-avg-time">
+            <div className="space-y-0">
+              <div className="text-[9px] text-muted-foreground uppercase tracking-wider">Avg Time</div>
+              <div className="text-sm md:text-base font-mono font-bold" data-testid="text-avg-time">
                 {formatTradeTime(displayPerformance.averageTradeTimeMs || 0)}
               </div>
-              <div className="text-[10px] text-muted-foreground">
+              <div className="text-[9px] text-muted-foreground">
                 Per trade
               </div>
             </div>
