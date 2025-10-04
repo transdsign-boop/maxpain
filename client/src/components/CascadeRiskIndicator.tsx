@@ -196,41 +196,47 @@ export default function CascadeRiskIndicator() {
         </div>
 
         {/* Desktop Layout: Single row */}
-        <div className="hidden md:flex items-center gap-2">
+        <div className="hidden md:flex items-center gap-4">
           {/* Pulsating Bar */}
           <div 
-            className={`w-2 h-10 rounded-full flex-shrink-0 ${getPulsatingBarColor()} pulsating-bar transition-colors duration-300`}
+            className={`w-2 h-12 rounded-full flex-shrink-0 ${getPulsatingBarColor()} pulsating-bar transition-colors duration-300`}
             data-testid="indicator-light"
             style={{ color: status.light === 'green' ? '#22c55e' : status.light === 'yellow' ? '#eab308' : status.light === 'orange' ? '#f97316' : '#ef4444' }}
           />
 
           {/* Risk Status */}
-          <div className="flex items-center gap-1 flex-shrink-0">
-            <TrendingDown className="h-4 w-4" />
-            <span className="text-sm font-semibold whitespace-nowrap">
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <TrendingDown className="h-5 w-5" />
+            <span className="text-base font-semibold whitespace-nowrap">
               {status.score >= 6 ? 'Extreme' : status.score >= 4 ? 'High' : status.score >= 2 ? 'Elevated' : 'Normal'}
             </span>
           </div>
 
-          {/* Metrics - Lime colored */}
-          <Badge variant="outline" className="flex-shrink-0 font-mono text-xs px-2 h-7 bg-[rgb(190,242,100)]/10 text-[rgb(190,242,100)] border-[rgb(190,242,100)]/20">
-            {status.score}
-          </Badge>
+          {/* Metrics - Large numbers without boxes */}
+          <div className="flex items-center gap-6">
+            <div className="flex flex-col items-center">
+              <span className="text-2xl font-bold font-mono text-[rgb(190,242,100)]">{status.score}</span>
+              <span className="text-xs text-muted-foreground">Score</span>
+            </div>
 
-          <Badge variant="secondary" className="flex-shrink-0 font-mono text-xs px-2 h-7 bg-[rgb(190,242,100)]/10 text-[rgb(190,242,100)] border-[rgb(190,242,100)]/20" data-testid="tile-lq">
-            LQ {status.LQ.toFixed(1)}
-          </Badge>
-          
-          <Badge variant="secondary" className="flex-shrink-0 font-mono text-xs px-2 h-7 bg-[rgb(190,242,100)]/10 text-[rgb(190,242,100)] border-[rgb(190,242,100)]/20" data-testid="tile-ret">
-            RT {status.RET.toFixed(1)}
-          </Badge>
-          
-          <Badge variant="secondary" className="flex-shrink-0 font-mono text-xs px-2 h-7 bg-[rgb(190,242,100)]/10 text-[rgb(190,242,100)] border-[rgb(190,242,100)]/20" data-testid="tile-oi">
-            OI {status.OI.toFixed(1)}%
-          </Badge>
+            <div className="flex flex-col items-center" data-testid="tile-lq">
+              <span className="text-2xl font-bold font-mono text-[rgb(190,242,100)]">{status.LQ.toFixed(1)}</span>
+              <span className="text-xs text-muted-foreground">LQ</span>
+            </div>
+            
+            <div className="flex flex-col items-center" data-testid="tile-ret">
+              <span className="text-2xl font-bold font-mono text-[rgb(190,242,100)]">{status.RET.toFixed(1)}</span>
+              <span className="text-xs text-muted-foreground">RT</span>
+            </div>
+            
+            <div className="flex flex-col items-center" data-testid="tile-oi">
+              <span className="text-2xl font-bold font-mono text-[rgb(190,242,100)]">{status.OI.toFixed(1)}%</span>
+              <span className="text-xs text-muted-foreground">OI</span>
+            </div>
+          </div>
 
           {/* Cascade Detector Label */}
-          <span className="text-xs text-muted-foreground ml-2">Cascade Detector</span>
+          <span className="text-sm text-muted-foreground ml-4">Cascade Detector</span>
 
           {/* Status & Toggle */}
           <div className="flex items-center gap-2 ml-auto">
