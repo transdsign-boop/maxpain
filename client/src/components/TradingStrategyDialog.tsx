@@ -545,30 +545,34 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
       const response = await apiRequest('PUT', `/api/strategies/${activeStrategy.id}`, data);
       return await response.json() as Strategy;
     },
-    onSuccess: (strategy) => {
+    onSuccess: async (strategy) => {
       toast({
-        title: "Strategy Updated",
-        description: `Strategy "${strategy.name}" has been updated successfully.`,
+        title: "✓ Settings Saved",
+        description: `All changes have been saved successfully.`,
+        duration: 3000,
       });
-      queryClient.invalidateQueries({ queryKey: ['/api/strategies'] });
+      
+      // Wait for query invalidation to complete before updating form
+      await queryClient.invalidateQueries({ queryKey: ['/api/strategies'] });
       setActiveStrategy(strategy);
       
       // Reset form with updated strategy data to refresh UI
+      // Convert number fields to strings to match form field types
       form.reset({
         name: strategy.name,
         selectedAssets: strategy.selectedAssets,
         percentileThreshold: strategy.percentileThreshold,
         liquidationLookbackHours: strategy.liquidationLookbackHours,
         maxLayers: strategy.maxLayers,
-        profitTargetPercent: strategy.profitTargetPercent,
-        stopLossPercent: strategy.stopLossPercent,
+        profitTargetPercent: String(strategy.profitTargetPercent),
+        stopLossPercent: String(strategy.stopLossPercent),
         marginMode: strategy.marginMode,
         leverage: strategy.leverage,
         orderDelayMs: strategy.orderDelayMs,
-        slippageTolerancePercent: strategy.slippageTolerancePercent,
+        slippageTolerancePercent: String(strategy.slippageTolerancePercent),
         orderType: strategy.orderType,
         maxRetryDurationMs: strategy.maxRetryDurationMs,
-        marginAmount: strategy.marginAmount,
+        marginAmount: String(strategy.marginAmount),
         hedgeMode: strategy.hedgeMode,
       });
     },
