@@ -530,6 +530,17 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
   const updateStrategyMutation = useMutation({
     mutationFn: async (data: StrategyFormData) => {
       if (!activeStrategy) throw new Error('No active strategy to update');
+      
+      // Create a snapshot of the current configuration before updating
+      try {
+        await apiRequest('POST', `/api/strategies/${activeStrategy.id}/snapshots`, {
+          description: 'Auto-saved before settings update'
+        });
+      } catch (error) {
+        console.error('Failed to create snapshot:', error);
+        // Continue with update even if snapshot fails
+      }
+      
       const response = await apiRequest('PUT', `/api/strategies/${activeStrategy.id}`, data);
       return await response.json() as Strategy;
     },
