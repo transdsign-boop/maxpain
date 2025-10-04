@@ -138,49 +138,47 @@ export default function CascadeRiskIndicator() {
           animation: pulse-glow 3s ease-in-out infinite;
         }
       `}</style>
-      <CardContent className="p-3 md:p-4">
-        <div className="flex flex-col md:flex-row items-start md:items-center gap-3 md:gap-4">
-          {/* Pulsating Bar - Always visible */}
+      <CardContent className="p-2 md:p-4">
+        <div className="flex items-center gap-2 md:gap-4">
+          {/* Pulsating Bar */}
           <div 
-            className={`w-2 h-12 md:h-12 rounded-full flex-shrink-0 ${getPulsatingBarColor()} pulsating-bar transition-colors duration-300`}
+            className={`w-1.5 md:w-2 h-8 md:h-12 rounded-full flex-shrink-0 ${getPulsatingBarColor()} pulsating-bar transition-colors duration-300`}
             data-testid="indicator-light"
             style={{ color: status.light === 'green' ? '#22c55e' : status.light === 'yellow' ? '#eab308' : status.light === 'orange' ? '#f97316' : '#ef4444' }}
           />
 
-          {/* Risk Info & Metrics - Mobile: Stacked, Desktop: Row */}
-          <div className="flex-1 flex flex-col md:flex-row md:items-center gap-3 md:gap-6 w-full md:w-auto">
-            <div className="flex items-center gap-2">
-              <TrendingDown className="h-4 w-4" />
-              <div>
-                <div className="text-sm font-semibold">
-                  {status.score >= 6 ? 'Extreme Risk' : status.score >= 4 ? 'High Risk' : status.score >= 2 ? 'Elevated Risk' : 'Normal Conditions'}
-                </div>
-                <div className="text-xs text-muted-foreground">Score: {status.score}</div>
+          {/* Risk Info */}
+          <div className="flex items-center gap-1 md:gap-2">
+            <TrendingDown className="h-3 md:h-4 w-3 md:w-4 flex-shrink-0" />
+            <div>
+              <div className="text-xs md:text-sm font-semibold leading-tight">
+                {status.score >= 6 ? 'Extreme Risk' : status.score >= 4 ? 'High Risk' : status.score >= 2 ? 'Elevated Risk' : 'Normal Conditions'}
               </div>
-            </div>
-
-            {/* Metrics */}
-            <div className="flex items-center gap-4 md:gap-4 md:flex-1">
-              <div className="text-xs" data-testid="tile-lq">
-                <div className="text-muted-foreground">LQ</div>
-                <div className="font-mono font-semibold text-primary">{status.LQ.toFixed(1)}</div>
-              </div>
-              <div className="text-xs" data-testid="tile-ret">
-                <div className="text-muted-foreground">RET</div>
-                <div className="font-mono font-semibold text-primary">{status.RET.toFixed(1)}</div>
-              </div>
-              <div className="text-xs" data-testid="tile-oi">
-                <div className="text-muted-foreground">OI</div>
-                <div className="font-mono font-semibold text-primary">{status.OI.toFixed(1)}%</div>
-              </div>
+              <div className="text-[10px] md:text-xs text-muted-foreground">Score: {status.score}</div>
             </div>
           </div>
 
-          {/* Status Badge & Toggle - Mobile: Full width row, Desktop: Auto width */}
-          <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-start">
+          {/* Metrics */}
+          <div className="flex items-center gap-2 md:gap-4 flex-1">
+            <div className="text-[10px] md:text-xs" data-testid="tile-lq">
+              <div className="text-muted-foreground">LQ</div>
+              <div className="font-mono font-semibold text-primary">{status.LQ.toFixed(1)}</div>
+            </div>
+            <div className="text-[10px] md:text-xs" data-testid="tile-ret">
+              <div className="text-muted-foreground">RET</div>
+              <div className="font-mono font-semibold text-primary">{status.RET.toFixed(1)}</div>
+            </div>
+            <div className="text-[10px] md:text-xs" data-testid="tile-oi">
+              <div className="text-muted-foreground">OI</div>
+              <div className="font-mono font-semibold text-primary">{status.OI.toFixed(1)}%</div>
+            </div>
+          </div>
+
+          {/* Status Badge & Toggle */}
+          <div className="flex items-center gap-1.5 md:gap-3 flex-shrink-0">
             {getStatusBadge()}
-            <div className="flex items-center gap-2">
-              <Label htmlFor="auto-detect" className="text-xs text-muted-foreground">Auto</Label>
+            <div className="flex items-center gap-1 md:gap-2">
+              <Label htmlFor="auto-detect" className="text-[10px] md:text-xs text-muted-foreground">Auto</Label>
               <Switch
                 id="auto-detect"
                 checked={status.autoEnabled}
