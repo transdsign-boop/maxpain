@@ -793,6 +793,13 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
     }
   };
 
+  const handleDialogClose = (newOpen: boolean) => {
+    if (!newOpen && form.formState.isDirty) {
+      form.handleSubmit(onSubmit)();
+    }
+    onOpenChange(newOpen);
+  };
+
   const handleStartStrategy = async () => {
     if (activeStrategy) {
       // First, save any form changes before starting
@@ -889,7 +896,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
 
   if (assetsLoading || strategiesLoading) {
     return (
-      <Dialog open={open} onOpenChange={onOpenChange}>
+      <Dialog open={open} onOpenChange={handleDialogClose}>
         <DialogContent className="max-w-4xl max-h-[90vh]" aria-describedby="loading-description">
           <DialogHeader>
             <DialogTitle>Trading Settings</DialogTitle>
@@ -906,7 +913,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleDialogClose}>
       <DialogContent className="max-w-4xl max-h-[90vh]" data-testid="dialog-trading-strategy" aria-describedby="strategy-dialog-description">
         <DialogHeader>
           <DialogTitle className="flex items-center justify-between">
