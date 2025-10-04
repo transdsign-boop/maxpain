@@ -324,7 +324,6 @@ export class DatabaseStorage implements IStorage {
       selectedAssets: ["BTCUSDT"],
       isActive: true,
       tradingMode: "paper",
-      positionSizePercent: "10.00",
       percentileThreshold: 90,
       liquidationLookbackHours: 1,
       stopLossPercent: "2.00",

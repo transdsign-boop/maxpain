@@ -252,7 +252,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           tradingMode: s.tradingMode,
           selectedAssets: s.selectedAssets,
           percentileThreshold: Number(s.percentileThreshold),
-          positionSizePercent: String(s.positionSizePercent),
           maxLayers: Number(s.maxLayers),
           profitTargetPercent: String(s.profitTargetPercent),
           stopLossPercent: String(s.stopLossPercent),
@@ -1891,7 +1890,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         selectedAssets: validatedData.selectedAssets,
         percentileThreshold: validatedData.percentileThreshold,
         maxLayers: validatedData.maxLayers,
-        positionSizePercent: validatedData.positionSizePercent,
         profitTargetPercent: validatedData.profitTargetPercent,
         stopLossPercent: validatedData.stopLossPercent,
         marginMode: validatedData.marginMode,
@@ -1932,7 +1930,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Track changes for active sessions
       const changes: Record<string, { old: any; new: any }> = {};
       const fieldsToTrack = [
-        'percentileThreshold', 'maxLayers', 'positionSizePercent', 'profitTargetPercent',
+        'percentileThreshold', 'maxLayers', 'profitTargetPercent',
         'stopLossPercent', 'marginMode', 'leverage', 'orderDelayMs', 'slippageTolerancePercent',
         'orderType', 'maxRetryDurationMs', 'marginAmount', 'tradingMode', 'selectedAssets'
       ];
