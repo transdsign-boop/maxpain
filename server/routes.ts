@@ -3737,6 +3737,73 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Strategy Snapshot endpoints
+  
+  // Create a snapshot of the current strategy configuration
+  app.post('/api/strategies/:strategyId/snapshots', async (req, res) => {
+    try {
+      const { strategyId } = req.params;
+      const { description } = req.body;
+      
+      // Get the current strategy
+      const strategy = await storage.getStrategy(strategyId);
+      if (!strategy) {
+        return res.status(404).json({ error: 'Strategy not found' });
+      }
+
+      // Create snapshot with full strategy data
+      const snapshot = await storage.createStrategySnapshot({
+        strategyId,
+        userId: strategy.userId,
+        snapshotData: strategy as any, // Store entire strategy as JSON
+        description: description || 'Manual snapshot',
+      });
+
+      console.log(`📸 Created snapshot ${snapshot.id} for strategy ${strategyId}`);
+
+      res.json(snapshot);
+    } catch (error) {
+      console.error('Error creating snapshot:', error);
+      res.status(500).json({ error: 'Failed to create snapshot' });
+    }
+  });
+
+  // Get all snapshots for a strategy
+  app.get('/api/strategies/:strategyId/snapshots', async (req, res) => {
+    try {
+      const { strategyId } = req.params;
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 20;
+      
+      const snapshots = await storage.getStrategySnapshots(strategyId, limit);
+      
+      res.json(snapshots);
+    } catch (error) {
+      console.error('Error fetching snapshots:', error);
+      res.status(500).json({ error: 'Failed to fetch snapshots' });
+    }
+  });
+
+  // Restore a strategy from a snapshot
+  app.post('/api/strategies/snapshots/:snapshotId/restore', async (req, res) => {
+    try {
+      const { snapshotId } = req.params;
+      
+      const restoredStrategy = await storage.restoreStrategyFromSnapshot(snapshotId);
+      
+      // Reload the strategy in the engine if it's active
+      if (strategyEngine && restoredStrategy.isActive) {
+        await strategyEngine.reloadStrategy(restoredStrategy.id);
+      }
+
+      console.log(`🔄 Restored strategy ${restoredStrategy.id} from snapshot ${snapshotId}`);
+
+      res.json(restoredStrategy);
+    } catch (error) {
+      console.error('Error restoring snapshot:', error);
+      res.status(500).json({ error: 'Failed to restore snapshot' });
+    }
+  });
+
   return httpServer;
 }
 

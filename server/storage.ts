@@ -7,11 +7,12 @@ import {
   type Fill, type InsertFill,
   type Position, type InsertPosition,
   type PnlSnapshot, type InsertPnlSnapshot,
-  type StrategyChange, type InsertStrategyChange
+  type StrategyChange, type InsertStrategyChange,
+  type StrategySnapshot, type InsertStrategySnapshot
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { db } from "./db";
-import { liquidations, users, userSettings, strategies, tradeSessions, orders, fills, positions, pnlSnapshots, strategyChanges } from "@shared/schema";
+import { liquidations, users, userSettings, strategies, tradeSessions, orders, fills, positions, pnlSnapshots, strategyChanges, strategySnapshots } from "@shared/schema";
 import { desc, gte, eq, sql as drizzleSql, inArray, and } from "drizzle-orm";
 import { neon } from '@neondatabase/serverless';
 
@@ -147,6 +148,11 @@ export interface IStorage {
   recordStrategyChange(change: InsertStrategyChange): Promise<StrategyChange>;
   getStrategyChanges(sessionId: string): Promise<StrategyChange[]>;
   getStrategyChangesByStrategy(strategyId: string): Promise<StrategyChange[]>;
+
+  // Strategy Snapshot operations
+  createStrategySnapshot(snapshot: InsertStrategySnapshot): Promise<StrategySnapshot>;
+  getStrategySnapshots(strategyId: string, limit?: number): Promise<StrategySnapshot[]>;
+  restoreStrategyFromSnapshot(snapshotId: string): Promise<Strategy>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -811,6 +817,46 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(strategyChanges)
       .where(eq(strategyChanges.strategyId, strategyId))
       .orderBy(desc(strategyChanges.changedAt));
+  }
+
+  // Strategy Snapshot operations
+  async createStrategySnapshot(snapshot: InsertStrategySnapshot): Promise<StrategySnapshot> {
+    const result = await db.insert(strategySnapshots).values(snapshot).returning();
+    return result[0];
+  }
+
+  async getStrategySnapshots(strategyId: string, limit: number = 20): Promise<StrategySnapshot[]> {
+    return await db.select().from(strategySnapshots)
+      .where(eq(strategySnapshots.strategyId, strategyId))
+      .orderBy(desc(strategySnapshots.createdAt))
+      .limit(limit);
+  }
+
+  async restoreStrategyFromSnapshot(snapshotId: string): Promise<Strategy> {
+    // Get the snapshot
+    const snapshotResult = await db.select().from(strategySnapshots)
+      .where(eq(strategySnapshots.id, snapshotId))
+      .limit(1);
+    
+    if (!snapshotResult[0]) {
+      throw new Error(`Snapshot ${snapshotId} not found`);
+    }
+
+    const snapshot = snapshotResult[0];
+    const snapshotData = snapshot.snapshotData as any;
+
+    // Update the strategy with the snapshot data (excluding id, createdAt)
+    const { id, createdAt, updatedAt, ...restoreData } = snapshotData;
+    
+    const result = await db.update(strategies)
+      .set({
+        ...restoreData,
+        updatedAt: new Date(),
+      })
+      .where(eq(strategies.id, snapshot.strategyId))
+      .returning();
+
+    return result[0];
   }
 }
 
