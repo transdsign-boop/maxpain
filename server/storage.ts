@@ -211,14 +211,14 @@ export class DatabaseStorage implements IStorage {
   async getAssetPerformance(): Promise<{ symbol: string; wins: number; losses: number; winRate: number; totalPnl: number; totalTrades: number }[]> {
     const result = await db.select({
       symbol: positions.symbol,
-      wins: sql<number>`COUNT(CASE WHEN ${positions.realizedPnl} > 0 THEN 1 END)`,
-      losses: sql<number>`COUNT(CASE WHEN ${positions.realizedPnl} < 0 THEN 1 END)`,
-      totalPnl: sql<number>`COALESCE(SUM(${positions.realizedPnl}), 0)`,
-      totalTrades: sql<number>`COUNT(*)`,
+      wins: sql<number>`COUNT(CASE WHEN ${positions.isOpen} = false AND ${positions.realizedPnl} > 0 THEN 1 END)`,
+      losses: sql<number>`COUNT(CASE WHEN ${positions.isOpen} = false AND ${positions.realizedPnl} < 0 THEN 1 END)`,
+      totalPnl: sql<number>`COALESCE(SUM(CASE WHEN ${positions.isOpen} = false THEN ${positions.realizedPnl} ELSE 0 END), 0)`,
+      totalTrades: sql<number>`COUNT(CASE WHEN ${positions.isOpen} = false THEN 1 END)`,
     })
     .from(positions)
-    .where(eq(positions.isOpen, false))
-    .groupBy(positions.symbol);
+    .groupBy(positions.symbol)
+    .having(sql`COUNT(CASE WHEN ${positions.isOpen} = false THEN 1 END) > 0`);
     
     return result.map(r => {
       const wins = parseInt(String(r.wins));
