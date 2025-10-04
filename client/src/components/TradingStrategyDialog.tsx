@@ -535,7 +535,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
       // Create a snapshot of the current configuration before updating
       try {
         await apiRequest('POST', `/api/strategies/${activeStrategy.id}/snapshots`, {
-          description: 'Auto-saved before settings update'
+          description: `${activeStrategy.name} - Configuration`
         });
       } catch (error) {
         console.error('Failed to create snapshot:', error);
