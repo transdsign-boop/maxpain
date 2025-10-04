@@ -122,7 +122,7 @@ export default function CascadeRiskIndicator() {
   };
 
   return (
-    <Card data-testid="card-cascade-risk" className="overflow-hidden">
+    <Card data-testid="card-cascade-risk" className="overflow-hidden mt-4 md:mt-6">
       <style>{`
         @keyframes pulse-glow {
           0%, 100% {
