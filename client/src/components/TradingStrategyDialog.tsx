@@ -136,9 +136,7 @@ function DCASettingsSection({ strategyId, isStrategyRunning }: { strategyId: str
     setFormValues(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+  const handleSubmit = () => {
     updateDCAMutation.mutate(formValues);
   };
 
@@ -165,7 +163,7 @@ function DCASettingsSection({ strategyId, isStrategyRunning }: { strategyId: str
         </CollapsibleTrigger>
 
         <CollapsibleContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-4">
             <div className="text-sm text-muted-foreground bg-muted/30 p-3 rounded-md">
               Configure Dollar Cost Averaging parameters for position sizing and spacing
             </div>
@@ -300,13 +298,14 @@ function DCASettingsSection({ strategyId, isStrategyRunning }: { strategyId: str
 
             <Button
               data-testid="button-update-dca"
-              type="submit"
+              type="button"
+              onClick={handleSubmit}
               disabled={updateDCAMutation.isPending || isStrategyRunning}
               className="w-full"
             >
               {updateDCAMutation.isPending ? "Updating..." : "Update DCA Settings"}
             </Button>
-          </form>
+          </div>
         </CollapsibleContent>
       </div>
     </Collapsible>
