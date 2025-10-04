@@ -2034,56 +2034,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/strategies/:id/dca", async (req, res) => {
     try {
       const strategyId = req.params.id;
+      
+      // Validate using Zod schema
+      const dcaUpdateSchema = z.object({
+        dcaStartStepPercent: z.string().refine((val) => {
+          const num = parseFloat(val);
+          return !isNaN(num) && num >= 0.1 && num <= 5.0;
+        }, "Must be between 0.1 and 5.0").optional(),
+        dcaSpacingConvexity: z.string().refine((val) => {
+          const num = parseFloat(val);
+          return !isNaN(num) && num >= 1.0 && num <= 2.0;
+        }, "Must be between 1.0 and 2.0").optional(),
+        dcaSizeGrowth: z.string().refine((val) => {
+          const num = parseFloat(val);
+          return !isNaN(num) && num >= 1.0 && num <= 3.0;
+        }, "Must be between 1.0 and 3.0").optional(),
+        dcaMaxRiskPercent: z.string().refine((val) => {
+          const num = parseFloat(val);
+          return !isNaN(num) && num >= 0.1 && num <= 10.0;
+        }, "Must be between 0.1 and 10.0").optional(),
+        dcaVolatilityRef: z.string().refine((val) => {
+          const num = parseFloat(val);
+          return !isNaN(num) && num >= 0.1 && num <= 10.0;
+        }, "Must be between 0.1 and 10.0").optional(),
+        dcaExitCushionMultiplier: z.string().refine((val) => {
+          const num = parseFloat(val);
+          return !isNaN(num) && num >= 0.1 && num <= 2.0;
+        }, "Must be between 0.1 and 2.0").optional(),
+      });
+      
+      const validatedData = dcaUpdateSchema.parse(req.body);
+      
+      if (Object.keys(validatedData).length === 0) {
+        return res.status(400).json({ error: "No DCA parameters provided" });
+      }
+      
       const { updateStrategyDCAParams } = await import('./dca-sql');
-      
-      const dcaParams: any = {};
-      if (req.body.dcaStartStepPercent !== undefined) {
-        const val = parseFloat(req.body.dcaStartStepPercent);
-        if (isNaN(val) || val < 0.1 || val > 5.0) {
-          return res.status(400).json({ error: "dcaStartStepPercent must be between 0.1 and 5.0" });
-        }
-        dcaParams.dcaStartStepPercent = req.body.dcaStartStepPercent;
-      }
-      if (req.body.dcaSpacingConvexity !== undefined) {
-        const val = parseFloat(req.body.dcaSpacingConvexity);
-        if (isNaN(val) || val < 1.0 || val > 2.0) {
-          return res.status(400).json({ error: "dcaSpacingConvexity must be between 1.0 and 2.0" });
-        }
-        dcaParams.dcaSpacingConvexity = req.body.dcaSpacingConvexity;
-      }
-      if (req.body.dcaSizeGrowth !== undefined) {
-        const val = parseFloat(req.body.dcaSizeGrowth);
-        if (isNaN(val) || val < 1.0 || val > 3.0) {
-          return res.status(400).json({ error: "dcaSizeGrowth must be between 1.0 and 3.0" });
-        }
-        dcaParams.dcaSizeGrowth = req.body.dcaSizeGrowth;
-      }
-      if (req.body.dcaMaxRiskPercent !== undefined) {
-        const val = parseFloat(req.body.dcaMaxRiskPercent);
-        if (isNaN(val) || val < 0.1 || val > 10.0) {
-          return res.status(400).json({ error: "dcaMaxRiskPercent must be between 0.1 and 10.0" });
-        }
-        dcaParams.dcaMaxRiskPercent = req.body.dcaMaxRiskPercent;
-      }
-      if (req.body.dcaVolatilityRef !== undefined) {
-        const val = parseFloat(req.body.dcaVolatilityRef);
-        if (isNaN(val) || val < 0.1 || val > 10.0) {
-          return res.status(400).json({ error: "dcaVolatilityRef must be between 0.1 and 10.0" });
-        }
-        dcaParams.dcaVolatilityRef = req.body.dcaVolatilityRef;
-      }
-      if (req.body.dcaExitCushionMultiplier !== undefined) {
-        const val = parseFloat(req.body.dcaExitCushionMultiplier);
-        if (isNaN(val) || val < 0.1 || val > 2.0) {
-          return res.status(400).json({ error: "dcaExitCushionMultiplier must be between 0.1 and 2.0" });
-        }
-        dcaParams.dcaExitCushionMultiplier = req.body.dcaExitCushionMultiplier;
-      }
-      
-      const updated = await updateStrategyDCAParams(strategyId, dcaParams);
+      const updated = await updateStrategyDCAParams(strategyId, validatedData);
       
       if (!updated) {
-        return res.status(404).json({ error: "Strategy not found or no parameters to update" });
+        return res.status(404).json({ error: "Strategy not found" });
       }
       
       await strategyEngine.reloadStrategy(strategyId);
@@ -2099,6 +2089,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       console.error('Error updating DCA settings:', error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid DCA parameters", details: error.errors });
+      }
       res.status(500).json({ error: "Failed to update DCA settings" });
     }
   });
