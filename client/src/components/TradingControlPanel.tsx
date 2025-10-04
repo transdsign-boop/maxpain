@@ -19,6 +19,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { AlertCircle, Play, Square, Settings, TrendingUp, DollarSign, Layers, Target, Trash2, ChevronDown, RotateCcw, Activity } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { HistoricalSessions } from "./HistoricalSessions";
 
 // Types
 interface Strategy {
@@ -1252,6 +1253,15 @@ export default function TradingControlPanel() {
                 </Button>
               )}
             </div>
+
+            {/* Historical Sessions Viewer */}
+            {activeStrategy && (
+              <div className="mt-4">
+                <HistoricalSessions strategyId={activeStrategy.id} />
+              </div>
+            )}
+            
+            <div className="h-4" />
 
             {/* Strategy Info */}
             {activeStrategy && (
