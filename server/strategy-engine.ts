@@ -637,6 +637,22 @@ export class StrategyEngine extends EventEmitter {
         return;
       }
       
+      // SAFETY CHECK: Validate all DCA parameters are configured (not null)
+      if (
+        strategyWithDCA.dca_start_step_percent == null ||
+        strategyWithDCA.dca_spacing_convexity == null ||
+        strategyWithDCA.dca_size_growth == null ||
+        strategyWithDCA.dca_max_risk_percent == null ||
+        strategyWithDCA.dca_volatility_ref == null ||
+        strategyWithDCA.dca_exit_cushion_multiplier == null
+      ) {
+        console.error(`❌ DCA parameters NOT configured for strategy ${strategy.id}`);
+        console.error(`   Values: startStep=${strategyWithDCA.dca_start_step_percent}, convexity=${strategyWithDCA.dca_spacing_convexity}, growth=${strategyWithDCA.dca_size_growth}`);
+        console.error(`   Risk: maxRisk=${strategyWithDCA.dca_max_risk_percent}, volatility=${strategyWithDCA.dca_volatility_ref}, cushion=${strategyWithDCA.dca_exit_cushion_multiplier}`);
+        console.error(`   ⚠️  SKIPPING TRADE - Configure DCA settings in Global Settings to enable trading`);
+        return;
+      }
+      
       // Build full strategy with DCA params
       const fullStrategy = {
         ...strategy,
@@ -664,6 +680,24 @@ export class StrategyEngine extends EventEmitter {
       }
       
       const quantity = firstLevel.quantity;
+
+      // CRITICAL SAFETY CHECK: Validate position size is valid
+      if (!Number.isFinite(quantity) || isNaN(quantity) || quantity <= 0) {
+        console.error(`❌ INVALID POSITION SIZE calculated: ${quantity}`);
+        console.error(`   This indicates a problem with DCA parameters or calculations`);
+        console.error(`   ⚠️  ABORTING TRADE - Will not execute order with invalid size`);
+        return;
+      }
+      
+      // SAFETY CHECK: Ensure position size is reasonable (not accidentally huge)
+      const notionalValue = quantity * price * leverage;
+      const percentOfBalance = (notionalValue / leverage / currentBalance) * 100;
+      if (percentOfBalance > 50) {
+        console.error(`❌ POSITION SIZE TOO LARGE: ${quantity} units = $${notionalValue.toFixed(2)} notional (${percentOfBalance.toFixed(1)}% of balance)`);
+        console.error(`   Expected starting size should be < 5% of balance`);
+        console.error(`   ⚠️  ABORTING TRADE - Position size exceeds safety threshold`);
+        return;
+      }
 
       console.log(`🎯 Entering ${orderSide} position for ${liquidation.symbol} at $${price} using DCA Layer 1 (qty: ${quantity.toFixed(6)} units)`);
 
