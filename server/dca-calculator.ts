@@ -99,15 +99,24 @@ export async function calculateATRPercent(
   }
 }
 
+export interface StrategyWithDCA extends Strategy {
+  dcaStartStepPercent: string;
+  dcaSpacingConvexity: string;
+  dcaSizeGrowth: string;
+  dcaMaxRiskPercent: string;
+  dcaVolatilityRef: string;
+  dcaExitCushionMultiplier: string;
+}
+
 /**
  * Calculate all DCA levels using the mathematical framework
  * 
- * @param strategy - The trading strategy configuration
+ * @param strategy - The trading strategy configuration (with DCA fields)
  * @param config - DCA configuration (entry price, side, balance, etc.)
  * @returns Complete DCA calculation with levels, sizes, and risk metrics
  */
 export function calculateDCALevels(
-  strategy: Strategy,
+  strategy: StrategyWithDCA,
   config: DCAConfig
 ): DCAResult {
   const { entryPrice, side, currentBalance, leverage, atrPercent } = config;
@@ -272,8 +281,28 @@ export async function calculateNextLayer(
   // Calculate current ATR for volatility scaling
   const atrPercent = await calculateATRPercent(symbol, 10, apiKey, secretKey);
   
+  // Fetch DCA parameters from SQL wrapper (bypasses Drizzle cache)
+  const { getStrategyWithDCA } = await import('./dca-sql');
+  const strategyWithDCA = await getStrategyWithDCA(strategy.id);
+  
+  if (!strategyWithDCA) {
+    console.error(`⚠️  Strategy ${strategy.id} not found or missing DCA parameters`);
+    return null;
+  }
+  
+  // Build StrategyWithDCA object by merging strategy data with DCA params
+  const fullStrategy: StrategyWithDCA = {
+    ...strategy,
+    dcaStartStepPercent: String(strategyWithDCA.dca_start_step_percent),
+    dcaSpacingConvexity: String(strategyWithDCA.dca_spacing_convexity),
+    dcaSizeGrowth: String(strategyWithDCA.dca_size_growth),
+    dcaMaxRiskPercent: String(strategyWithDCA.dca_max_risk_percent),
+    dcaVolatilityRef: String(strategyWithDCA.dca_volatility_ref),
+    dcaExitCushionMultiplier: String(strategyWithDCA.dca_exit_cushion_multiplier),
+  };
+  
   // Calculate all DCA levels
-  const dcaResult = calculateDCALevels(strategy, {
+  const dcaResult = calculateDCALevels(fullStrategy, {
     entryPrice: initialEntryPrice,
     side,
     currentBalance,
