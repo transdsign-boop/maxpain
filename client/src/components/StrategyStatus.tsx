@@ -384,31 +384,31 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
             {/* Header row: Symbol, badges, and info */}
             <div className="relative isolate overflow-hidden">
               {/* Gradient background */}
-              <div className={`absolute inset-0 ${isLong ? 'bg-gradient-to-br from-lime-600/25 via-lime-500/10 to-transparent' : 'bg-gradient-to-br from-red-700/25 via-red-600/10 to-transparent'}`} />
+              <div className={`absolute inset-0 ${isLong ? 'bg-gradient-to-br from-lime-600/20 via-lime-500/8 to-transparent' : 'bg-gradient-to-br from-red-700/20 via-red-600/8 to-transparent'}`} />
               
               {/* Large background asset text */}
               <div className="absolute -left-2 top-1/2 -translate-y-1/2 select-none pointer-events-none">
-                <span className={`font-black tracking-tight text-5xl leading-none whitespace-nowrap ${isLong ? 'text-lime-400/15' : 'text-red-500/15'}`}>
+                <span className={`font-black tracking-tight text-4xl leading-none whitespace-nowrap ${isLong ? 'text-lime-400/12' : 'text-red-500/12'}`}>
                   {position.symbol}
                 </span>
               </div>
 
-              <div className="relative p-3 space-y-2">
+              <div className="relative p-2 space-y-1.5">
                 {/* Symbol and badges row */}
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="font-extrabold text-foreground text-2xl tracking-tight">{position.symbol}</div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="font-extrabold text-foreground text-xl tracking-tight">{position.symbol}</div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Badge className={`text-xs px-2 py-0.5 ${isLong ? 'bg-lime-500/15 text-lime-300 border-lime-400/30' : 'bg-red-600/15 text-red-400 border-red-500/30'}`}>
-                      {isLong ? <TrendingUp className="h-3 w-3 mr-1" /> : <TrendingDown className="h-3 w-3 mr-1" />}
+                  <div className="flex items-center gap-1.5">
+                    <Badge className={`text-xs px-1.5 py-0.5 ${isLong ? 'bg-lime-500/15 text-lime-300 border-lime-400/30' : 'bg-red-600/15 text-red-400 border-red-500/30'}`}>
+                      {isLong ? <TrendingUp className="h-2.5 w-2.5 mr-0.5" /> : <TrendingDown className="h-2.5 w-2.5 mr-0.5" />}
                       {position.side.toUpperCase()}
                     </Badge>
                     {isHedge && (
-                      <Badge variant="secondary" className="text-xs">HEDGE</Badge>
+                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">HEDGE</Badge>
                     )}
                     <button
-                      className="rounded-lg flex items-center justify-center px-2 py-1 border-2 border-destructive bg-transparent text-destructive text-xs font-semibold transition-all hover:brightness-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="rounded-md flex items-center justify-center px-1.5 py-0.5 border border-destructive bg-transparent text-destructive text-[10px] font-semibold transition-all hover:brightness-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                       data-testid={`button-close-position-${position.symbol}`}
                       onClick={onClose}
                       disabled={isClosing}
@@ -419,11 +419,11 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
                 </div>
 
                 {/* Layers and leverage info */}
-                <div className="flex items-center gap-2">
-                  <span className="px-2 py-1 rounded-lg text-xs text-muted-foreground bg-muted/50 border border-border/50">
+                <div className="flex items-center gap-1.5">
+                  <span className="px-1.5 py-0.5 rounded text-[10px] text-muted-foreground bg-muted/50 border border-border/50">
                     {actualLayersFilled}/{position.maxLayers} Layers
                   </span>
-                  <span className="px-2 py-1 rounded-lg text-xs text-muted-foreground bg-muted/50 border border-border/50">
+                  <span className="px-1.5 py-0.5 rounded text-[10px] text-muted-foreground bg-muted/50 border border-border/50">
                     {leverage}× • {formatCurrency(notionalValue)}
                   </span>
                 </div>
@@ -431,50 +431,50 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
             </div>
 
             {/* Price data with large centered P&L (3 columns) */}
-            <div className="px-3 py-4 grid grid-cols-[1fr_auto_1fr] gap-4 items-center border-t border-border/30 bg-background/30">
+            <div className="px-2 py-2 grid grid-cols-[1fr_auto_1fr] gap-2 items-center border-t border-border/30 bg-background/30">
               {/* Left column: Avg and SL */}
-              <div className="space-y-3">
+              <div className="space-y-1.5">
                 <div>
-                  <div className="text-xs text-muted-foreground mb-1">Avg:</div>
-                  <div className="text-sm font-medium text-foreground">{formatCurrency(avgEntry)}</div>
+                  <div className="text-[10px] text-muted-foreground mb-0.5">Avg:</div>
+                  <div className="text-xs font-medium text-foreground">{formatCurrency(avgEntry)}</div>
                 </div>
                 <div>
-                  <div className="text-xs text-muted-foreground mb-1">SL:</div>
-                  <div className="text-sm text-red-700 dark:text-red-500">{formatCurrency(stopLossPrice)}</div>
+                  <div className="text-[10px] text-muted-foreground mb-0.5">SL:</div>
+                  <div className="text-xs text-red-700 dark:text-red-500">{formatCurrency(stopLossPrice)}</div>
                 </div>
               </div>
 
               {/* Center: P&L (very large and prominent) */}
-              <div className="flex flex-col items-center justify-center px-6 min-w-[140px]">
-                <div className={`text-4xl font-black font-mono leading-none ${getPnlColor(unrealizedPnlDollar)}`}>
+              <div className="flex flex-col items-center justify-center px-3 min-w-[110px]">
+                <div className={`text-2xl font-black font-mono leading-none ${getPnlColor(unrealizedPnlDollar)}`}>
                   {unrealizedPnlDollar >= 0 ? '+' : ''}{formatCurrency(unrealizedPnlDollar)}
                 </div>
-                <div className={`text-xl font-bold font-mono mt-1 ${getPnlColor(unrealizedPnlPercent)}`}>
+                <div className={`text-base font-bold font-mono mt-0.5 ${getPnlColor(unrealizedPnlPercent)}`}>
                   {unrealizedPnlPercent >= 0 ? '+' : ''}{unrealizedPnlPercent.toFixed(2)}%
                 </div>
               </div>
 
               {/* Right column: Current and TP */}
-              <div className="space-y-3">
+              <div className="space-y-1.5">
                 <div>
-                  <div className="text-xs text-muted-foreground mb-1">Current:</div>
-                  <div className="text-sm font-semibold text-foreground" data-testid={`current-price-${position.symbol}`}>
+                  <div className="text-[10px] text-muted-foreground mb-0.5">Current:</div>
+                  <div className="text-xs font-semibold text-foreground" data-testid={`current-price-${position.symbol}`}>
                     {formatCurrency(currentPrice)}
                   </div>
                 </div>
                 <div>
-                  <div className="text-xs text-muted-foreground mb-1">TP:</div>
-                  <div className="text-sm text-lime-600 dark:text-lime-400">{formatCurrency(takeProfitPrice)}</div>
+                  <div className="text-[10px] text-muted-foreground mb-0.5">TP:</div>
+                  <div className="text-xs text-lime-600 dark:text-lime-400">{formatCurrency(takeProfitPrice)}</div>
                 </div>
               </div>
             </div>
 
             {/* Liquidation and Actions row */}
-            <div className="px-3 py-3 flex items-center justify-between gap-3 border-t border-border/30 bg-background/50">
+            <div className="px-2 py-1.5 flex items-center justify-between gap-2 border-t border-border/30 bg-background/50">
               {/* Liquidation donut (if applicable) */}
               {liquidationPrice !== null && distanceToLiquidation !== null && (
                 <div className="flex flex-col items-center">
-                  <div className="relative" style={{ width: '60px', height: '60px' }}>
+                  <div className="relative" style={{ width: '48px', height: '48px' }}>
                     <svg viewBox="0 0 100 100" className="transform -rotate-90">
                       <circle
                         cx="50"
@@ -496,20 +496,20 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
                       />
                     </svg>
                     <div className="absolute inset-0 flex flex-col items-center justify-center">
-                      <div className={`text-xs font-bold ${distanceToLiquidation < 5 ? 'text-red-700' : distanceToLiquidation < 15 ? 'text-orange-500' : 'text-lime-600'}`}>
+                      <div className={`text-[10px] font-bold ${distanceToLiquidation < 5 ? 'text-red-700' : distanceToLiquidation < 15 ? 'text-orange-500' : 'text-lime-600'}`}>
                         {distanceToLiquidation.toFixed(0)}%
                       </div>
-                      <div className="text-[8px] text-muted-foreground">liq</div>
+                      <div className="text-[7px] text-muted-foreground">liq</div>
                     </div>
                   </div>
                 </div>
               )}
 
               {/* Actions */}
-              <div className="flex items-center gap-2 ml-auto">
+              <div className="flex items-center gap-1.5 ml-auto">
                 <CollapsibleTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-10 w-10" data-testid="button-toggle-layers">
-                    {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  <Button variant="ghost" size="icon" className="h-8 w-8" data-testid="button-toggle-layers">
+                    {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                   </Button>
                 </CollapsibleTrigger>
               </div>
@@ -517,41 +517,41 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
           </div>
 
           {/* Desktop: Grid layout */}
-          <div className="hidden lg:grid lg:grid-cols-[minmax(180px,240px)_1fr_auto]">
+          <div className="hidden lg:grid lg:grid-cols-[minmax(160px,200px)_1fr_auto]">
             {/* Left: Asset label with edge-bleed */}
             <div className="relative isolate overflow-hidden">
               {/* Gradient background */}
-              <div className={`absolute inset-0 ${isLong ? 'bg-gradient-to-br from-lime-600/25 via-lime-500/10 to-transparent' : 'bg-gradient-to-br from-red-700/25 via-red-600/10 to-transparent'}`} />
+              <div className={`absolute inset-0 ${isLong ? 'bg-gradient-to-br from-lime-600/20 via-lime-500/8 to-transparent' : 'bg-gradient-to-br from-red-700/20 via-red-600/8 to-transparent'}`} />
               
               {/* Large background asset text */}
               <div className="absolute -left-2 top-1/2 -translate-y-1/2 select-none pointer-events-none">
-                <span className={`font-black tracking-tight text-5xl sm:text-6xl md:text-7xl leading-none whitespace-nowrap ${isLong ? 'text-lime-400/15' : 'text-red-500/15'}`}>
+                <span className={`font-black tracking-tight text-4xl sm:text-5xl leading-none whitespace-nowrap ${isLong ? 'text-lime-400/12' : 'text-red-500/12'}`}>
                   {position.symbol}
                 </span>
               </div>
 
               {/* Top row: compact chips */}
-              <div className="relative p-2 flex items-center gap-2 flex-wrap">
-                <Badge className={`text-xs px-1.5 py-0.5 ${isLong ? 'bg-lime-500/15 text-lime-300 border-lime-400/30' : 'bg-red-600/15 text-red-400 border-red-500/30'}`}>
-                  {isLong ? <TrendingUp className="h-3 w-3 mr-1" /> : <TrendingDown className="h-3 w-3 mr-1" />}
+              <div className="relative p-1.5 flex items-center gap-1.5 flex-wrap">
+                <Badge className={`text-[10px] px-1 py-0.5 ${isLong ? 'bg-lime-500/15 text-lime-300 border-lime-400/30' : 'bg-red-600/15 text-red-400 border-red-500/30'}`}>
+                  {isLong ? <TrendingUp className="h-2.5 w-2.5 mr-0.5" /> : <TrendingDown className="h-2.5 w-2.5 mr-0.5" />}
                   {position.side.toUpperCase()}
                 </Badge>
-                <span className="px-1.5 py-0.5 rounded-lg text-[10px] text-muted-foreground bg-muted/50 border border-border/50">
+                <span className="px-1 py-0.5 rounded text-[9px] text-muted-foreground bg-muted/50 border border-border/50">
                   {actualLayersFilled}/{position.maxLayers}
                 </span>
-                <span className="px-1.5 py-0.5 rounded-lg text-[10px] text-muted-foreground bg-muted/50 border border-border/50">
+                <span className="px-1 py-0.5 rounded text-[9px] text-muted-foreground bg-muted/50 border border-border/50">
                   {leverage}× • {formatCurrency(notionalValue)}
                 </span>
                 {isHedge && (
-                  <Badge variant="secondary" className="text-xs">HEDGE</Badge>
+                  <Badge variant="secondary" className="text-[10px] px-1 py-0.5">HEDGE</Badge>
                 )}
               </div>
 
               {/* Bottom: large asset label with expand button */}
-              <div className="relative px-2 pb-2 flex items-center gap-2">
-                <div className="font-extrabold text-foreground text-2xl tracking-tight">{position.symbol}</div>
+              <div className="relative px-1.5 pb-1.5 flex items-center gap-1.5">
+                <div className="font-extrabold text-foreground text-xl tracking-tight">{position.symbol}</div>
                 <CollapsibleTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 ml-auto" data-testid="button-toggle-layers">
+                  <Button variant="ghost" size="icon" className="h-6 w-6 ml-auto" data-testid="button-toggle-layers">
                     {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                   </Button>
                 </CollapsibleTrigger>
@@ -559,48 +559,48 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
             </div>
 
             {/* Middle: price data with large centered P&L */}
-            <div className="px-3 py-2 flex items-center justify-between gap-3">
+            <div className="px-2 py-1.5 flex items-center justify-between gap-2">
               {/* Left column: Avg and SL */}
-              <div className="space-y-1.5 flex-shrink-0">
+              <div className="space-y-1 flex-shrink-0">
                 <div className="min-w-0">
-                  <div className="text-[10px] text-muted-foreground truncate">Avg:</div>
-                  <div className="text-[13px] text-foreground/90 truncate">{formatCurrency(avgEntry)}</div>
+                  <div className="text-[9px] text-muted-foreground truncate">Avg:</div>
+                  <div className="text-xs text-foreground/90 truncate">{formatCurrency(avgEntry)}</div>
                 </div>
                 <div className="min-w-0">
-                  <div className="text-[10px] text-muted-foreground truncate">SL:</div>
-                  <div className="text-[13px] text-red-700 dark:text-red-500 truncate">{formatCurrency(stopLossPrice)}</div>
+                  <div className="text-[9px] text-muted-foreground truncate">SL:</div>
+                  <div className="text-xs text-red-700 dark:text-red-500 truncate">{formatCurrency(stopLossPrice)}</div>
                 </div>
               </div>
 
               {/* Center: Large P&L */}
               <div className="flex flex-col items-center justify-center flex-1">
-                <div className={`text-3xl font-black font-mono leading-none ${getPnlColor(unrealizedPnlDollar)}`}>
+                <div className={`text-2xl font-black font-mono leading-none ${getPnlColor(unrealizedPnlDollar)}`}>
                   {unrealizedPnlDollar >= 0 ? '+' : ''}{formatCurrency(unrealizedPnlDollar)}
                 </div>
-                <div className={`text-lg font-bold font-mono mt-0.5 ${getPnlColor(unrealizedPnlPercent)}`}>
+                <div className={`text-base font-bold font-mono mt-0.5 ${getPnlColor(unrealizedPnlPercent)}`}>
                   {unrealizedPnlPercent >= 0 ? '+' : ''}{unrealizedPnlPercent.toFixed(2)}%
                 </div>
               </div>
 
               {/* Right column: Current and TP */}
-              <div className="space-y-1.5 flex-shrink-0">
+              <div className="space-y-1 flex-shrink-0">
                 <div className="min-w-0">
-                  <div className="text-[10px] text-muted-foreground truncate">Current:</div>
-                  <div className="text-[14px] font-semibold text-foreground truncate" data-testid={`current-price-${position.symbol}`}>
+                  <div className="text-[9px] text-muted-foreground truncate">Current:</div>
+                  <div className="text-xs font-semibold text-foreground truncate" data-testid={`current-price-${position.symbol}`}>
                     {formatCurrency(currentPrice)}
                   </div>
                 </div>
                 <div className="min-w-0">
-                  <div className="text-[10px] text-muted-foreground truncate">TP:</div>
-                  <div className="text-[13px] text-lime-600 dark:text-lime-400 truncate">{formatCurrency(takeProfitPrice)}</div>
+                  <div className="text-[9px] text-muted-foreground truncate">TP:</div>
+                  <div className="text-xs text-lime-600 dark:text-lime-400 truncate">{formatCurrency(takeProfitPrice)}</div>
                 </div>
               </div>
             </div>
 
             {/* Right Column: Liquidation Risk Donut and Actions */}
-            <div className="flex flex-col items-center justify-between py-2 px-2 border-l border-border/30 gap-2 min-w-[120px]">
+            <div className="flex flex-col items-center justify-between py-1.5 px-1.5 border-l border-border/30 gap-1.5 min-w-[100px]">
               {liquidationPrice !== null && distanceToLiquidation !== null ? (
-                <div className="relative" style={{ width: '80px', height: '80px' }}>
+                <div className="relative" style={{ width: '64px', height: '64px' }}>
                   <svg viewBox="0 0 100 100" className="transform -rotate-90">
                     {/* Background circle */}
                     <circle
@@ -624,10 +624,10 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
                     />
                   </svg>
                   <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <div className={`text-xs font-bold ${distanceToLiquidation < 5 ? 'text-red-700' : distanceToLiquidation < 15 ? 'text-orange-500' : 'text-lime-600'}`}>
+                    <div className={`text-[10px] font-bold ${distanceToLiquidation < 5 ? 'text-red-700' : distanceToLiquidation < 15 ? 'text-orange-500' : 'text-lime-600'}`}>
                       {distanceToLiquidation.toFixed(0)}%
                     </div>
-                    <div className="text-[8px] text-muted-foreground">to liq</div>
+                    <div className="text-[7px] text-muted-foreground">to liq</div>
                   </div>
                 </div>
               ) : (
@@ -636,7 +636,7 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
               
               {/* Close Button - Always at bottom */}
               <button
-                className="rounded-lg flex items-center justify-center px-2 py-1 border-2 border-destructive bg-transparent text-destructive text-xs font-semibold transition-all hover:brightness-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="rounded-md flex items-center justify-center px-1.5 py-0.5 border border-destructive bg-transparent text-destructive text-[10px] font-semibold transition-all hover:brightness-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                 data-testid={`button-close-position-${position.symbol}`}
                 onClick={onClose}
                 disabled={isClosing}
@@ -648,27 +648,27 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
         </div>
 
         <CollapsibleContent>
-          <div className="border-t px-3 py-2 relative z-10 bg-background/30">
-            <p className="text-xs font-medium text-muted-foreground mb-2">Layer Details</p>
+          <div className="border-t px-2 py-1.5 relative z-10 bg-background/30">
+            <p className="text-[10px] font-medium text-muted-foreground mb-1">Layer Details</p>
             {fills && fills.length > 0 ? (
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 {entryFills.length > 0 && (
                   <div>
-                    <p className="text-xs font-medium text-muted-foreground/70 mb-1">Entry Layers ({entryFills.length})</p>
-                    <div className="space-y-1">
+                    <p className="text-[10px] font-medium text-muted-foreground/70 mb-0.5">Entry Layers ({entryFills.length})</p>
+                    <div className="space-y-0.5">
                       {entryFills.sort((a, b) => a.layerNumber - b.layerNumber).map((fill) => (
-                        <div key={fill.id} className="flex items-center justify-between text-xs py-1 px-2 rounded bg-muted/30">
-                          <div className="flex items-center gap-2 flex-1">
-                            <Badge variant="outline" className="text-xs h-5">L{fill.layerNumber}</Badge>
+                        <div key={fill.id} className="flex items-center justify-between text-[10px] py-0.5 px-1.5 rounded bg-muted/30">
+                          <div className="flex items-center gap-1.5 flex-1">
+                            <Badge variant="outline" className="text-[9px] h-4 px-1">L{fill.layerNumber}</Badge>
                             <span className="text-foreground">
                               {parseFloat(fill.quantity).toFixed(4)} @ {formatCurrency(parseFloat(fill.price))}
                             </span>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground/70">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[9px] text-muted-foreground/70">
                               {format(new Date(fill.filledAt), 'MMM d, h:mm:ss a')}
                             </span>
-                            <span className="text-muted-foreground text-xs">
+                            <span className="text-muted-foreground text-[9px]">
                               Fee: {formatCurrency(parseFloat(fill.fee || '0'))}
                             </span>
                           </div>
@@ -679,21 +679,21 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
                 )}
                 {exitFills.length > 0 && (
                   <div>
-                    <p className="text-xs font-medium text-muted-foreground/70 mb-1">Exit</p>
-                    <div className="space-y-1">
+                    <p className="text-[10px] font-medium text-muted-foreground/70 mb-0.5">Exit</p>
+                    <div className="space-y-0.5">
                       {exitFills.map((fill) => (
-                        <div key={fill.id} className="flex items-center justify-between text-xs py-1 px-2 rounded bg-muted/30">
-                          <div className="flex items-center gap-2 flex-1">
-                            <Badge variant="outline" className="text-xs h-5">Exit</Badge>
+                        <div key={fill.id} className="flex items-center justify-between text-[10px] py-0.5 px-1.5 rounded bg-muted/30">
+                          <div className="flex items-center gap-1.5 flex-1">
+                            <Badge variant="outline" className="text-[9px] h-4 px-1">Exit</Badge>
                             <span className="text-foreground">
                               {parseFloat(fill.quantity).toFixed(4)} @ {formatCurrency(parseFloat(fill.price))}
                             </span>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground/70">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[9px] text-muted-foreground/70">
                               {format(new Date(fill.filledAt), 'MMM d, h:mm:ss a')}
                             </span>
-                            <span className="text-muted-foreground text-xs">
+                            <span className="text-muted-foreground text-[9px]">
                               Fee: {formatCurrency(parseFloat(fill.fee || '0'))}
                             </span>
                           </div>
@@ -704,7 +704,7 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
                 )}
               </div>
             ) : (
-              <p className="text-xs text-muted-foreground">No layer details available</p>
+              <p className="text-[10px] text-muted-foreground">No layer details available</p>
             )}
           </div>
         </CollapsibleContent>
