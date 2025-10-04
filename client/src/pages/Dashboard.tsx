@@ -112,45 +112,45 @@ export default function Dashboard() {
     refetchInterval: 10000, // Reduced to 10 seconds to avoid rate limiting (was 1 second)
   });
 
-  // Pause strategy mutation
-  const pauseMutation = useMutation({
+  // Stop trading mutation
+  const stopMutation = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest('POST', `/api/strategies/${activeStrategy?.id}/pause`);
+      const response = await apiRequest('POST', `/api/strategies/${activeStrategy?.id}/stop`);
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/strategies'] });
       toast({
-        title: "Trading Paused",
-        description: "Strategy has been paused. No new trades will be opened.",
+        title: "Trading Stopped",
+        description: "Bot has been stopped. All trading is now inactive.",
       });
     },
     onError: () => {
       toast({
         title: "Error",
-        description: "Failed to pause trading",
+        description: "Failed to stop trading",
         variant: "destructive",
       });
     },
   });
 
-  // Resume strategy mutation
-  const resumeMutation = useMutation({
+  // Start trading mutation
+  const startMutation = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest('POST', `/api/strategies/${activeStrategy?.id}/resume`);
+      const response = await apiRequest('POST', `/api/strategies/${activeStrategy?.id}/start`);
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/strategies'] });
       toast({
-        title: "Trading Resumed",
-        description: "Strategy is now active and will process new liquidations.",
+        title: "Trading Started",
+        description: "Bot is now active and will process liquidations.",
       });
     },
     onError: () => {
       toast({
         title: "Error",
-        description: "Failed to resume trading",
+        description: "Failed to start trading",
         variant: "destructive",
       });
     },
@@ -516,20 +516,20 @@ export default function Dashboard() {
             
             <div className="h-10 w-px bg-border" />
             
-            {/* Pause/Resume Button */}
+            {/* Start/Stop Button */}
             {activeStrategy && (
               <Button
-                variant={activeStrategy.paused ? "default" : "outline"}
+                variant={activeStrategy.isActive ? "outline" : "default"}
                 size="icon"
-                onClick={() => activeStrategy.paused ? resumeMutation.mutate() : pauseMutation.mutate()}
-                disabled={!activeStrategy.isActive || pauseMutation.isPending || resumeMutation.isPending}
-                data-testid="button-pause-resume"
-                title={activeStrategy.paused ? "Resume Trading" : "Pause Trading"}
+                onClick={() => activeStrategy.isActive ? stopMutation.mutate() : startMutation.mutate()}
+                disabled={stopMutation.isPending || startMutation.isPending}
+                data-testid="button-start-stop"
+                title={activeStrategy.isActive ? "Stop Trading" : "Start Trading"}
               >
-                {activeStrategy.paused ? (
-                  <Play className="h-4 w-4" />
-                ) : (
+                {activeStrategy.isActive ? (
                   <Pause className="h-4 w-4" />
+                ) : (
+                  <Play className="h-4 w-4" />
                 )}
               </Button>
             )}
@@ -580,17 +580,17 @@ export default function Dashboard() {
               
               {activeStrategy && (
                 <Button
-                  variant={activeStrategy.paused ? "default" : "outline"}
+                  variant={activeStrategy.isActive ? "outline" : "default"}
                   size="icon"
                   className="h-7 w-7"
-                  onClick={() => activeStrategy.paused ? resumeMutation.mutate() : pauseMutation.mutate()}
-                  disabled={!activeStrategy.isActive || pauseMutation.isPending || resumeMutation.isPending}
-                  data-testid="button-pause-resume-mobile"
+                  onClick={() => activeStrategy.isActive ? stopMutation.mutate() : startMutation.mutate()}
+                  disabled={stopMutation.isPending || startMutation.isPending}
+                  data-testid="button-start-stop-mobile"
                 >
-                  {activeStrategy.paused ? (
-                    <Play className="h-3 w-3" />
-                  ) : (
+                  {activeStrategy.isActive ? (
                     <Pause className="h-3 w-3" />
+                  ) : (
+                    <Play className="h-3 w-3" />
                   )}
                 </Button>
               )}
