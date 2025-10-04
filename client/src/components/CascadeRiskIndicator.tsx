@@ -139,10 +139,11 @@ export default function CascadeRiskIndicator() {
         }
       `}</style>
       <CardContent className="p-2 md:p-3">
-        <div className="flex gap-1.5 md:gap-2">
+        {/* Mobile Layout: Two rows */}
+        <div className="flex gap-1.5 md:hidden">
           {/* Pulsating Bar - Full Height with top spacing */}
           <div 
-            className={`w-1.5 md:w-2 rounded-full flex-shrink-0 mt-6 ${getPulsatingBarColor()} pulsating-bar transition-colors duration-300`}
+            className={`w-1.5 rounded-full flex-shrink-0 mt-6 ${getPulsatingBarColor()} pulsating-bar transition-colors duration-300`}
             data-testid="indicator-light"
             style={{ color: status.light === 'green' ? '#22c55e' : status.light === 'yellow' ? '#eab308' : status.light === 'orange' ? '#f97316' : '#ef4444' }}
           />
@@ -150,29 +151,29 @@ export default function CascadeRiskIndicator() {
           {/* Content Area */}
           <div className="flex-1 space-y-2">
             {/* Row 1: Metrics & Numbers */}
-            <div className="flex items-center gap-1.5 md:gap-2 overflow-x-auto">
+            <div className="flex items-center gap-1.5 overflow-x-auto">
               {/* Risk Status */}
               <div className="flex items-center gap-1 flex-shrink-0">
-                <TrendingDown className="h-4 md:h-4 w-4 md:w-4" />
-                <span className="text-sm md:text-sm font-semibold whitespace-nowrap">
+                <TrendingDown className="h-4 w-4" />
+                <span className="text-sm font-semibold whitespace-nowrap">
                   {status.score >= 6 ? 'Extreme' : status.score >= 4 ? 'High' : status.score >= 2 ? 'Elevated' : 'Normal'}
                 </span>
               </div>
 
               {/* Metrics - Lime colored */}
-              <Badge variant="outline" className="flex-shrink-0 font-mono text-xs md:text-xs px-2 md:px-2 h-7 bg-[rgb(190,242,100)]/10 text-[rgb(190,242,100)] border-[rgb(190,242,100)]/20">
+              <Badge variant="outline" className="flex-shrink-0 font-mono text-xs px-2 h-7 bg-[rgb(190,242,100)]/10 text-[rgb(190,242,100)] border-[rgb(190,242,100)]/20">
                 {status.score}
               </Badge>
 
-              <Badge variant="secondary" className="flex-shrink-0 font-mono text-xs md:text-xs px-2 md:px-2 h-7 bg-[rgb(190,242,100)]/10 text-[rgb(190,242,100)] border-[rgb(190,242,100)]/20" data-testid="tile-lq">
+              <Badge variant="secondary" className="flex-shrink-0 font-mono text-xs px-2 h-7 bg-[rgb(190,242,100)]/10 text-[rgb(190,242,100)] border-[rgb(190,242,100)]/20" data-testid="tile-lq">
                 LQ {status.LQ.toFixed(1)}
               </Badge>
               
-              <Badge variant="secondary" className="flex-shrink-0 font-mono text-xs md:text-xs px-2 md:px-2 h-7 bg-[rgb(190,242,100)]/10 text-[rgb(190,242,100)] border-[rgb(190,242,100)]/20" data-testid="tile-ret">
+              <Badge variant="secondary" className="flex-shrink-0 font-mono text-xs px-2 h-7 bg-[rgb(190,242,100)]/10 text-[rgb(190,242,100)] border-[rgb(190,242,100)]/20" data-testid="tile-ret">
                 RT {status.RET.toFixed(1)}
               </Badge>
               
-              <Badge variant="secondary" className="flex-shrink-0 font-mono text-xs md:text-xs px-2 md:px-2 h-7 bg-[rgb(190,242,100)]/10 text-[rgb(190,242,100)] border-[rgb(190,242,100)]/20" data-testid="tile-oi">
+              <Badge variant="secondary" className="flex-shrink-0 font-mono text-xs px-2 h-7 bg-[rgb(190,242,100)]/10 text-[rgb(190,242,100)] border-[rgb(190,242,100)]/20" data-testid="tile-oi">
                 OI {status.OI.toFixed(1)}%
               </Badge>
             </div>
@@ -187,10 +188,59 @@ export default function CascadeRiskIndicator() {
                   checked={status.autoEnabled}
                   onCheckedChange={handleAutoToggle}
                   data-testid="switch-auto-detect"
-                  className="scale-75 md:scale-100"
+                  className="scale-75"
                 />
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* Desktop Layout: Single row */}
+        <div className="hidden md:flex items-center gap-2">
+          {/* Pulsating Bar */}
+          <div 
+            className={`w-2 h-10 rounded-full flex-shrink-0 ${getPulsatingBarColor()} pulsating-bar transition-colors duration-300`}
+            data-testid="indicator-light"
+            style={{ color: status.light === 'green' ? '#22c55e' : status.light === 'yellow' ? '#eab308' : status.light === 'orange' ? '#f97316' : '#ef4444' }}
+          />
+
+          {/* Risk Status */}
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <TrendingDown className="h-4 w-4" />
+            <span className="text-sm font-semibold whitespace-nowrap">
+              {status.score >= 6 ? 'Extreme' : status.score >= 4 ? 'High' : status.score >= 2 ? 'Elevated' : 'Normal'}
+            </span>
+          </div>
+
+          {/* Metrics - Lime colored */}
+          <Badge variant="outline" className="flex-shrink-0 font-mono text-xs px-2 h-7 bg-[rgb(190,242,100)]/10 text-[rgb(190,242,100)] border-[rgb(190,242,100)]/20">
+            {status.score}
+          </Badge>
+
+          <Badge variant="secondary" className="flex-shrink-0 font-mono text-xs px-2 h-7 bg-[rgb(190,242,100)]/10 text-[rgb(190,242,100)] border-[rgb(190,242,100)]/20" data-testid="tile-lq">
+            LQ {status.LQ.toFixed(1)}
+          </Badge>
+          
+          <Badge variant="secondary" className="flex-shrink-0 font-mono text-xs px-2 h-7 bg-[rgb(190,242,100)]/10 text-[rgb(190,242,100)] border-[rgb(190,242,100)]/20" data-testid="tile-ret">
+            RT {status.RET.toFixed(1)}
+          </Badge>
+          
+          <Badge variant="secondary" className="flex-shrink-0 font-mono text-xs px-2 h-7 bg-[rgb(190,242,100)]/10 text-[rgb(190,242,100)] border-[rgb(190,242,100)]/20" data-testid="tile-oi">
+            OI {status.OI.toFixed(1)}%
+          </Badge>
+
+          {/* Cascade Detector Label */}
+          <span className="text-xs text-muted-foreground ml-2">Cascade Detector</span>
+
+          {/* Status & Toggle */}
+          <div className="flex items-center gap-2 ml-auto">
+            {getStatusBadge()}
+            <Switch
+              id="auto-detect"
+              checked={status.autoEnabled}
+              onCheckedChange={handleAutoToggle}
+              data-testid="switch-auto-detect"
+            />
           </div>
         </div>
       </CardContent>
