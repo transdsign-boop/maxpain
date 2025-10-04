@@ -547,24 +547,14 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
                 )}
               </div>
 
-              {/* Bottom: large asset label with close and expand buttons */}
+              {/* Bottom: large asset label with expand button */}
               <div className="relative px-2 pb-2 flex items-center gap-2">
                 <div className="font-extrabold text-foreground text-2xl tracking-tight">{position.symbol}</div>
-                <div className="flex items-center gap-2 ml-auto">
-                  <button
-                    className="rounded-lg flex items-center justify-center px-2 py-1 border-2 border-destructive bg-transparent text-destructive text-xs font-semibold transition-all hover:brightness-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                    data-testid={`button-close-position-${position.symbol}`}
-                    onClick={onClose}
-                    disabled={isClosing}
-                  >
-                    Close
-                  </button>
-                  <CollapsibleTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" data-testid="button-toggle-layers">
-                      {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                    </Button>
-                  </CollapsibleTrigger>
-                </div>
+                <CollapsibleTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 ml-auto" data-testid="button-toggle-layers">
+                    {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                  </Button>
+                </CollapsibleTrigger>
               </div>
             </div>
 
@@ -607,9 +597,9 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
               </div>
             </div>
 
-            {/* Liquidation Risk Donut */}
-            {liquidationPrice !== null && distanceToLiquidation !== null && (
-              <div className="flex flex-col items-center justify-center py-2 px-2 border-l border-border/30">
+            {/* Right Column: Liquidation Risk Donut and Actions */}
+            <div className="flex flex-col items-center justify-between py-2 px-2 border-l border-border/30 gap-2 min-w-[120px]">
+              {liquidationPrice !== null && distanceToLiquidation !== null ? (
                 <div className="relative" style={{ width: '80px', height: '80px' }}>
                   <svg viewBox="0 0 100 100" className="transform -rotate-90">
                     {/* Background circle */}
@@ -640,8 +630,20 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
                     <div className="text-[8px] text-muted-foreground">to liq</div>
                   </div>
                 </div>
-              </div>
-            )}
+              ) : (
+                <div className="flex-1" />
+              )}
+              
+              {/* Close Button - Always at bottom */}
+              <button
+                className="rounded-lg flex items-center justify-center px-2 py-1 border-2 border-destructive bg-transparent text-destructive text-xs font-semibold transition-all hover:brightness-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                data-testid={`button-close-position-${position.symbol}`}
+                onClick={onClose}
+                disabled={isClosing}
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
 
