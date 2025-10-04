@@ -61,8 +61,8 @@ export default function LiveModeToggle() {
   if (!activeStrategy) return null;
 
   return (
-    <div className="flex items-center gap-3" data-testid="live-mode-toggle">
-      <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 md:gap-3" data-testid="live-mode-toggle">
+      <div className="flex items-center gap-1.5 md:gap-2">
         <Switch
           data-testid="switch-live-mode"
           checked={isLiveMode}
@@ -71,14 +71,14 @@ export default function LiveModeToggle() {
         />
         <Label 
           htmlFor="live-mode-switch" 
-          className="text-sm font-medium cursor-pointer"
+          className="text-sm font-medium cursor-pointer hidden md:block"
           data-testid="label-live-mode"
         >
           {isLiveMode ? "Live" : "Paper"}
         </Label>
       </div>
       {isLiveMode && (
-        <Badge variant="destructive" className="font-mono" data-testid="badge-live-mode">
+        <Badge variant="destructive" className="font-mono text-xs" data-testid="badge-live-mode">
           LIVE
         </Badge>
       )}
