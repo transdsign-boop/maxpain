@@ -1957,7 +1957,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Set live session timestamp when switching to live mode, clear when switching to paper
       if (tradingModeChanging) {
         if (validatedUpdates.tradingMode === 'live') {
-          updateData.liveSessionStartedAt = new Date();
+          updateData.liveSessionStartedAt = new Date().toISOString();
           console.log('🟢 Starting new live trading session');
         } else if (validatedUpdates.tradingMode === 'paper') {
           updateData.liveSessionStartedAt = null;
