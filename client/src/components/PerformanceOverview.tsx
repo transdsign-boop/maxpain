@@ -131,6 +131,22 @@ export default function PerformanceOverview() {
       .slice(0, 3);
   }, [assetPerformance]);
 
+  // Calculate bottom 3 performing assets by total P&L
+  const bottom3Assets = useMemo(() => {
+    if (!assetPerformance || assetPerformance.length === 0) return [];
+    
+    // Filter out assets with no trades
+    const validAssets = assetPerformance.filter(asset => 
+      (asset.totalTrades || 0) > 0
+    );
+    
+    if (validAssets.length === 0) return [];
+    
+    return validAssets
+      .sort((a, b) => (a.totalPnl || 0) - (b.totalPnl || 0))
+      .slice(0, 3);
+  }, [assetPerformance]);
+
   // Use unified chart data for both modes
   const sourceChartData = rawChartData || [];
   
@@ -365,6 +381,39 @@ export default function PerformanceOverview() {
                 <div 
                   key={asset.symbol} 
                   className="flex flex-col p-2 md:p-3 rounded-lg bg-muted/30 border border-border"
+                  data-testid={`card-top-asset-${index + 1}`}
+                >
+                  <div className="flex items-center gap-1 mb-1">
+                    <Badge variant="outline" className="font-mono text-[10px] md:text-xs px-1 py-0">
+                      #{index + 1}
+                    </Badge>
+                    <span className="font-semibold text-xs md:text-sm truncate">{asset.symbol}</span>
+                  </div>
+                  <div className={`text-sm md:text-lg font-mono font-bold ${(asset.totalPnl || 0) >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`}>
+                    {(asset.totalPnl || 0) >= 0 ? '+' : ''}${(asset.totalPnl || 0).toFixed(2)}
+                  </div>
+                  <div className="text-[10px] md:text-xs text-muted-foreground truncate">
+                    {asset.wins}W-{asset.losses}L · {asset.winRate.toFixed(0)}%
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Bottom 3 Performing Assets */}
+        {bottom3Assets.length > 0 && (
+          <div className="border-b border-border pb-4">
+            <div className="text-xs text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2">
+              <TrendingDown className="h-3 w-3" />
+              Worst 3 Performing Assets
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {bottom3Assets.map((asset, index) => (
+                <div 
+                  key={asset.symbol} 
+                  className="flex flex-col p-2 md:p-3 rounded-lg bg-muted/30 border border-border"
+                  data-testid={`card-worst-asset-${index + 1}`}
                 >
                   <div className="flex items-center gap-1 mb-1">
                     <Badge variant="outline" className="font-mono text-[10px] md:text-xs px-1 py-0">
