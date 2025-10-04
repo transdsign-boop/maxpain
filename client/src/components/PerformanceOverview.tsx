@@ -328,7 +328,7 @@ export default function PerformanceOverview() {
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Top 3 Performing Assets - Above Chart */}
+        {/* Top 3 Performing Assets */}
         {top3Assets.length > 0 && (
           <div className="border-b border-border pb-4">
             <div className="text-xs text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
@@ -339,7 +339,7 @@ export default function PerformanceOverview() {
               {top3Assets.map((asset, index) => (
                 <div 
                   key={asset.symbol} 
-                  className="flex items-center justify-between p-3 rounded-lg bg-card/80 backdrop-blur-sm border border-border shadow-lg"
+                  className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border border-border"
                 >
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
@@ -366,295 +366,333 @@ export default function PerformanceOverview() {
           </div>
         )}
 
-        {/* Main Content: Metrics Left, Chart Right */}
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Left Column: All Metrics */}
-          <div className="lg:col-span-1 space-y-6">
-            {/* Main Balance Section */}
-            <div className="space-y-4">
-              {/* Total Balance - Prominent */}
-              <div className="space-y-1">
-                <div className="flex items-center gap-1.5">
-                  <DollarSign className="h-3 w-3 text-muted-foreground" />
-                  <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Total Balance</div>
-                </div>
-                <div className="text-3xl font-mono font-bold text-foreground" data-testid="text-total-balance">
-                  ${totalBalance.toFixed(2)}
-                </div>
-                <div className={`text-xs font-mono ${unrealizedPnl >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`}>
-                  Unrealized: {unrealizedPnl >= 0 ? '+' : ''}${unrealizedPnl.toFixed(2)}
-                </div>
-                <div className="text-[10px] text-muted-foreground">
-                  {unrealizedPnlPercent >= 0 ? '+' : ''}{unrealizedPnlPercent.toFixed(2)}%
-                </div>
-              </div>
-
-              {/* Available Balance */}
-              <div className="space-y-1">
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Available</div>
-                <div className="text-2xl font-mono font-bold text-foreground" data-testid="text-available-balance">
-                  ${availableBalance.toFixed(2)}
-                </div>
-                <div className="text-[10px] text-muted-foreground">For trading</div>
-              </div>
-
-              {/* Realized P&L */}
-              <div className="space-y-1">
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Realized P&L</div>
-                <div className={`text-2xl font-mono font-bold ${displayPerformance.totalRealizedPnl >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`} data-testid="text-realized-pnl">
-                  {formatCurrency(displayPerformance.totalRealizedPnl)}
-                </div>
-                <div className="text-[10px] text-muted-foreground">
-                  {realizedPnlPercent >= 0 ? '+' : ''}{realizedPnlPercent.toFixed(2)}% · {displayPerformance.totalTrades} trades
-                </div>
-              </div>
+        {/* Main Balance Section */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Total Balance - Prominent */}
+          <div className="space-y-2 lg:col-span-1">
+            <div className="flex items-center gap-2">
+              <DollarSign className="h-4 w-4 text-muted-foreground" />
+              <div className="text-xs text-muted-foreground uppercase tracking-wider">Total Balance</div>
             </div>
-
-            {/* Trading Statistics */}
-            <div className="space-y-3 pt-4 border-t border-border">
-              {/* Win Rate */}
-              <div className="space-y-1">
-                <div className="flex items-center gap-1.5">
-                  <Target className="h-3 w-3 text-muted-foreground" />
-                  <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Win Rate</div>
-                </div>
-                <div className="text-xl font-mono font-bold text-foreground" data-testid="text-win-rate">
-                  {formatPercent(displayPerformance.winRate)}
-                </div>
-                <div className="text-[10px] text-muted-foreground">
-                  {displayPerformance.winningTrades}W · {displayPerformance.losingTrades}L
-                </div>
-              </div>
-
-              {/* Total Trades */}
-              <div className="space-y-1">
-                <div className="flex items-center gap-1.5">
-                  <Activity className="h-3 w-3 text-muted-foreground" />
-                  <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Trades</div>
-                </div>
-                <div className="text-xl font-mono font-bold text-foreground" data-testid="text-total-trades">
-                  {displayPerformance.totalTrades}
-                </div>
-                <div className="text-[10px] text-muted-foreground">
-                  {displayPerformance.openTrades} open
-                </div>
-              </div>
-
-              {/* Profit Factor */}
-              <div className="space-y-1">
-                <div className="flex items-center gap-1.5">
-                  <TrendingUp className="h-3 w-3 text-muted-foreground" />
-                  <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Profit Factor</div>
-                </div>
-                <div className={`text-xl font-mono font-bold ${(displayPerformance.profitFactor ?? 0) >= 1 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`} data-testid="text-profit-factor">
-                  {(displayPerformance.profitFactor ?? 0) >= 999 ? '∞' : (displayPerformance.profitFactor ?? 0).toFixed(2)}
-                </div>
-                <div className="text-[10px] text-muted-foreground">
-                  {(displayPerformance.profitFactor ?? 0) >= 1 ? 'Profitable' : 'Unprofitable'}
-                </div>
-              </div>
-
-              {/* Avg Win */}
-              <div className="space-y-1">
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Avg Win</div>
-                <div className="text-xl font-mono font-bold text-[rgb(190,242,100)]">
-                  {formatCurrency(displayPerformance.averageWin)}
-                </div>
-              </div>
-
-              {/* Avg Loss */}
-              <div className="space-y-1">
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Avg Loss</div>
-                <div className="text-xl font-mono font-bold text-[rgb(251,146,60)]">
-                  {formatCurrency(displayPerformance.averageLoss)}
-                </div>
-              </div>
-
-              {/* Fees Paid */}
-              <div className="space-y-1">
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Fees Paid</div>
-                <div className="text-xl font-mono font-bold text-foreground" data-testid="text-fees-paid">
-                  ${(displayPerformance.totalFees || 0).toFixed(2)}
-                </div>
-              </div>
+            <div className="text-5xl font-mono font-bold" data-testid="text-total-balance">
+              ${totalBalance.toFixed(2)}
+            </div>
+            <div className={`text-sm font-mono ${unrealizedPnl >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`}>
+              Unrealized: {unrealizedPnl >= 0 ? '+' : ''}${unrealizedPnl.toFixed(2)}
+            </div>
+            <div className={`text-xs text-muted-foreground`}>
+              {unrealizedPnlPercent >= 0 ? '+' : ''}{unrealizedPnlPercent.toFixed(2)}%
             </div>
           </div>
 
-          {/* Right Column: Chart with Axes */}
-          <div className="lg:col-span-3">
-            {!chartLoading && chartData && chartData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={500}>
-                <ComposedChart data={chartData} margin={{ top: 20, right: 20, left: 20, bottom: 20 }}>
-                  <defs>
-                    <linearGradient id="bgPositivePnlGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="rgb(190, 242, 100)" stopOpacity={0.3}/>
-                      <stop offset="100%" stopColor="rgb(190, 242, 100)" stopOpacity={0.05}/>
-                    </linearGradient>
-                    <linearGradient id="bgNegativePnlGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="rgb(220, 38, 38)" stopOpacity={0.05}/>
-                      <stop offset="100%" stopColor="rgb(220, 38, 38)" stopOpacity={0.3}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                  <XAxis 
-                    dataKey="tradeNumber" 
-                    stroke="rgba(255,255,255,0.3)"
-                    tick={{ fontSize: 11, fill: 'rgba(255,255,255,0.5)' }}
-                    label={{ value: 'Trade #', position: 'insideBottom', offset: -10, fontSize: 11, fill: 'rgba(255,255,255,0.5)' }}
-                  />
-                  <YAxis 
-                    yAxisId="left"
-                    stroke="rgba(255,255,255,0.3)"
-                    tick={{ fontSize: 11, fill: 'rgba(255,255,255,0.5)' }}
-                    label={{ value: 'P&L per Trade ($)', angle: -90, position: 'insideLeft', fontSize: 11, fill: 'rgba(255,255,255,0.5)' }}
-                  />
-                  <YAxis 
-                    yAxisId="right"
-                    orientation="right"
-                    stroke="rgba(255,255,255,0.3)"
-                    tick={{ fontSize: 11, fill: 'rgba(255,255,255,0.5)' }}
-                    label={{ value: 'Cumulative P&L ($)', angle: 90, position: 'insideRight', fontSize: 11, fill: 'rgba(255,255,255,0.5)' }}
-                  />
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: 'rgba(0,0,0,0.9)', 
-                      border: '1px solid rgba(255,255,255,0.2)',
-                      borderRadius: '6px',
-                      fontSize: '12px'
-                    }}
-                    formatter={(value: any, name: string) => {
-                      if (name === 'pnl') return [`$${Number(value).toFixed(2)}`, 'Trade P&L'];
-                      if (name === 'cumulativePnl') return [`$${Number(value).toFixed(2)}`, 'Cumulative'];
-                      return [value, name];
-                    }}
-                  />
-                  <Legend 
-                    wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }}
-                    height={28}
-                  />
-                  <Bar 
-                    yAxisId="left"
-                    dataKey="pnl" 
-                    barSize={30}
-                    name="Trade P&L"
-                  >
-                    {chartData.map((entry, index) => (
-                      <Cell 
-                        key={`cell-${index}`} 
-                        fill={entry.pnl >= 0 ? 'rgba(190, 242, 100, 0.7)' : 'rgba(220, 38, 38, 0.7)'} 
-                      />
-                    ))}
-                  </Bar>
-                  <Line
-                    yAxisId="right"
-                    type="monotone"
-                    dataKey="cumulativePnl"
-                    stroke="rgb(190, 242, 100)"
-                    strokeWidth={2}
-                    dot={false}
-                    name="Cumulative P&L"
-                    isAnimationActive={false}
-                  />
-                  <Area 
-                    yAxisId="right"
-                    type="monotone" 
-                    dataKey={(entry: any) => entry.cumulativePnl >= 0 ? entry.cumulativePnl : null}
-                    stroke="none"
-                    fill="url(#bgPositivePnlGradient)"
-                    dot={false}
-                    connectNulls={false}
-                    baseValue={0}
-                    isAnimationActive={false}
-                  />
-                  <Area 
-                    yAxisId="right"
-                    type="monotone" 
-                    dataKey={(entry: any) => entry.cumulativePnl <= 0 ? entry.cumulativePnl : null}
-                    stroke="none"
-                    fill="url(#bgNegativePnlGradient)"
-                    dot={false}
-                    connectNulls={false}
-                    baseValue={0}
-                    isAnimationActive={false}
-                  />
-                  {/* Strategy update dots */}
-                  {strategyChanges && strategyChanges.map((change: any, idx: number) => {
-                    const tradeAtChange = chartData.find((d: any) => 
-                      Math.abs(d.timestamp - new Date(change.timestamp).getTime()) < 60000
-                    );
-                    if (!tradeAtChange) return null;
-                    return (
-                      <ReferenceLine
-                        key={`change-${idx}`}
-                        yAxisId="right"
-                        x={tradeAtChange.tradeNumber}
-                        stroke="rgba(255, 200, 0, 0.8)"
-                        strokeWidth={1}
-                        strokeDasharray="0"
-                      >
-                        <Label 
-                          value="●" 
-                          position="top" 
-                          style={{ fontSize: '20px', fill: 'rgba(255, 200, 0, 0.9)' }}
-                        />
-                      </ReferenceLine>
-                    );
-                  })}
-                </ComposedChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-[500px] flex items-center justify-center text-sm text-muted-foreground">
-                {chartLoading ? 'Loading chart...' : 'No trade data available'}
+          {/* Available & Realized */}
+          <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <div className="text-xs text-muted-foreground uppercase tracking-wider">Available</div>
+              <div className="text-3xl font-mono font-bold" data-testid="text-available-balance">
+                ${availableBalance.toFixed(2)}
               </div>
-            )}
+              <div className="text-xs text-muted-foreground">
+                For trading
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="text-xs text-muted-foreground uppercase tracking-wider">Realized P&L</div>
+              <div className={`text-3xl font-mono font-bold ${displayPerformance.totalRealizedPnl >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`} data-testid="text-realized-pnl">
+                {formatCurrency(displayPerformance.totalRealizedPnl)}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {realizedPnlPercent >= 0 ? '+' : ''}{realizedPnlPercent.toFixed(2)}% · {displayPerformance.totalTrades} trades
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Bottom Ticker - Smaller */}
-        <div className="overflow-hidden py-2 border-t border-border mt-6">
+        {/* Trading Statistics Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+          {/* Win Rate */}
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-1.5">
+              <Target className="h-3 w-3 text-muted-foreground" />
+              <div className="text-xs text-muted-foreground uppercase tracking-wide">Win Rate</div>
+            </div>
+            <div className="text-2xl font-mono font-bold" data-testid="text-win-rate">
+              {formatPercent(displayPerformance.winRate)}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {displayPerformance.winningTrades}W · {displayPerformance.losingTrades}L
+            </div>
+          </div>
+
+          {/* Total Trades */}
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-1.5">
+              <Activity className="h-3 w-3 text-muted-foreground" />
+              <div className="text-xs text-muted-foreground uppercase tracking-wide">Trades</div>
+            </div>
+            <div className="text-2xl font-mono font-bold" data-testid="text-total-trades">
+              {displayPerformance.totalTrades}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {displayPerformance.openTrades} open
+            </div>
+          </div>
+
+          {/* Profit Factor */}
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-1.5">
+              <TrendingUp className="h-3 w-3 text-muted-foreground" />
+              <div className="text-xs text-muted-foreground uppercase tracking-wide">Profit Factor</div>
+            </div>
+            <div className={`text-2xl font-mono font-bold ${(displayPerformance.profitFactor ?? 0) >= 1 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`} data-testid="text-profit-factor">
+              {(displayPerformance.profitFactor ?? 0) >= 999 ? '∞' : (displayPerformance.profitFactor ?? 0).toFixed(2)}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {(displayPerformance.profitFactor ?? 0) >= 1 ? 'Profitable' : 'Unprofitable'}
+            </div>
+          </div>
+
+          {/* Avg Win */}
+          <div className="space-y-1.5">
+            <div className="text-xs text-muted-foreground uppercase tracking-wide">Avg Win</div>
+            <div className="text-2xl font-mono font-bold text-[rgb(190,242,100)]">
+              {formatCurrency(displayPerformance.averageWin)}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Per trade
+            </div>
+          </div>
+
+          {/* Avg Loss */}
+          <div className="space-y-1.5">
+            <div className="text-xs text-muted-foreground uppercase tracking-wide">Avg Loss</div>
+            <div className="text-2xl font-mono font-bold text-[rgb(251,146,60)]">
+              {formatCurrency(displayPerformance.averageLoss)}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Per trade
+            </div>
+          </div>
+
+          {/* Fees Paid */}
+          <div className="space-y-1.5">
+            <div className="text-xs text-muted-foreground uppercase tracking-wide">Fees Paid</div>
+            <div className="text-2xl font-mono font-bold" data-testid="text-fees-paid">
+              ${(displayPerformance.totalFees || 0).toFixed(2)}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Total fees
+            </div>
+          </div>
+        </div>
+
+        {/* Performance Chart */}
+        <div className="relative h-64 md:h-80 -mx-8 mb-8" style={{
+          maskImage: 'linear-gradient(to right, transparent, black 5%, black 95%, transparent)',
+          WebkitMaskImage: 'linear-gradient(to right, transparent, black 5%, black 95%, transparent)'
+        }}>
+          {!chartLoading && chartData && chartData.length > 0 ? (
+            <>
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={chartData} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
+                <XAxis 
+                  dataKey="tradeNumber" 
+                  label={{ value: 'Trade #', position: 'insideBottom', offset: -5 }}
+                  className="text-xs"
+                  axisLine={false}
+                />
+                <YAxis 
+                  yAxisId="left"
+                  domain={pnlDomain}
+                  tick={false}
+                  axisLine={false}
+                />
+                <YAxis 
+                  yAxisId="right"
+                  orientation="right"
+                  domain={cumulativePnlDomain}
+                  tick={false}
+                  axisLine={false}
+                />
+                <Tooltip content={<CustomTooltip />} />
+                <Legend 
+                  verticalAlign="bottom" 
+                  height={28} 
+                  wrapperStyle={{ paddingTop: '8px', fontSize: '11px' }} 
+                  iconSize={10}
+                />
+                <ReferenceLine yAxisId="left" y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
+                <ReferenceLine yAxisId="right" y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
+                {/* Vertical lines for strategy changes */}
+                {strategyChanges?.map((change) => {
+                  const changeTime = new Date(change.changedAt).getTime();
+                  let tradeIndex = chartData.findIndex(trade => trade.timestamp >= changeTime);
+                  
+                  if (tradeIndex === -1 && chartData.length > 0) {
+                    tradeIndex = chartData.length - 1;
+                  }
+                  
+                  if (tradeIndex >= 0) {
+                    return (
+                      <ReferenceLine
+                        key={change.id}
+                        x={chartData[tradeIndex].tradeNumber}
+                        yAxisId="left"
+                        stroke="hsl(var(--primary))"
+                        strokeWidth={1}
+                        strokeDasharray="5 5"
+                      />
+                    );
+                  }
+                  return null;
+                })}
+                <defs>
+                  <linearGradient id="positivePnlGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="rgb(190, 242, 100)" stopOpacity={0.3}/>
+                    <stop offset="100%" stopColor="rgb(190, 242, 100)" stopOpacity={0.05}/>
+                  </linearGradient>
+                  <linearGradient id="negativePnlGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="rgb(220, 38, 38)" stopOpacity={0.05}/>
+                    <stop offset="100%" stopColor="rgb(220, 38, 38)" stopOpacity={0.3}/>
+                  </linearGradient>
+                </defs>
+                <Bar 
+                  yAxisId="left"
+                  dataKey="pnl" 
+                  barSize={20}
+                  data-testid="chart-bar-pnl"
+                  legendType="none"
+                >
+                  {chartData.map((entry, index) => (
+                    <Cell 
+                      key={`cell-${index}`} 
+                      fill={entry.pnl >= 0 ? 'rgba(190, 242, 100, 0.7)' : 'rgba(220, 38, 38, 0.7)'} 
+                    />
+                  ))}
+                </Bar>
+                {/* Positive P&L line (above zero) */}
+                <Line
+                  yAxisId="right"
+                  type="monotone"
+                  dataKey={(entry: any) => entry.cumulativePnl >= 0 ? entry.cumulativePnl : null}
+                  name="Cumulative P&L"
+                  stroke="rgb(190, 242, 100)"
+                  strokeWidth={2}
+                  dot={false}
+                  connectNulls={true}
+                  isAnimationActive={false}
+                />
+                {/* Negative P&L line (below zero) */}
+                <Line
+                  yAxisId="right"
+                  type="monotone"
+                  dataKey={(entry: any) => entry.cumulativePnl <= 0 ? entry.cumulativePnl : null}
+                  name="Negative P&L"
+                  stroke="rgb(220, 38, 38)"
+                  strokeWidth={2}
+                  dot={false}
+                  connectNulls={true}
+                  isAnimationActive={false}
+                  legendType="none"
+                />
+                {/* Strategy Update indicator for legend */}
+                <Line
+                  yAxisId="right"
+                  type="monotone"
+                  dataKey={() => null}
+                  name="Strategy Update"
+                  stroke="hsl(var(--primary))"
+                  strokeWidth={1}
+                  strokeDasharray="5 5"
+                  dot={false}
+                  isAnimationActive={false}
+                />
+                {/* Positive P&L area */}
+                <Area 
+                  yAxisId="right"
+                  type="monotone" 
+                  dataKey={(entry: any) => entry.cumulativePnl >= 0 ? entry.cumulativePnl : null}
+                  name="Positive P&L Area"
+                  stroke="none"
+                  fill="url(#positivePnlGradient)"
+                  dot={false}
+                  connectNulls={false}
+                  baseValue={0}
+                  isAnimationActive={false}
+                />
+                {/* Negative P&L area */}
+                <Area 
+                  yAxisId="right"
+                  type="monotone" 
+                  dataKey={(entry: any) => entry.cumulativePnl <= 0 ? entry.cumulativePnl : null}
+                  name="Negative P&L Area"
+                  stroke="none"
+                  fill="url(#negativePnlGradient)"
+                  dot={false}
+                  connectNulls={false}
+                  baseValue={0}
+                  isAnimationActive={false}
+                />
+              </ComposedChart>
+              </ResponsiveContainer>
+            </>
+          ) : (
+            <div className="flex items-center justify-center h-full text-muted-foreground">
+              <div className="text-center space-y-2">
+                <LineChart className="h-12 w-12 mx-auto opacity-50" />
+                <p className="text-sm font-medium">No Completed Trades Yet</p>
+                <p className="text-xs">Start trading to see your performance chart</p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Additional Metrics Ticker */}
+        <div className="-mx-6 overflow-hidden bg-muted/30 border-y border-border py-3">
           <div className="ticker-wrapper">
             <div className="ticker-content">
               {/* First set */}
               <div className="ticker-item">
                 <Award className="h-3 w-3 text-[rgb(190,242,100)]" />
-                <span className="text-[10px] text-muted-foreground">Best Trade</span>
-                <span className="text-[10px] font-mono font-semibold text-[rgb(190,242,100)]">{formatCurrency(displayPerformance.bestTrade)}</span>
+                <span className="text-xs text-muted-foreground">Best Trade</span>
+                <span className="text-xs font-mono font-semibold text-[rgb(190,242,100)]">{formatCurrency(displayPerformance.bestTrade)}</span>
               </div>
               <div className="ticker-item">
                 <TrendingDown className="h-3 w-3 text-[rgb(251,146,60)]" />
-                <span className="text-[10px] text-muted-foreground">Worst Trade</span>
-                <span className="text-[10px] font-mono font-semibold text-[rgb(251,146,60)]">{formatCurrency(displayPerformance.worstTrade)}</span>
+                <span className="text-xs text-muted-foreground">Worst Trade</span>
+                <span className="text-xs font-mono font-semibold text-[rgb(251,146,60)]">{formatCurrency(displayPerformance.worstTrade)}</span>
               </div>
               <div className="ticker-item">
                 <Activity className="h-3 w-3 text-muted-foreground" />
-                <span className="text-[10px] text-muted-foreground">Avg Trade Time</span>
-                <span className="text-[10px] font-mono font-semibold text-foreground">{formatTradeTime(displayPerformance.averageTradeTimeMs)}</span>
+                <span className="text-xs text-muted-foreground">Avg Trade Time</span>
+                <span className="text-xs font-mono font-semibold">{formatTradeTime(displayPerformance.averageTradeTimeMs)}</span>
               </div>
               <div className="ticker-item">
                 <TrendingDown className="h-3 w-3 text-[rgb(251,146,60)]" />
-                <span className="text-[10px] text-muted-foreground">Max Drawdown</span>
-                <span className="text-[10px] font-mono font-semibold text-[rgb(251,146,60)]">{formatCurrency(displayPerformance.maxDrawdown)} ({displayPerformance.maxDrawdownPercent.toFixed(2)}%)</span>
+                <span className="text-xs text-muted-foreground">Max Drawdown</span>
+                <span className="text-xs font-mono font-semibold text-[rgb(251,146,60)]">{formatCurrency(displayPerformance.maxDrawdown)} ({displayPerformance.maxDrawdownPercent.toFixed(2)}%)</span>
               </div>
               {/* Duplicate set for seamless loop */}
               <div className="ticker-item">
                 <Award className="h-3 w-3 text-[rgb(190,242,100)]" />
-                <span className="text-[10px] text-muted-foreground">Best Trade</span>
-                <span className="text-[10px] font-mono font-semibold text-[rgb(190,242,100)]">{formatCurrency(displayPerformance.bestTrade)}</span>
+                <span className="text-xs text-muted-foreground">Best Trade</span>
+                <span className="text-xs font-mono font-semibold text-[rgb(190,242,100)]">{formatCurrency(displayPerformance.bestTrade)}</span>
               </div>
               <div className="ticker-item">
                 <TrendingDown className="h-3 w-3 text-[rgb(251,146,60)]" />
-                <span className="text-[10px] text-muted-foreground">Worst Trade</span>
-                <span className="text-[10px] font-mono font-semibold text-[rgb(251,146,60)]">{formatCurrency(displayPerformance.worstTrade)}</span>
+                <span className="text-xs text-muted-foreground">Worst Trade</span>
+                <span className="text-xs font-mono font-semibold text-[rgb(251,146,60)]">{formatCurrency(displayPerformance.worstTrade)}</span>
               </div>
               <div className="ticker-item">
                 <Activity className="h-3 w-3 text-muted-foreground" />
-                <span className="text-[10px] text-muted-foreground">Avg Trade Time</span>
-                <span className="text-[10px] font-mono font-semibold text-foreground">{formatTradeTime(displayPerformance.averageTradeTimeMs)}</span>
+                <span className="text-xs text-muted-foreground">Avg Trade Time</span>
+                <span className="text-xs font-mono font-semibold">{formatTradeTime(displayPerformance.averageTradeTimeMs)}</span>
               </div>
               <div className="ticker-item">
                 <TrendingDown className="h-3 w-3 text-[rgb(251,146,60)]" />
-                <span className="text-[10px] text-muted-foreground">Max Drawdown</span>
-                <span className="text-[10px] font-mono font-semibold text-[rgb(251,146,60)]">{formatCurrency(displayPerformance.maxDrawdown)} ({displayPerformance.maxDrawdownPercent.toFixed(2)}%)</span>
+                <span className="text-xs text-muted-foreground">Max Drawdown</span>
+                <span className="text-xs font-mono font-semibold text-[rgb(251,146,60)]">{formatCurrency(displayPerformance.maxDrawdown)} ({displayPerformance.maxDrawdownPercent.toFixed(2)}%)</span>
               </div>
             </div>
           </div>
