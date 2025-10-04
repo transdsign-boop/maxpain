@@ -518,16 +518,16 @@ export default function TradingControlPanel() {
     }
   });
 
-  // Clear paper trades mutation
-  const clearPaperTradesMutation = useMutation({
+  // Reset session mutation (preserves historical data)
+  const resetSessionMutation = useMutation({
     mutationFn: async (strategyId: string) => {
-      const response = await apiRequest('DELETE', `/api/strategies/${strategyId}/clear-paper-trades`);
+      const response = await apiRequest('POST', `/api/strategies/${strategyId}/reset-session`);
       return await response.json();
     },
     onSuccess: (data) => {
       toast({
-        title: "Paper Trades Cleared",
-        description: `Cleared ${data.cleared.positions} positions and ${data.cleared.fills} fills. Starting fresh!`,
+        title: "Fresh Session Started",
+        description: `Archived ${data.archived.positions} positions and ${data.archived.fills} fills. All historical data preserved!`,
       });
       // Invalidate queries to refresh the UI
       queryClient.invalidateQueries({ queryKey: ['/api/strategies'] });
@@ -536,7 +536,7 @@ export default function TradingControlPanel() {
     onError: () => {
       toast({
         title: "Error",
-        description: "Failed to clear paper trades. Please try again.",
+        description: "Failed to reset session. Please try again.",
         variant: "destructive",
       });
     }
@@ -1207,31 +1207,32 @@ export default function TradingControlPanel() {
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button
-                      data-testid="button-clear-paper-trades"
-                      disabled={clearPaperTradesMutation.isPending}
+                      data-testid="button-reset-session"
+                      disabled={resetSessionMutation.isPending}
                       variant="outline"
                       className="flex-1"
                     >
                       <RotateCcw className="mr-2 h-4 w-4" />
-                      {clearPaperTradesMutation.isPending ? "Clearing..." : "Clear Paper Trades"}
+                      {resetSessionMutation.isPending ? "Resetting..." : "Start Fresh Session"}
                     </Button>
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>
-                      <AlertDialogTitle>Clear All Paper Trade Data?</AlertDialogTitle>
+                      <AlertDialogTitle>Start Fresh Trading Session?</AlertDialogTitle>
                       <AlertDialogDescription>
-                        This will permanently delete all positions, fills, and trade history for this strategy.
-                        Your balance will reset to the starting amount. This action cannot be undone.
+                        This will archive your current session and start a fresh one with a clean balance. 
+                        All your historical data (positions, fills, trades) will be PRESERVED and can be recalled at any time.
+                        This is a safe way to start over without losing your trading history.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                      <AlertDialogCancel data-testid="button-cancel-clear">Cancel</AlertDialogCancel>
+                      <AlertDialogCancel data-testid="button-cancel-reset">Cancel</AlertDialogCancel>
                       <AlertDialogAction
-                        data-testid="button-confirm-clear"
-                        onClick={() => activeStrategy && clearPaperTradesMutation.mutate(activeStrategy.id)}
-                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        data-testid="button-confirm-reset"
+                        onClick={() => activeStrategy && resetSessionMutation.mutate(activeStrategy.id)}
+                        className="bg-primary text-primary-foreground hover:bg-primary/90"
                       >
-                        Clear All Data
+                        Start Fresh Session
                       </AlertDialogAction>
                     </AlertDialogFooter>
                   </AlertDialogContent>
