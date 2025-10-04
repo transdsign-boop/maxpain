@@ -1,0 +1,137 @@
+Got you. There is no single “mathematically optimal” DCA for all markets, but for a liquidation-aware counter-trend bot you can get very close to “most likely to end in profit” by making three design choices:
+
+widen spacing as price moves against you,
+
+grow size into deeper fills, but cap total risk,
+
+scale everything to volatility and to your liquidation distance.
+
+Below is a plug-and-play recipe you can drop into your bot.
+
+Inputs
+
+P0: initial signal price
+
+side: long or short
+
+N: number of DCA levels you want
+
+Δ1: starting DCA step in percent from P0, example 0.4%
+
+p: spacing convexity, 1.0 to 1.4 works well, default 1.2
+
+g: size growth ratio per level, default pick from 1.5 to 2.2
+
+Rmax: max account risk you allow if all N levels fill, as percent of equity
+
+V: volatility anchor, use ATR% or recent move percent, example ATR10 as percent
+
+1) Volatility-scaled, widening levels
+
+For a long, set cumulative distance at level k as:
+
+ck = Δ1 · k^p · max(1, V / Vref)
+where Vref is a baseline ATR% you consider “normal” like 1.0%.
+
+Target price at level k: Pk = P0 · (1 − ck)
+
+For a short, flip the signs: Pk = P0 · (1 + ck)
+
+This widens tiers as you go deeper and auto-widens on high vol.
+
+2) Convex sizing that still behaves
+
+Use a geometric progression so deeper fills have more size without going full martingale.
+
+Position size at level k: qk = q1 · g^(k − 1)
+
+Pick g so that roughly 60 to 75 percent of your total size sits in the last two levels. A good quick choice is:
+
+g ≈ 1.8 for N=5
+
+g ≈ 1.6 for N=6 to 8
+
+g ≈ 1.5 for N≥9
+
+This concentrates size where mean-reversion is most likely, but avoids a blow-up curve.
+
+3) Solve q1 from your max risk
+
+Define your protective boundary. You need either a hard stop before liquidation or a max depth cap Cmax in percent beyond the last level. For a long, hard stop at Ps = P0 · (1 − S), where S is percent to stop.
+
+Approximate worst case loss if all N levels fill and price tags the stop:
+
+L ≈ Σ[qk] · (Pavg − Ps)
+where Pavg = Σ[qk · Pk] / Σ[qk]
+
+Set L ≤ Rmax · Equity and solve for q1:
+
+Compute Pk from step 1 for k = 1..N
+
+Compute weights wk = g^(k − 1)
+
+Pavg = Σ[wk · Pk] / Σ[wk]
+
+Dollar loss per unit size at stop ≈ Pavg − Ps (flip sign for short)
+
+q1 = (Rmax · Equity) / ((Pavg − Ps) · Σ[wk])
+
+Cap q1 by your allowed leverage per instrument.
+
+4) Entry logic and break-even
+
+Your volume-weighted average entry after m fills is:
+
+Pavg(m) = Σ_{k=1..m}[qk · Pk] / Σ_{k=1..m}[qk]
+
+Your break-even bounce distance after the m-th fill is just Pavg(m) back toward P0, minus fees and funding. Because sizing is convex and levels widen, Pavg(m) tracks close to the deepest fill, which raises the chance that a normal mean-reversion blip will clear you back to profit.
+
+5) How to pick Δ1, p, g quickly
+
+Δ1: start around 0.3% to 0.6% on liquid majors, 0.6% to 1.0% on alts. Tie it to volatility: Δ1 ≈ 0.35 · ATR%
+
+p: 1.2 is a great default. If chop is tight, drop to 1.05. If trends are strong, raise to 1.3.
+
+g: start 1.7 to 1.9 for N=5. If you are hitting max depth often, reduce g. If first levels exit too often with tiny profit, raise g slightly.
+
+6) A concrete example
+
+Goal: Long counter-trade on BTC perp, 5 levels, ATR10% = 1.2%, Equity 100k, Rmax 1.0% (risk 1k), stop S = 5.5% below P0.
+Choose Δ1 = 0.4%, p = 1.2, g = 1.8, Vref = 1.0%.
+
+Compute distances:
+
+c1 = 0.40% · 1.2 = 0.48%
+
+c2 = 0.40% · 2^1.2 ≈ 0.92%
+
+c3 ≈ 1.49%
+
+c4 ≈ 2.22%
+
+c5 ≈ 3.12%
+
+Prices: Pk = P0 · (1 − ck). Sizes in units: q ∝ [1, 1.8, 3.24, 5.83, 10.49].
+Sum w = 22.36.
+
+Compute Pavg and q1 via the formula above, then you have exact contracts per level that keep worst-case loss near 1k. In practice I also clip the last level so that the post-fill maintenance margin to liquidation remains at least 2.5 times ATR.
+
+7) Exit logic that makes this work
+
+You raise your win rate a lot with exits that fit the entry math.
+
+Scale-out ladder: place staggered TPs at Pavg(m) + [0.25, 0.5, 1.0] · ATR%. Close 40%, 40%, 20%.
+
+Or single TP: exit entire position at Pavg(m) + 0.6 · ATR%.
+
+Time stop: if no bounce to first TP within 2 to 3 ATR hours, flatten to reduce funding bleed.
+
+Turn off auto-DCA when your liquidation cascade detector flips to “red,” then re-enable at “yellow to green.”
+
+8) Guardrails for perps
+
+Funding, maker-taker, and slippage must be included in break-even. Add a small cushion ε, say 0.05% to 0.10%, to your TP.
+
+Place the stop with enough headroom above liquidation. Compute liquidation distance at maximum filled leverage and keep S at least 2.0 to 3.0 times that.
+
+Do not let N fill if your cascade detector is red. Pause fills and only resume when conditions ease.
