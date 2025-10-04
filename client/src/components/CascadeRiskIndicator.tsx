@@ -152,7 +152,9 @@ export default function CascadeRiskIndicator() {
             <div className="flex items-center gap-2">
               <TrendingDown className="h-4 w-4" />
               <div>
-                <div className="text-sm font-semibold capitalize">{status.light} Risk</div>
+                <div className="text-sm font-semibold">
+                  {status.score >= 6 ? 'Extreme Risk' : status.score >= 4 ? 'High Risk' : status.score >= 2 ? 'Elevated Risk' : 'Normal Conditions'}
+                </div>
                 <div className="text-xs text-muted-foreground">Score: {status.score}</div>
               </div>
             </div>
@@ -171,17 +173,6 @@ export default function CascadeRiskIndicator() {
                 <div className="text-muted-foreground">OI</div>
                 <div className="font-mono font-semibold text-primary">{status.OI.toFixed(1)}%</div>
               </div>
-            </div>
-          </div>
-
-          {/* Score Explanation */}
-          <div className="border-l pl-4 pr-3 text-xs text-muted-foreground">
-            <div className="font-medium mb-1">Score Levels:</div>
-            <div className="space-y-0.5">
-              <div>0-1: Normal</div>
-              <div>2-3: Elevated</div>
-              <div>4-5: High Risk</div>
-              <div>6+: Extreme</div>
             </div>
           </div>
 
