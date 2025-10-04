@@ -290,7 +290,7 @@ export default function PerformanceOverview() {
     : (paperSession?.unrealizedPnl || 0);
   
   const totalBalance = isLiveMode 
-    ? (liveAccount ? parseFloat(liveAccount.totalWalletBalance || '0') - unrealizedPnl : 0)
+    ? (liveAccount ? parseFloat(liveAccount.totalWalletBalance || '0') + unrealizedPnl : 0)
     : (paperSession?.currentBalance || 0);
   
   // Calculate available balance accounting for margin in use
