@@ -285,13 +285,13 @@ export default function PerformanceOverview() {
   };
 
   // Calculate unified account metrics (same for both live and paper)
-  const totalBalance = isLiveMode 
-    ? (liveAccount ? parseFloat(liveAccount.totalWalletBalance || '0') : 0)
-    : (paperSession?.currentBalance || 0);
-  
   const unrealizedPnl = isLiveMode 
     ? (liveAccount ? parseFloat(liveAccount.totalUnrealizedProfit) : 0)
     : (paperSession?.unrealizedPnl || 0);
+  
+  const totalBalance = isLiveMode 
+    ? (liveAccount ? parseFloat(liveAccount.totalWalletBalance || '0') - unrealizedPnl : 0)
+    : (paperSession?.currentBalance || 0);
   
   // Calculate available balance accounting for margin in use
   const leverage = activeStrategy?.leverage || 1;
