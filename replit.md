@@ -31,12 +31,13 @@ Preferred communication style: Simple, everyday language.
 - **API Design**: RESTful endpoints with `/api` prefix.
 
 ### Data Storage
-- **Database**: Shared PostgreSQL with Neon serverless hosting.
-- **Configuration**: Uses `NEON_DATABASE_URL` environment variable.
-- **Schema**: Dedicated tables for liquidations and users with indexing.
-- **Connection**: Connection pooling with `@neondatabase/serverless`.
+- **Database**: PostgreSQL with Neon serverless hosting (ALWAYS uses Neon, never local storage).
+- **Configuration**: Uses `NEON_DATABASE_URL` environment variable exclusively.
+- **Schema**: Dedicated tables for liquidations, strategies, positions, fills, sessions, and snapshots with indexing.
+- **Connection**: Connection pooling with `@neondatabase/serverless` HTTP driver.
 - **Migrations**: Drizzle Kit.
 - **Data Retention**: Liquidation data automatically retained for 5 days only; older data deleted every 5 minutes. Trading data (positions, fills, sessions) is permanently preserved through archiving (never deleted).
+- **Important**: All runtime operations use the Neon database. The app never uses local database storage.
 
 ### Real-time Data Features
 - Live WebSocket connection to Aster DEX for real-time liquidation streaming.
