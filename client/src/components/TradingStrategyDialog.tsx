@@ -1768,40 +1768,15 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
             )}
           </div>
 
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={form.handleSubmit(onSubmit)}
-              disabled={createStrategyMutation.isPending || updateStrategyMutation.isPending}
-              data-testid="button-save-strategy"
-            >
-              Save Settings
-            </Button>
-            {!isStrategyRunning ? (
-              <Button
-                type="button"
-                onClick={handleStartStrategy}
-                disabled={!activeStrategy || startStrategyMutation.isPending}
-                className="bg-lime-600 hover:bg-lime-700"
-                data-testid="button-start-strategy"
-              >
-                <Play className="h-4 w-4 mr-2" />
-                Start Trading
-              </Button>
-            ) : (
-              <Button
-                type="button"
-                variant="destructive"
-                onClick={handleStopStrategy}
-                disabled={stopStrategyMutation.isPending}
-                data-testid="button-stop-strategy"
-              >
-                <Square className="h-4 w-4 mr-2" />
-                Stop Trading
-              </Button>
-            )}
-          </div>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={form.handleSubmit(onSubmit)}
+            disabled={createStrategyMutation.isPending || updateStrategyMutation.isPending}
+            data-testid="button-save-strategy"
+          >
+            Save Settings
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
