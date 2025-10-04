@@ -140,9 +140,9 @@ export default function CascadeRiskIndicator() {
       `}</style>
       <CardContent className="p-2 md:p-3">
         <div className="flex gap-1.5 md:gap-2">
-          {/* Pulsating Bar - Full Height */}
+          {/* Pulsating Bar - Full Height with top spacing */}
           <div 
-            className={`w-1.5 md:w-2 rounded-full flex-shrink-0 ${getPulsatingBarColor()} pulsating-bar transition-colors duration-300`}
+            className={`w-1.5 md:w-2 rounded-full flex-shrink-0 mt-6 ${getPulsatingBarColor()} pulsating-bar transition-colors duration-300`}
             data-testid="indicator-light"
             style={{ color: status.light === 'green' ? '#22c55e' : status.light === 'yellow' ? '#eab308' : status.light === 'orange' ? '#f97316' : '#ef4444' }}
           />
@@ -159,20 +159,20 @@ export default function CascadeRiskIndicator() {
                 </span>
               </div>
 
-              {/* Metrics */}
-              <Badge variant="outline" className="flex-shrink-0 font-mono text-xs md:text-xs px-2 md:px-2 h-7">
+              {/* Metrics - Lime colored */}
+              <Badge variant="outline" className="flex-shrink-0 font-mono text-xs md:text-xs px-2 md:px-2 h-7 bg-[rgb(190,242,100)]/10 text-[rgb(190,242,100)] border-[rgb(190,242,100)]/20">
                 {status.score}
               </Badge>
 
-              <Badge variant="secondary" className="flex-shrink-0 font-mono text-xs md:text-xs px-2 md:px-2 h-7" data-testid="tile-lq">
+              <Badge variant="secondary" className="flex-shrink-0 font-mono text-xs md:text-xs px-2 md:px-2 h-7 bg-[rgb(190,242,100)]/10 text-[rgb(190,242,100)] border-[rgb(190,242,100)]/20" data-testid="tile-lq">
                 LQ {status.LQ.toFixed(1)}
               </Badge>
               
-              <Badge variant="secondary" className="flex-shrink-0 font-mono text-xs md:text-xs px-2 md:px-2 h-7" data-testid="tile-ret">
+              <Badge variant="secondary" className="flex-shrink-0 font-mono text-xs md:text-xs px-2 md:px-2 h-7 bg-[rgb(190,242,100)]/10 text-[rgb(190,242,100)] border-[rgb(190,242,100)]/20" data-testid="tile-ret">
                 RT {status.RET.toFixed(1)}
               </Badge>
               
-              <Badge variant="secondary" className="flex-shrink-0 font-mono text-xs md:text-xs px-2 md:px-2 h-7" data-testid="tile-oi">
+              <Badge variant="secondary" className="flex-shrink-0 font-mono text-xs md:text-xs px-2 md:px-2 h-7 bg-[rgb(190,242,100)]/10 text-[rgb(190,242,100)] border-[rgb(190,242,100)]/20" data-testid="tile-oi">
                 OI {status.OI.toFixed(1)}%
               </Badge>
             </div>
