@@ -734,6 +734,9 @@ export function StrategyStatus() {
   const { data: summary, isLoading, error } = useQuery<PositionSummary>({
     queryKey: ['/api/strategies', activeStrategy?.id, 'positions', 'summary'],
     queryFn: async () => {
+      if (!activeStrategy?.id) {
+        throw new Error('No active strategy');
+      }
       const response = await fetch(`/api/strategies/${activeStrategy.id}/positions/summary`);
       if (!response.ok) {
         throw new Error(`${response.status}: ${await response.text()}`);
@@ -833,7 +836,7 @@ export function StrategyStatus() {
           openedAt: new Date(),
           updatedAt: new Date(),
           closedAt: null,
-          sessionId: activeStrategy.id,
+          sessionId: activeStrategy?.id || '',
         };
       }),
     sessionId: activeStrategy?.id || '',
