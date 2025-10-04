@@ -16,6 +16,7 @@ Preferred communication style: Simple, everyday language.
 - **State Management**: React hooks with TanStack Query.
 - **Routing**: Wouter.
 - **UI/UX Design**: Dark/light mode, professional trading aesthetic with consistent color scheme (bright lime rgb(190, 242, 100) for positive/profit states, neutral orange/amber rgb(251, 146, 60) for negative/loss states), Inter font for text, JetBrains Mono for numerical data, responsive design, optimized tables and cards for financial data.
+- **Mobile Responsive Layout**: Optimized for mobile screens (320-414px) with overflow menu pattern for header - critical controls (Logo, Live Mode, Connection Status, Pause, Emergency Stop) remain visible, while secondary actions (Settings, Theme toggle) are accessed via Sheet menu. Cascade risk indicator uses fixed-width metric badges with horizontal scroll capability to prevent overlapping.
 - **Key Features**: Collapsible trade details showing layer-by-layer entry/exit information and fees; live strategy editing with tracked changes and performance chart visualization; interactive performance chart with per-trade P&L bars (lime for gains, orange for losses) and split cumulative P&L line (lime above zero, orange below zero) with gradient fills; hedge position detection and labeling for overlapping long/short positions on same symbol.
 
 ### Backend Architecture
