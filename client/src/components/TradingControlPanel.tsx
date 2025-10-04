@@ -29,7 +29,6 @@ interface Strategy {
   selectedAssets: string[];
   percentileThreshold: number;
   maxLayers: number;
-  positionSizePercent: string;
   profitTargetPercent: string;
   stopLossPercent: string;
   marginMode: "cross" | "isolated";
@@ -51,10 +50,6 @@ const strategyFormSchema = z.object({
   selectedAssets: z.array(z.string()).min(1, "Select at least one asset"),
   percentileThreshold: z.number().min(1).max(100),
   maxLayers: z.number().min(1).max(10),
-  positionSizePercent: z.string().min(1, "Position size is required").refine((val) => {
-    const num = parseFloat(val);
-    return !isNaN(num) && num >= 0.1 && num <= 50;
-  }, "Position size must be between 0.1% and 50%"),
   profitTargetPercent: z.string().refine((val) => {
     const num = parseFloat(val);
     return !isNaN(num) && num >= 0.1 && num <= 20;
@@ -366,7 +361,6 @@ export default function TradingControlPanel() {
       selectedAssets: ["ASTERUSDT"],
       percentileThreshold: 50,
       maxLayers: 5,
-      positionSizePercent: "5.0",
       profitTargetPercent: "1.0",
       stopLossPercent: "2.0",
       marginMode: "cross",
@@ -426,7 +420,6 @@ export default function TradingControlPanel() {
         selectedAssets: strategy.selectedAssets,
         percentileThreshold: strategy.percentileThreshold,
         maxLayers: strategy.maxLayers,
-        positionSizePercent: strategy.positionSizePercent,
         profitTargetPercent: strategy.profitTargetPercent,
         stopLossPercent: strategy.stopLossPercent,
         marginMode: strategy.marginMode,
@@ -560,7 +553,6 @@ export default function TradingControlPanel() {
         selectedAssets: activeStrategy.selectedAssets,
         percentileThreshold: activeStrategy.percentileThreshold,
         maxLayers: activeStrategy.maxLayers,
-        positionSizePercent: activeStrategy.positionSizePercent,
         profitTargetPercent: activeStrategy.profitTargetPercent,
         stopLossPercent: activeStrategy.stopLossPercent,
         marginMode: activeStrategy.marginMode,
@@ -625,7 +617,6 @@ export default function TradingControlPanel() {
         selectedAssets: strategy.selectedAssets,
         percentileThreshold: strategy.percentileThreshold,
         maxLayers: strategy.maxLayers,
-        positionSizePercent: strategy.positionSizePercent,
         profitTargetPercent: strategy.profitTargetPercent,
         stopLossPercent: strategy.stopLossPercent,
         marginMode: strategy.marginMode,
@@ -1000,33 +991,11 @@ export default function TradingControlPanel() {
                 Risk Management
               </Label>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                <FormField
-                  control={form.control}
-                  name="positionSizePercent"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel data-testid="label-position-size">Position Size (%)</FormLabel>
-                      <FormControl>
-                        <Input
-                          data-testid="input-position-size"
-                          type="number"
-                          step="0.1"
-                          min="0.1"
-                          max="50"
-                          placeholder="5.0"
-                          {...field}
-                          disabled={isStrategyRunning}
-                        />
-                      </FormControl>
-                      <FormDescription className="text-xs">
-                        Percentage of portfolio per position
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
+              <div className="text-xs text-muted-foreground bg-muted/30 p-3 rounded-md mb-4">
+                <strong>Note:</strong> Position sizing is now controlled by the DCA Settings (Advanced) section. The <strong>Max Risk %</strong> parameter determines total position sizing across all layers.
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField
                   control={form.control}
                   name="marginAmount"
