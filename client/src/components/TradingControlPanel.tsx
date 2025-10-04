@@ -1254,15 +1254,6 @@ export default function TradingControlPanel() {
               )}
             </div>
 
-            {/* Historical Sessions Viewer */}
-            {activeStrategy && (
-              <div className="mt-4">
-                <HistoricalSessions strategyId={activeStrategy.id} />
-              </div>
-            )}
-            
-            <div className="h-4" />
-
             {/* Strategy Info */}
             {activeStrategy && (
               <div className="text-xs text-muted-foreground space-y-1 p-3 bg-muted/50 rounded-md">

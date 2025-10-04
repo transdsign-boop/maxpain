@@ -16,9 +16,10 @@ import { Switch } from "@/components/ui/switch";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Play, Square, TrendingUp, DollarSign, Layers, Target, Trash2, RotateCcw, Key, CheckCircle2, XCircle, Loader2, Download, Upload, Lightbulb, AlertCircle } from "lucide-react";
+import { Play, Square, TrendingUp, DollarSign, Layers, Target, Trash2, RotateCcw, Key, CheckCircle2, XCircle, Loader2, Download, Upload, Lightbulb, AlertCircle, History } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { HistoricalSessions } from "./HistoricalSessions";
 
 // Types
 interface Strategy {
@@ -1506,7 +1507,12 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         </ScrollArea>
 
         <DialogFooter className="flex flex-col sm:flex-row gap-2">
-          <div className="flex flex-1 gap-2">
+          <div className="flex flex-1 gap-2 flex-wrap">
+            {activeStrategy && (
+              <div className="w-full sm:w-auto">
+                <HistoricalSessions strategyId={activeStrategy.id} />
+              </div>
+            )}
             <Button
               type="button"
               variant="outline"

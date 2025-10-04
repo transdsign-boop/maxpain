@@ -56,11 +56,12 @@ export function HistoricalSessions({ strategyId }: HistoricalSessionsProps) {
       <DialogTrigger asChild>
         <Button 
           variant="outline" 
+          size="sm"
           className="w-full"
           data-testid="button-view-history"
         >
-          <History className="h-4 w-4 mr-2" />
-          View Historical Sessions
+          <History className="h-4 w-4 mr-1" />
+          History
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto" data-testid="dialog-historical-sessions" aria-describedby="dialog-description">
