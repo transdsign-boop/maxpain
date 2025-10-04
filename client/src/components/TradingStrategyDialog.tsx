@@ -21,6 +21,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { HistoricalSessions } from "./HistoricalSessions";
+import { ConfigurationHistory } from "./ConfigurationHistory";
 
 // Types
 interface Strategy {
@@ -1724,9 +1725,14 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         <DialogFooter className="flex flex-col sm:flex-row gap-2">
           <div className="flex flex-1 gap-2 flex-wrap">
             {activeStrategy && (
-              <div className="w-full sm:w-auto">
-                <HistoricalSessions strategyId={activeStrategy.id} />
-              </div>
+              <>
+                <div className="w-full sm:w-auto">
+                  <HistoricalSessions strategyId={activeStrategy.id} />
+                </div>
+                <div className="w-full sm:w-auto">
+                  <ConfigurationHistory strategyId={activeStrategy.id} />
+                </div>
+              </>
             )}
             <Button
               type="button"
