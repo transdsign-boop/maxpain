@@ -149,7 +149,8 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
   // Fetch exchange account balance
   const { data: exchangeAccount, isLoading: accountLoading } = useQuery<any>({
     queryKey: ['/api/live/account'],
-    staleTime: 10000, // Cache for 10 seconds
+    refetchInterval: 15000, // Refresh every 15 seconds
+    staleTime: 5000, // Cache for 5 seconds
     retry: false, // Don't retry if API keys not configured
   });
 
