@@ -161,16 +161,27 @@ export default function CascadeRiskIndicator() {
             <div className="flex items-center gap-4 flex-1">
               <div className="text-xs" data-testid="tile-lq">
                 <div className="text-muted-foreground">LQ</div>
-                <div className="font-mono font-semibold">{status.LQ.toFixed(1)}</div>
+                <div className="font-mono font-semibold text-primary">{status.LQ.toFixed(1)}</div>
               </div>
               <div className="text-xs" data-testid="tile-ret">
                 <div className="text-muted-foreground">RET</div>
-                <div className="font-mono font-semibold">{status.RET.toFixed(1)}</div>
+                <div className="font-mono font-semibold text-primary">{status.RET.toFixed(1)}</div>
               </div>
               <div className="text-xs" data-testid="tile-oi">
                 <div className="text-muted-foreground">OI</div>
-                <div className="font-mono font-semibold">{status.OI.toFixed(1)}%</div>
+                <div className="font-mono font-semibold text-primary">{status.OI.toFixed(1)}%</div>
               </div>
+            </div>
+          </div>
+
+          {/* Score Explanation */}
+          <div className="border-l pl-4 pr-3 text-xs text-muted-foreground">
+            <div className="font-medium mb-1">Score Levels:</div>
+            <div className="space-y-0.5">
+              <div>0-1: Normal</div>
+              <div>2-3: Elevated</div>
+              <div>4-5: High Risk</div>
+              <div>6+: Extreme</div>
             </div>
           </div>
 
