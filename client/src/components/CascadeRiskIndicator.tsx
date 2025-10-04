@@ -111,63 +111,82 @@ export default function CascadeRiskIndicator() {
     );
   };
 
+  const getPulsatingBarColor = () => {
+    switch (status.light) {
+      case 'green': return 'bg-green-500 shadow-green-500/50';
+      case 'yellow': return 'bg-yellow-500 shadow-yellow-500/50';
+      case 'orange': return 'bg-orange-500 shadow-orange-500/50';
+      case 'red': return 'bg-red-500 shadow-red-500/50';
+      default: return 'bg-gray-500 shadow-gray-500/50';
+    }
+  };
+
   return (
-    <Card data-testid="card-cascade-risk">
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <TrendingDown className="h-5 w-5" />
-            <span>Cascade Risk</span>
-          </div>
-          {getStatusBadge()}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div 
-              className={`h-8 w-8 rounded-full ${getLightColor()} shadow-lg transition-colors duration-300`}
-              data-testid="indicator-light"
-            />
-            <div className="text-sm">
-              <div className="font-medium capitalize">{status.light} Risk</div>
-              <div className="text-xs text-muted-foreground">Score: {status.score}</div>
+    <Card data-testid="card-cascade-risk" className="overflow-hidden">
+      <style>{`
+        @keyframes pulse-glow {
+          0%, 100% {
+            opacity: 1;
+            box-shadow: 0 0 20px currentColor;
+          }
+          50% {
+            opacity: 0.6;
+            box-shadow: 0 0 40px currentColor;
+          }
+        }
+        .pulsating-bar {
+          animation: pulse-glow 3s ease-in-out infinite;
+        }
+      `}</style>
+      <CardContent className="p-4">
+        <div className="flex items-center gap-4">
+          {/* Pulsating Bar */}
+          <div 
+            className={`w-2 h-12 rounded-full ${getPulsatingBarColor()} pulsating-bar transition-colors duration-300`}
+            data-testid="indicator-light"
+            style={{ color: status.light === 'green' ? '#22c55e' : status.light === 'yellow' ? '#eab308' : status.light === 'orange' ? '#f97316' : '#ef4444' }}
+          />
+
+          {/* Risk Info */}
+          <div className="flex-1 flex items-center gap-6">
+            <div className="flex items-center gap-2">
+              <TrendingDown className="h-4 w-4" />
+              <div>
+                <div className="text-sm font-semibold capitalize">{status.light} Risk</div>
+                <div className="text-xs text-muted-foreground">Score: {status.score}</div>
+              </div>
+            </div>
+
+            {/* Metrics */}
+            <div className="flex items-center gap-4 flex-1">
+              <div className="text-xs" data-testid="tile-lq">
+                <div className="text-muted-foreground">LQ</div>
+                <div className="font-mono font-semibold">{status.LQ.toFixed(1)}</div>
+              </div>
+              <div className="text-xs" data-testid="tile-ret">
+                <div className="text-muted-foreground">RET</div>
+                <div className="font-mono font-semibold">{status.RET.toFixed(1)}</div>
+              </div>
+              <div className="text-xs" data-testid="tile-oi">
+                <div className="text-muted-foreground">OI</div>
+                <div className="font-mono font-semibold">{status.OI.toFixed(1)}%</div>
+              </div>
             </div>
           </div>
-          
-          <div className="flex items-center gap-2">
-            <Label htmlFor="auto-detect" className="text-sm">Auto Detect</Label>
-            <Switch
-              id="auto-detect"
-              checked={status.autoEnabled}
-              onCheckedChange={handleAutoToggle}
-              data-testid="switch-auto-detect"
-            />
-          </div>
-        </div>
 
-        <div className="grid grid-cols-3 gap-3">
-          <div className="rounded-lg border p-3 space-y-1" data-testid="tile-lq">
-            <div className="text-xs text-muted-foreground">LQ × median</div>
-            <div className="text-lg font-semibold font-mono">{status.LQ.toFixed(1)}</div>
+          {/* Status Badge & Toggle */}
+          <div className="flex items-center gap-3">
+            {getStatusBadge()}
+            <div className="flex items-center gap-2">
+              <Label htmlFor="auto-detect" className="text-xs text-muted-foreground">Auto</Label>
+              <Switch
+                id="auto-detect"
+                checked={status.autoEnabled}
+                onCheckedChange={handleAutoToggle}
+                data-testid="switch-auto-detect"
+              />
+            </div>
           </div>
-          
-          <div className="rounded-lg border p-3 space-y-1" data-testid="tile-ret">
-            <div className="text-xs text-muted-foreground">RET σ</div>
-            <div className="text-lg font-semibold font-mono">{status.RET.toFixed(1)}</div>
-          </div>
-          
-          <div className="rounded-lg border p-3 space-y-1" data-testid="tile-oi">
-            <div className="text-xs text-muted-foreground">OI drop 5m</div>
-            <div className="text-lg font-semibold font-mono">{status.OI.toFixed(1)}%</div>
-          </div>
-        </div>
-
-        <div className="text-xs text-muted-foreground space-y-1">
-          <div>• Green (0-1): Normal market conditions</div>
-          <div>• Yellow (2-3): Elevated liquidation activity</div>
-          <div>• Orange (4-5): High cascade risk</div>
-          <div>• Red (6+): Extreme cascade risk - auto blocking active</div>
         </div>
       </CardContent>
     </Card>
