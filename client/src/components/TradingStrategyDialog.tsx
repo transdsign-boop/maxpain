@@ -31,7 +31,6 @@ interface Strategy {
   percentileThreshold: number;
   liquidationLookbackHours: number;
   maxLayers: number;
-  positionSizePercent: string;
   profitTargetPercent: string;
   stopLossPercent: string;
   marginMode: "cross" | "isolated";
@@ -55,10 +54,6 @@ const strategyFormSchema = z.object({
   percentileThreshold: z.number().min(1).max(100),
   liquidationLookbackHours: z.number().min(1).max(24),
   maxLayers: z.number().min(1).max(10),
-  positionSizePercent: z.string().min(1, "Position size is required").refine((val) => {
-    const num = parseFloat(val);
-    return !isNaN(num) && num >= 0.1 && num <= 50;
-  }, "Position size must be between 0.1% and 50%"),
   profitTargetPercent: z.string().refine((val) => {
     const num = parseFloat(val);
     return !isNaN(num) && num >= 0.1 && num <= 20;
@@ -397,7 +392,6 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
       percentileThreshold: 50,
       liquidationLookbackHours: 1,
       maxLayers: 5,
-      positionSizePercent: "5.0",
       profitTargetPercent: "1.0",
       stopLossPercent: "2.0",
       marginMode: "cross",
@@ -411,9 +405,8 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
     }
   });
 
-  // Calculate trade size and account balance based on form values and exchange account
+  // Calculate account balance based on form values and exchange account
   const marginPercent = parseFloat(form.watch("marginAmount") || "10");
-  const positionSizePercent = parseFloat(form.watch("positionSizePercent") || "5");
   
   // Get account balance from exchange, fallback to 10000 for calculations
   const accountBalance = exchangeAccount?.totalWalletBalance 
@@ -422,7 +415,8 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
   
   // Calculate actual trading balance (account balance × margin usage %)
   const currentBalance = accountBalance * (marginPercent / 100);
-  const tradeSize = currentBalance * (positionSizePercent / 100);
+  // Note: Trade size is now calculated by DCA system based on dcaMaxRiskPercent
+  const tradeSize = currentBalance * 0.05; // Fallback for liquidity checks only
 
   // Fetch real liquidity data for symbols with account balance for recommendations
   const { data: liquidityData, isLoading: liquidityLoading } = useQuery({
@@ -554,7 +548,6 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         percentileThreshold: strategy.percentileThreshold,
         liquidationLookbackHours: strategy.liquidationLookbackHours,
         maxLayers: strategy.maxLayers,
-        positionSizePercent: strategy.positionSizePercent,
         profitTargetPercent: strategy.profitTargetPercent,
         stopLossPercent: strategy.stopLossPercent,
         marginMode: strategy.marginMode,
@@ -794,7 +787,6 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         percentileThreshold: activeStrategy.percentileThreshold,
         liquidationLookbackHours: activeStrategy.liquidationLookbackHours,
         maxLayers: activeStrategy.maxLayers,
-        positionSizePercent: activeStrategy.positionSizePercent,
         profitTargetPercent: activeStrategy.profitTargetPercent,
         stopLossPercent: activeStrategy.stopLossPercent,
         marginMode: activeStrategy.marginMode,
@@ -861,7 +853,6 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         percentileThreshold: strategy.percentileThreshold,
         liquidationLookbackHours: strategy.liquidationLookbackHours,
         maxLayers: strategy.maxLayers,
-        positionSizePercent: strategy.positionSizePercent,
         profitTargetPercent: strategy.profitTargetPercent,
         stopLossPercent: strategy.stopLossPercent,
         marginMode: strategy.marginMode,
@@ -1128,7 +1119,6 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                           className="w-full mt-2"
                           data-testid="button-apply-recommendations"
                           onClick={() => {
-                            form.setValue("positionSizePercent", recommendedPositionSizePercent.toString());
                             form.setValue("stopLossPercent", recommendedStopLoss.toString());
                             form.setValue("profitTargetPercent", recommendedTakeProfit.toString());
                             form.setValue("maxLayers", recommendedMaxLayers);
@@ -1298,39 +1288,10 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                       </FormItem>
                     )}
                   />
-
-                  <FormField
-                    control={form.control}
-                    name="positionSizePercent"
-                    render={({ field }) => (
-                      <FormItem>
-                        <div className="flex items-center gap-2">
-                          <FormLabel data-testid="label-position-size">Position Size %</FormLabel>
-                          {limitingAsset && parseFloat(field.value) > recommendedPositionSizePercent && recommendedPositionSizePercent > 0 && (
-                            <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20">
-                              ⚠ Exceeds safe size
-                            </Badge>
-                          )}
-                        </div>
-                        <FormControl>
-                          <Input
-                            data-testid="input-position-size"
-                            type="text"
-                            placeholder="5.0"
-                            {...field}
-                            disabled={false}
-                          />
-                        </FormControl>
-                        <FormDescription className="text-xs">
-                          % of available margin per layer (0.1-50%)
-                          {limitingAsset && recommendedPositionSizePercent > 0 && (
-                            <span className="text-primary ml-1">(Recommended: {recommendedPositionSizePercent}%)</span>
-                          )}
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                </div>
+                
+                <div className="text-xs text-muted-foreground bg-muted/30 p-3 rounded-md">
+                  <strong>Note:</strong> Position sizing is now controlled by the DCA Settings (Advanced) section below. The <strong>Max Risk %</strong> parameter determines total position sizing across all layers.
                 </div>
               </div>
 
