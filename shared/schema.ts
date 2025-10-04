@@ -82,6 +82,13 @@ export const strategies = pgTable("strategies", {
   positionSizePercent: decimal("position_size_percent", { precision: 5, scale: 2 }).notNull(), // % of portfolio per position
   profitTargetPercent: decimal("profit_target_percent", { precision: 5, scale: 2 }).notNull().default("1.0"),
   stopLossPercent: decimal("stop_loss_percent", { precision: 5, scale: 2 }).notNull().default("2.0"), // Stop loss percentage
+  // Advanced DCA (Dollar Cost Averaging) System
+  dcaStartStepPercent: decimal("dca_start_step_percent", { precision: 5, scale: 2 }).notNull().default("0.4"), // Δ1: Starting DCA step % from initial price
+  dcaSpacingConvexity: decimal("dca_spacing_convexity", { precision: 5, scale: 2 }).notNull().default("1.2"), // p: Spacing power (1.0-1.4)
+  dcaSizeGrowth: decimal("dca_size_growth", { precision: 5, scale: 2 }).notNull().default("1.8"), // g: Size growth ratio per level
+  dcaMaxRiskPercent: decimal("dca_max_risk_percent", { precision: 5, scale: 2 }).notNull().default("1.0"), // Rmax: Max account risk % if all levels fill
+  dcaVolatilityRef: decimal("dca_volatility_ref", { precision: 5, scale: 2 }).notNull().default("1.0"), // Vref: Baseline ATR% considered "normal"
+  dcaExitCushionMultiplier: decimal("dca_exit_cushion_multiplier", { precision: 5, scale: 2 }).notNull().default("0.6"), // TP cushion as multiple of ATR
   // Margin and Risk Management
   marginMode: text("margin_mode").notNull().default("cross"), // "cross" or "isolated"
   leverage: integer("leverage").notNull().default(1), // 1-125x leverage
@@ -211,6 +218,31 @@ export const frontendStrategySchema = z.object({
     const num = parseFloat(val);
     return !isNaN(num) && num >= 0.1 && num <= 50;
   }, "Stop loss must be between 0.1% and 50%").default("2.0"),
+  // Advanced DCA System
+  dcaStartStepPercent: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 0.1 && num <= 5.0;
+  }, "DCA start step must be between 0.1% and 5%").default("0.4"),
+  dcaSpacingConvexity: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 1.0 && num <= 2.0;
+  }, "DCA spacing convexity must be between 1.0 and 2.0").default("1.2"),
+  dcaSizeGrowth: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 1.0 && num <= 3.0;
+  }, "DCA size growth must be between 1.0 and 3.0").default("1.8"),
+  dcaMaxRiskPercent: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 0.1 && num <= 10.0;
+  }, "DCA max risk must be between 0.1% and 10%").default("1.0"),
+  dcaVolatilityRef: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 0.1 && num <= 10.0;
+  }, "DCA volatility reference must be between 0.1% and 10%").default("1.0"),
+  dcaExitCushionMultiplier: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 0.1 && num <= 3.0;
+  }, "DCA exit cushion must be between 0.1 and 3.0").default("0.6"),
   // Margin and Risk Management
   marginMode: z.enum(["cross", "isolated"]).default("cross"),
   leverage: z.number().min(1).max(125).default(1), // 1-125x leverage
