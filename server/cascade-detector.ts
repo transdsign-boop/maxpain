@@ -123,7 +123,7 @@ export class CascadeDetector {
         this.coolingCounter = 0;
       } else {
         const lowerBand = this.getLowerBand(this.currentLight);
-        if (score < lowerBand) {
+        if (score <= lowerBand) {
           this.coolingCounter++;
           if (this.coolingCounter >= this.COOLING_SECONDS) {
             this.currentLight = newColor;
