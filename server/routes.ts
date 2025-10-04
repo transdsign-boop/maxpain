@@ -2006,6 +2006,103 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // DCA Settings API Endpoints
+  app.get("/api/strategies/:id/dca", async (req, res) => {
+    try {
+      const strategyId = req.params.id;
+      const { getStrategyWithDCA } = await import('./dca-sql');
+      const strategy = await getStrategyWithDCA(strategyId);
+      
+      if (!strategy) {
+        return res.status(404).json({ error: "Strategy not found" });
+      }
+      
+      res.json({
+        dcaStartStepPercent: strategy.dca_start_step_percent,
+        dcaSpacingConvexity: strategy.dca_spacing_convexity,
+        dcaSizeGrowth: strategy.dca_size_growth,
+        dcaMaxRiskPercent: strategy.dca_max_risk_percent,
+        dcaVolatilityRef: strategy.dca_volatility_ref,
+        dcaExitCushionMultiplier: strategy.dca_exit_cushion_multiplier
+      });
+    } catch (error) {
+      console.error('Error fetching DCA settings:', error);
+      res.status(500).json({ error: "Failed to fetch DCA settings" });
+    }
+  });
+
+  app.put("/api/strategies/:id/dca", async (req, res) => {
+    try {
+      const strategyId = req.params.id;
+      const { updateStrategyDCAParams } = await import('./dca-sql');
+      
+      const dcaParams: any = {};
+      if (req.body.dcaStartStepPercent !== undefined) {
+        const val = parseFloat(req.body.dcaStartStepPercent);
+        if (isNaN(val) || val < 0.1 || val > 5.0) {
+          return res.status(400).json({ error: "dcaStartStepPercent must be between 0.1 and 5.0" });
+        }
+        dcaParams.dcaStartStepPercent = req.body.dcaStartStepPercent;
+      }
+      if (req.body.dcaSpacingConvexity !== undefined) {
+        const val = parseFloat(req.body.dcaSpacingConvexity);
+        if (isNaN(val) || val < 1.0 || val > 2.0) {
+          return res.status(400).json({ error: "dcaSpacingConvexity must be between 1.0 and 2.0" });
+        }
+        dcaParams.dcaSpacingConvexity = req.body.dcaSpacingConvexity;
+      }
+      if (req.body.dcaSizeGrowth !== undefined) {
+        const val = parseFloat(req.body.dcaSizeGrowth);
+        if (isNaN(val) || val < 1.0 || val > 3.0) {
+          return res.status(400).json({ error: "dcaSizeGrowth must be between 1.0 and 3.0" });
+        }
+        dcaParams.dcaSizeGrowth = req.body.dcaSizeGrowth;
+      }
+      if (req.body.dcaMaxRiskPercent !== undefined) {
+        const val = parseFloat(req.body.dcaMaxRiskPercent);
+        if (isNaN(val) || val < 0.1 || val > 10.0) {
+          return res.status(400).json({ error: "dcaMaxRiskPercent must be between 0.1 and 10.0" });
+        }
+        dcaParams.dcaMaxRiskPercent = req.body.dcaMaxRiskPercent;
+      }
+      if (req.body.dcaVolatilityRef !== undefined) {
+        const val = parseFloat(req.body.dcaVolatilityRef);
+        if (isNaN(val) || val < 0.1 || val > 10.0) {
+          return res.status(400).json({ error: "dcaVolatilityRef must be between 0.1 and 10.0" });
+        }
+        dcaParams.dcaVolatilityRef = req.body.dcaVolatilityRef;
+      }
+      if (req.body.dcaExitCushionMultiplier !== undefined) {
+        const val = parseFloat(req.body.dcaExitCushionMultiplier);
+        if (isNaN(val) || val < 0.1 || val > 2.0) {
+          return res.status(400).json({ error: "dcaExitCushionMultiplier must be between 0.1 and 2.0" });
+        }
+        dcaParams.dcaExitCushionMultiplier = req.body.dcaExitCushionMultiplier;
+      }
+      
+      const updated = await updateStrategyDCAParams(strategyId, dcaParams);
+      
+      if (!updated) {
+        return res.status(404).json({ error: "Strategy not found or no parameters to update" });
+      }
+      
+      await strategyEngine.reloadStrategy(strategyId);
+      console.log(`🔄 Reloaded strategy ${strategyId} with updated DCA settings`);
+      
+      res.json({
+        dcaStartStepPercent: updated.dca_start_step_percent,
+        dcaSpacingConvexity: updated.dca_spacing_convexity,
+        dcaSizeGrowth: updated.dca_size_growth,
+        dcaMaxRiskPercent: updated.dca_max_risk_percent,
+        dcaVolatilityRef: updated.dca_volatility_ref,
+        dcaExitCushionMultiplier: updated.dca_exit_cushion_multiplier
+      });
+    } catch (error) {
+      console.error('Error updating DCA settings:', error);
+      res.status(500).json({ error: "Failed to update DCA settings" });
+    }
+  });
+
   app.post("/api/strategies/:id/start", async (req, res) => {
     try {
       const strategyId = req.params.id;

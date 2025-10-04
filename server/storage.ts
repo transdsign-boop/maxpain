@@ -337,7 +337,20 @@ export class DatabaseStorage implements IStorage {
     };
 
     const result = await db.insert(strategies).values(defaultStrategy).returning();
-    return result[0];
+    const newStrategy = result[0];
+    
+    // Initialize DCA parameters using SQL wrapper (bypasses Drizzle cache)
+    const { updateStrategyDCAParams } = await import('./dca-sql');
+    await updateStrategyDCAParams(newStrategy.id, {
+      dcaStartStepPercent: "0.4",      // First DCA at 0.4% from entry
+      dcaSpacingConvexity: "1.2",      // Convex spacing
+      dcaSizeGrowth: "1.8",            // Each level 1.8x larger
+      dcaMaxRiskPercent: "1.0",        // Max 1% account risk
+      dcaVolatilityRef: "1.0",         // Volatility reference
+      dcaExitCushionMultiplier: "0.6"  // Exit at 60% of DCA distance
+    });
+    
+    return newStrategy;
   }
 
   async getOrCreateActiveSession(userId: string): Promise<TradeSession> {
