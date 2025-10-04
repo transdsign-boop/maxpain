@@ -3236,9 +3236,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
 
           const positions = await posResponse.json();
-          const currentPosition = positions.find((p: any) => p.symbol === symbol && p.positionSide === positionSide);
+          
+          // In one-way mode, positionSide is 'BOTH' but we identify direction by positionAmt sign
+          // In hedge mode, positionSide is 'LONG' or 'SHORT'
+          let currentPosition = positions.find((p: any) => p.symbol === symbol);
           
           if (!currentPosition || parseFloat(currentPosition.positionAmt) === 0) {
+            return res.json([]);
+          }
+          
+          // Verify the position direction matches what we're looking for
+          const posAmt = parseFloat(currentPosition.positionAmt);
+          const isLongPosition = posAmt > 0;
+          const isShortPosition = posAmt < 0;
+          
+          if ((positionSide === 'LONG' && !isLongPosition) || (positionSide === 'SHORT' && !isShortPosition)) {
             return res.json([]);
           }
 
