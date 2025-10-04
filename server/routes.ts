@@ -2034,42 +2034,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const strategyId = req.params.id;
       
-      // Validate using Zod schema
+      // Validate using Zod schema - handle both undefined and null values
       const dcaUpdateSchema = z.object({
         dcaStartStepPercent: z.string().refine((val) => {
           const num = parseFloat(val);
           return !isNaN(num) && num >= 0.1 && num <= 5.0;
-        }, "Must be between 0.1 and 5.0").optional(),
+        }, "Must be between 0.1 and 5.0").nullable().optional(),
         dcaSpacingConvexity: z.string().refine((val) => {
           const num = parseFloat(val);
           return !isNaN(num) && num >= 1.0 && num <= 2.0;
-        }, "Must be between 1.0 and 2.0").optional(),
+        }, "Must be between 1.0 and 2.0").nullable().optional(),
         dcaSizeGrowth: z.string().refine((val) => {
           const num = parseFloat(val);
           return !isNaN(num) && num >= 1.0 && num <= 3.0;
-        }, "Must be between 1.0 and 3.0").optional(),
+        }, "Must be between 1.0 and 3.0").nullable().optional(),
         dcaMaxRiskPercent: z.string().refine((val) => {
           const num = parseFloat(val);
           return !isNaN(num) && num >= 0.1 && num <= 10.0;
-        }, "Must be between 0.1 and 10.0").optional(),
+        }, "Must be between 0.1 and 10.0").nullable().optional(),
         dcaVolatilityRef: z.string().refine((val) => {
           const num = parseFloat(val);
           return !isNaN(num) && num >= 0.1 && num <= 10.0;
-        }, "Must be between 0.1 and 10.0").optional(),
+        }, "Must be between 0.1 and 10.0").nullable().optional(),
         dcaExitCushionMultiplier: z.string().refine((val) => {
           const num = parseFloat(val);
           return !isNaN(num) && num >= 0.1 && num <= 2.0;
-        }, "Must be between 0.1 and 2.0").optional(),
+        }, "Must be between 0.1 and 2.0").nullable().optional(),
       });
       
       const validatedData = dcaUpdateSchema.parse(req.body);
       
-      if (Object.keys(validatedData).length === 0) {
+      // Filter out null and undefined values
+      const filteredData = Object.fromEntries(
+        Object.entries(validatedData).filter(([_, value]) => value != null && value !== '')
+      );
+      
+      if (Object.keys(filteredData).length === 0) {
         return res.status(400).json({ error: "No DCA parameters provided" });
       }
       
       const { updateStrategyDCAParams } = await import('./dca-sql');
-      const updated = await updateStrategyDCAParams(strategyId, validatedData);
+      const updated = await updateStrategyDCAParams(strategyId, filteredData);
       
       if (!updated) {
         return res.status(404).json({ error: "Strategy not found" });
