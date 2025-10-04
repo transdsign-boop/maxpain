@@ -564,33 +564,36 @@ export default function Dashboard() {
         </div>
 
         {/* Mobile Layout */}
-        <div className="lg:hidden px-4 py-2 space-y-2">
+        <div className="lg:hidden px-2 py-1.5">
           {/* Top Row: Logo and Controls */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="scale-75 origin-left">
+          <div className="flex items-center justify-between gap-1">
+            <div className="flex items-center gap-1.5 min-w-0 flex-shrink">
+              <div className="scale-[0.65] origin-left">
                 <AsterLogo data-testid="app-logo" />
               </div>
-              <div className="scale-90">
+              <div className="scale-75">
                 <LiveModeToggle />
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <ConnectionStatus isConnected={isConnected} />
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <div className="scale-75">
+                <ConnectionStatus isConnected={isConnected} />
+              </div>
               {/* Pause/Resume Button */}
               {activeStrategy && (
                 <Button
                   variant={activeStrategy.paused ? "default" : "outline"}
                   size="icon"
+                  className="h-7 w-7"
                   onClick={() => activeStrategy.paused ? resumeMutation.mutate() : pauseMutation.mutate()}
                   disabled={!activeStrategy.isActive || pauseMutation.isPending || resumeMutation.isPending}
                   data-testid="button-pause-resume-mobile"
                 >
                   {activeStrategy.paused ? (
-                    <Play className="h-4 w-4" />
+                    <Play className="h-3 w-3" />
                   ) : (
-                    <Pause className="h-4 w-4" />
+                    <Pause className="h-3 w-3" />
                   )}
                 </Button>
               )}
@@ -599,22 +602,26 @@ export default function Dashboard() {
                 <Button
                   variant="destructive"
                   size="icon"
+                  className="h-7 w-7"
                   onClick={() => setIsEmergencyStopDialogOpen(true)}
                   disabled={!activeStrategy.isActive}
                   data-testid="button-emergency-stop-mobile"
                 >
-                  <AlertTriangle className="h-4 w-4" />
+                  <AlertTriangle className="h-3 w-3" />
                 </Button>
               )}
               <Button 
                 variant="default" 
                 size="icon"
+                className="h-7 w-7"
                 onClick={() => setIsStrategyDialogOpen(true)}
                 data-testid="button-trading-strategy"
               >
-                <Settings2 className="h-4 w-4" />
+                <Settings2 className="h-3 w-3" />
               </Button>
-              <ThemeToggle />
+              <div className="scale-75">
+                <ThemeToggle />
+              </div>
             </div>
           </div>
 
@@ -626,7 +633,7 @@ export default function Dashboard() {
         className={`p-3 md:p-6 space-y-4 md:space-y-6 transition-all duration-300 ${
           isSidebarCollapsed ? 'lg:mr-12' : 'lg:mr-80'
         }`}
-        style={{ paddingTop: 'calc(73px + 1.5rem)' }}
+        style={{ paddingTop: 'calc(52px + 0.75rem)' }}
       >
         {/* Cascade Risk Indicator */}
         <CascadeRiskIndicator />
