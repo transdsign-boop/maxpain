@@ -1,9 +1,6 @@
-import { Pool, neonConfig } from '@neondatabase/serverless';
-import { drizzle } from 'drizzle-orm/neon-serverless';
-import ws from "ws";
+import { neon } from '@neondatabase/serverless';
+import { drizzle } from 'drizzle-orm/neon-http';
 import * as schema from "@shared/schema";
-
-neonConfig.webSocketConstructor = ws;
 
 const databaseUrl = process.env.NEON_DATABASE_URL || process.env.DATABASE_URL;
 
@@ -14,10 +11,10 @@ if (!databaseUrl) {
 }
 
 if (process.env.NEON_DATABASE_URL) {
-  console.log('✅ Using shared Neon database (NEON_DATABASE_URL)');
+  console.log('✅ Using shared Neon database (NEON_DATABASE_URL) with HTTP driver');
 } else if (process.env.DATABASE_URL) {
   console.log('⚠️ Using local database (DATABASE_URL) - Consider setting NEON_DATABASE_URL for shared data');
 }
 
-export const pool = new Pool({ connectionString: databaseUrl });
-export const db = drizzle({ client: pool, schema });
+const sql = neon(databaseUrl);
+export const db = drizzle({ client: sql, schema });
