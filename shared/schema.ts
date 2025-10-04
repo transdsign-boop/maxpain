@@ -308,3 +308,21 @@ export const insertStrategyChangeSchema = createInsertSchema(strategyChanges).om
 
 export type InsertStrategyChange = z.infer<typeof insertStrategyChangeSchema>;
 export type StrategyChange = typeof strategyChanges.$inferSelect;
+
+// Strategy Snapshots (full configuration backups for restore)
+export const strategySnapshots = pgTable("strategy_snapshots", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  strategyId: varchar("strategy_id").notNull(), // References strategies.id
+  userId: varchar("user_id").notNull(), // Replit Auth user ID  
+  snapshotData: jsonb("snapshot_data").notNull(), // Full strategy configuration as JSON
+  description: text("description"), // Optional description of what changed
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertStrategySnapshotSchema = createInsertSchema(strategySnapshots).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertStrategySnapshot = z.infer<typeof insertStrategySnapshotSchema>;
+export type StrategySnapshot = typeof strategySnapshots.$inferSelect;
