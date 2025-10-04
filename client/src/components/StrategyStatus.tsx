@@ -398,14 +398,6 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div className="font-extrabold text-foreground text-2xl tracking-tight">{position.symbol}</div>
-                    <button
-                      className="rounded-lg flex items-center justify-center px-2 py-1 border-2 border-destructive bg-transparent text-destructive text-xs font-semibold transition-all hover:brightness-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                      data-testid={`button-close-position-${position.symbol}`}
-                      onClick={onClose}
-                      disabled={isClosing}
-                    >
-                      Close
-                    </button>
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge className={`text-xs px-2 py-0.5 ${isLong ? 'bg-lime-500/15 text-lime-300 border-lime-400/30' : 'bg-red-600/15 text-red-400 border-red-500/30'}`}>
@@ -415,6 +407,14 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
                     {isHedge && (
                       <Badge variant="secondary" className="text-xs">HEDGE</Badge>
                     )}
+                    <button
+                      className="rounded-lg flex items-center justify-center px-2 py-1 border-2 border-destructive bg-transparent text-destructive text-xs font-semibold transition-all hover:brightness-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                      data-testid={`button-close-position-${position.symbol}`}
+                      onClick={onClose}
+                      disabled={isClosing}
+                    >
+                      Close
+                    </button>
                   </div>
                 </div>
 
@@ -550,19 +550,21 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
               {/* Bottom: large asset label with close and expand buttons */}
               <div className="relative px-2 pb-2 flex items-center gap-2">
                 <div className="font-extrabold text-foreground text-2xl tracking-tight">{position.symbol}</div>
-                <button
-                  className="rounded-lg flex items-center justify-center px-2 py-1 border-2 border-destructive bg-transparent text-destructive text-xs font-semibold transition-all hover:brightness-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                  data-testid={`button-close-position-${position.symbol}`}
-                  onClick={onClose}
-                  disabled={isClosing}
-                >
-                  Close
-                </button>
-                <CollapsibleTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 ml-auto" data-testid="button-toggle-layers">
-                    {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                  </Button>
-                </CollapsibleTrigger>
+                <div className="flex items-center gap-2 ml-auto">
+                  <button
+                    className="rounded-lg flex items-center justify-center px-2 py-1 border-2 border-destructive bg-transparent text-destructive text-xs font-semibold transition-all hover:brightness-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                    data-testid={`button-close-position-${position.symbol}`}
+                    onClick={onClose}
+                    disabled={isClosing}
+                  >
+                    Close
+                  </button>
+                  <CollapsibleTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" data-testid="button-toggle-layers">
+                      {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                    </Button>
+                  </CollapsibleTrigger>
+                </div>
               </div>
             </div>
 
