@@ -66,7 +66,7 @@ export default function CascadeRiskIndicator() {
 
   const handleAutoToggle = async (checked: boolean) => {
     try {
-      await apiRequest('/api/cascade/auto', 'POST', { autoEnabled: checked });
+      await apiRequest('POST', '/api/cascade/auto', { autoEnabled: checked });
       
       toast({
         title: checked ? "Auto-gating enabled" : "Auto-gating disabled",

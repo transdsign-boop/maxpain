@@ -7,6 +7,11 @@ interface PriceSnapshot {
   timestamp: number;
 }
 
+interface LiquidationInfo {
+  notional: number;
+  dominantSide: 'long' | 'short' | 'neutral';
+}
+
 class CascadeDetectorService {
   private detector: CascadeDetector;
   private clients: Set<WebSocket> | null = null;
@@ -47,17 +52,41 @@ class CascadeDetectorService {
     }
   }
 
-  private async getLiqNotionalLastSec(): Promise<number> {
+  private async getLiqNotionalLastSec(): Promise<LiquidationInfo> {
     const now = Date.now();
     const oneSecAgo = new Date(now - 1000);
     
     try {
       const recentLiqs = await storage.getLiquidationsSince(oneSecAgo, 1000);
-      const notional = recentLiqs.reduce((sum, liq) => sum + parseFloat(liq.value), 0);
-      return notional;
+      
+      let longNotional = 0;
+      let shortNotional = 0;
+      
+      for (const liq of recentLiqs) {
+        const value = parseFloat(liq.value);
+        if (liq.side === 'long') {
+          longNotional += value;
+        } else if (liq.side === 'short') {
+          shortNotional += value;
+        }
+      }
+      
+      const totalNotional = longNotional + shortNotional;
+      
+      let dominantSide: 'long' | 'short' | 'neutral' = 'neutral';
+      if (totalNotional > 0) {
+        const longRatio = longNotional / totalNotional;
+        if (longRatio > 0.6) {
+          dominantSide = 'long';
+        } else if (longRatio < 0.4) {
+          dominantSide = 'short';
+        }
+      }
+      
+      return { notional: totalNotional, dominantSide };
     } catch (error) {
       console.error('Error fetching liquidations:', error);
-      return 0;
+      return { notional: 0, dominantSide: 'neutral' };
     }
   }
 
@@ -85,7 +114,7 @@ class CascadeDetectorService {
     }
   }
 
-  private getReturnAndAlignment(): { ret1s: number; retSideMatchesLiq: boolean } {
+  private getReturnAndAlignment(dominantSide: 'long' | 'short' | 'neutral'): { ret1s: number; retSideMatchesLiq: boolean } {
     if (this.priceHistory.length < 2) {
       return { ret1s: 0, retSideMatchesLiq: false };
     }
@@ -95,14 +124,20 @@ class CascadeDetectorService {
     
     const ret1s = (now.price - prev.price) / prev.price;
     
-    const retSideMatchesLiq = ret1s !== 0;
+    let retSideMatchesLiq = false;
+    
+    if (dominantSide === 'long' && ret1s < 0) {
+      retSideMatchesLiq = true;
+    } else if (dominantSide === 'short' && ret1s > 0) {
+      retSideMatchesLiq = true;
+    }
     
     return { ret1s, retSideMatchesLiq };
   }
 
   private async tick(): Promise<void> {
     try {
-      const liqNotional = await this.getLiqNotionalLastSec();
+      const liqInfo = await this.getLiqNotionalLastSec();
       
       const currentPrice = await this.getCurrentPrice();
       this.priceHistory.push({ price: currentPrice, timestamp: Date.now() });
@@ -111,12 +146,12 @@ class CascadeDetectorService {
       }
       this.lastPrice = currentPrice;
 
-      const { ret1s, retSideMatchesLiq } = this.getReturnAndAlignment();
+      const { ret1s, retSideMatchesLiq } = this.getReturnAndAlignment(liqInfo.dominantSide);
 
       const oi = await this.getOpenInterest();
       this.lastOI = oi;
 
-      const status = this.detector.ingestTick(liqNotional, ret1s, oi, retSideMatchesLiq);
+      const status = this.detector.ingestTick(liqInfo.notional, ret1s, oi, retSideMatchesLiq);
 
       const csvLog = [
         new Date().toISOString(),
