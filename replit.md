@@ -11,21 +11,23 @@ A real-time liquidation monitoring dashboard for the Aster DEX exchange, designe
 - Performance metrics, charts, and funding cost calculations working
 - Order reconciliation and cascade detection active
 
-⚠️ **Known Technical Issue - Drizzle ORM Caching**: 
-Encountered persistent prepared statement caching issue with Drizzle ORM + Neon serverless database combination. When adding new columns to existing tables, Drizzle's query cache sometimes references old schema even after migrations. Attempted solutions that did not resolve the issue:
-- Database push with --force flag
-- Migration regeneration and reapplication
-- Manual DEALLOCATE ALL statements
-- Table recreation
-- Connection pool configuration changes
+⚠️ **Known Technical Issue - Drizzle ORM + Neon Schema Caching**: 
+Encountered a persistent and unresolved bug with Drizzle ORM + Neon database when adding new columns to existing tables. The columns exist in the database, but Drizzle reports "column does not exist" errors even after:
+- ✅ Switching from `neon-serverless` to `neon-http` driver (eliminates connection pooling)
+- ✅ Running `db:push --force` multiple times
+- ✅ Verifying columns exist via information_schema
+- ✅ Confirming no prepared statements are cached
+- ✅ Clearing TypeScript and node_modules caches
 
-**Temporary Resolution**: Removed DCA (Dollar Cost Averaging) system columns from schema temporarily to restore full application functionality. The sophisticated DCA calculator module (`server/dca-calculator.ts`) with ATR-based volatility calculation and mathematical level spacing is implemented and tested, but the schema columns are disabled until the ORM caching issue is resolved.
+**Root Cause**: This appears to be a known Drizzle ORM bug with Neon where the ORM's internal query generation references an outdated schema even when using HTTP-based drivers. Error consistently occurs at character position 191 in generated SQL queries.
 
-**DCA Columns On Hold**:
+**Current Resolution**: Removed DCA (Dollar Cost Averaging) system columns from Drizzle schema to restore full application functionality. The sophisticated DCA calculator module (`server/dca-calculator.ts`) with ATR-based volatility calculation and mathematical level spacing is fully implemented and tested, but cannot be integrated until this ORM bug is resolved.
+
+**DCA Columns Disabled**:
 - Strategies table: `dcaStartStepPercent`, `dcaSpacingConvexity`, `dcaSizeGrowth`, `dcaMaxRiskPercent`, `dcaVolatilityRef`, `dcaExitCushionMultiplier`
 - Positions table: `initialEntryPrice`
 
-**Workaround Approach**: These columns exist in the database but are excluded from Drizzle schema. They can be re-added once Drizzle ORM updates or a proper cache-clearing solution is identified.
+**Note**: These columns physically exist in the database but are excluded from the Drizzle schema to avoid the caching bug. They can be re-enabled when a fix is available.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
