@@ -383,29 +383,6 @@ export default function PerformanceOverview() {
               </div>
             </div>
           </div>
-
-          {/* Secondary Metrics Row - Compact */}
-          <div className="flex gap-3 md:gap-4">
-            <div className="space-y-0">
-              <div className="text-[9px] text-muted-foreground uppercase tracking-wider">Max Drawdown</div>
-              <div className="text-sm md:text-base font-mono font-bold text-red-600" data-testid="text-max-drawdown">
-                ${(displayPerformance.maxDrawdown || 0).toFixed(2)}
-              </div>
-              <div className="text-[9px] text-muted-foreground">
-                {(displayPerformance.maxDrawdownPercent || 0).toFixed(1)}% peak
-              </div>
-            </div>
-
-            <div className="space-y-0">
-              <div className="text-[9px] text-muted-foreground uppercase tracking-wider">Avg Time</div>
-              <div className="text-sm md:text-base font-mono font-bold" data-testid="text-avg-time">
-                {formatTradeTime(displayPerformance.averageTradeTimeMs || 0)}
-              </div>
-              <div className="text-[9px] text-muted-foreground">
-                Per trade
-              </div>
-            </div>
-          </div>
         </div>
 
         {/* Performance Chart */}
@@ -606,16 +583,6 @@ export default function PerformanceOverview() {
               </div>
               <div className="ticker-separator" />
               <div className="ticker-item">
-                <span className="text-xs text-muted-foreground">Realized</span>
-                <span className={`text-sm font-mono font-semibold ${displayPerformance.totalRealizedPnl >= 0 ? 'text-lime-500' : 'text-red-600'}`}>{formatCurrency(displayPerformance.totalRealizedPnl)}</span>
-              </div>
-              <div className="ticker-separator" />
-              <div className="ticker-item">
-                <span className="text-xs text-muted-foreground">Unrealized</span>
-                <span className={`text-sm font-mono font-semibold ${displayPerformance.totalUnrealizedPnl >= 0 ? 'text-lime-500' : 'text-red-600'}`}>{formatCurrency(displayPerformance.totalUnrealizedPnl)}</span>
-              </div>
-              <div className="ticker-separator" />
-              <div className="ticker-item">
                 <TrendingDown className="h-3 w-3 text-red-600" />
                 <span className="text-xs text-muted-foreground">Max Drawdown</span>
                 <span className="text-sm font-mono font-semibold text-red-600">{formatCurrency(displayPerformance.maxDrawdown ?? 0)}</span>
@@ -654,16 +621,6 @@ export default function PerformanceOverview() {
               <div className="ticker-item">
                 <span className="text-xs text-muted-foreground">Fees Paid</span>
                 <span className="text-sm font-mono font-semibold text-muted-foreground">-${(displayPerformance.totalFees ?? 0).toFixed(2)}</span>
-              </div>
-              <div className="ticker-separator" />
-              <div className="ticker-item">
-                <span className="text-xs text-muted-foreground">Realized</span>
-                <span className={`text-sm font-mono font-semibold ${displayPerformance.totalRealizedPnl >= 0 ? 'text-lime-500' : 'text-red-600'}`}>{formatCurrency(displayPerformance.totalRealizedPnl)}</span>
-              </div>
-              <div className="ticker-separator" />
-              <div className="ticker-item">
-                <span className="text-xs text-muted-foreground">Unrealized</span>
-                <span className={`text-sm font-mono font-semibold ${displayPerformance.totalUnrealizedPnl >= 0 ? 'text-lime-500' : 'text-red-600'}`}>{formatCurrency(displayPerformance.totalUnrealizedPnl)}</span>
               </div>
               <div className="ticker-separator" />
               <div className="ticker-item">
