@@ -356,34 +356,27 @@ export default function PerformanceOverview() {
         {/* Top 3 Performing Assets */}
         {top3Assets.length > 0 && (
           <div className="border-b border-border pb-4">
-            <div className="text-xs text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
+            <div className="text-xs text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2">
               <Award className="h-3 w-3" />
               Top 3 Performing Assets
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-3 gap-2">
               {top3Assets.map((asset, index) => (
                 <div 
                   key={asset.symbol} 
-                  className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border border-border"
+                  className="flex flex-col p-2 md:p-3 rounded-lg bg-muted/30 border border-border"
                 >
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="font-mono text-xs">
-                        #{index + 1}
-                      </Badge>
-                      <span className="font-semibold">{asset.symbol}</span>
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {asset.wins}W-{asset.losses}L · {asset.winRate.toFixed(1)}%
-                    </div>
+                  <div className="flex items-center gap-1 mb-1">
+                    <Badge variant="outline" className="font-mono text-[10px] md:text-xs px-1 py-0">
+                      #{index + 1}
+                    </Badge>
+                    <span className="font-semibold text-xs md:text-sm truncate">{asset.symbol}</span>
                   </div>
-                  <div className="text-right">
-                    <div className={`text-lg font-mono font-bold ${(asset.totalPnl || 0) >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`}>
-                      {(asset.totalPnl || 0) >= 0 ? '+' : ''}${(asset.totalPnl || 0).toFixed(2)}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {asset.totalTrades || 0} trades
-                    </div>
+                  <div className={`text-sm md:text-lg font-mono font-bold ${(asset.totalPnl || 0) >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`}>
+                    {(asset.totalPnl || 0) >= 0 ? '+' : ''}${(asset.totalPnl || 0).toFixed(2)}
+                  </div>
+                  <div className="text-[10px] md:text-xs text-muted-foreground truncate">
+                    {asset.wins}W-{asset.losses}L · {asset.winRate.toFixed(0)}%
                   </div>
                 </div>
               ))}
