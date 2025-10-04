@@ -471,7 +471,7 @@ export default function PerformanceOverview() {
                         x={chartData[tradeIndex].tradeNumber}
                         yAxisId="left"
                         stroke="hsl(var(--primary))"
-                        strokeWidth={2}
+                        strokeWidth={1}
                         strokeDasharray="5 5"
                       />
                     );
@@ -534,7 +534,7 @@ export default function PerformanceOverview() {
                   dataKey={() => null}
                   name="Strategy Update"
                   stroke="hsl(var(--primary))"
-                  strokeWidth={2}
+                  strokeWidth={1}
                   strokeDasharray="5 5"
                   dot={false}
                   isAnimationActive={false}
