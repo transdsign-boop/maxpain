@@ -1673,6 +1673,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Calculate total fees from all fills across all sessions of this mode
       const totalFees = allSessionFills.reduce((sum, fill) => sum + parseFloat(fill.fee || '0'), 0);
 
+      // Calculate total funding costs for all positions across all sessions of this mode
+      let totalFundingCost = 0;
+      
+      // Only fetch funding costs if in live mode with API credentials
+      if (activeStrategy.tradingMode === 'live') {
+        const apiKey = process.env.ASTER_API_KEY;
+        const secretKey = process.env.ASTER_SECRET_KEY;
+
+        if (apiKey && secretKey) {
+          try {
+            // Get the earliest session start time to fetch all funding fees
+            const sessionStartTimes = modeSessions.map(s => new Date(s.startedAt).getTime());
+            const earliestStartTime = Math.min(...sessionStartTimes);
+
+            // Fetch funding fee income history from Aster DEX
+            const timestamp = Date.now();
+            const params = `incomeType=FUNDING_FEE&startTime=${earliestStartTime}&limit=1000&timestamp=${timestamp}`;
+            
+            const signature = crypto
+              .createHmac('sha256', secretKey)
+              .update(params)
+              .digest('hex');
+
+            const fundingResponse = await fetch(
+              `https://fapi.asterdex.com/fapi/v1/income?${params}&signature=${signature}`,
+              {
+                headers: {
+                  'X-MBX-APIKEY': apiKey,
+                },
+              }
+            );
+
+            if (fundingResponse.ok) {
+              const fundingData = await fundingResponse.json();
+              
+              // Sum up all funding fees (negative means we paid, positive means we received)
+              // We want to show total cost as a positive number
+              totalFundingCost = fundingData.reduce((sum: number, entry: any) => {
+                const income = parseFloat(entry.income || '0');
+                return sum + Math.abs(income); // Always show as cost (positive)
+              }, 0);
+              
+              console.log(`📊 Calculated total funding cost: $${totalFundingCost.toFixed(2)} from ${fundingData.length} funding events`);
+            } else {
+              console.warn('⚠️ Failed to fetch funding fee history:', await fundingResponse.text());
+            }
+          } catch (error) {
+            console.error('❌ Error fetching funding costs:', error);
+          }
+        }
+      }
+
       // Calculate average trade time from closed positions (in milliseconds)
       const tradeTimesMs = closedPositions
         .filter(p => p.openedAt && p.closedAt)
@@ -1730,7 +1782,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         worstTrade,
         profitFactor,
         totalFees,
-        fundingCost: 0,
+        fundingCost: totalFundingCost,
         averageTradeTimeMs,
         maxDrawdown,
         maxDrawdownPercent
