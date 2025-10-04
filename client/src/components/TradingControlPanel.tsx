@@ -601,11 +601,6 @@ export default function TradingControlPanel() {
 
   // Load and maintain active strategy
   useEffect(() => {
-    console.log('🔍 Strategy loading effect triggered', { 
-      strategies: strategies?.length, 
-      hasActive: !!activeStrategy 
-    });
-    
     if (strategies && strategies.length > 0) {
       let strategy: Strategy | null = null;
       
@@ -618,8 +613,6 @@ export default function TradingControlPanel() {
       if (!strategy) {
         strategy = strategies[0];
       }
-      
-      console.log('✅ Setting active strategy:', strategy?.name);
       
       // Update state with the strategy (could be updated data for existing strategy)
       setActiveStrategy(strategy);
