@@ -3,6 +3,30 @@
 ## Overview
 A real-time liquidation monitoring dashboard for the Aster DEX exchange, designed for traders and analysts. It provides live trading liquidation data, advanced filtering, analysis tools, and a professional trading interface, offering immediate insight into market liquidation events across various cryptocurrency and tokenized stock pairs. The project aims to provide a robust, production-ready system for real-money trading with comprehensive safety checks and detailed performance tracking.
 
+## Current Status (October 4, 2025)
+✅ **Application Fully Operational**: All core features working correctly
+- Trading strategy engine running with active liquidation monitoring
+- Real-time WebSocket connections established (Aster DEX liquidation stream + User Data Stream)
+- Live position tracking and account balance updates
+- Performance metrics, charts, and funding cost calculations working
+- Order reconciliation and cascade detection active
+
+⚠️ **Known Technical Issue - Drizzle ORM Caching**: 
+Encountered persistent prepared statement caching issue with Drizzle ORM + Neon serverless database combination. When adding new columns to existing tables, Drizzle's query cache sometimes references old schema even after migrations. Attempted solutions that did not resolve the issue:
+- Database push with --force flag
+- Migration regeneration and reapplication
+- Manual DEALLOCATE ALL statements
+- Table recreation
+- Connection pool configuration changes
+
+**Temporary Resolution**: Removed DCA (Dollar Cost Averaging) system columns from schema temporarily to restore full application functionality. The sophisticated DCA calculator module (`server/dca-calculator.ts`) with ATR-based volatility calculation and mathematical level spacing is implemented and tested, but the schema columns are disabled until the ORM caching issue is resolved.
+
+**DCA Columns On Hold**:
+- Strategies table: `dcaStartStepPercent`, `dcaSpacingConvexity`, `dcaSizeGrowth`, `dcaMaxRiskPercent`, `dcaVolatilityRef`, `dcaExitCushionMultiplier`
+- Positions table: `initialEntryPrice`
+
+**Workaround Approach**: These columns exist in the database but are excluded from Drizzle schema. They can be re-added once Drizzle ORM updates or a proper cache-clearing solution is identified.
+
 ## User Preferences
 Preferred communication style: Simple, everyday language.
 
