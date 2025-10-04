@@ -766,7 +766,7 @@ export default function PerformanceOverview() {
               <div className="ticker-item">
                 <TrendingDown className="h-3 w-3 text-[rgb(251,146,60)]" />
                 <span className="text-xs text-muted-foreground">Max Drawdown</span>
-                <span className="text-xs font-mono font-semibold text-[rgb(251,146,60)]">{formatCurrency(displayPerformance.maxDrawdown)} ({displayPerformance.maxDrawdownPercent.toFixed(2)}%)</span>
+                <span className="text-xs font-mono font-semibold text-[rgb(251,146,60)]">{formatCurrency(displayPerformance.maxDrawdown)} ({(displayPerformance.maxDrawdownPercent ?? 0).toFixed(2)}%)</span>
               </div>
               <div className="ticker-item">
                 <TrendingUp className="h-3 w-3 text-[rgb(190,242,100)]" />
@@ -797,7 +797,7 @@ export default function PerformanceOverview() {
               <div className="ticker-item">
                 <TrendingDown className="h-3 w-3 text-[rgb(251,146,60)]" />
                 <span className="text-xs text-muted-foreground">Max Drawdown</span>
-                <span className="text-xs font-mono font-semibold text-[rgb(251,146,60)]">{formatCurrency(displayPerformance.maxDrawdown)} ({displayPerformance.maxDrawdownPercent.toFixed(2)}%)</span>
+                <span className="text-xs font-mono font-semibold text-[rgb(251,146,60)]">{formatCurrency(displayPerformance.maxDrawdown)} ({(displayPerformance.maxDrawdownPercent ?? 0).toFixed(2)}%)</span>
               </div>
               <div className="ticker-item">
                 <TrendingUp className="h-3 w-3 text-[rgb(190,242,100)]" />
