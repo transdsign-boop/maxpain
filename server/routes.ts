@@ -3628,8 +3628,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Clear all paper trading data for a strategy
-  app.delete('/api/strategies/:strategyId/clear-paper-trades', async (req, res) => {
+  // Archive current session and start fresh (NEVER deletes historical data)
+  app.post('/api/strategies/:strategyId/reset-session', async (req, res) => {
     try {
       const { strategyId } = req.params;
       
@@ -3639,53 +3639,97 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: 'Strategy not found' });
       }
 
-      // Get the active session for this strategy
-      const sessions = await storage.getSessionsByStrategy(strategyId);
+      // Get all active sessions for this strategy
+      const activeSessions = await storage.getSessionsByStrategy(strategyId);
+      const activeSessionsFiltered = activeSessions.filter(s => s.isActive);
       
-      if (sessions.length === 0) {
-        return res.json({ 
-          success: true, 
-          message: 'No paper trade data to clear',
-          cleared: { positions: 0, fills: 0 }
-        });
-      }
+      let archivedSessionCount = 0;
+      let totalPositionsArchived = 0;
+      let totalFillsArchived = 0;
 
-      let totalPositionsCleared = 0;
-      let totalFillsCleared = 0;
-
-      // Clear data for each session
-      for (const session of sessions) {
-        // Delete all fills for this session
-        const fills = await storage.getFillsBySession(session.id);
-        totalFillsCleared += fills.length;
-        await storage.clearFillsBySession(session.id);
-        
-        // Delete all positions for this session
+      // Archive (mark inactive) all active sessions - NEVER delete data
+      for (const session of activeSessionsFiltered) {
+        // Count positions and fills for reporting (but don't delete them)
         const positions = await storage.getPositionsBySession(session.id);
-        totalPositionsCleared += positions.length;
-        await storage.clearPositionsBySession(session.id);
+        const fills = await storage.getFillsBySession(session.id);
+        totalPositionsArchived += positions.length;
+        totalFillsArchived += fills.length;
         
-        // Reset session to starting state
+        // Mark session as archived (inactive) with end timestamp
         await storage.updateTradeSession(session.id, {
-          currentBalance: session.startingBalance.toString(),
-          totalPnl: '0',
-          totalTrades: 0,
+          isActive: false,
+          endedAt: new Date(),
         });
+        
+        archivedSessionCount++;
       }
 
-      console.log(`🗑️ Cleared ${totalPositionsCleared} positions and ${totalFillsCleared} fills for strategy ${strategyId}`);
+      // Create a brand new session with fresh starting balance
+      const newSession = await storage.createTradeSession({
+        strategyId,
+        mode: strategy.tradingMode,
+        startingBalance: '10000.0',
+        currentBalance: '10000.0',
+        totalPnl: '0.0',
+        totalTrades: 0,
+        winRate: '0.0',
+        isActive: true,
+      });
+
+      console.log(`📦 Archived ${archivedSessionCount} session(s) with ${totalPositionsArchived} positions and ${totalFillsArchived} fills for strategy ${strategyId}`);
+      console.log(`✨ Created new session ${newSession.id} - ALL HISTORICAL DATA PRESERVED`);
 
       res.json({ 
         success: true, 
-        message: 'Paper trade data cleared successfully',
-        cleared: {
-          positions: totalPositionsCleared,
-          fills: totalFillsCleared
-        }
+        message: 'Started fresh session - all historical data preserved',
+        archived: {
+          sessions: archivedSessionCount,
+          positions: totalPositionsArchived,
+          fills: totalFillsArchived
+        },
+        newSessionId: newSession.id
       });
     } catch (error) {
-      console.error('Error clearing paper trades:', error);
-      res.status(500).json({ error: 'Failed to clear paper trade data' });
+      console.error('Error resetting session:', error);
+      res.status(500).json({ error: 'Failed to reset session' });
+    }
+  });
+
+  // Get all historical sessions for a strategy (including archived)
+  app.get('/api/strategies/:strategyId/sessions/history', async (req, res) => {
+    try {
+      const { strategyId } = req.params;
+      
+      // Get all sessions (active and archived) for this strategy
+      const sessions = await storage.getSessionsByStrategy(strategyId);
+      
+      // Get position counts for each session
+      const sessionsWithDetails = await Promise.all(
+        sessions.map(async (session) => {
+          const positions = await storage.getPositionsBySession(session.id);
+          const fills = await storage.getFillsBySession(session.id);
+          
+          return {
+            ...session,
+            positionCount: positions.length,
+            fillCount: fills.length,
+            openPositions: positions.filter(p => p.isOpen).length,
+            closedPositions: positions.filter(p => !p.isOpen).length,
+          };
+        })
+      );
+
+      // Sort by most recent first
+      sessionsWithDetails.sort((a, b) => {
+        const aDate = a.endedAt || a.startedAt;
+        const bDate = b.endedAt || b.startedAt;
+        return new Date(bDate).getTime() - new Date(aDate).getTime();
+      });
+
+      res.json(sessionsWithDetails);
+    } catch (error) {
+      console.error('Error fetching session history:', error);
+      res.status(500).json({ error: 'Failed to fetch session history' });
     }
   });
 
