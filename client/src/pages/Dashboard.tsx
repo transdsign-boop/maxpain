@@ -53,6 +53,9 @@ export default function Dashboard() {
   
   // Real liquidation data from WebSocket and API
   const [liquidations, setLiquidations] = useState<Liquidation[]>([]);
+  
+  // Track last viewed strategy to persist selection when pausing
+  const [lastViewedStrategyId, setLastViewedStrategyId] = useState<string | null>(null);
 
   // Fetch active strategies
   const { data: strategies } = useQuery<any[]>({
@@ -60,7 +63,19 @@ export default function Dashboard() {
     refetchInterval: 5000,
   });
 
-  const activeStrategy = strategies?.find(s => s.isActive) || strategies?.[0];
+  // Smart strategy selection: Keep showing the same strategy after pausing
+  // Priority: 1) Active strategy, 2) Last viewed strategy, 3) First strategy
+  const activeStrategy = strategies?.find(s => s.isActive) 
+    || (lastViewedStrategyId ? strategies?.find(s => s.id === lastViewedStrategyId) : null)
+    || strategies?.[0];
+    
+  // Update last viewed strategy whenever active strategy changes
+  useEffect(() => {
+    if (activeStrategy?.id && activeStrategy.id !== lastViewedStrategyId) {
+      setLastViewedStrategyId(activeStrategy.id);
+    }
+  }, [activeStrategy?.id]);
+  
   const isLiveMode = activeStrategy?.tradingMode === 'live';
 
   // Fetch live account data when in live mode
