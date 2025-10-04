@@ -12,7 +12,57 @@ import {
 import { randomUUID } from "crypto";
 import { db } from "./db";
 import { liquidations, users, userSettings, strategies, tradeSessions, orders, fills, positions, pnlSnapshots, strategyChanges } from "@shared/schema";
-import { desc, gte, eq, sql, inArray, and } from "drizzle-orm";
+import { desc, gte, eq, sql as drizzleSql, inArray, and } from "drizzle-orm";
+import { neon } from '@neondatabase/serverless';
+
+// Get raw SQL client for strategies table (bypasses Drizzle ORM cache issues)
+const databaseUrl = process.env.NEON_DATABASE_URL || process.env.DATABASE_URL;
+if (!databaseUrl) {
+  throw new Error("Database URL not configured");
+}
+const sql = neon(databaseUrl);
+
+// Helper functions for camelCase <-> snake_case conversion (DEEP)
+const toSnakeCase = (str: string): string => 
+  str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+
+const toCamelCase = (str: string): string =>
+  str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+
+// Deep conversion: handles nested objects and arrays
+const convertKeysToCamelCase = (obj: any): any => {
+  if (!obj || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map(convertKeysToCamelCase);
+  
+  const result: any = {};
+  for (const [key, value] of Object.entries(obj)) {
+    const camelKey = toCamelCase(key);
+    // Recursively convert nested objects/arrays
+    if (value && typeof value === 'object') {
+      result[camelKey] = convertKeysToCamelCase(value);
+    } else {
+      result[camelKey] = value;
+    }
+  }
+  return result;
+};
+
+const convertKeysToSnakeCase = (obj: any): any => {
+  if (!obj || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map(convertKeysToSnakeCase);
+  
+  const result: any = {};
+  for (const [key, value] of Object.entries(obj)) {
+    const snakeKey = toSnakeCase(key);
+    // Recursively convert nested objects/arrays
+    if (value && typeof value === 'object') {
+      result[snakeKey] = convertKeysToSnakeCase(value);
+    } else {
+      result[snakeKey] = value;
+    }
+  }
+  return result;
+};
 
 // modify the interface with any CRUD methods
 // you might need
@@ -154,8 +204,8 @@ export class DatabaseStorage implements IStorage {
         and(
           eq(liquidations.symbol, symbol),
           eq(liquidations.side, side),
-          sql`CAST(${liquidations.size} AS NUMERIC) = CAST(${size} AS NUMERIC)`,
-          sql`CAST(${liquidations.price} AS NUMERIC) = CAST(${price} AS NUMERIC)`,
+          drizzleSql`CAST(${liquidations.size} AS NUMERIC) = CAST(${size} AS NUMERIC)`,
+          drizzleSql`CAST(${liquidations.price} AS NUMERIC) = CAST(${price} AS NUMERIC)`,
           gte(liquidations.timestamp, since)
         )
       )
@@ -197,13 +247,13 @@ export class DatabaseStorage implements IStorage {
     
     const result = await db.select({
       symbol: liquidations.symbol,
-      count: sql<number>`COUNT(*)`,
-      latestTimestamp: sql<Date>`MAX(${liquidations.timestamp})`
+      count: drizzleSql<number>`COUNT(*)`,
+      latestTimestamp: drizzleSql<Date>`MAX(${liquidations.timestamp})`
     })
     .from(liquidations)
     .where(gte(liquidations.timestamp, fiveDaysAgo))
     .groupBy(liquidations.symbol)
-    .orderBy(desc(sql`COUNT(*)`)); // Sort by liquidation count descending
+    .orderBy(desc(drizzleSql`COUNT(*)`)); // Sort by liquidation count descending
     
     return result;
   }
@@ -211,14 +261,14 @@ export class DatabaseStorage implements IStorage {
   async getAssetPerformance(): Promise<{ symbol: string; wins: number; losses: number; winRate: number; totalPnl: number; totalTrades: number }[]> {
     const result = await db.select({
       symbol: positions.symbol,
-      wins: sql<number>`COUNT(CASE WHEN ${positions.isOpen} = false AND ${positions.realizedPnl} > 0 THEN 1 END)`,
-      losses: sql<number>`COUNT(CASE WHEN ${positions.isOpen} = false AND ${positions.realizedPnl} < 0 THEN 1 END)`,
-      totalPnl: sql<number>`COALESCE(SUM(CASE WHEN ${positions.isOpen} = false THEN ${positions.realizedPnl} ELSE 0 END), 0)`,
-      totalTrades: sql<number>`COUNT(CASE WHEN ${positions.isOpen} = false THEN 1 END)`,
+      wins: drizzleSql<number>`COUNT(CASE WHEN ${positions.isOpen} = false AND ${positions.realizedPnl} > 0 THEN 1 END)`,
+      losses: drizzleSql<number>`COUNT(CASE WHEN ${positions.isOpen} = false AND ${positions.realizedPnl} < 0 THEN 1 END)`,
+      totalPnl: drizzleSql<number>`COALESCE(SUM(CASE WHEN ${positions.isOpen} = false THEN ${positions.realizedPnl} ELSE 0 END), 0)`,
+      totalTrades: drizzleSql<number>`COUNT(CASE WHEN ${positions.isOpen} = false THEN 1 END)`,
     })
     .from(positions)
     .groupBy(positions.symbol)
-    .having(sql`COUNT(CASE WHEN ${positions.isOpen} = false THEN 1 END) > 0`);
+    .having(drizzleSql`COUNT(CASE WHEN ${positions.isOpen} = false THEN 1 END) > 0`);
     
     return result.map(r => {
       const wins = parseInt(String(r.wins));
@@ -240,7 +290,7 @@ export class DatabaseStorage implements IStorage {
     const cutoffDate = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000);
     
     const result = await db.delete(liquidations)
-      .where(sql`${liquidations.timestamp} < ${cutoffDate}`)
+      .where(drizzleSql`${liquidations.timestamp} < ${cutoffDate}`)
       .returning({ id: liquidations.id });
     
     return result.length;
@@ -249,7 +299,7 @@ export class DatabaseStorage implements IStorage {
   async getLiquidationAnalytics(symbol: string, sinceTimestamp: Date): Promise<Liquidation[]> {
     return await db.select()
       .from(liquidations)
-      .where(sql`${liquidations.symbol} = ${symbol} AND ${liquidations.timestamp} >= ${sinceTimestamp}`)
+      .where(drizzleSql`${liquidations.symbol} = ${symbol} AND ${liquidations.timestamp} >= ${sinceTimestamp}`)
       .orderBy(desc(liquidations.timestamp));
   }
 
@@ -264,92 +314,142 @@ export class DatabaseStorage implements IStorage {
           sideFilter: settings.sideFilter,
           minValue: settings.minValue,
           timeRange: settings.timeRange,
-          lastUpdated: sql`now()`,
+          lastUpdated: drizzleSql`now()`,
         }
       })
       .returning();
     return result[0];
   }
 
-  // Trading Strategy operations
+  // Trading Strategy operations - using raw SQL to bypass Drizzle ORM cache issues
   async createStrategy(strategy: InsertStrategy): Promise<Strategy> {
-    const result = await db.insert(strategies).values(strategy).returning();
-    return result[0];
+    // Convert entire object to snake_case (including nested structures)
+    const snakeCaseStrategy = convertKeysToSnakeCase(strategy);
+    
+    const columns = Object.keys(snakeCaseStrategy);
+    const values = Object.values(snakeCaseStrategy);
+    const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
+    
+    const query = `
+      INSERT INTO strategies (${columns.join(', ')})
+      VALUES (${placeholders})
+      RETURNING *
+    `;
+    
+    const result = await sql(query, values);
+    return convertKeysToCamelCase(result[0]) as Strategy;
   }
 
   async getStrategy(id: string): Promise<Strategy | undefined> {
-    const result = await db.select().from(strategies).where(eq(strategies.id, id));
-    return result[0];
+    const result = await sql`SELECT * FROM strategies WHERE id = ${id}`;
+    return result[0] ? convertKeysToCamelCase(result[0]) as Strategy : undefined;
   }
 
   async getStrategiesByUser(userId: string): Promise<Strategy[]> {
-    return await db.select().from(strategies)
-      .where(eq(strategies.userId, userId))
-      .orderBy(desc(strategies.createdAt));
+    const result = await sql`
+      SELECT * FROM strategies 
+      WHERE user_id = ${userId} 
+      ORDER BY created_at DESC
+    `;
+    return result.map(convertKeysToCamelCase) as Strategy[];
   }
 
   async getAllActiveStrategies(): Promise<Strategy[]> {
-    return await db.select().from(strategies)
-      .where(eq(strategies.isActive, true))
-      .orderBy(desc(strategies.createdAt));
+    const result = await sql`
+      SELECT * FROM strategies 
+      WHERE is_active = true 
+      ORDER BY created_at DESC
+    `;
+    return result.map(convertKeysToCamelCase) as Strategy[];
   }
 
   async updateStrategy(id: string, updates: Partial<InsertStrategy>): Promise<Strategy> {
-    const result = await db.update(strategies)
-      .set({ ...updates, updatedAt: new Date() })
-      .where(eq(strategies.id, id))
-      .returning();
-    return result[0];
+    // Convert entire updates object to snake_case (including nested structures)
+    const snakeCaseUpdates = convertKeysToSnakeCase(updates);
+    
+    const setClauses: string[] = [];
+    const values: any[] = [];
+    let paramIndex = 1;
+    
+    for (const [key, value] of Object.entries(snakeCaseUpdates)) {
+      setClauses.push(`${key} = $${paramIndex}`);
+      values.push(value);
+      paramIndex++;
+    }
+    
+    // Add updated_at
+    setClauses.push(`updated_at = NOW()`);
+    
+    // Add id for WHERE clause
+    values.push(id);
+    
+    const query = `
+      UPDATE strategies 
+      SET ${setClauses.join(', ')}
+      WHERE id = $${paramIndex}
+      RETURNING *
+    `;
+    
+    const result = await sql(query, values);
+    return convertKeysToCamelCase(result[0]) as Strategy;
   }
 
   async deleteStrategy(id: string): Promise<void> {
-    await db.delete(strategies).where(eq(strategies.id, id));
+    await sql`DELETE FROM strategies WHERE id = ${id}`;
   }
 
   // Singleton strategy and session operations
   async getOrCreateDefaultStrategy(userId: string): Promise<Strategy> {
-    // Try to get existing active strategy for this user
-    const existing = await db.select().from(strategies)
-      .where(and(eq(strategies.userId, userId), eq(strategies.isActive, true)))
-      .limit(1);
+    // Try to get existing active strategy for this user using raw SQL
+    const existing = await sql`
+      SELECT * FROM strategies 
+      WHERE user_id = ${userId} AND is_active = true 
+      LIMIT 1
+    `;
     
     if (existing.length > 0) {
-      return existing[0];
+      return convertKeysToCamelCase(existing[0]) as Strategy;
     }
 
     // Create default strategy if doesn't exist
-    const defaultStrategy: InsertStrategy = {
+    const query = `
+      INSERT INTO strategies (
+        user_id, name, selected_assets, is_active, trading_mode,
+        percentile_threshold, liquidation_lookback_hours, stop_loss_percent,
+        profit_target_percent, max_layers, order_delay_ms, order_type,
+        max_retry_duration_ms, slippage_tolerance_percent,
+        dca_start_step_percent, dca_spacing_convexity, dca_size_growth,
+        dca_max_risk_percent, dca_volatility_ref, dca_exit_cushion_multiplier
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20
+      )
+      RETURNING *
+    `;
+    
+    const result = await sql(query, [
       userId,
-      name: "Liquidation Counter-Trade",
-      selectedAssets: ["BTCUSDT"],
-      isActive: true,
-      tradingMode: "paper",
-      percentileThreshold: 90,
-      liquidationLookbackHours: 1,
-      stopLossPercent: "2.00",
-      profitTargetPercent: "3.00",
-      maxLayers: 5,
-      orderDelayMs: 1000,
-      orderType: "market",
-      maxRetryDurationMs: 30000,
-      slippageTolerancePercent: "0.50"
-    };
-
-    const result = await db.insert(strategies).values(defaultStrategy).returning();
-    const newStrategy = result[0];
+      "Liquidation Counter-Trade",
+      ["BTCUSDT"],
+      true,
+      "paper",
+      90,
+      1,
+      "2.00",
+      "3.00",
+      5,
+      1000,
+      "market",
+      30000,
+      "0.50",
+      "0.4",   // dcaStartStepPercent
+      "1.2",   // dcaSpacingConvexity
+      "1.8",   // dcaSizeGrowth
+      "1.0",   // dcaMaxRiskPercent
+      "1.0",   // dcaVolatilityRef
+      "0.6"    // dcaExitCushionMultiplier
+    ]);
     
-    // Initialize DCA parameters using SQL wrapper (bypasses Drizzle cache)
-    const { updateStrategyDCAParams } = await import('./dca-sql');
-    await updateStrategyDCAParams(newStrategy.id, {
-      dcaStartStepPercent: "0.4",      // First DCA at 0.4% from entry
-      dcaSpacingConvexity: "1.2",      // Convex spacing
-      dcaSizeGrowth: "1.8",            // Each level 1.8x larger
-      dcaMaxRiskPercent: "1.0",        // Max 1% account risk
-      dcaVolatilityRef: "1.0",         // Volatility reference
-      dcaExitCushionMultiplier: "0.6"  // Exit at 60% of DCA distance
-    });
-    
-    return newStrategy;
+    return convertKeysToCamelCase(result[0]) as Strategy;
   }
 
   async getOrCreateActiveSession(userId: string): Promise<TradeSession> {
@@ -481,9 +581,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAllTradeSessions(userId: string): Promise<TradeSession[]> {
-    // Get all strategies for this user first
-    const userStrategies = await db.select().from(strategies)
-      .where(eq(strategies.userId, userId));
+    // Get all strategies for this user first using raw SQL
+    const userStrategiesRaw = await sql`
+      SELECT * FROM strategies WHERE user_id = ${userId}
+    `;
+    const userStrategies = userStrategiesRaw.map(convertKeysToCamelCase) as Strategy[];
     
     if (userStrategies.length === 0) return [];
     
@@ -491,7 +593,7 @@ export class DatabaseStorage implements IStorage {
     
     // Get all trade sessions for these strategies
     return await db.select().from(tradeSessions)
-      .where(sql`${tradeSessions.strategyId} IN (${sql.join(strategyIds.map(id => sql`${id}`), sql`, `)})`)
+      .where(drizzleSql`${tradeSessions.strategyId} IN (${drizzleSql.join(strategyIds.map(id => drizzleSql`${id}`), drizzleSql`, `)})`)
       .orderBy(desc(tradeSessions.startedAt));
   }
 

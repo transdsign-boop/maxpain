@@ -77,11 +77,6 @@ export default function LiveModeToggle() {
           {isLiveMode ? "Live" : "Paper"}
         </Label>
       </div>
-      {isLiveMode && (
-        <Badge variant="destructive" className="font-mono text-xs" data-testid="badge-live-mode">
-          LIVE
-        </Badge>
-      )}
     </div>
   );
 }
