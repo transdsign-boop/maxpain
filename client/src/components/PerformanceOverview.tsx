@@ -337,68 +337,73 @@ export default function PerformanceOverview() {
           </div>
         </div>
 
-        {/* Secondary Metrics Row */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-          <div className="space-y-1">
-            <div className="text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-              <Target className="h-3 w-3" />
-              Win Rate
+        {/* Main Metrics Row */}
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+            <div className="space-y-1">
+              <div className="text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                <Target className="h-3 w-3" />
+                Win Rate
+              </div>
+              <div className="text-2xl md:text-3xl font-mono font-bold" data-testid="text-win-rate">
+                {formatPercent(displayPerformance.winRate)}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {displayPerformance.winningTrades}W · {displayPerformance.losingTrades}L
+              </div>
             </div>
-            <div className="text-2xl md:text-3xl font-mono font-bold" data-testid="text-win-rate">
-              {formatPercent(displayPerformance.winRate)}
+
+            <div className="space-y-1">
+              <div className="text-xs text-muted-foreground uppercase tracking-wider">Trades</div>
+              <div className="text-2xl md:text-3xl font-mono font-bold" data-testid="text-total-trades">
+                {displayPerformance.totalTrades}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {displayPerformance.openTrades} open · {displayPerformance.closedTrades} closed
+              </div>
             </div>
-            <div className="text-xs text-muted-foreground">
-              {displayPerformance.winningTrades}W · {displayPerformance.losingTrades}L
+
+            <div className="space-y-1">
+              <div className="text-xs text-muted-foreground uppercase tracking-wider">Profit Factor</div>
+              <div className={`text-2xl md:text-3xl font-mono font-bold ${(displayPerformance.profitFactor ?? 0) >= 1 ? 'text-primary' : 'text-red-600'}`} data-testid="text-profit-factor">
+                {(displayPerformance.profitFactor ?? 0) >= 999 ? '∞' : (displayPerformance.profitFactor ?? 0).toFixed(2)}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {(displayPerformance.profitFactor ?? 0) >= 1 ? 'Profitable' : 'Unprofitable'}
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <div className="text-xs text-muted-foreground uppercase tracking-wider">Fees Paid</div>
+              <div className="text-2xl md:text-3xl font-mono font-bold" data-testid="text-fees-paid">
+                ${(displayPerformance.totalFees || 0).toFixed(2)}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Total fees
+              </div>
             </div>
           </div>
 
-          <div className="space-y-1">
-            <div className="text-xs text-muted-foreground uppercase tracking-wider">Trades</div>
-            <div className="text-2xl md:text-3xl font-mono font-bold" data-testid="text-total-trades">
-              {displayPerformance.totalTrades}
+          {/* Secondary Metrics Row - Smaller */}
+          <div className="flex gap-6 md:gap-8 flex-wrap">
+            <div className="space-y-0.5">
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Max Drawdown</div>
+              <div className="text-lg md:text-xl font-mono font-bold text-red-600" data-testid="text-max-drawdown">
+                ${(displayPerformance.maxDrawdown || 0).toFixed(2)}
+              </div>
+              <div className="text-[10px] text-muted-foreground">
+                {(displayPerformance.maxDrawdownPercent || 0).toFixed(1)}% peak
+              </div>
             </div>
-            <div className="text-xs text-muted-foreground">
-              {displayPerformance.openTrades} open · {displayPerformance.closedTrades} closed
-            </div>
-          </div>
 
-          <div className="space-y-1">
-            <div className="text-xs text-muted-foreground uppercase tracking-wider">Profit Factor</div>
-            <div className={`text-2xl md:text-3xl font-mono font-bold ${(displayPerformance.profitFactor ?? 0) >= 1 ? 'text-primary' : 'text-red-600'}`} data-testid="text-profit-factor">
-              {(displayPerformance.profitFactor ?? 0) >= 999 ? '∞' : (displayPerformance.profitFactor ?? 0).toFixed(2)}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              {(displayPerformance.profitFactor ?? 0) >= 1 ? 'Profitable' : 'Unprofitable'}
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <div className="text-xs text-muted-foreground uppercase tracking-wider">Fees Paid</div>
-            <div className="text-2xl md:text-3xl font-mono font-bold" data-testid="text-fees-paid">
-              ${(displayPerformance.totalFees || 0).toFixed(2)}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              Total fees
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <div className="text-xs text-muted-foreground uppercase tracking-wider">Max Drawdown</div>
-            <div className="text-2xl md:text-3xl font-mono font-bold text-red-600" data-testid="text-max-drawdown">
-              ${(displayPerformance.maxDrawdown || 0).toFixed(2)}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              {(displayPerformance.maxDrawdownPercent || 0).toFixed(1)}% peak
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <div className="text-xs text-muted-foreground uppercase tracking-wider">Avg Time</div>
-            <div className="text-2xl md:text-3xl font-mono font-bold" data-testid="text-avg-time">
-              {formatTradeTime(displayPerformance.averageTradeTimeMs || 0)}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              Per trade
+            <div className="space-y-0.5">
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Avg Time</div>
+              <div className="text-lg md:text-xl font-mono font-bold" data-testid="text-avg-time">
+                {formatTradeTime(displayPerformance.averageTradeTimeMs || 0)}
+              </div>
+              <div className="text-[10px] text-muted-foreground">
+                Per trade
+              </div>
             </div>
           </div>
         </div>
