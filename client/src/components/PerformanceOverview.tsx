@@ -272,6 +272,15 @@ export default function PerformanceOverview() {
     ? (liveAccount ? parseFloat(liveAccount.availableBalance) : 0)
     : (paperSession ? paperSession.currentBalance - paperMarginInUse : 0);
 
+  // Calculate percentages
+  const unrealizedPnlPercent = totalBalance > 0 ? (unrealizedPnl / totalBalance) * 100 : 0;
+  
+  // For realized P&L percentage, use starting balance
+  const startingBalance = isLiveMode 
+    ? totalBalance - displayPerformance.totalRealizedPnl - unrealizedPnl // Estimate for live mode
+    : (paperSession?.startingBalance || 0);
+  const realizedPnlPercent = startingBalance > 0 ? (displayPerformance.totalRealizedPnl / startingBalance) * 100 : 0;
+
   return (
     <Card>
       <CardHeader>
@@ -300,7 +309,7 @@ export default function PerformanceOverview() {
               ${totalBalance.toFixed(2)}
             </div>
             <div className={`text-lg md:text-xl font-mono ${unrealizedPnl >= 0 ? 'text-primary/80' : 'text-red-600/80'}`}>
-              Unrealized: {unrealizedPnl >= 0 ? '+' : ''}${unrealizedPnl.toFixed(2)}
+              Unrealized: {unrealizedPnl >= 0 ? '+' : ''}${unrealizedPnl.toFixed(2)} ({unrealizedPnlPercent >= 0 ? '+' : ''}{unrealizedPnlPercent.toFixed(2)}%)
             </div>
           </div>
 
@@ -322,7 +331,7 @@ export default function PerformanceOverview() {
                 {formatCurrency(displayPerformance.totalRealizedPnl)}
               </div>
               <div className="text-xs md:text-sm text-muted-foreground">
-                {displayPerformance.totalTrades} trades
+                {realizedPnlPercent >= 0 ? '+' : ''}{realizedPnlPercent.toFixed(2)}% · {displayPerformance.totalTrades} trades
               </div>
             </div>
           </div>
