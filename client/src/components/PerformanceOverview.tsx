@@ -366,13 +366,125 @@ export default function PerformanceOverview() {
           </div>
         )}
 
-        {/* Chart Section with Floating Metrics */}
-        <div className="relative -mx-6 overflow-hidden">
-          {/* Background Chart - Full Opacity */}
-          <div className="absolute inset-0 pointer-events-none">
+        {/* Main Content: Metrics Left, Chart Right */}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          {/* Left Column: All Metrics */}
+          <div className="lg:col-span-1 space-y-6">
+            {/* Main Balance Section */}
+            <div className="space-y-4">
+              {/* Total Balance - Prominent */}
+              <div className="space-y-1">
+                <div className="flex items-center gap-1.5">
+                  <DollarSign className="h-3 w-3 text-muted-foreground" />
+                  <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Total Balance</div>
+                </div>
+                <div className="text-3xl font-mono font-bold text-foreground" data-testid="text-total-balance">
+                  ${totalBalance.toFixed(2)}
+                </div>
+                <div className={`text-xs font-mono ${unrealizedPnl >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`}>
+                  Unrealized: {unrealizedPnl >= 0 ? '+' : ''}${unrealizedPnl.toFixed(2)}
+                </div>
+                <div className="text-[10px] text-muted-foreground">
+                  {unrealizedPnlPercent >= 0 ? '+' : ''}{unrealizedPnlPercent.toFixed(2)}%
+                </div>
+              </div>
+
+              {/* Available Balance */}
+              <div className="space-y-1">
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Available</div>
+                <div className="text-2xl font-mono font-bold text-foreground" data-testid="text-available-balance">
+                  ${availableBalance.toFixed(2)}
+                </div>
+                <div className="text-[10px] text-muted-foreground">For trading</div>
+              </div>
+
+              {/* Realized P&L */}
+              <div className="space-y-1">
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Realized P&L</div>
+                <div className={`text-2xl font-mono font-bold ${displayPerformance.totalRealizedPnl >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`} data-testid="text-realized-pnl">
+                  {formatCurrency(displayPerformance.totalRealizedPnl)}
+                </div>
+                <div className="text-[10px] text-muted-foreground">
+                  {realizedPnlPercent >= 0 ? '+' : ''}{realizedPnlPercent.toFixed(2)}% · {displayPerformance.totalTrades} trades
+                </div>
+              </div>
+            </div>
+
+            {/* Trading Statistics */}
+            <div className="space-y-3 pt-4 border-t border-border">
+              {/* Win Rate */}
+              <div className="space-y-1">
+                <div className="flex items-center gap-1.5">
+                  <Target className="h-3 w-3 text-muted-foreground" />
+                  <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Win Rate</div>
+                </div>
+                <div className="text-xl font-mono font-bold text-foreground" data-testid="text-win-rate">
+                  {formatPercent(displayPerformance.winRate)}
+                </div>
+                <div className="text-[10px] text-muted-foreground">
+                  {displayPerformance.winningTrades}W · {displayPerformance.losingTrades}L
+                </div>
+              </div>
+
+              {/* Total Trades */}
+              <div className="space-y-1">
+                <div className="flex items-center gap-1.5">
+                  <Activity className="h-3 w-3 text-muted-foreground" />
+                  <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Trades</div>
+                </div>
+                <div className="text-xl font-mono font-bold text-foreground" data-testid="text-total-trades">
+                  {displayPerformance.totalTrades}
+                </div>
+                <div className="text-[10px] text-muted-foreground">
+                  {displayPerformance.openTrades} open
+                </div>
+              </div>
+
+              {/* Profit Factor */}
+              <div className="space-y-1">
+                <div className="flex items-center gap-1.5">
+                  <TrendingUp className="h-3 w-3 text-muted-foreground" />
+                  <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Profit Factor</div>
+                </div>
+                <div className={`text-xl font-mono font-bold ${(displayPerformance.profitFactor ?? 0) >= 1 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`} data-testid="text-profit-factor">
+                  {(displayPerformance.profitFactor ?? 0) >= 999 ? '∞' : (displayPerformance.profitFactor ?? 0).toFixed(2)}
+                </div>
+                <div className="text-[10px] text-muted-foreground">
+                  {(displayPerformance.profitFactor ?? 0) >= 1 ? 'Profitable' : 'Unprofitable'}
+                </div>
+              </div>
+
+              {/* Avg Win */}
+              <div className="space-y-1">
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Avg Win</div>
+                <div className="text-xl font-mono font-bold text-[rgb(190,242,100)]">
+                  {formatCurrency(displayPerformance.averageWin)}
+                </div>
+              </div>
+
+              {/* Avg Loss */}
+              <div className="space-y-1">
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Avg Loss</div>
+                <div className="text-xl font-mono font-bold text-[rgb(251,146,60)]">
+                  {formatCurrency(displayPerformance.averageLoss)}
+                </div>
+              </div>
+
+              {/* Fees Paid */}
+              <div className="space-y-1">
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Fees Paid</div>
+                <div className="text-xl font-mono font-bold text-foreground" data-testid="text-fees-paid">
+                  ${(displayPerformance.totalFees || 0).toFixed(2)}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Column: Chart with Axes */}
+          <div className="lg:col-span-3">
             {!chartLoading && chartData && chartData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={chartData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
+              <ResponsiveContainer width="100%" height={500}>
+                <ComposedChart data={chartData} margin={{ top: 20, right: 20, left: 20, bottom: 20 }}>
                   <defs>
                     <linearGradient id="bgPositivePnlGradient" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="rgb(190, 242, 100)" stopOpacity={0.3}/>
@@ -383,10 +495,48 @@ export default function PerformanceOverview() {
                       <stop offset="100%" stopColor="rgb(220, 38, 38)" stopOpacity={0.3}/>
                     </linearGradient>
                   </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                  <XAxis 
+                    dataKey="tradeNumber" 
+                    stroke="rgba(255,255,255,0.3)"
+                    tick={{ fontSize: 11, fill: 'rgba(255,255,255,0.5)' }}
+                    label={{ value: 'Trade #', position: 'insideBottom', offset: -10, fontSize: 11, fill: 'rgba(255,255,255,0.5)' }}
+                  />
+                  <YAxis 
+                    yAxisId="left"
+                    stroke="rgba(255,255,255,0.3)"
+                    tick={{ fontSize: 11, fill: 'rgba(255,255,255,0.5)' }}
+                    label={{ value: 'P&L per Trade ($)', angle: -90, position: 'insideLeft', fontSize: 11, fill: 'rgba(255,255,255,0.5)' }}
+                  />
+                  <YAxis 
+                    yAxisId="right"
+                    orientation="right"
+                    stroke="rgba(255,255,255,0.3)"
+                    tick={{ fontSize: 11, fill: 'rgba(255,255,255,0.5)' }}
+                    label={{ value: 'Cumulative P&L ($)', angle: 90, position: 'insideRight', fontSize: 11, fill: 'rgba(255,255,255,0.5)' }}
+                  />
+                  <Tooltip 
+                    contentStyle={{ 
+                      backgroundColor: 'rgba(0,0,0,0.9)', 
+                      border: '1px solid rgba(255,255,255,0.2)',
+                      borderRadius: '6px',
+                      fontSize: '12px'
+                    }}
+                    formatter={(value: any, name: string) => {
+                      if (name === 'pnl') return [`$${Number(value).toFixed(2)}`, 'Trade P&L'];
+                      if (name === 'cumulativePnl') return [`$${Number(value).toFixed(2)}`, 'Cumulative'];
+                      return [value, name];
+                    }}
+                  />
+                  <Legend 
+                    wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }}
+                    height={28}
+                  />
                   <Bar 
                     yAxisId="left"
                     dataKey="pnl" 
                     barSize={30}
+                    name="Trade P&L"
                   >
                     {chartData.map((entry, index) => (
                       <Cell 
@@ -400,8 +550,9 @@ export default function PerformanceOverview() {
                     type="monotone"
                     dataKey="cumulativePnl"
                     stroke="rgb(190, 242, 100)"
-                    strokeWidth={3}
+                    strokeWidth={2}
                     dot={false}
+                    name="Cumulative P&L"
                     isAnimationActive={false}
                   />
                   <Area 
@@ -426,181 +577,84 @@ export default function PerformanceOverview() {
                     baseValue={0}
                     isAnimationActive={false}
                   />
+                  {/* Strategy update dots */}
+                  {strategyChanges && strategyChanges.map((change: any, idx: number) => {
+                    const tradeAtChange = chartData.find((d: any) => 
+                      Math.abs(d.timestamp - new Date(change.timestamp).getTime()) < 60000
+                    );
+                    if (!tradeAtChange) return null;
+                    return (
+                      <ReferenceLine
+                        key={`change-${idx}`}
+                        yAxisId="right"
+                        x={tradeAtChange.tradeNumber}
+                        stroke="rgba(255, 200, 0, 0.8)"
+                        strokeWidth={1}
+                        strokeDasharray="0"
+                      >
+                        <Label 
+                          value="●" 
+                          position="top" 
+                          style={{ fontSize: '20px', fill: 'rgba(255, 200, 0, 0.9)' }}
+                        />
+                      </ReferenceLine>
+                    );
+                  })}
                 </ComposedChart>
               </ResponsiveContainer>
-            ) : null}
+            ) : (
+              <div className="h-[500px] flex items-center justify-center text-sm text-muted-foreground">
+                {chartLoading ? 'Loading chart...' : 'No trade data available'}
+              </div>
+            )}
           </div>
+        </div>
 
-          {/* Floating Metrics - No Boxes */}
-          <div className="relative z-10 space-y-6 py-6 px-6">
-            {/* Main Balance Section */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Total Balance - Prominent */}
-              <div className="space-y-2 lg:col-span-1">
-                <div className="flex items-center gap-2">
-                  <DollarSign className="h-4 w-4 text-muted-foreground" />
-                  <div className="text-xs text-muted-foreground uppercase tracking-wider">Total Balance</div>
-                </div>
-                <div className="text-5xl font-mono font-bold text-foreground" data-testid="text-total-balance" style={{ textShadow: '0 2px 8px rgba(0,0,0,0.5)' }}>
-                  ${totalBalance.toFixed(2)}
-                </div>
-                <div className={`text-sm font-mono ${unrealizedPnl >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`} style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
-                  Unrealized: {unrealizedPnl >= 0 ? '+' : ''}${unrealizedPnl.toFixed(2)}
-                </div>
-                <div className={`text-xs text-muted-foreground`} style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
-                  {unrealizedPnlPercent >= 0 ? '+' : ''}{unrealizedPnlPercent.toFixed(2)}%
-                </div>
+        {/* Bottom Ticker - Smaller */}
+        <div className="overflow-hidden py-2 border-t border-border mt-6">
+          <div className="ticker-wrapper">
+            <div className="ticker-content">
+              {/* First set */}
+              <div className="ticker-item">
+                <Award className="h-3 w-3 text-[rgb(190,242,100)]" />
+                <span className="text-[10px] text-muted-foreground">Best Trade</span>
+                <span className="text-[10px] font-mono font-semibold text-[rgb(190,242,100)]">{formatCurrency(displayPerformance.bestTrade)}</span>
               </div>
-
-              {/* Available & Realized */}
-              <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <div className="text-xs text-muted-foreground uppercase tracking-wider" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>Available</div>
-                  <div className="text-3xl font-mono font-bold text-foreground" data-testid="text-available-balance" style={{ textShadow: '0 2px 8px rgba(0,0,0,0.5)' }}>
-                    ${availableBalance.toFixed(2)}
-                  </div>
-                  <div className="text-xs text-muted-foreground" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
-                    For trading
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="text-xs text-muted-foreground uppercase tracking-wider" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>Realized P&L</div>
-                  <div className={`text-3xl font-mono font-bold ${displayPerformance.totalRealizedPnl >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`} data-testid="text-realized-pnl" style={{ textShadow: '0 2px 8px rgba(0,0,0,0.5)' }}>
-                    {formatCurrency(displayPerformance.totalRealizedPnl)}
-                  </div>
-                  <div className="text-xs text-muted-foreground" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
-                    {realizedPnlPercent >= 0 ? '+' : ''}{realizedPnlPercent.toFixed(2)}% · {displayPerformance.totalTrades} trades
-                  </div>
-                </div>
+              <div className="ticker-item">
+                <TrendingDown className="h-3 w-3 text-[rgb(251,146,60)]" />
+                <span className="text-[10px] text-muted-foreground">Worst Trade</span>
+                <span className="text-[10px] font-mono font-semibold text-[rgb(251,146,60)]">{formatCurrency(displayPerformance.worstTrade)}</span>
               </div>
-            </div>
-
-            {/* Trading Statistics Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-              {/* Win Rate */}
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-1.5">
-                  <Target className="h-3 w-3 text-muted-foreground" />
-                  <div className="text-xs text-muted-foreground uppercase tracking-wide" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>Win Rate</div>
-                </div>
-                <div className="text-2xl font-mono font-bold text-foreground" data-testid="text-win-rate" style={{ textShadow: '0 2px 8px rgba(0,0,0,0.5)' }}>
-                  {formatPercent(displayPerformance.winRate)}
-                </div>
-                <div className="text-xs text-muted-foreground" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
-                  {displayPerformance.winningTrades}W · {displayPerformance.losingTrades}L
-                </div>
+              <div className="ticker-item">
+                <Activity className="h-3 w-3 text-muted-foreground" />
+                <span className="text-[10px] text-muted-foreground">Avg Trade Time</span>
+                <span className="text-[10px] font-mono font-semibold text-foreground">{formatTradeTime(displayPerformance.averageTradeTimeMs)}</span>
               </div>
-
-              {/* Total Trades */}
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-1.5">
-                  <Activity className="h-3 w-3 text-muted-foreground" />
-                  <div className="text-xs text-muted-foreground uppercase tracking-wide" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>Trades</div>
-                </div>
-                <div className="text-2xl font-mono font-bold text-foreground" data-testid="text-total-trades" style={{ textShadow: '0 2px 8px rgba(0,0,0,0.5)' }}>
-                  {displayPerformance.totalTrades}
-                </div>
-                <div className="text-xs text-muted-foreground" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
-                  {displayPerformance.openTrades} open
-                </div>
+              <div className="ticker-item">
+                <TrendingDown className="h-3 w-3 text-[rgb(251,146,60)]" />
+                <span className="text-[10px] text-muted-foreground">Max Drawdown</span>
+                <span className="text-[10px] font-mono font-semibold text-[rgb(251,146,60)]">{formatCurrency(displayPerformance.maxDrawdown)} ({displayPerformance.maxDrawdownPercent.toFixed(2)}%)</span>
               </div>
-
-              {/* Profit Factor */}
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-1.5">
-                  <TrendingUp className="h-3 w-3 text-muted-foreground" />
-                  <div className="text-xs text-muted-foreground uppercase tracking-wide" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>Profit Factor</div>
-                </div>
-                <div className={`text-2xl font-mono font-bold ${(displayPerformance.profitFactor ?? 0) >= 1 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`} data-testid="text-profit-factor" style={{ textShadow: '0 2px 8px rgba(0,0,0,0.5)' }}>
-                  {(displayPerformance.profitFactor ?? 0) >= 999 ? '∞' : (displayPerformance.profitFactor ?? 0).toFixed(2)}
-                </div>
-                <div className="text-xs text-muted-foreground" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
-                  {(displayPerformance.profitFactor ?? 0) >= 1 ? 'Profitable' : 'Unprofitable'}
-                </div>
+              {/* Duplicate set for seamless loop */}
+              <div className="ticker-item">
+                <Award className="h-3 w-3 text-[rgb(190,242,100)]" />
+                <span className="text-[10px] text-muted-foreground">Best Trade</span>
+                <span className="text-[10px] font-mono font-semibold text-[rgb(190,242,100)]">{formatCurrency(displayPerformance.bestTrade)}</span>
               </div>
-
-              {/* Avg Win */}
-              <div className="space-y-1.5">
-                <div className="text-xs text-muted-foreground uppercase tracking-wide" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>Avg Win</div>
-                <div className="text-2xl font-mono font-bold text-[rgb(190,242,100)]" style={{ textShadow: '0 2px 8px rgba(0,0,0,0.5)' }}>
-                  {formatCurrency(displayPerformance.averageWin)}
-                </div>
-                <div className="text-xs text-muted-foreground" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
-                  Per trade
-                </div>
+              <div className="ticker-item">
+                <TrendingDown className="h-3 w-3 text-[rgb(251,146,60)]" />
+                <span className="text-[10px] text-muted-foreground">Worst Trade</span>
+                <span className="text-[10px] font-mono font-semibold text-[rgb(251,146,60)]">{formatCurrency(displayPerformance.worstTrade)}</span>
               </div>
-
-              {/* Avg Loss */}
-              <div className="space-y-1.5">
-                <div className="text-xs text-muted-foreground uppercase tracking-wide" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>Avg Loss</div>
-                <div className="text-2xl font-mono font-bold text-[rgb(251,146,60)]" style={{ textShadow: '0 2px 8px rgba(0,0,0,0.5)' }}>
-                  {formatCurrency(displayPerformance.averageLoss)}
-                </div>
-                <div className="text-xs text-muted-foreground" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
-                  Per trade
-                </div>
+              <div className="ticker-item">
+                <Activity className="h-3 w-3 text-muted-foreground" />
+                <span className="text-[10px] text-muted-foreground">Avg Trade Time</span>
+                <span className="text-[10px] font-mono font-semibold text-foreground">{formatTradeTime(displayPerformance.averageTradeTimeMs)}</span>
               </div>
-
-              {/* Fees Paid */}
-              <div className="space-y-1.5">
-                <div className="text-xs text-muted-foreground uppercase tracking-wide" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>Fees Paid</div>
-                <div className="text-2xl font-mono font-bold text-foreground" data-testid="text-fees-paid" style={{ textShadow: '0 2px 8px rgba(0,0,0,0.5)' }}>
-                  ${(displayPerformance.totalFees || 0).toFixed(2)}
-                </div>
-                <div className="text-xs text-muted-foreground" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
-                  Total fees
-                </div>
-              </div>
-            </div>
-
-            {/* Additional Metrics Ticker */}
-            <div className="overflow-hidden py-3">
-              <div className="ticker-wrapper">
-                <div className="ticker-content">
-                  {/* First set */}
-                  <div className="ticker-item" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
-                    <Award className="h-3 w-3 text-[rgb(190,242,100)]" />
-                    <span className="text-xs text-muted-foreground">Best Trade</span>
-                    <span className="text-xs font-mono font-semibold text-[rgb(190,242,100)]">{formatCurrency(displayPerformance.bestTrade)}</span>
-                  </div>
-                  <div className="ticker-item" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
-                    <TrendingDown className="h-3 w-3 text-[rgb(251,146,60)]" />
-                    <span className="text-xs text-muted-foreground">Worst Trade</span>
-                    <span className="text-xs font-mono font-semibold text-[rgb(251,146,60)]">{formatCurrency(displayPerformance.worstTrade)}</span>
-                  </div>
-                  <div className="ticker-item" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
-                    <Activity className="h-3 w-3 text-muted-foreground" />
-                    <span className="text-xs text-muted-foreground">Avg Trade Time</span>
-                    <span className="text-xs font-mono font-semibold text-foreground">{formatTradeTime(displayPerformance.averageTradeTimeMs)}</span>
-                  </div>
-                  <div className="ticker-item" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
-                    <TrendingDown className="h-3 w-3 text-[rgb(251,146,60)]" />
-                    <span className="text-xs text-muted-foreground">Max Drawdown</span>
-                    <span className="text-xs font-mono font-semibold text-[rgb(251,146,60)]">{formatCurrency(displayPerformance.maxDrawdown)} ({displayPerformance.maxDrawdownPercent.toFixed(2)}%)</span>
-                  </div>
-                  {/* Duplicate set for seamless loop */}
-                  <div className="ticker-item" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
-                    <Award className="h-3 w-3 text-[rgb(190,242,100)]" />
-                    <span className="text-xs text-muted-foreground">Best Trade</span>
-                    <span className="text-xs font-mono font-semibold text-[rgb(190,242,100)]">{formatCurrency(displayPerformance.bestTrade)}</span>
-                  </div>
-                  <div className="ticker-item" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
-                    <TrendingDown className="h-3 w-3 text-[rgb(251,146,60)]" />
-                    <span className="text-xs text-muted-foreground">Worst Trade</span>
-                    <span className="text-xs font-mono font-semibold text-[rgb(251,146,60)]">{formatCurrency(displayPerformance.worstTrade)}</span>
-                  </div>
-                  <div className="ticker-item" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
-                    <Activity className="h-3 w-3 text-muted-foreground" />
-                    <span className="text-xs text-muted-foreground">Avg Trade Time</span>
-                    <span className="text-xs font-mono font-semibold text-foreground">{formatTradeTime(displayPerformance.averageTradeTimeMs)}</span>
-                  </div>
-                  <div className="ticker-item" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
-                    <TrendingDown className="h-3 w-3 text-[rgb(251,146,60)]" />
-                    <span className="text-xs text-muted-foreground">Max Drawdown</span>
-                    <span className="text-xs font-mono font-semibold text-[rgb(251,146,60)]">{formatCurrency(displayPerformance.maxDrawdown)} ({displayPerformance.maxDrawdownPercent.toFixed(2)}%)</span>
-                  </div>
-                </div>
+              <div className="ticker-item">
+                <TrendingDown className="h-3 w-3 text-[rgb(251,146,60)]" />
+                <span className="text-[10px] text-muted-foreground">Max Drawdown</span>
+                <span className="text-[10px] font-mono font-semibold text-[rgb(251,146,60)]">{formatCurrency(displayPerformance.maxDrawdown)} ({displayPerformance.maxDrawdownPercent.toFixed(2)}%)</span>
               </div>
             </div>
           </div>
