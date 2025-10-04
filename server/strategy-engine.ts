@@ -12,6 +12,7 @@ import {
 import { fetchActualFills, aggregateFills } from './exchange-utils';
 import { orderProtectionService } from './order-protection-service';
 import { cascadeDetectorService } from './cascade-detector-service';
+import { calculateNextLayer, calculateATRPercent } from './dca-calculator';
 
 // Aster DEX fee schedule
 const ASTER_MAKER_FEE_PERCENT = 0.01;  // 0.01% for limit orders (adds liquidity) 
@@ -699,7 +700,6 @@ export class StrategyEngine extends EventEmitter {
       console.log(`🔒 Layer cooldown locked ATOMICALLY for ${liquidation.symbol} ${positionSide} (${this.fillCooldownMs / 1000}s)`);
       
       const side = position.side === 'long' ? 'buy' : 'sell';
-      const price = parseFloat(liquidation.price);
       const nextLayer = position.layersFilled + 1;
       
       // Check if we already have a pending order for this layer
@@ -715,9 +715,7 @@ export class StrategyEngine extends EventEmitter {
       }
       this.pendingLayerOrders.get(position.id)!.add(nextLayer);
       
-      // Calculate available capital based on account usage percentage
-      // ALWAYS use actual exchange balance for both paper and live modes
-      // This ensures paper trading mirrors live trading exactly
+      // Get current balance for DCA calculations
       let currentBalance = parseFloat(session.currentBalance);
       const exchangeBalance = await this.getExchangeAvailableBalance(strategy);
       if (exchangeBalance !== null) {
@@ -727,17 +725,44 @@ export class StrategyEngine extends EventEmitter {
         console.warn('⚠️ Failed to fetch exchange balance for layer, falling back to session balance');
       }
       
-      const marginPercent = parseFloat(strategy.marginAmount);
-      const availableCapital = (marginPercent / 100) * currentBalance;
+      // Get initial entry price (P0) for DCA calculations
+      // This is the price of the first entry, used as anchor for all DCA levels
+      const initialEntryPrice = position.initialEntryPrice 
+        ? parseFloat(position.initialEntryPrice)
+        : parseFloat(position.avgEntryPrice); // Fallback for existing positions without initialEntryPrice
       
-      // Calculate position size as percentage of available capital with leverage
-      const positionSizePercent = parseFloat(strategy.positionSizePercent);
-      const leverage = strategy.leverage;
-      const basePositionValue = (positionSizePercent / 100) * availableCapital;
-      const positionValue = basePositionValue * leverage;
-      const quantity = positionValue / price;
-
-      console.log(`📈 Adding layer ${nextLayer} for ${liquidation.symbol} at $${price} (Position: ${positionSizePercent}% of $${availableCapital} = $${basePositionValue}, Leverage: ${leverage}x = $${positionValue})`);
+      // Calculate next DCA layer using mathematical framework
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+      
+      const nextLayerCalc = await calculateNextLayer(
+        strategy,
+        currentBalance,
+        strategy.leverage,
+        liquidation.symbol,
+        position.side as 'long' | 'short',
+        position.layersFilled,
+        initialEntryPrice,
+        apiKey,
+        secretKey
+      );
+      
+      if (!nextLayerCalc) {
+        console.log(`⚠️ Cannot calculate next layer for ${liquidation.symbol} - max layers reached or calculation failed`);
+        // Remove pending marker
+        const layers = this.pendingLayerOrders.get(position.id);
+        if (layers) {
+          layers.delete(nextLayer);
+          if (layers.size === 0) {
+            this.pendingLayerOrders.delete(position.id);
+          }
+        }
+        return;
+      }
+      
+      const { price, quantity } = nextLayerCalc;
+      
+      console.log(`📐 DCA Layer ${nextLayer} for ${liquidation.symbol}: Price=$${price.toFixed(6)}, Qty=${quantity.toFixed(6)} (P0=$${initialEntryPrice.toFixed(6)})`);
 
       // Apply order delay for smart placement
       if (strategy.orderDelayMs > 0) {
@@ -1883,7 +1908,7 @@ export class StrategyEngine extends EventEmitter {
         // CRITICAL FIX: Use DATABASE position's entry price, NOT exchange position's entry price
         // The exchange position may have stale/incorrect entry price after layers
         // Database tracks the true weighted average entry price from all fills
-        const entryPrice = parseFloat(dbPosition.entryPrice);
+        const entryPrice = parseFloat(dbPosition.avgEntryPrice);
         
         const stopLossPercent = parseFloat(strategy.stopLossPercent);
         const profitTargetPercent = parseFloat(strategy.profitTargetPercent);
@@ -2370,6 +2395,7 @@ export class StrategyEngine extends EventEmitter {
         side: order.side === 'buy' ? 'long' : 'short',
         totalQuantity: fillQuantity.toString(),
         avgEntryPrice: fillPrice.toString(),
+        initialEntryPrice: fillPrice.toString(), // P0: Store initial entry price for DCA calculations
         totalCost: actualMargin.toString(), // Actual margin = notional / leverage
         layersFilled: 1,
         maxLayers,
