@@ -22,7 +22,7 @@ Preferred communication style: Simple, everyday language.
 - **Routing**: Wouter.
 - **UI/UX Design**: Dark/light mode, professional aesthetic (lime for profit, orange for loss), Inter font for text, JetBrains Mono for numerical data, responsive design, optimized tables/cards. Mobile responsive layout with critical controls visible and secondary actions in a Sheet menu. Cascade risk indicator uses fixed-width badges with horizontal scroll.
 - **Key Features**: Collapsible trade details, live strategy editing with performance chart visualization, interactive performance chart with per-trade P&L, hedge position detection, and intelligent recommendations for assets and risk parameters based on account size and real-time liquidity.
-- **Settings Organization**: All trading configuration, DCA settings, historical sessions, and API connection management are consolidated in the single Trading Settings dialog (TradingStrategyDialog) accessed via the Settings button in the header.
+- **Settings Organization**: All trading configuration, DCA settings, and API connection management are consolidated in the single Global Settings dialog (TradingStrategyDialog) accessed via the Settings button in the header. Settings can be exported/imported using timestamped JSON files (format: settings_YYYY-MM-DD_HH-MM-SS.json) for backup and portability. Settings automatically save when the dialog is closed.
 
 ### Backend Architecture
 - **Runtime**: Node.js with Express.js.
@@ -58,9 +58,8 @@ Preferred communication style: Simple, everyday language.
 - **Live Trading**: HMAC-SHA256 signature authentication for Aster DEX with safety checks. Automatic TP/SL management (updated after each layer). Queue-based locking for sequential updates. Uses actual fill data from Aster DEX `/fapi/v1/userTrades`. Session-based tracking.
 - **Paper Trading**: Mirrors live trading logic, using real exchange balance and fee schedule for accurate simulation, but without sending API signals.
 - **Strategy Management**: Singleton session model with continuous trading per user. Configurable liquidation lookback window. Live mode toggle creates new session boundaries.
-- **DCA System**: Integrated Dollar Cost Averaging (DCA) system with ATR-based volatility scaling, convex level spacing, exponential size growth, liquidation-aware risk management, and automatic take profit/stop loss calculation. Uses a SQL wrapper to bypass Drizzle ORM caching issues for DCA parameter management. All DCA parameters are accessible in the Trading Settings dialog under "DCA Settings (Advanced)".
-- **Historical Sessions**: Complete trading history viewer in Trading Settings dialog showing all current and archived sessions with positions, fills, P&L, and win rates. Accessible via "History" button in dialog footer.
-- **Data Integrity**: Idempotency protection for orders. Atomic cooldown system for entries/layers to prevent duplicate orders.
+- **DCA System**: Integrated Dollar Cost Averaging (DCA) system with ATR-based volatility scaling, convex level spacing, exponential size growth, liquidation-aware risk management, and automatic take profit/stop loss calculation. Uses a SQL wrapper to bypass Drizzle ORM caching issues for DCA parameter management. All DCA parameters are accessible in the Global Settings dialog under "DCA Settings (Advanced)".
+- **Data Integrity**: Idempotency protection for orders. Atomic cooldown system for entries/layers to prevent duplicate orders. ALL trading data (positions, fills, sessions) is permanently preserved in the database - deletion functionality has been removed to comply with data preservation requirements.
 - **Position Display**: Live mode displays only exchange positions; paper mode shows simulated positions.
 
 ## External Dependencies

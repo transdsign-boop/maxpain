@@ -16,12 +16,10 @@ import { Switch } from "@/components/ui/switch";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Play, Square, TrendingUp, DollarSign, Layers, Target, Trash2, RotateCcw, Key, CheckCircle2, XCircle, Loader2, Download, Upload, Lightbulb, AlertCircle, History, Activity, ChevronDown } from "lucide-react";
+import { Play, Square, TrendingUp, DollarSign, Layers, Target, Trash2, Key, CheckCircle2, XCircle, Loader2, Download, Upload, Lightbulb, AlertCircle, Activity, ChevronDown } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { HistoricalSessions } from "./HistoricalSessions";
-import { ConfigurationHistory } from "./ConfigurationHistory";
 
 // Types
 interface Strategy {
@@ -657,29 +655,6 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
     }
   });
 
-  // Clear paper trades mutation
-  const clearPaperTradesMutation = useMutation({
-    mutationFn: async (strategyId: string) => {
-      const response = await apiRequest('DELETE', `/api/strategies/${strategyId}/clear-paper-trades`);
-      return await response.json();
-    },
-    onSuccess: (data) => {
-      toast({
-        title: "Paper Trades Cleared",
-        description: `Cleared ${data.cleared.positions} positions and ${data.cleared.fills} fills. Starting fresh!`,
-      });
-      // Invalidate queries to refresh the UI
-      queryClient.invalidateQueries({ queryKey: ['/api/strategies'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/performance/overview'] });
-    },
-    onError: () => {
-      toast({
-        title: "Error",
-        description: "Failed to clear paper trades. Please try again.",
-        variant: "destructive",
-      });
-    }
-  });
 
   // Test API connection mutation
   const testConnectionMutation = useMutation({
@@ -726,7 +701,17 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `aster-dex-settings-${new Date().toISOString().split('T')[0]}.json`;
+      
+      // Format: settings_YYYY-MM-DD_HH-MM-SS.json
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      const hours = String(now.getHours()).padStart(2, '0');
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      const seconds = String(now.getSeconds()).padStart(2, '0');
+      a.download = `settings_${year}-${month}-${day}_${hours}-${minutes}-${seconds}.json`;
+      
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -899,8 +884,8 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
       <Dialog open={open} onOpenChange={handleDialogClose}>
         <DialogContent className="max-w-4xl max-h-[90vh]" aria-describedby="loading-description">
           <DialogHeader>
-            <DialogTitle>Trading Settings</DialogTitle>
-            <DialogDescription id="loading-description">Loading trading settings...</DialogDescription>
+            <DialogTitle>Global Settings</DialogTitle>
+            <DialogDescription id="loading-description">Loading global settings...</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 p-6">
             <div className="h-4 bg-muted animate-pulse rounded" />
@@ -917,7 +902,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
       <DialogContent className="max-w-4xl max-h-[90vh]" data-testid="dialog-trading-strategy" aria-describedby="strategy-dialog-description">
         <DialogHeader>
           <DialogTitle className="flex items-center justify-between">
-            <span>Trading Settings</span>
+            <span>Global Settings</span>
             {isStrategyRunning && (
               <Badge variant="default" className="bg-lime-600">
                 <div className="w-2 h-2 bg-white rounded-full mr-1 animate-pulse" />
@@ -1735,16 +1720,6 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
 
         <DialogFooter className="flex flex-col sm:flex-row gap-2">
           <div className="flex flex-1 gap-2 flex-wrap">
-            {activeStrategy && (
-              <>
-                <div className="w-full sm:w-auto">
-                  <HistoricalSessions strategyId={activeStrategy.id} />
-                </div>
-                <div className="w-full sm:w-auto">
-                  <ConfigurationHistory strategyId={activeStrategy.id} />
-                </div>
-              </>
-            )}
             <Button
               type="button"
               variant="outline"
@@ -1765,35 +1740,6 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
               <Upload className="h-4 w-4 mr-1" />
               Import
             </Button>
-            {activeStrategy && activeStrategy.tradingMode === "paper" && !isStrategyRunning && (
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    data-testid="button-clear-paper-trades"
-                  >
-                    <RotateCcw className="h-4 w-4 mr-1" />
-                    Clear Paper Trades
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Clear All Paper Trades?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      This will delete all positions and fill history, resetting your paper trading account. Your settings will remain unchanged.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={() => activeStrategy && clearPaperTradesMutation.mutate(activeStrategy.id)}>
-                      Clear All
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            )}
           </div>
 
           <Button

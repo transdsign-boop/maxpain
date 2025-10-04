@@ -19,7 +19,6 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { AlertCircle, Play, Square, Settings, TrendingUp, DollarSign, Layers, Target, Trash2, ChevronDown, RotateCcw, Activity } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { HistoricalSessions } from "./HistoricalSessions";
 
 // Types
 interface Strategy {
