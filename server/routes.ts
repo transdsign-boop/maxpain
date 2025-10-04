@@ -1550,6 +1550,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           worstTrade: 0,
           profitFactor: 0,
           totalFees: 0,
+          fundingCost: 0,
           averageTradeTimeMs: 0
         });
       }
@@ -1576,6 +1577,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           worstTrade: 0,
           profitFactor: 0,
           totalFees: 0,
+          fundingCost: 0,
           averageTradeTimeMs: 0,
           maxDrawdown: 0,
           maxDrawdownPercent: 0
@@ -1617,6 +1619,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           worstTrade: 0,
           profitFactor: 0,
           totalFees: 0,
+          fundingCost: 0,
           averageTradeTimeMs: 0,
           maxDrawdown: 0,
           maxDrawdownPercent: 0
@@ -1727,6 +1730,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         worstTrade,
         profitFactor,
         totalFees,
+        fundingCost: 0,
         averageTradeTimeMs,
         maxDrawdown,
         maxDrawdownPercent

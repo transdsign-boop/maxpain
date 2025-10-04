@@ -24,6 +24,7 @@ interface PerformanceMetrics {
   worstTrade: number;
   profitFactor: number;
   totalFees: number;
+  fundingCost: number;
   averageTradeTimeMs: number;
   maxDrawdown: number;
   maxDrawdownPercent: number;
@@ -520,36 +521,25 @@ export default function PerformanceOverview() {
             </div>
           </div>
 
-          {/* Avg Win */}
-          <div className="space-y-1.5">
-            <div className="text-xs text-muted-foreground uppercase tracking-wide">Avg Win</div>
-            <div className="text-2xl font-mono font-bold text-[rgb(190,242,100)]">
-              {formatCurrency(displayPerformance.averageWin)}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              Per trade
-            </div>
-          </div>
-
-          {/* Avg Loss */}
-          <div className="space-y-1.5">
-            <div className="text-xs text-muted-foreground uppercase tracking-wide">Avg Loss</div>
-            <div className="text-2xl font-mono font-bold text-[rgb(251,146,60)]">
-              {formatCurrency(displayPerformance.averageLoss)}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              Per trade
-            </div>
-          </div>
-
           {/* Fees Paid */}
           <div className="space-y-1.5">
-            <div className="text-xs text-muted-foreground uppercase tracking-wide">Fees Paid</div>
+            <div className="text-xs text-muted-foreground uppercase tracking-wide">Trading Fees</div>
             <div className="text-2xl font-mono font-bold" data-testid="text-fees-paid">
               ${(displayPerformance.totalFees || 0).toFixed(2)}
             </div>
             <div className="text-xs text-muted-foreground">
-              Total fees
+              Commission
+            </div>
+          </div>
+
+          {/* Funding Cost */}
+          <div className="space-y-1.5">
+            <div className="text-xs text-muted-foreground uppercase tracking-wide">Funding Cost</div>
+            <div className="text-2xl font-mono font-bold" data-testid="text-funding-cost">
+              ${(displayPerformance.fundingCost || 0).toFixed(2)}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Total funding
             </div>
           </div>
         </div>
@@ -773,6 +763,16 @@ export default function PerformanceOverview() {
                 <span className="text-xs text-muted-foreground">Max Drawdown</span>
                 <span className="text-xs font-mono font-semibold text-[rgb(251,146,60)]">{formatCurrency(displayPerformance.maxDrawdown)} ({displayPerformance.maxDrawdownPercent.toFixed(2)}%)</span>
               </div>
+              <div className="ticker-item">
+                <TrendingUp className="h-3 w-3 text-[rgb(190,242,100)]" />
+                <span className="text-xs text-muted-foreground">Avg Win</span>
+                <span className="text-xs font-mono font-semibold text-[rgb(190,242,100)]">{formatCurrency(displayPerformance.averageWin)}</span>
+              </div>
+              <div className="ticker-item">
+                <TrendingDown className="h-3 w-3 text-[rgb(251,146,60)]" />
+                <span className="text-xs text-muted-foreground">Avg Loss</span>
+                <span className="text-xs font-mono font-semibold text-[rgb(251,146,60)]">{formatCurrency(displayPerformance.averageLoss)}</span>
+              </div>
               {/* Duplicate set for seamless loop */}
               <div className="ticker-item">
                 <Award className="h-3 w-3 text-[rgb(190,242,100)]" />
@@ -793,6 +793,16 @@ export default function PerformanceOverview() {
                 <TrendingDown className="h-3 w-3 text-[rgb(251,146,60)]" />
                 <span className="text-xs text-muted-foreground">Max Drawdown</span>
                 <span className="text-xs font-mono font-semibold text-[rgb(251,146,60)]">{formatCurrency(displayPerformance.maxDrawdown)} ({displayPerformance.maxDrawdownPercent.toFixed(2)}%)</span>
+              </div>
+              <div className="ticker-item">
+                <TrendingUp className="h-3 w-3 text-[rgb(190,242,100)]" />
+                <span className="text-xs text-muted-foreground">Avg Win</span>
+                <span className="text-xs font-mono font-semibold text-[rgb(190,242,100)]">{formatCurrency(displayPerformance.averageWin)}</span>
+              </div>
+              <div className="ticker-item">
+                <TrendingDown className="h-3 w-3 text-[rgb(251,146,60)]" />
+                <span className="text-xs text-muted-foreground">Avg Loss</span>
+                <span className="text-xs font-mono font-semibold text-[rgb(251,146,60)]">{formatCurrency(displayPerformance.averageLoss)}</span>
               </div>
             </div>
           </div>
