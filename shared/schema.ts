@@ -81,6 +81,13 @@ export const strategies = pgTable("strategies", {
   maxLayers: integer("max_layers").notNull().default(5),
   profitTargetPercent: decimal("profit_target_percent", { precision: 5, scale: 2 }).notNull().default("1.0"),
   stopLossPercent: decimal("stop_loss_percent", { precision: 5, scale: 2 }).notNull().default("2.0"), // Stop loss percentage
+  // DCA (Dollar Cost Averaging) Parameters
+  dcaStartStepPercent: decimal("dca_start_step_percent", { precision: 5, scale: 2 }).notNull().default("0.4"), // First DCA layer distance from entry
+  dcaSpacingConvexity: decimal("dca_spacing_convexity", { precision: 5, scale: 2 }).notNull().default("1.2"), // Spacing growth between layers (convex)
+  dcaSizeGrowth: decimal("dca_size_growth", { precision: 5, scale: 2 }).notNull().default("1.8"), // Position size multiplier per layer
+  dcaMaxRiskPercent: decimal("dca_max_risk_percent", { precision: 5, scale: 2 }).notNull().default("1.0"), // Max % of account at risk
+  dcaVolatilityRef: decimal("dca_volatility_ref", { precision: 5, scale: 2 }).notNull().default("1.0"), // ATR volatility reference multiplier
+  dcaExitCushionMultiplier: decimal("dca_exit_cushion_multiplier", { precision: 5, scale: 2 }).notNull().default("0.6"), // Take profit at 60% of DCA distance
   // Margin and Risk Management
   marginMode: text("margin_mode").notNull().default("cross"), // "cross" or "isolated"
   leverage: integer("leverage").notNull().default(1), // 1-125x leverage
