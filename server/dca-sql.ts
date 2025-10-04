@@ -72,7 +72,7 @@ export async function updateStrategyDCAParams(
   strategyId: string,
   params: Partial<DCAStrategyParams>
 ) {
-  const setParts: any[] = [];
+  const setParts: sql.SQL[] = [];
   
   if (params.dcaStartStepPercent !== undefined) {
     setParts.push(sql`dca_start_step_percent = ${params.dcaStartStepPercent}`);
@@ -97,15 +97,25 @@ export async function updateStrategyDCAParams(
     return null;
   }
   
-  // Build the SET clause by joining with commas
-  const setClause = sql.join(setParts, sql.raw(', '));
+  // Build dynamic UPDATE query using sql fragments
+  let query = sql`UPDATE strategies SET `;
   
-  const result = await db.execute(sql`
-    UPDATE strategies
-    SET ${setClause}, updated_at = NOW()
-    WHERE id = ${strategyId}
-    RETURNING *
-  `);
+  // Add each SET part with commas between them
+  for (let i = 0; i < setParts.length; i++) {
+    if (i > 0) {
+      query = sql`${query}, ${setParts[i]}`;
+    } else {
+      query = sql`${query}${setParts[i]}`;
+    }
+  }
+  
+  // Add updated_at and WHERE clause
+  query = sql`${query}, updated_at = NOW() WHERE id = ${strategyId} RETURNING *`;
+  
+  // Log the query for debugging
+  console.log('DCA UPDATE QUERY:', query.queryChunks.join(' '), 'VALUES:', query.params);
+  
+  const result = await db.execute(query);
   
   return result.rows[0] || null;
 }
