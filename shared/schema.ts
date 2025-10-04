@@ -79,7 +79,6 @@ export const strategies = pgTable("strategies", {
   percentileThreshold: integer("percentile_threshold").notNull().default(50), // 1-100%
   liquidationLookbackHours: integer("liquidation_lookback_hours").notNull().default(1), // 1-24 hours
   maxLayers: integer("max_layers").notNull().default(5),
-  positionSizePercent: decimal("position_size_percent", { precision: 5, scale: 2 }).notNull(), // % of portfolio per position
   profitTargetPercent: decimal("profit_target_percent", { precision: 5, scale: 2 }).notNull().default("1.0"),
   stopLossPercent: decimal("stop_loss_percent", { precision: 5, scale: 2 }).notNull().default("2.0"), // Stop loss percentage
   // Margin and Risk Management
@@ -199,10 +198,6 @@ export const frontendStrategySchema = z.object({
   percentileThreshold: z.number().min(1).max(100),
   liquidationLookbackHours: z.number().min(1).max(24).default(1), // 1-24 hours
   maxLayers: z.number().min(1).max(10),
-  positionSizePercent: z.string().refine((val) => {
-    const num = parseFloat(val);
-    return !isNaN(num) && num >= 0.1 && num <= 50;
-  }, "Position size must be between 0.1% and 50%"),
   profitTargetPercent: z.string().refine((val) => {
     const num = parseFloat(val);
     return !isNaN(num) && num >= 0.1 && num <= 20;
