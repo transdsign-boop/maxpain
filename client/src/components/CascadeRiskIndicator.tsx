@@ -138,8 +138,9 @@ export default function CascadeRiskIndicator() {
           animation: pulse-glow 3s ease-in-out infinite;
         }
       `}</style>
-      <CardContent className="p-2 md:p-3">
-        <div className="flex items-center gap-1 md:gap-2 overflow-x-auto pb-1">
+      <CardContent className="p-2 md:p-3 space-y-2">
+        {/* Row 1: Metrics & Numbers */}
+        <div className="flex items-center gap-1 md:gap-2 overflow-x-auto">
           {/* Pulsating Bar */}
           <div 
             className={`w-1 md:w-2 h-8 md:h-10 rounded-full flex-shrink-0 ${getPulsatingBarColor()} pulsating-bar transition-colors duration-300`}
@@ -171,9 +172,12 @@ export default function CascadeRiskIndicator() {
           <Badge variant="secondary" className="flex-shrink-0 font-mono text-[10px] md:text-xs px-1.5 md:px-2 h-6" data-testid="tile-oi">
             OI {status.OI.toFixed(1)}%
           </Badge>
+        </div>
 
-          {/* Status & Auto */}
-          <div className="flex items-center gap-1 flex-shrink-0 ml-auto">
+        {/* Row 2: Cascade Detector Label, Status & Toggle */}
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs text-muted-foreground">Cascade Detector</span>
+          <div className="flex items-center gap-2">
             {getStatusBadge()}
             <Switch
               id="auto-detect"
