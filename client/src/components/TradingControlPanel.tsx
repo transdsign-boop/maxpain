@@ -92,7 +92,7 @@ interface DCASettings {
 // DCA Settings Component
 function DCASettingsSection({ strategyId, isStrategyRunning }: { strategyId: string; isStrategyRunning: boolean }) {
   const { toast } = useToast();
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(true);
   
   // Fetch DCA settings
   const { data: dcaSettings, isLoading } = useQuery<DCASettings>({
