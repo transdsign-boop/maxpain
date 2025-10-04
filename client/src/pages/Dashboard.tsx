@@ -564,62 +564,59 @@ export default function Dashboard() {
         </div>
 
         {/* Mobile Layout */}
-        <div className="lg:hidden px-2 py-2">
-          <div className="flex items-center justify-between gap-2">
-            {/* Left: Logo + Live Mode */}
-            <div className="flex items-center gap-2 min-w-0 flex-shrink">
-              <div className="scale-[0.7] origin-left">
-                <AsterLogo data-testid="app-logo" />
-              </div>
+        <div className="lg:hidden px-2 py-1.5">
+          <div className="flex items-center justify-between gap-1">
+            {/* Left: Logo Text Only */}
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="text-sm font-bold whitespace-nowrap">MAX PAIN</span>
               <LiveModeToggle />
             </div>
 
-            {/* Right: Critical Actions Only */}
-            <div className="flex items-center gap-1.5 flex-shrink-0">
-              <ConnectionStatus isConnected={isConnected} />
+            {/* Right: Critical Actions */}
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <div className="scale-90 origin-right">
+                <ConnectionStatus isConnected={isConnected} />
+              </div>
               
-              {/* Pause/Resume Button */}
               {activeStrategy && (
                 <Button
                   variant={activeStrategy.paused ? "default" : "outline"}
                   size="icon"
-                  className="h-8 w-8"
+                  className="h-7 w-7"
                   onClick={() => activeStrategy.paused ? resumeMutation.mutate() : pauseMutation.mutate()}
                   disabled={!activeStrategy.isActive || pauseMutation.isPending || resumeMutation.isPending}
                   data-testid="button-pause-resume-mobile"
                 >
                   {activeStrategy.paused ? (
-                    <Play className="h-3.5 w-3.5" />
+                    <Play className="h-3 w-3" />
                   ) : (
-                    <Pause className="h-3.5 w-3.5" />
+                    <Pause className="h-3 w-3" />
                   )}
                 </Button>
               )}
               
-              {/* Emergency Stop Button */}
               {activeStrategy && positionSummary && positionSummary.activePositions > 0 && (
                 <Button
                   variant="destructive"
                   size="icon"
-                  className="h-8 w-8"
+                  className="h-7 w-7"
                   onClick={() => setIsEmergencyStopDialogOpen(true)}
                   disabled={!activeStrategy.isActive}
                   data-testid="button-emergency-stop-mobile"
                 >
-                  <AlertTriangle className="h-3.5 w-3.5" />
+                  <AlertTriangle className="h-3 w-3" />
                 </Button>
               )}
               
-              {/* Overflow Menu for Settings + Theme */}
               <Sheet>
                 <Button 
                   variant="ghost" 
                   size="icon"
-                  className="h-8 w-8"
+                  className="h-7 w-7"
                   asChild
                 >
                   <SheetTrigger data-testid="button-mobile-menu">
-                    <Menu className="h-4 w-4" />
+                    <Menu className="h-3.5 w-3.5" />
                   </SheetTrigger>
                 </Button>
                 <SheetContent side="right" className="w-64">
@@ -656,7 +653,7 @@ export default function Dashboard() {
         className={`p-3 md:p-6 space-y-4 md:space-y-6 transition-all duration-300 ${
           isSidebarCollapsed ? 'lg:mr-12' : 'lg:mr-80'
         }`}
-        style={{ paddingTop: 'calc(52px + 0.75rem)' }}
+        style={{ paddingTop: '56px' }}
       >
         {/* Cascade Risk Indicator */}
         <CascadeRiskIndicator />

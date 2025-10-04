@@ -139,56 +139,49 @@ export default function CascadeRiskIndicator() {
         }
       `}</style>
       <CardContent className="p-2 md:p-3">
-        <div className="flex items-center gap-1.5 md:gap-3 overflow-x-auto">
+        <div className="flex items-center gap-1 md:gap-2 overflow-x-auto pb-1">
           {/* Pulsating Bar */}
           <div 
-            className={`w-1 md:w-2 h-10 md:h-12 rounded-full flex-shrink-0 ${getPulsatingBarColor()} pulsating-bar transition-colors duration-300`}
+            className={`w-1 md:w-2 h-8 md:h-10 rounded-full flex-shrink-0 ${getPulsatingBarColor()} pulsating-bar transition-colors duration-300`}
             data-testid="indicator-light"
             style={{ color: status.light === 'green' ? '#22c55e' : status.light === 'yellow' ? '#eab308' : status.light === 'orange' ? '#f97316' : '#ef4444' }}
           />
 
-          {/* Risk Status - Compact */}
-          <div className="flex items-center gap-1 flex-shrink-0">
-            <TrendingDown className="h-3 md:h-4 w-3 md:w-4" />
-            <div className="text-xs md:text-sm font-semibold whitespace-nowrap">
-              {status.score >= 6 ? 'Extreme' : status.score >= 4 ? 'High' : status.score >= 2 ? 'Elevated' : 'Normal'}
-            </div>
+          {/* Risk Status */}
+          <div className="flex items-center gap-0.5 flex-shrink-0">
+            <TrendingDown className="h-3 w-3 md:h-4 md:w-4" />
+            <span className="text-[11px] md:text-xs font-semibold whitespace-nowrap">
+              {status.score >= 6 ? 'Extreme' : status.score >= 4 ? 'High' : status.score >= 2 ? 'Risk' : 'OK'}
+            </span>
           </div>
 
-          {/* Score Badge */}
-          <Badge variant="outline" className="flex-shrink-0 font-mono text-xs px-2">
+          {/* Metrics - Ultra Compact */}
+          <Badge variant="outline" className="flex-shrink-0 font-mono text-[10px] md:text-xs px-1.5 md:px-2 h-6">
             {status.score}
           </Badge>
 
-          {/* Metrics - Compact Badges */}
-          <div className="flex items-center gap-1 flex-shrink-0" data-testid="tile-lq">
-            <Badge variant="secondary" className="font-mono text-xs px-2 min-w-[52px]">
-              <span className="text-muted-foreground mr-1">LQ</span>{status.LQ.toFixed(1)}
-            </Badge>
-          </div>
-          <div className="flex items-center gap-1 flex-shrink-0" data-testid="tile-ret">
-            <Badge variant="secondary" className="font-mono text-xs px-2 min-w-[52px]">
-              <span className="text-muted-foreground mr-1">RT</span>{status.RET.toFixed(1)}
-            </Badge>
-          </div>
-          <div className="flex items-center gap-1 flex-shrink-0" data-testid="tile-oi">
-            <Badge variant="secondary" className="font-mono text-xs px-2 min-w-[56px]">
-              <span className="text-muted-foreground mr-1">OI</span>{status.OI.toFixed(1)}%
-            </Badge>
-          </div>
+          <Badge variant="secondary" className="flex-shrink-0 font-mono text-[10px] md:text-xs px-1.5 md:px-2 h-6" data-testid="tile-lq">
+            LQ {status.LQ.toFixed(1)}
+          </Badge>
+          
+          <Badge variant="secondary" className="flex-shrink-0 font-mono text-[10px] md:text-xs px-1.5 md:px-2 h-6" data-testid="tile-ret">
+            RT {status.RET.toFixed(1)}
+          </Badge>
+          
+          <Badge variant="secondary" className="flex-shrink-0 font-mono text-[10px] md:text-xs px-1.5 md:px-2 h-6" data-testid="tile-oi">
+            OI {status.OI.toFixed(1)}%
+          </Badge>
 
-          {/* Status & Auto Toggle */}
-          <div className="flex items-center gap-1.5 md:gap-2 flex-shrink-0 ml-auto">
+          {/* Status & Auto */}
+          <div className="flex items-center gap-1 flex-shrink-0 ml-auto">
             {getStatusBadge()}
-            <div className="flex items-center gap-1">
-              <Label htmlFor="auto-detect" className="text-xs text-muted-foreground whitespace-nowrap hidden md:inline">Auto</Label>
-              <Switch
-                id="auto-detect"
-                checked={status.autoEnabled}
-                onCheckedChange={handleAutoToggle}
-                data-testid="switch-auto-detect"
-              />
-            </div>
+            <Switch
+              id="auto-detect"
+              checked={status.autoEnabled}
+              onCheckedChange={handleAutoToggle}
+              data-testid="switch-auto-detect"
+              className="scale-75 md:scale-100"
+            />
           </div>
         </div>
       </CardContent>
