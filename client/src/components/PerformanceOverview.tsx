@@ -345,11 +345,11 @@ export default function PerformanceOverview() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className={`text-lg font-mono font-bold ${asset.totalPnl >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`}>
-                      {asset.totalPnl >= 0 ? '+' : ''}${asset.totalPnl.toFixed(2)}
+                    <div className={`text-lg font-mono font-bold ${(asset.totalPnl || 0) >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`}>
+                      {(asset.totalPnl || 0) >= 0 ? '+' : ''}${(asset.totalPnl || 0).toFixed(2)}
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      {asset.totalTrades} trades
+                      {asset.totalTrades || 0} trades
                     </div>
                   </div>
                 </div>
