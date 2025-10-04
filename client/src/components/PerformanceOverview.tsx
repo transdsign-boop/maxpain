@@ -111,11 +111,19 @@ export default function PerformanceOverview() {
     refetchInterval: 15000,
   });
 
-  // Calculate top 3 performing assets by total P&L
+  // Calculate top 3 performing assets by total P&L (only from closed positions)
   const top3Assets = useMemo(() => {
     if (!assetPerformance || assetPerformance.length === 0) return [];
-    return [...assetPerformance]
-      .sort((a, b) => b.totalPnl - a.totalPnl)
+    
+    // Filter out assets with no trades
+    const validAssets = assetPerformance.filter(asset => 
+      (asset.totalTrades || 0) > 0
+    );
+    
+    if (validAssets.length === 0) return [];
+    
+    return validAssets
+      .sort((a, b) => (b.totalPnl || 0) - (a.totalPnl || 0))
       .slice(0, 3);
   }, [assetPerformance]);
 
