@@ -12,7 +12,7 @@ import AsterLogo from "@/components/AsterLogo";
 import LiveModeToggle from "@/components/LiveModeToggle";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Settings2, Pause, Play, AlertTriangle, BarChart3, Menu } from "lucide-react";
@@ -564,64 +564,87 @@ export default function Dashboard() {
         </div>
 
         {/* Mobile Layout */}
-        <div className="lg:hidden px-2 py-1.5">
-          {/* Top Row: Logo and Controls */}
-          <div className="flex items-center justify-between gap-1">
-            <div className="flex items-center gap-1.5 min-w-0 flex-shrink">
-              <div className="scale-[0.65] origin-left">
+        <div className="lg:hidden px-2 py-2">
+          <div className="flex items-center justify-between gap-2">
+            {/* Left: Logo + Live Mode */}
+            <div className="flex items-center gap-2 min-w-0 flex-shrink">
+              <div className="scale-[0.7] origin-left">
                 <AsterLogo data-testid="app-logo" />
               </div>
-              <div className="scale-75">
-                <LiveModeToggle />
-              </div>
+              <LiveModeToggle />
             </div>
 
-            <div className="flex items-center gap-1 flex-shrink-0">
-              <div className="scale-75">
-                <ConnectionStatus isConnected={isConnected} />
-              </div>
+            {/* Right: Critical Actions Only */}
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <ConnectionStatus isConnected={isConnected} />
+              
               {/* Pause/Resume Button */}
               {activeStrategy && (
                 <Button
                   variant={activeStrategy.paused ? "default" : "outline"}
                   size="icon"
-                  className="h-7 w-7"
+                  className="h-8 w-8"
                   onClick={() => activeStrategy.paused ? resumeMutation.mutate() : pauseMutation.mutate()}
                   disabled={!activeStrategy.isActive || pauseMutation.isPending || resumeMutation.isPending}
                   data-testid="button-pause-resume-mobile"
                 >
                   {activeStrategy.paused ? (
-                    <Play className="h-3 w-3" />
+                    <Play className="h-3.5 w-3.5" />
                   ) : (
-                    <Pause className="h-3 w-3" />
+                    <Pause className="h-3.5 w-3.5" />
                   )}
                 </Button>
               )}
+              
               {/* Emergency Stop Button */}
               {activeStrategy && positionSummary && positionSummary.activePositions > 0 && (
                 <Button
                   variant="destructive"
                   size="icon"
-                  className="h-7 w-7"
+                  className="h-8 w-8"
                   onClick={() => setIsEmergencyStopDialogOpen(true)}
                   disabled={!activeStrategy.isActive}
                   data-testid="button-emergency-stop-mobile"
                 >
-                  <AlertTriangle className="h-3 w-3" />
+                  <AlertTriangle className="h-3.5 w-3.5" />
                 </Button>
               )}
-              <Button 
-                variant="default" 
-                size="icon"
-                className="h-7 w-7"
-                onClick={() => setIsStrategyDialogOpen(true)}
-                data-testid="button-trading-strategy"
-              >
-                <Settings2 className="h-3 w-3" />
-              </Button>
-              <div className="scale-75">
-                <ThemeToggle />
-              </div>
+              
+              {/* Overflow Menu for Settings + Theme */}
+              <Sheet>
+                <Button 
+                  variant="ghost" 
+                  size="icon"
+                  className="h-8 w-8"
+                  asChild
+                >
+                  <SheetTrigger data-testid="button-mobile-menu">
+                    <Menu className="h-4 w-4" />
+                  </SheetTrigger>
+                </Button>
+                <SheetContent side="right" className="w-64">
+                  <SheetHeader className="mb-6">
+                    <SheetTitle>Settings</SheetTitle>
+                  </SheetHeader>
+                  <div className="space-y-4">
+                    <Button 
+                      variant="outline" 
+                      className="w-full justify-start"
+                      onClick={() => {
+                        setIsStrategyDialogOpen(true);
+                      }}
+                      data-testid="button-trading-strategy-mobile"
+                    >
+                      <Settings2 className="h-4 w-4 mr-2" />
+                      Trading Strategy
+                    </Button>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm">Theme</span>
+                      <ThemeToggle />
+                    </div>
+                  </div>
+                </SheetContent>
+              </Sheet>
             </div>
           </div>
 
