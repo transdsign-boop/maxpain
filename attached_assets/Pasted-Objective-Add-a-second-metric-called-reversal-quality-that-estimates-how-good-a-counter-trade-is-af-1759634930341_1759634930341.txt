@@ -1,0 +1,209 @@
+Objective
+
+Add a second metric called reversal_quality that estimates how good a counter trade is after a liquidation burst. Keep the existing risk light for cascade avoidance. The bot will only allow new counter entries when:
+
+Auto detect is enabled
+
+Risk light is not orange or red
+
+Reversal quality passes a threshold and your micro trigger fires
+
+Backend changes (cascade_detector.py)
+
+State you already have
+
+Rolling 60 seconds same-side liquidation notional
+
+Rolling 60 seconds returns
+
+Rolling 5 minutes open interest snapshots
+
+Baselines: median_liq_1m, ret_1m_sigma
+
+Add Open Interest deltas
+
+Compute dOI_1m as percent change from OI 60 seconds ago to now
+
+Compute dOI_3m as percent change from OI 180 seconds ago to now
+
+Safe guards when the earlier OI is zero
+
+Expose current LQ and RET
+
+You already compute:
+
+LQ = sum(liq_last_60s) / median_liq_1m
+
+RET = abs(sum(ret_last_60s)) / ret_1m_sigma
+
+Keep both available in the output dict
+
+Add reversal quality scoring
+
+Start with score = 0
+
+LQ component
+
++2 if LQ ≥ 8
+
++1 if 6 ≤ LQ < 8
+
+Velocity component
+
++1 if RET ≥ 3
+
+Purge component from OI
+
++2 if dOI_1m ≤ −1.0 percent or dOI_3m ≤ −1.5 percent
+
++1 if dOI_1m ≤ −0.5 percent or dOI_3m ≤ −1.0 percent
+
+Continuation penalty
+
+−2 if dOI_1m > 0 and dOI_3m > 0
+
+Clamp to a floor of 0
+
+Return two new fields:
+
+reversal_quality integer
+
+rq_bucket string in {"poor", "ok", "good", "excellent"} using:
+
+0 to 1 poor, 2 ok, 3 good, 4 or more excellent
+
+Keep the existing risk light unchanged
+
+Light still maps off the cascade risk score you already built
+
+auto_block remains true when light is orange or red
+
+Publish all fields
+
+In the dict returned by ingest_tick, include:
+
+dOI_1m, dOI_3m, reversal_quality, rq_bucket
+
+Strategy gate update (your bot loop)
+
+Define a trade gate that uses both signals:
+
+allowed = (auto_enabled is false) or (light in {"green","yellow"})
+
+context_ok = reversal_quality >= 3 (3 means good)
+
+Only place new counter entries if allowed and context_ok and your micro trigger
+
+Optional sizing rule
+
+Size full if reversal_quality >= 4
+
+Size half if reversal_quality == 3
+
+Skip if below 3
+
+Frontend changes (index page)
+
+Add a second visual row
+
+Keep the existing colored dot and “entries allowed” or “auto blocking” pill
+
+Add a new horizontal bar or tile group labeled “Reversal quality”
+
+Show a small 4-segment bar that fills 1 to 4 blocks
+
+Color map:
+
+poor gray, ok yellow, good green, excellent green with thicker border
+
+New data fields from WebSocket
+
+Read reversal_quality, rq_bucket, dOI_1m, dOI_3m
+
+Display reversal_quality as an integer and rq_bucket as a label
+
+Add two tiny stat tiles:
+
+dOI 1m in percent with one decimal
+
+dOI 3m in percent with one decimal
+
+User messaging
+
+If auto_block is true, show “Auto blocking due to cascade risk”
+
+Else if reversal_quality < 3, show “Context weak for fade”
+
+Else show “Good context, fades allowed on your trigger”
+
+WebSocket payload format
+
+Ensure each tick broadcast includes:
+
+score (risk score)
+
+light ("green","yellow","orange","red")
+
+auto_block boolean
+
+auto_enabled boolean
+
+LQ, RET, OI
+
+dOI_1m, dOI_3m
+
+reversal_quality, rq_bucket
+
+Thresholds to start
+
+LQ median window 20 to 60 sessions
+
+LQ elevated 6, extreme 8
+
+RET elevated 3 sigmas
+
+dOI purge small −0.5 percent, strong −1.0 percent in 1 minute
+
+dOI purge small −1.0 percent, strong −1.5 percent in 3 minutes
+
+Reversal quality pass line at 3
+
+Acceptance tests
+
+Risk light only
+
+Simulate a huge liquidation and strong OI drop
+
+Light turns orange or red, auto_block is true, entries blocked even if reversal quality is high
+
+Reversal only
+
+Simulate high LQ and negative dOI with light in green or yellow
+
+reversal_quality >= 3 and auto enabled
+
+Entries allowed when your micro trigger fires
+
+Continuation penalty
+
+Simulate high LQ with OI rising on 1m and 3m
+
+reversal_quality drops by 2 due to the penalty, expect “Context weak for fade”
+
+Hysteresis sanity
+
+Let risk score cool for at least 6 seconds below its lower band
+
+Light should step down one color at a time, then entries can resume if reversal quality is good
+
+Logging
+
+Per decision, log:
+
+ts, light, auto_block, LQ, RET, dOI_1m, dOI_3m, reversal_quality, rq_bucket, entry_taken, result
+
+Optional upgrades
+
+Add an “OB depth recovery” signal worth +1 to reversal quality when top 10 levels recover to 70 percent of median after the purge
+
+Add a tiny basis check worth +1 when mark minus index widens into the purge then compresses during the stall
