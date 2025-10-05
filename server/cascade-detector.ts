@@ -113,7 +113,7 @@ export class CascadeDetector {
     else if (LQ >= 6) score += 1;
     
     // Award point for sufficient volatility (indicates meaningful price action)
-    if (RET >= 6) score += 1;
+    if (RET >= 25) score += 1;
     
     if (dOI_1m <= -1.0 || dOI_3m <= -1.5) score += 2;
     else if (dOI_1m <= -0.5 || dOI_3m <= -1.0) score += 1;
@@ -134,22 +134,21 @@ export class CascadeDetector {
   private calculateVolatilityRegime(RET: number): { volatility_regime: 'low' | 'medium' | 'high'; rq_threshold_adjusted: number } {
     // Use RET (realized volatility) to determine market regime
     // RET = sum of |returns| / std dev (properly normalized, asset-agnostic)
-    // Baseline: For 60 samples random walk, RET ≈ sqrt(60) ≈ 7.7
-    // Values significantly above baseline indicate genuine high volatility
+    // Empirically calibrated for crypto: Normal crypto RET ≈ 15-25, extreme >35
     
     let volatility_regime: 'low' | 'medium' | 'high';
     let rq_threshold_adjusted: number;
     
-    if (RET >= 10) {
-      // Very high volatility: Be highly selective, require excellent quality
+    if (RET >= 35) {
+      // Extreme volatility: Be highly selective, require excellent quality
       volatility_regime = 'high';
       rq_threshold_adjusted = 3; // Require "good" quality
-    } else if (RET >= 6) {
+    } else if (RET >= 25) {
       // Elevated volatility: Moderate selectivity
       volatility_regime = 'medium';
       rq_threshold_adjusted = 2; // Require "ok" quality
     } else {
-      // Normal/low volatility: Less selective, allow lower quality
+      // Normal crypto volatility: Less selective, allow lower quality
       volatility_regime = 'low';
       rq_threshold_adjusted = 1; // Require minimal quality (poor/ok bucket)
     }
@@ -210,8 +209,8 @@ export class CascadeDetector {
     else if (LQ >= 4) score += 1;
 
     if (retSideMatchesLiq) {
-      if (RET >= 10) score += 2;
-      else if (RET >= 6) score += 1;
+      if (RET >= 35) score += 2;
+      else if (RET >= 25) score += 1;
     }
 
     if (OI >= 4) score += 2;
