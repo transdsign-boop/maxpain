@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { TrendingUp, TrendingDown, DollarSign, Target, Layers, X, ChevronDown, ChevronUp, CheckCircle2 } from "lucide-react";
@@ -715,7 +716,6 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
 
 export function StrategyStatus() {
   const { toast } = useToast();
-  const [showClosedTrades, setShowClosedTrades] = useState(false);
   const [isCloseConfirmOpen, setIsCloseConfirmOpen] = useState(false);
   const [positionToClose, setPositionToClose] = useState<Position | null>(null);
 
@@ -856,18 +856,18 @@ export function StrategyStatus() {
   // Use live positions summary when in live mode, otherwise use database summary
   const displaySummary = isLiveMode ? livePositionsSummary : summary;
 
-  // Fetch closed positions when section is expanded
+  // Fetch closed positions
   // Backend automatically returns appropriate data based on trading mode
   const { data: closedPositions } = useQuery<Position[]>({
     queryKey: ['/api/strategies', activeStrategy?.id, 'positions', 'closed'],
-    enabled: !!activeStrategy?.id && showClosedTrades,
+    enabled: !!activeStrategy?.id,
     refetchInterval: 10000, // Refresh every 10 seconds
   });
 
   // Fetch strategy changes for the session
   const { data: strategyChanges } = useQuery<any[]>({
     queryKey: ['/api/strategies', activeStrategy?.id, 'changes'],
-    enabled: !!activeStrategy?.id && showClosedTrades,
+    enabled: !!activeStrategy?.id,
     refetchInterval: 10000, // Refresh every 10 seconds
   });
 
@@ -1151,7 +1151,7 @@ export function StrategyStatus() {
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
             <Target className="h-5 w-5" />
-            Active Positions
+            Transactions
           </CardTitle>
           {isLiveMode && (
             <Badge 
@@ -1164,58 +1164,57 @@ export function StrategyStatus() {
           )}
         </div>
       </CardHeader>
-      <CardContent className="space-y-6">
-
-        {/* Active Positions */}
-        {displaySummary?.positions && displaySummary.positions.length > 0 ? (
-          <div className="space-y-3">
-            <h4 className="text-sm font-medium text-muted-foreground">Active Positions</h4>
-            <div className="space-y-2">
-              {displaySummary.positions.map((position) => (
-                <PositionCard
-                  key={position.id}
-                  position={position}
-                  strategy={activeStrategy}
-                  onClose={() => {
-                    setPositionToClose(position);
-                    setIsCloseConfirmOpen(true);
-                  }}
-                  isClosing={closePositionMutation.isPending}
-                  formatCurrency={formatCurrency}
-                  formatPercentage={formatPercentage}
-                  getPnlColor={getPnlColor}
-                  isHedge={hedgeSymbols.has(position.symbol)}
-                />
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div className="text-center py-8">
-            <DollarSign className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <p className="text-muted-foreground">No active positions</p>
-            <p className="text-sm text-muted-foreground">Positions will appear here when your strategy triggers trades</p>
-          </div>
-        )}
-
-        {/* Completed Trades */}
-        <Collapsible open={showClosedTrades} onOpenChange={setShowClosedTrades}>
-          <CollapsibleTrigger className="flex items-center justify-between w-full hover-elevate rounded-lg px-4 py-3 border" data-testid="button-toggle-closed-trades">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium">Completed Trades</span>
-              {closedPositions && (
-                <Badge variant="secondary" className="text-xs">
+      <CardContent>
+        <Tabs defaultValue="active" className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="active" data-testid="tab-active-positions">
+              Active Positions
+              {displaySummary?.positions && displaySummary.positions.length > 0 && (
+                <Badge variant="secondary" className="ml-2 text-xs">
+                  {displaySummary.positions.length}
+                </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="completed" data-testid="tab-completed-positions">
+              Completed Positions
+              {closedPositions && closedPositions.length > 0 && (
+                <Badge variant="secondary" className="ml-2 text-xs">
                   {closedPositions.length}
                 </Badge>
               )}
-            </div>
-            {showClosedTrades ? (
-              <ChevronUp className="h-4 w-4 text-muted-foreground" />
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="active" className="mt-4">
+            {displaySummary?.positions && displaySummary.positions.length > 0 ? (
+              <div className="space-y-2">
+                {displaySummary.positions.map((position) => (
+                  <PositionCard
+                    key={position.id}
+                    position={position}
+                    strategy={activeStrategy}
+                    onClose={() => {
+                      setPositionToClose(position);
+                      setIsCloseConfirmOpen(true);
+                    }}
+                    isClosing={closePositionMutation.isPending}
+                    formatCurrency={formatCurrency}
+                    formatPercentage={formatPercentage}
+                    getPnlColor={getPnlColor}
+                    isHedge={hedgeSymbols.has(position.symbol)}
+                  />
+                ))}
+              </div>
             ) : (
-              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+              <div className="text-center py-8">
+                <DollarSign className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                <p className="text-muted-foreground">No active positions</p>
+                <p className="text-sm text-muted-foreground">Positions will appear here when your strategy triggers trades</p>
+              </div>
             )}
-          </CollapsibleTrigger>
-          <CollapsibleContent className="mt-3">
+          </TabsContent>
+
+          <TabsContent value="completed" className="mt-4">
             {tradeHistory && tradeHistory.filter(item => item.type === 'trade').length > 0 ? (
               <div className="space-y-2 max-h-96 overflow-y-auto">
                 {tradeHistory
@@ -1227,11 +1226,11 @@ export function StrategyStatus() {
             ) : (
               <div className="text-center py-6">
                 <CheckCircle2 className="h-8 w-8 mx-auto text-muted-foreground/50 mb-2" />
-                <p className="text-sm text-muted-foreground">No completed trades yet</p>
+                <p className="text-sm text-muted-foreground">No completed positions yet</p>
               </div>
             )}
-          </CollapsibleContent>
-        </Collapsible>
+          </TabsContent>
+        </Tabs>
       </CardContent>
     </Card>
 
