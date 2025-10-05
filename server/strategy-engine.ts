@@ -69,6 +69,7 @@ export class StrategyEngine extends EventEmitter {
   private lastFillTime: Map<string, number> = new Map(); // "sessionId-symbol-side" -> timestamp of last fill
   private fillCooldownMs: number = 30000; // 30 second cooldown between layers/entries
   private leverageSetForSymbols: Map<string, number> = new Map(); // symbol -> leverage value (track actual leverage configured on exchange)
+  private pendingQ1Values: Map<string, number> = new Map(); // "sessionId-symbol-side" -> q1 base layer size for position being created
 
   constructor() {
     super();
@@ -680,6 +681,11 @@ export class StrategyEngine extends EventEmitter {
       }
       
       const quantity = firstLevel.quantity;
+      
+      // Store q1 (base layer size) for this position to ensure consistent sizing across all layers
+      const q1Key = `${session.id}-${liquidation.symbol}-${positionSide}`;
+      this.pendingQ1Values.set(q1Key, dcaResult.q1);
+      console.log(`💾 Stored q1=${dcaResult.q1.toFixed(6)} for ${q1Key}`);
 
       // CRITICAL SAFETY CHECK: Validate position size is valid
       if (!Number.isFinite(quantity) || isNaN(quantity) || quantity <= 0) {
@@ -2457,15 +2463,28 @@ export class StrategyEngine extends EventEmitter {
       // Calculate actual margin used (totalCost = notional value / leverage)
       const notionalValue = fillPrice * fillQuantity;
       const actualMargin = notionalValue / leverage;
+      
+      // Retrieve q1 (base layer size) for consistent exponential sizing across all layers
+      const positionSide = order.side === 'buy' ? 'long' : 'short';
+      const q1Key = `${order.sessionId}-${order.symbol}-${positionSide}`;
+      const dcaBaseSize = this.pendingQ1Values.get(q1Key);
+      if (dcaBaseSize) {
+        console.log(`✅ Retrieved q1=${dcaBaseSize.toFixed(6)} for ${order.symbol} ${positionSide}`);
+        // Clean up after retrieval
+        this.pendingQ1Values.delete(q1Key);
+      } else {
+        console.warn(`⚠️ No q1 found for ${q1Key}, DCA sizing may be inconsistent`);
+      }
 
       // Create new position
       position = await storage.createPosition({
         sessionId: order.sessionId,
         symbol: order.symbol,
-        side: order.side === 'buy' ? 'long' : 'short',
+        side: positionSide,
         totalQuantity: fillQuantity.toString(),
         avgEntryPrice: fillPrice.toString(),
         initialEntryPrice: fillPrice.toString(), // P0: Store initial entry price for DCA calculations
+        dcaBaseSize: dcaBaseSize?.toString(), // q1: Base layer size for exponential growth
         totalCost: actualMargin.toString(), // Actual margin = notional / leverage
         layersFilled: 1,
         maxLayers,
