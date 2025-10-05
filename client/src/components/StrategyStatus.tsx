@@ -392,99 +392,89 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
           {/* Mobile: Stacked layout */}
           <div className="lg:hidden">
             {/* Header row: Symbol, badges, and info */}
-            <div className="relative isolate overflow-hidden">
-              {/* Gradient background */}
-              <div className={`absolute inset-0 ${isLong ? 'bg-gradient-to-br from-lime-600/25 via-lime-500/10 to-transparent' : 'bg-gradient-to-br from-red-700/25 via-red-600/10 to-transparent'}`} />
-              
-              {/* Large background asset text */}
-              <div className="absolute -left-2 top-1/2 -translate-y-1/2 select-none pointer-events-none">
-                <span className={`font-black tracking-tight text-5xl leading-none whitespace-nowrap ${isLong ? 'text-lime-400/15' : 'text-red-500/15'}`}>
-                  {position.symbol}
-                </span>
-              </div>
-
-              <div className="relative p-3 space-y-2">
+            <div className="relative">
+              <div className="relative p-2 space-y-1.5">
                 {/* Symbol and badges row */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <div className="font-extrabold text-foreground text-2xl tracking-tight">{position.symbol}</div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge className={`text-xs px-2 py-0.5 ${isLong ? 'bg-lime-500/15 text-lime-300 border-lime-400/30' : 'bg-red-600/15 text-red-400 border-red-500/30'}`}>
-                      {isLong ? <TrendingUp className="h-3 w-3 mr-1" /> : <TrendingDown className="h-3 w-3 mr-1" />}
+                    <div className="font-bold text-foreground text-lg tracking-tight">{position.symbol}</div>
+                    <Badge className={`text-xs px-1.5 py-0.5 ${isLong ? 'bg-lime-500/15 text-lime-300 border-lime-400/30' : 'bg-red-600/15 text-red-400 border-red-500/30'}`}>
+                      {isLong ? <TrendingUp className="h-3 w-3 mr-0.5" /> : <TrendingDown className="h-3 w-3 mr-0.5" />}
                       {position.side.toUpperCase()}
                     </Badge>
                     {isHedge && (
                       <Badge variant="secondary" className="text-xs">HEDGE</Badge>
                     )}
-                    <button
-                      className="rounded-lg flex items-center justify-center px-2 py-1 border-2 border-destructive bg-transparent text-destructive text-xs font-semibold transition-all hover:brightness-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                      data-testid={`button-close-position-${position.symbol}`}
-                      onClick={onClose}
-                      disabled={isClosing}
-                    >
-                      Close
-                    </button>
                   </div>
-                </div>
-
-                {/* Layers and leverage info */}
-                <div className="flex items-center gap-2">
-                  <span className="px-2 py-1 rounded-lg text-xs text-muted-foreground bg-muted/50 border border-border/50">
-                    {actualLayersFilled}/{position.maxLayers} Layers
-                  </span>
-                  <span className="px-2 py-1 rounded-lg text-xs text-muted-foreground bg-muted/50 border border-border/50">
-                    {leverage}× • {formatCurrency(notionalValue)}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="px-1.5 py-0.5 rounded text-[10px] text-muted-foreground bg-muted/50">
+                      {actualLayersFilled}/{position.maxLayers}
+                    </span>
+                    <span className="px-1.5 py-0.5 rounded text-[10px] text-muted-foreground bg-muted/50">
+                      {leverage}×
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Price data with large centered P&L (3 columns) */}
-            <div className="px-3 py-4 grid grid-cols-[1fr_auto_1fr] gap-4 items-center border-t border-border/30 bg-background/30">
-              {/* Left column: Avg and SL */}
-              <div className="space-y-3">
-                <div>
-                  <div className="text-xs text-muted-foreground mb-1">Avg:</div>
-                  <div className="text-sm font-medium text-foreground">{formatCurrency(avgEntry)}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground mb-1">SL:</div>
-                  <div className="text-sm text-red-700 dark:text-red-500">{formatCurrency(stopLossPrice)}</div>
-                </div>
-              </div>
-
-              {/* Center: P&L (very large and prominent) */}
-              <div className="flex flex-col items-center justify-center px-6 min-w-[140px]">
-                <div className={`text-4xl font-black font-mono leading-none ${getPnlColor(unrealizedPnlDollar)}`}>
-                  {unrealizedPnlDollar >= 0 ? '+' : ''}{formatCurrency(unrealizedPnlDollar)}
-                </div>
-                <div className={`text-xl font-bold font-mono mt-1 ${getPnlColor(unrealizedPnlPercent)}`}>
-                  {unrealizedPnlPercent >= 0 ? '+' : ''}{unrealizedPnlPercent.toFixed(2)}%
-                </div>
-              </div>
-
-              {/* Right column: Current and TP */}
-              <div className="space-y-3">
-                <div>
-                  <div className="text-xs text-muted-foreground mb-1">Current:</div>
-                  <div className="text-sm font-semibold text-foreground" data-testid={`current-price-${position.symbol}`}>
-                    {formatCurrency(currentPrice)}
+            {/* Price data with compact P&L and Close button */}
+            <div className="px-2 py-2 border-t border-border/30">
+              <div className="flex items-center gap-3">
+                {/* Left column: Avg and SL */}
+                <div className="space-y-1.5 flex-shrink-0">
+                  <div>
+                    <div className="text-[10px] text-muted-foreground">Avg:</div>
+                    <div className="text-xs font-medium text-foreground">{formatCurrency(avgEntry)}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-muted-foreground">SL:</div>
+                    <div className="text-xs text-red-700 dark:text-red-500">{formatCurrency(stopLossPrice)}</div>
                   </div>
                 </div>
-                <div>
-                  <div className="text-xs text-muted-foreground mb-1">TP:</div>
-                  <div className="text-sm text-lime-600 dark:text-lime-400">{formatCurrency(takeProfitPrice)}</div>
+
+                {/* Center: P&L and Close button */}
+                <div className="flex flex-col items-center justify-center flex-1 gap-1.5">
+                  <div className="flex flex-col items-center">
+                    <div className={`text-2xl font-black font-mono leading-none ${getPnlColor(unrealizedPnlDollar)}`}>
+                      {unrealizedPnlDollar >= 0 ? '+' : ''}{formatCurrency(unrealizedPnlDollar)}
+                    </div>
+                    <div className={`text-sm font-bold font-mono ${getPnlColor(unrealizedPnlPercent)}`}>
+                      {unrealizedPnlPercent >= 0 ? '+' : ''}{unrealizedPnlPercent.toFixed(2)}%
+                    </div>
+                  </div>
+                  <button
+                    className="rounded flex items-center justify-center px-2 py-0.5 border border-destructive bg-transparent text-destructive text-[10px] font-semibold transition-all hover:brightness-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                    data-testid={`button-close-position-${position.symbol}`}
+                    onClick={onClose}
+                    disabled={isClosing}
+                  >
+                    Close
+                  </button>
+                </div>
+
+                {/* Right column: Current and TP */}
+                <div className="space-y-1.5 flex-shrink-0">
+                  <div>
+                    <div className="text-[10px] text-muted-foreground">Current:</div>
+                    <div className="text-xs font-semibold text-foreground" data-testid={`current-price-${position.symbol}`}>
+                      {formatCurrency(currentPrice)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-muted-foreground">TP:</div>
+                    <div className="text-xs text-lime-600 dark:text-lime-400">{formatCurrency(takeProfitPrice)}</div>
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Liquidation and Actions row */}
-            <div className="px-3 py-3 flex items-center justify-between gap-3 border-t border-border/30 bg-background/50">
+            {/* Liquidation gauge and expand button */}
+            <div className="px-2 py-2 flex items-center justify-between gap-2 border-t border-border/30">
               {/* Liquidation donut (if applicable) */}
               {liquidationPrice !== null && distanceToLiquidation !== null && (
-                <div className="flex flex-col items-center">
-                  <div className="relative" style={{ width: '60px', height: '60px' }}>
+                <div className="flex items-center gap-2">
+                  <div className="relative" style={{ width: '40px', height: '40px' }}>
                     <svg viewBox="0 0 100 100" className="transform -rotate-90">
                       <circle
                         cx="50"
@@ -506,20 +496,20 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
                       />
                     </svg>
                     <div className="absolute inset-0 flex flex-col items-center justify-center">
-                      <div className={`text-xs font-bold ${distanceToLiquidation < 5 ? 'text-red-700' : distanceToLiquidation < 15 ? 'text-orange-500' : 'text-lime-600'}`}>
+                      <div className={`text-[10px] font-bold ${distanceToLiquidation < 5 ? 'text-red-700' : distanceToLiquidation < 15 ? 'text-orange-500' : 'text-lime-600'}`}>
                         {distanceToLiquidation.toFixed(0)}%
                       </div>
-                      <div className="text-[8px] text-muted-foreground">liq</div>
                     </div>
                   </div>
+                  <span className="text-[10px] text-muted-foreground">to liq</span>
                 </div>
               )}
 
-              {/* Actions */}
-              <div className="flex items-center gap-2 ml-auto">
+              {/* Expand button */}
+              <div className="ml-auto">
                 <CollapsibleTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-10 w-10" data-testid="button-toggle-layers">
-                    {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  <Button variant="ghost" size="icon" className="h-7 w-7" data-testid="button-toggle-layers">
+                    {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                   </Button>
                 </CollapsibleTrigger>
               </div>
@@ -527,20 +517,10 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
           </div>
 
           {/* Desktop: Grid layout */}
-          <div className="hidden lg:grid lg:grid-cols-[minmax(180px,240px)_1fr_auto]">
-            {/* Left: Asset label with edge-bleed */}
-            <div className="relative isolate overflow-hidden">
-              {/* Gradient background */}
-              <div className={`absolute inset-0 ${isLong ? 'bg-gradient-to-br from-lime-600/25 via-lime-500/10 to-transparent' : 'bg-gradient-to-br from-red-700/25 via-red-600/10 to-transparent'}`} />
-              
-              {/* Large background asset text */}
-              <div className="absolute -left-2 top-1/2 -translate-y-1/2 select-none pointer-events-none">
-                <span className={`font-black tracking-tight text-5xl sm:text-6xl md:text-7xl leading-none whitespace-nowrap ${isLong ? 'text-lime-400/15' : 'text-red-500/15'}`}>
-                  {position.symbol}
-                </span>
-              </div>
-
-              {/* Top row: compact chips */}
+          <div className="hidden lg:grid lg:grid-cols-[180px_1fr_auto]">
+            {/* Left: Asset label */}
+            <div className="relative">
+              {/* Compact chips */}
               <div className="relative p-2 flex items-center gap-2 flex-wrap">
                 <Badge className={`text-xs px-1.5 py-0.5 ${isLong ? 'bg-lime-500/15 text-lime-300 border-lime-400/30' : 'bg-red-600/15 text-red-400 border-red-500/30'}`}>
                   {isLong ? <TrendingUp className="h-3 w-3 mr-1" /> : <TrendingDown className="h-3 w-3 mr-1" />}
@@ -557,102 +537,100 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
                 )}
               </div>
 
-              {/* Bottom: large asset label with expand button */}
+              {/* Bottom: Symbol label with expand button */}
               <div className="relative px-2 pb-2 flex items-center gap-2">
-                <div className="font-extrabold text-foreground text-2xl tracking-tight">{position.symbol}</div>
+                <div className="font-bold text-foreground text-lg tracking-tight">{position.symbol}</div>
                 <CollapsibleTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 ml-auto" data-testid="button-toggle-layers">
+                  <Button variant="ghost" size="icon" className="h-6 w-6 ml-auto" data-testid="button-toggle-layers">
                     {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                   </Button>
                 </CollapsibleTrigger>
               </div>
             </div>
 
-            {/* Middle: price data with large centered P&L */}
-            <div className="px-3 py-2 flex items-center justify-between gap-3">
+            {/* Middle: price data with P&L and Close button */}
+            <div className="px-2 py-2 flex items-center gap-3">
               {/* Left column: Avg and SL */}
               <div className="space-y-1.5 flex-shrink-0">
                 <div className="min-w-0">
                   <div className="text-[10px] text-muted-foreground truncate">Avg:</div>
-                  <div className="text-[13px] text-foreground/90 truncate">{formatCurrency(avgEntry)}</div>
+                  <div className="text-xs text-foreground/90 truncate">{formatCurrency(avgEntry)}</div>
                 </div>
                 <div className="min-w-0">
                   <div className="text-[10px] text-muted-foreground truncate">SL:</div>
-                  <div className="text-[13px] text-red-700 dark:text-red-500 truncate">{formatCurrency(stopLossPrice)}</div>
+                  <div className="text-xs text-red-700 dark:text-red-500 truncate">{formatCurrency(stopLossPrice)}</div>
                 </div>
               </div>
 
-              {/* Center: Large P&L */}
-              <div className="flex flex-col items-center justify-center flex-1">
-                <div className={`text-3xl font-black font-mono leading-none ${getPnlColor(unrealizedPnlDollar)}`}>
-                  {unrealizedPnlDollar >= 0 ? '+' : ''}{formatCurrency(unrealizedPnlDollar)}
+              {/* Center: P&L and Close button */}
+              <div className="flex flex-col items-center justify-center flex-1 gap-1.5">
+                <div className="flex flex-col items-center">
+                  <div className={`text-2xl font-black font-mono leading-none ${getPnlColor(unrealizedPnlDollar)}`}>
+                    {unrealizedPnlDollar >= 0 ? '+' : ''}{formatCurrency(unrealizedPnlDollar)}
+                  </div>
+                  <div className={`text-sm font-bold font-mono ${getPnlColor(unrealizedPnlPercent)}`}>
+                    {unrealizedPnlPercent >= 0 ? '+' : ''}{unrealizedPnlPercent.toFixed(2)}%
+                  </div>
                 </div>
-                <div className={`text-lg font-bold font-mono mt-0.5 ${getPnlColor(unrealizedPnlPercent)}`}>
-                  {unrealizedPnlPercent >= 0 ? '+' : ''}{unrealizedPnlPercent.toFixed(2)}%
-                </div>
+                <button
+                  className="rounded flex items-center justify-center px-2 py-0.5 border border-destructive bg-transparent text-destructive text-[10px] font-semibold transition-all hover:brightness-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                  data-testid={`button-close-position-${position.symbol}`}
+                  onClick={onClose}
+                  disabled={isClosing}
+                >
+                  Close
+                </button>
               </div>
 
               {/* Right column: Current and TP */}
               <div className="space-y-1.5 flex-shrink-0">
                 <div className="min-w-0">
                   <div className="text-[10px] text-muted-foreground truncate">Current:</div>
-                  <div className="text-[14px] font-semibold text-foreground truncate" data-testid={`current-price-${position.symbol}`}>
+                  <div className="text-xs font-semibold text-foreground truncate" data-testid={`current-price-${position.symbol}`}>
                     {formatCurrency(currentPrice)}
                   </div>
                 </div>
                 <div className="min-w-0">
                   <div className="text-[10px] text-muted-foreground truncate">TP:</div>
-                  <div className="text-[13px] text-lime-600 dark:text-lime-400 truncate">{formatCurrency(takeProfitPrice)}</div>
+                  <div className="text-xs text-lime-600 dark:text-lime-400 truncate">{formatCurrency(takeProfitPrice)}</div>
                 </div>
               </div>
             </div>
 
-            {/* Right Column: Liquidation Risk Donut and Actions */}
-            <div className="flex flex-col items-center justify-between py-2 px-2 border-l border-border/30 gap-2 min-w-[120px]">
-              {liquidationPrice !== null && distanceToLiquidation !== null ? (
-                <div className="relative" style={{ width: '80px', height: '80px' }}>
-                  <svg viewBox="0 0 100 100" className="transform -rotate-90">
-                    {/* Background circle */}
-                    <circle
-                      cx="50"
-                      cy="50"
-                      r="40"
-                      fill="none"
-                      stroke="hsl(var(--muted))"
-                      strokeWidth="8"
-                    />
-                    {/* Progress circle */}
-                    <circle
-                      cx="50"
-                      cy="50"
-                      r="40"
-                      fill="none"
-                      stroke={distanceToLiquidation < 5 ? 'rgb(220, 38, 38)' : distanceToLiquidation < 15 ? 'rgb(251, 146, 60)' : 'rgb(190, 242, 100)'}
-                      strokeWidth="8"
-                      strokeDasharray={`${Math.min(100, distanceToLiquidation * 2.5)} ${251.2 - Math.min(100, distanceToLiquidation * 2.5)}`}
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <div className={`text-xs font-bold ${distanceToLiquidation < 5 ? 'text-red-700' : distanceToLiquidation < 15 ? 'text-orange-500' : 'text-lime-600'}`}>
-                      {distanceToLiquidation.toFixed(0)}%
+            {/* Right Column: Liquidation Risk Donut */}
+            <div className="flex items-center justify-center py-2 px-2 border-l border-border/30">
+              {liquidationPrice !== null && distanceToLiquidation !== null && (
+                <div className="flex items-center gap-2">
+                  <div className="relative" style={{ width: '50px', height: '50px' }}>
+                    <svg viewBox="0 0 100 100" className="transform -rotate-90">
+                      <circle
+                        cx="50"
+                        cy="50"
+                        r="40"
+                        fill="none"
+                        stroke="hsl(var(--muted))"
+                        strokeWidth="8"
+                      />
+                      <circle
+                        cx="50"
+                        cy="50"
+                        r="40"
+                        fill="none"
+                        stroke={distanceToLiquidation < 5 ? 'rgb(220, 38, 38)' : distanceToLiquidation < 15 ? 'rgb(251, 146, 60)' : 'rgb(190, 242, 100)'}
+                        strokeWidth="8"
+                        strokeDasharray={`${Math.min(100, distanceToLiquidation * 2.5)} ${251.2 - Math.min(100, distanceToLiquidation * 2.5)}`}
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <div className={`text-[10px] font-bold ${distanceToLiquidation < 5 ? 'text-red-700' : distanceToLiquidation < 15 ? 'text-orange-500' : 'text-lime-600'}`}>
+                        {distanceToLiquidation.toFixed(0)}%
+                      </div>
                     </div>
-                    <div className="text-[8px] text-muted-foreground">to liq</div>
                   </div>
+                  <span className="text-[10px] text-muted-foreground whitespace-nowrap">to liq</span>
                 </div>
-              ) : (
-                <div className="flex-1" />
               )}
-              
-              {/* Close Button - Always at bottom */}
-              <button
-                className="rounded-lg flex items-center justify-center px-2 py-1 border-2 border-destructive bg-transparent text-destructive text-xs font-semibold transition-all hover:brightness-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                data-testid={`button-close-position-${position.symbol}`}
-                onClick={onClose}
-                disabled={isClosing}
-              >
-                Close
-              </button>
             </div>
           </div>
         </div>
