@@ -494,15 +494,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const liquidityData = await Promise.all(
         symbols.map(async (symbol) => {
           try {
-            // Fetch order book data from Aster DEX
-            const orderBookResponse = await fetch(
-              `https://fapi.asterdex.com/fapi/v1/depth?symbol=${symbol}&limit=20`,
-              {
-                headers: {
-                  'X-MBX-APIKEY': process.env.ASTER_API_KEY || ''
+            // Fetch order book data and 24hr stats in parallel
+            const [orderBookResponse, tickerResponse] = await Promise.all([
+              fetch(
+                `https://fapi.asterdex.com/fapi/v1/depth?symbol=${symbol}&limit=20`,
+                {
+                  headers: {
+                    'X-MBX-APIKEY': process.env.ASTER_API_KEY || ''
+                  }
                 }
-              }
-            );
+              ),
+              fetch(
+                `https://fapi.asterdex.com/fapi/v1/ticker/24hr?symbol=${symbol}`,
+                {
+                  headers: {
+                    'X-MBX-APIKEY': process.env.ASTER_API_KEY || ''
+                  }
+                }
+              )
+            ]);
 
             if (!orderBookResponse.ok) {
               return {
@@ -514,26 +524,78 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
 
             const orderBook = await orderBookResponse.json();
+            const ticker = tickerResponse.ok ? await tickerResponse.json() : null;
+            
             const bids = orderBook.bids || [];
             const asks = orderBook.asks || [];
 
-            // Calculate total liquidity (in USD value)
+            // Calculate order book depth (in USD value)
             const bidDepth = bids.reduce((sum: number, [price, quantity]: [string, string]) => 
               sum + parseFloat(price) * parseFloat(quantity), 0);
             const askDepth = asks.reduce((sum: number, [price, quantity]: [string, string]) => 
               sum + parseFloat(price) * parseFloat(quantity), 0);
             
             const totalLiquidity = bidDepth + askDepth;
-            
-            // Check EACH side can handle the trade size (need both for longs and shorts)
-            // For a LONG (buy) you need sufficient asks, for SHORT (sell) you need sufficient bids
-            // Require 2x the trade size as safety margin to avoid complete book depletion
             const minSideLiquidity = Math.min(bidDepth, askDepth);
-            const canHandleTradeSize = tradeSize ? minSideLiquidity >= tradeSize * 2 : true;
-
-            // Calculate suitability metrics for recommendations
-            const liquidityRatio = tradeSize ? minSideLiquidity / tradeSize : 0;
-            const maxSafeOrderSize = parseFloat((minSideLiquidity * 0.4).toFixed(2)); // 40% of min side liquidity
+            
+            // Get 24hr volume (in quote currency, usually USD)
+            const volume24h = ticker?.quoteVolume ? parseFloat(ticker.quoteVolume) : 0;
+            const volumePerMinute = volume24h / (24 * 60); // Estimate 1-min volume
+            
+            // MICROSTRUCTURE-BASED PARTICIPATION CAP RULES
+            // Rule 1: 2-5% of instant liquidity (order book depth)
+            const maxByBook = minSideLiquidity * 0.05; // 5% of limiting side
+            const minByBook = minSideLiquidity * 0.02; // 2% of limiting side
+            
+            // Rule 2: <10% of 1-minute traded volume
+            const maxByVolume = volumePerMinute * 0.10; // 10% of 1-min volume
+            
+            // Take the more conservative limit
+            let maxSafeOrderSize: number;
+            let liquidityType: string;
+            let participationRate: number;
+            
+            if (volume24h > 0 && maxByVolume < maxByBook) {
+              // Volume is the constraint
+              maxSafeOrderSize = maxByVolume;
+              liquidityType = 'volume-limited';
+              participationRate = (maxSafeOrderSize / volumePerMinute) * 100;
+            } else {
+              // Book depth is the constraint (or no volume data)
+              maxSafeOrderSize = maxByBook;
+              liquidityType = minSideLiquidity < 50000 ? 'thin-book' : minSideLiquidity < 200000 ? 'moderate-book' : 'deep-book';
+              participationRate = (maxSafeOrderSize / minSideLiquidity) * 100;
+            }
+            
+            maxSafeOrderSize = parseFloat(maxSafeOrderSize.toFixed(2));
+            
+            // Calculate recommended clip size (child orders)
+            // For thin markets: $500-$1k clips
+            // For moderate: $1k-$2k clips
+            // For deep: $2k-$5k clips
+            let clipSize: number;
+            if (minSideLiquidity < 50000) {
+              clipSize = Math.min(maxSafeOrderSize / 3, 1000); // Small clips for thin books
+            } else if (minSideLiquidity < 200000) {
+              clipSize = Math.min(maxSafeOrderSize / 2, 2000); // Medium clips
+            } else {
+              clipSize = Math.min(maxSafeOrderSize / 2, 5000); // Larger clips for deep books
+            }
+            clipSize = parseFloat(clipSize.toFixed(2));
+            
+            // Determine if current trade size is safe
+            const canHandleTradeSize = tradeSize ? tradeSize <= maxSafeOrderSize : true;
+            
+            // Risk assessment
+            let riskLevel: 'safe' | 'caution' | 'high-risk';
+            if (tradeSize) {
+              const impactPct = (tradeSize / minSideLiquidity) * 100;
+              if (impactPct <= 5) riskLevel = 'safe';
+              else if (impactPct <= 10) riskLevel = 'caution';
+              else riskLevel = 'high-risk';
+            } else {
+              riskLevel = 'safe';
+            }
             
             // Determine account size tier and suitability
             let recommended = false;
@@ -551,10 +613,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
               bidDepth: parseFloat(bidDepth.toFixed(2)),
               askDepth: parseFloat(askDepth.toFixed(2)),
               minSideLiquidity: parseFloat(minSideLiquidity.toFixed(2)),
+              volume24h: parseFloat(volume24h.toFixed(2)),
+              volumePerMinute: parseFloat(volumePerMinute.toFixed(2)),
               canHandleTradeSize,
               limitingSide: bidDepth < askDepth ? 'bid' : 'ask',
-              liquidityRatio: parseFloat(liquidityRatio.toFixed(2)),
+              liquidityRatio: tradeSize ? parseFloat((minSideLiquidity / tradeSize).toFixed(2)) : 0,
               maxSafeOrderSize,
+              clipSize,
+              liquidityType,
+              participationRate: parseFloat(participationRate.toFixed(2)),
+              riskLevel,
               recommended,
               error: false
             };
