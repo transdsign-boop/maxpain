@@ -2394,10 +2394,9 @@ export class StrategyEngine extends EventEmitter {
       value: fillValue
     });
     
-    // Update cooldown timestamp to prevent rapid-fire entries
-    const cooldownKey = `${order.sessionId}-${order.symbol}-${position.side}`;
-    this.lastFillTime.set(cooldownKey, Date.now());
-    console.log(`⏰ Fill cooldown started for ${position.symbol} ${position.side} (${this.fillCooldownMs / 1000}s)`);
+    // NOTE: Cooldown is already set in executeLayer/executeEntry when the order is PLACED
+    // Do NOT reset it here on fill, as that would allow duplicate orders to slip through
+    // The cooldown protects against rapid order PLACEMENT, not fills
   }
 
   // Fill a live order using ACTUAL exchange data (price, qty, commission)
@@ -2450,10 +2449,9 @@ export class StrategyEngine extends EventEmitter {
       value: fillValue
     });
     
-    // Update cooldown timestamp to prevent rapid-fire entries
-    const cooldownKey = `${order.sessionId}-${order.symbol}-${position.side}`;
-    this.lastFillTime.set(cooldownKey, Date.now());
-    console.log(`⏰ Fill cooldown started for ${position.symbol} ${position.side} (${this.fillCooldownMs / 1000}s)`);
+    // NOTE: Cooldown is already set in executeLayer/executeEntry when the order is PLACED
+    // Do NOT reset it here on fill, as that would allow duplicate orders to slip through
+    // The cooldown protects against rapid order PLACEMENT, not fills
     
     // AUTOMATICALLY update TP/SL orders for live mode (all layers)
     await this.updateProtectiveOrders(position, order.sessionId);
