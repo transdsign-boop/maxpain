@@ -7,6 +7,10 @@ interface CascadeStatus {
   autoBlock: boolean;
   autoEnabled: boolean;
   medianLiq: number;
+  dOI_1m: number;
+  dOI_3m: number;
+  reversal_quality: number;
+  rq_bucket: 'poor' | 'ok' | 'good' | 'excellent';
 }
 
 export class CascadeDetector {
