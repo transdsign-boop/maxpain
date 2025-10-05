@@ -916,28 +916,6 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
               
-              {/* Strategy Name */}
-              <FormField
-                control={form.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel data-testid="label-strategy-name">Strategy Name</FormLabel>
-                    <FormControl>
-                      <Input 
-                        data-testid="input-strategy-name"
-                        placeholder="My Trading Strategy" 
-                        {...field} 
-                        disabled={false}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <Separator />
-
               {/* Hedge Mode Toggle */}
               <FormField
                 control={form.control}
