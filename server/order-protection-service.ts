@@ -493,8 +493,15 @@ export class OrderProtectionService {
         o => o.type === 'LIMIT' || o.type === 'STOP_MARKET'
       );
 
-      // IDEMPOTENCY: Skip if orders already match desired state
-      if (this.ordersMatchDesired(tpslOrders, desiredOrders)) {
+      // FORCE CLEANUP: If there are duplicate/fragmented orders (multiple TPs or SLs), cancel ALL
+      const tpOrders = tpslOrders.filter(o => o.type === 'LIMIT');
+      const slOrders = tpslOrders.filter(o => o.type === 'STOP_MARKET');
+      
+      if (tpOrders.length > 1 || slOrders.length > 1) {
+        console.log(`⚠️ Found fragmented orders for ${position.symbol} ${position.side}: ${tpOrders.length} TPs, ${slOrders.length} SLs - forcing cleanup`);
+        // Don't skip - proceed to cancel all and recreate
+      } else if (this.ordersMatchDesired(tpslOrders, desiredOrders)) {
+        // IDEMPOTENCY: Skip if orders already match desired state
         console.log(`✅ TP/SL orders already correct for ${position.symbol} ${position.side}, skipping update`);
         return { success: true };
       }
