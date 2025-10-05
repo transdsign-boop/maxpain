@@ -5,8 +5,9 @@
  * Uses raw SQL execution to avoid the schema caching bug.
  */
 
-import { sql } from 'drizzle-orm';
+import { sql, eq } from 'drizzle-orm';
 import { db } from './db';
+import { strategies } from '@shared/schema';
 
 /**
  * DCA Strategy Parameters
@@ -75,56 +76,68 @@ export async function updateStrategyDCAParams(
   strategyId: string,
   params: Partial<DCAStrategyParams>
 ) {
-  const setParts: sql.SQL[] = [];
+  // Build SET clauses manually with explicit quoting
+  const setClauses: string[] = [];
+  const values: any[] = [];
+  let paramIndex = 1;
   
   if (params.dcaStartStepPercent !== undefined) {
-    setParts.push(sql`dca_start_step_percent = ${params.dcaStartStepPercent}`);
+    setClauses.push(`"dca_start_step_percent" = $${paramIndex++}`);
+    values.push(params.dcaStartStepPercent);
   }
   if (params.dcaSpacingConvexity !== undefined) {
-    setParts.push(sql`dca_spacing_convexity = ${params.dcaSpacingConvexity}`);
+    setClauses.push(`"dca_spacing_convexity" = $${paramIndex++}`);
+    values.push(params.dcaSpacingConvexity);
   }
   if (params.dcaSizeGrowth !== undefined) {
-    setParts.push(sql`dca_size_growth = ${params.dcaSizeGrowth}`);
+    setClauses.push(`"dca_size_growth" = $${paramIndex++}`);
+    values.push(params.dcaSizeGrowth);
   }
   if (params.dcaMaxRiskPercent !== undefined) {
-    setParts.push(sql`dca_max_risk_percent = ${params.dcaMaxRiskPercent}`);
+    setClauses.push(`"dca_max_risk_percent" = $${paramIndex++}`);
+    values.push(params.dcaMaxRiskPercent);
   }
   if (params.dcaVolatilityRef !== undefined) {
-    setParts.push(sql`dca_volatility_ref = ${params.dcaVolatilityRef}`);
+    setClauses.push(`"dca_volatility_ref" = $${paramIndex++}`);
+    values.push(params.dcaVolatilityRef);
   }
   if (params.dcaExitCushionMultiplier !== undefined) {
-    setParts.push(sql`dca_exit_cushion_multiplier = ${params.dcaExitCushionMultiplier}`);
+    setClauses.push(`"dca_exit_cushion_multiplier" = $${paramIndex++}`);
+    values.push(params.dcaExitCushionMultiplier);
   }
   if (params.retHighThreshold !== undefined) {
-    setParts.push(sql`ret_high_threshold = ${params.retHighThreshold}`);
+    setClauses.push(`"ret_high_threshold" = $${paramIndex++}`);
+    values.push(params.retHighThreshold);
   }
   if (params.retMediumThreshold !== undefined) {
-    setParts.push(sql`ret_medium_threshold = ${params.retMediumThreshold}`);
+    setClauses.push(`"ret_medium_threshold" = $${paramIndex++}`);
+    values.push(params.retMediumThreshold);
   }
   
-  if (setParts.length === 0) {
+  if (setClauses.length === 0) {
     return null;
   }
   
-  // Build dynamic UPDATE query using sql fragments
-  let query = sql`UPDATE strategies SET `;
+  // Add updated_at
+  setClauses.push(`"updated_at" = NOW()`);
   
-  // Add each SET part with commas between them
-  for (let i = 0; i < setParts.length; i++) {
-    if (i > 0) {
-      query = sql`${query}, ${setParts[i]}`;
-    } else {
-      query = sql`${query}${setParts[i]}`;
-    }
-  }
+  // Build complete SQL query with embedded values (escape quotes)
+  const escapedId = strategyId.replace(/'/g, "''");
+  const setClauseStr = setClauses.map((clause, i) => {
+    const value = values[i];
+    const escapedValue = typeof value === 'string' ? value.replace(/'/g, "''") : value;
+    return clause.replace(`$${i + 1}`, `'${escapedValue}'`);
+  }).join(', ');
   
-  // Add updated_at and WHERE clause
-  query = sql`${query}, updated_at = NOW() WHERE id = ${strategyId} RETURNING *`;
+  const queryString = `
+    UPDATE "strategies"
+    SET ${setClauseStr}
+    WHERE "id" = '${escapedId}'
+    RETURNING *
+  `;
   
-  // Log the query for debugging
-  console.log('DCA UPDATE QUERY:', query.queryChunks.join(' '), 'VALUES:', query.params);
-  
-  const result = await db.execute(query);
+  // Execute raw SQL
+  const result = await db.execute(sql.raw(queryString));
   
   return result.rows[0] || null;
 }
