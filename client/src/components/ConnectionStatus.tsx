@@ -10,9 +10,26 @@ interface ApiError {
   timestamp: Date;
 }
 
+interface CascadeStatus {
+  autoBlock: boolean;
+  autoEnabled: boolean;
+  reversal_quality: number;
+  rq_threshold_adjusted: number;
+  rq_bucket: 'poor' | 'ok' | 'good' | 'excellent';
+  volatility_regime: 'low' | 'medium' | 'high';
+}
+
 export default function ConnectionStatus({ isConnected }: ConnectionStatusProps) {
   const [apiConnected, setApiConnected] = useState(true);
   const [latestError, setLatestError] = useState<ApiError | null>(null);
+  const [cascadeStatus, setCascadeStatus] = useState<CascadeStatus>({
+    autoBlock: false,
+    autoEnabled: true,
+    reversal_quality: 0,
+    rq_threshold_adjusted: 1,
+    rq_bucket: 'poor',
+    volatility_regime: 'low'
+  });
 
   // Check API connection health and capture errors
   useEffect(() => {
@@ -59,6 +76,45 @@ export default function ConnectionStatus({ isConnected }: ConnectionStatusProps)
     return () => window.removeEventListener('api-error' as any, handleApiError);
   }, []);
 
+  // Listen for cascade status updates via WebSocket
+  useEffect(() => {
+    const ws = new WebSocket(
+      `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`
+    );
+
+    ws.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        if (message.type === 'cascade_status') {
+          setCascadeStatus(message.data);
+        }
+      } catch (error) {
+        console.error('Error parsing cascade status:', error);
+      }
+    };
+
+    return () => {
+      ws.close();
+    };
+  }, []);
+
+  // Determine if trades are allowed based on cascade and reversal quality
+  const tradesAllowed = !cascadeStatus.autoEnabled || 
+    (!cascadeStatus.autoBlock && cascadeStatus.reversal_quality >= cascadeStatus.rq_threshold_adjusted);
+  
+  const getTradeStatusTitle = () => {
+    if (!cascadeStatus.autoEnabled) {
+      return "Trade Entry: Auto-gating disabled (all entries allowed)";
+    }
+    if (cascadeStatus.autoBlock) {
+      return `Trade Entry: Blocked by cascade risk (high risk)`;
+    }
+    if (cascadeStatus.reversal_quality < cascadeStatus.rq_threshold_adjusted) {
+      return `Trade Entry: Blocked by weak reversal quality (RQ: ${cascadeStatus.reversal_quality}/${cascadeStatus.rq_threshold_adjusted}, ${cascadeStatus.rq_bucket})`;
+    }
+    return `Trade Entry: Allowed (RQ: ${cascadeStatus.reversal_quality}/${cascadeStatus.rq_threshold_adjusted}, ${cascadeStatus.rq_bucket})`;
+  };
+
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-3" data-testid="connection-status">
@@ -102,6 +158,27 @@ export default function ConnectionStatus({ isConnected }: ConnectionStatusProps)
             )}
           </div>
           <span className="text-xs text-muted-foreground">API</span>
+        </div>
+
+        {/* Trade Entry Status */}
+        <div 
+          className="flex items-center gap-1.5"
+          title={getTradeStatusTitle()}
+        >
+          <div className="relative">
+            <div 
+              className={`w-2.5 h-2.5 rounded-full ${
+                tradesAllowed 
+                  ? 'bg-lime-500' 
+                  : 'bg-red-600'
+              }`}
+              data-testid="dot-trade-status"
+            />
+            {tradesAllowed && (
+              <div className="absolute inset-0 w-2.5 h-2.5 rounded-full bg-lime-500 animate-ping opacity-75" />
+            )}
+          </div>
+          <span className="text-xs text-muted-foreground">TRADE</span>
         </div>
       </div>
 
