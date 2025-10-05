@@ -1063,17 +1063,17 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                                 </span>
                               </div>
                             )}
-                            {!liquidityLoading && asset.liquidity && (
+                            {!liquidityLoading && asset.liquidity && asset.liquidity.maxSafeOrderSize > 0 && (
                               <div className="flex items-center gap-2 flex-wrap">
                                 {asset.liquidity.canHandleTradeSize ? (
                                   <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20">
-                                    ✓ ${(asset.liquidity.minSideLiquidity / 1000).toFixed(0)}k
+                                    ✓ Max: ${asset.liquidity.maxSafeOrderSize >= 1000 ? (asset.liquidity.maxSafeOrderSize / 1000).toFixed(1) + 'k' : asset.liquidity.maxSafeOrderSize.toFixed(0)}
                                   </Badge>
-                                ) : asset.liquidity.minSideLiquidity > 0 ? (
+                                ) : (
                                   <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20">
-                                    ⚠ ${(asset.liquidity.minSideLiquidity / 1000).toFixed(0)}k
+                                    ⚠ Max: ${asset.liquidity.maxSafeOrderSize >= 1000 ? (asset.liquidity.maxSafeOrderSize / 1000).toFixed(1) + 'k' : asset.liquidity.maxSafeOrderSize.toFixed(0)}
                                   </Badge>
-                                ) : null}
+                                )}
                               </div>
                             )}
                           </div>
