@@ -103,10 +103,18 @@ export default function CascadeRiskIndicator() {
         </Badge>
       );
     }
+    if (status.autoEnabled) {
+      return (
+        <Badge variant="secondary" className="gap-1 bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20" data-testid="badge-auto-gating-on">
+          <Activity className="h-3 w-3" />
+          Auto Gating On
+        </Badge>
+      );
+    }
     return (
-      <Badge variant="secondary" className="gap-1 bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20" data-testid="badge-entries-allowed">
+      <Badge variant="secondary" className="gap-1 bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20" data-testid="badge-auto-gating-off">
         <Activity className="h-3 w-3" />
-        Entries Allowed
+        Auto Gating Off
       </Badge>
     );
   };
