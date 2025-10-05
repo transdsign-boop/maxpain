@@ -473,6 +473,9 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
                     <div className={`text-sm font-bold font-mono ${getPnlColor(unrealizedPnlPercent)}`}>
                       {unrealizedPnlPercent >= 0 ? '+' : ''}{unrealizedPnlPercent.toFixed(2)}%
                     </div>
+                    <div className="text-[10px] text-muted-foreground font-mono mt-0.5">
+                      {parseFloat(position.totalQuantity).toFixed(4)} {position.symbol.replace('USDT', '')}
+                    </div>
                   </div>
                   <button
                     className="rounded flex items-center justify-center px-2 py-0.5 border border-destructive bg-transparent text-destructive text-[10px] font-semibold transition-all hover:brightness-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -601,6 +604,9 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
                   </div>
                   <div className={`text-sm font-bold font-mono ${getPnlColor(unrealizedPnlPercent)}`}>
                     {unrealizedPnlPercent >= 0 ? '+' : ''}{unrealizedPnlPercent.toFixed(2)}%
+                  </div>
+                  <div className="text-[10px] text-muted-foreground font-mono mt-0.5">
+                    {parseFloat(position.totalQuantity).toFixed(4)} {position.symbol.replace('USDT', '')}
                   </div>
                 </div>
                 <button
