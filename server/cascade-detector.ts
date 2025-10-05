@@ -11,6 +11,8 @@ interface CascadeStatus {
   dOI_3m: number;
   reversal_quality: number;
   rq_bucket: 'poor' | 'ok' | 'good' | 'excellent';
+  volatility_regime: 'low' | 'medium' | 'high';
+  rq_threshold_adjusted: number;
 }
 
 interface OISnapshot {
@@ -116,6 +118,30 @@ export class CascadeDetector {
     return { reversal_quality: score, rq_bucket };
   }
 
+  private calculateVolatilityRegime(RET: number): { volatility_regime: 'low' | 'medium' | 'high'; rq_threshold_adjusted: number } {
+    // Use RET (return volatility) to determine market regime
+    // RET represents normalized volatility - higher values = more volatile
+    
+    let volatility_regime: 'low' | 'medium' | 'high';
+    let rq_threshold_adjusted: number;
+    
+    if (RET >= 6) {
+      // High volatility: Be more selective, require higher quality
+      volatility_regime = 'high';
+      rq_threshold_adjusted = 3; // Require "good" quality
+    } else if (RET >= 3) {
+      // Medium volatility: Moderate selectivity
+      volatility_regime = 'medium';
+      rq_threshold_adjusted = 2; // Require "ok" quality
+    } else {
+      // Low volatility: Less selective, allow lower quality
+      volatility_regime = 'low';
+      rq_threshold_adjusted = 1; // Require minimal quality
+    }
+    
+    return { volatility_regime, rq_threshold_adjusted };
+  }
+
   public ingestTick(
     liqNotionalSameSide: number,
     ret1s: number,
@@ -204,6 +230,7 @@ export class CascadeDetector {
     const autoBlock = this.autoEnabled && (this.currentLight === 'orange' || this.currentLight === 'red');
 
     const { reversal_quality, rq_bucket } = this.calculateReversalQuality(LQ, RET, dOI_1m, dOI_3m);
+    const { volatility_regime, rq_threshold_adjusted } = this.calculateVolatilityRegime(RET);
 
     return {
       score,
@@ -217,7 +244,9 @@ export class CascadeDetector {
       dOI_1m,
       dOI_3m,
       reversal_quality,
-      rq_bucket
+      rq_bucket,
+      volatility_regime,
+      rq_threshold_adjusted
     };
   }
 
