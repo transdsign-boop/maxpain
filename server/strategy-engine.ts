@@ -542,6 +542,19 @@ export class StrategyEngine extends EventEmitter {
       return false;
     }
 
+    // CASCADE DETECTOR CHECK: Block new layers when cascade risk is high
+    const cascadeStatus = cascadeDetectorService.getCurrentStatus();
+    if (cascadeStatus.autoEnabled && cascadeStatus.autoBlock) {
+      console.log(`🚫 CASCADE RISK GATE (Layer): Layer blocked due to ${cascadeStatus.light.toUpperCase()} risk level (score: ${cascadeStatus.score})`);
+      return false;
+    }
+    
+    // REVERSAL QUALITY CHECK: Dynamic threshold based on market volatility
+    if (cascadeStatus.reversal_quality < cascadeStatus.rq_threshold_adjusted) {
+      console.log(`🚫 REVERSAL QUALITY GATE (Layer): Layer blocked - context too weak (RQ: ${cascadeStatus.reversal_quality}/${cascadeStatus.rq_threshold_adjusted}, bucket: ${cascadeStatus.rq_bucket}, volatility: ${cascadeStatus.volatility_regime})`);
+      return false;
+    }
+
     // Use configurable lookback window from strategy settings (convert hours to seconds)
     const lookbackSeconds = strategy.liquidationLookbackHours * 3600;
     const recentLiquidations = this.getRecentLiquidations(liquidation.symbol, lookbackSeconds);
