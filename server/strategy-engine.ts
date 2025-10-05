@@ -839,6 +839,8 @@ export class StrategyEngine extends EventEmitter {
       const apiKey = process.env.ASTER_API_KEY;
       const secretKey = process.env.ASTER_SECRET_KEY;
       
+      console.log(`🔍 DCA DIRECTION DEBUG: symbol=${liquidation.symbol}, position.side=${position.side}, liquidation.side=${liquidation.side}, initialEntryPrice=$${initialEntryPrice.toFixed(6)}`);
+      
       const nextLayerCalc = await calculateNextLayer(
         strategy,
         currentBalance,
@@ -2503,6 +2505,8 @@ export class StrategyEngine extends EventEmitter {
         console.warn(`⚠️ No q1 found for ${q1Key}, DCA sizing may be inconsistent`);
       }
 
+      console.log(`🔍 POSITION CREATE DEBUG: order.side=${order.side}, derived positionSide=${positionSide}`);
+      
       // Create new position
       position = await storage.createPosition({
         sessionId: order.sessionId,

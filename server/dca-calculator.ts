@@ -322,6 +322,8 @@ export async function calculateNextLayer(
       ? initialEntryPrice - priceDistance
       : initialEntryPrice + priceDistance;
     
+    console.log(`🔍 DCA PRICE CALC: side=${side}, P0=$${initialEntryPrice.toFixed(6)}, distance=$${priceDistance.toFixed(6)}, nextPrice=$${nextPrice.toFixed(6)} (${side === 'long' ? 'LOWER' : 'HIGHER'})`);
+    
     // Calculate quantity using exponential growth: qk = q1 * g^(k-1)
     const nextQuantity = storedQ1 * Math.pow(g, nextLayer - 1);
     
