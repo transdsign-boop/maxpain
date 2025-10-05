@@ -267,6 +267,7 @@ export async function calculateNextLayer(
   side: 'long' | 'short',
   currentLayer: number,
   initialEntryPrice: number,
+  storedQ1: number | null, // q1 from initial calculation - ensures consistent sizing
   apiKey?: string,
   secretKey?: string
 ): Promise<{ price: number; quantity: number; level: number } | null> {
@@ -301,7 +302,40 @@ export async function calculateNextLayer(
     dcaExitCushionMultiplier: String(strategyWithDCA.dca_exit_cushion_multiplier),
   };
   
-  // Calculate all DCA levels
+  // If we have stored q1, use it directly for exponential sizing (avoids recalculation bug)
+  // Otherwise fall back to recalculating (for backwards compatibility with old positions)
+  if (storedQ1 && storedQ1 > 0) {
+    console.log(`✅ Using stored q1=${storedQ1.toFixed(6)} for consistent exponential sizing`);
+    
+    // Calculate spacing for this layer
+    const g = parseFloat(fullStrategy.dcaSizeGrowth);
+    const delta1 = parseFloat(fullStrategy.dcaStartStepPercent);
+    const p = parseFloat(fullStrategy.dcaSpacingConvexity);
+    const Vref = parseFloat(fullStrategy.dcaVolatilityRef);
+    
+    const volatilityMultiplier = Math.max(1, atrPercent / Vref);
+    const ck = delta1 * Math.pow(nextLayer, p) * volatilityMultiplier;
+    
+    // Calculate price distance from initial entry
+    const priceDistance = (ck / 100) * initialEntryPrice;
+    const nextPrice = side === 'long' 
+      ? initialEntryPrice - priceDistance
+      : initialEntryPrice + priceDistance;
+    
+    // Calculate quantity using exponential growth: qk = q1 * g^(k-1)
+    const nextQuantity = storedQ1 * Math.pow(g, nextLayer - 1);
+    
+    console.log(`   Layer ${nextLayer}: price=$${nextPrice.toFixed(4)}, qty=${nextQuantity.toFixed(6)} (q1 × ${g}^${nextLayer-1})`);
+    
+    return {
+      price: nextPrice,
+      quantity: nextQuantity,
+      level: nextLayer,
+    };
+  }
+  
+  // Fallback: Recalculate all levels (for old positions without stored q1)
+  console.warn(`⚠️ No stored q1 found, recalculating (may cause inconsistent sizing)`);
   const dcaResult = calculateDCALevels(fullStrategy, {
     entryPrice: initialEntryPrice,
     side,

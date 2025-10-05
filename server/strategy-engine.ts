@@ -807,6 +807,14 @@ export class StrategyEngine extends EventEmitter {
         ? parseFloat(position.initialEntryPrice)
         : parseFloat(position.avgEntryPrice); // Fallback for existing positions without initialEntryPrice
       
+      // Get stored q1 (base layer size) for consistent exponential sizing
+      const storedQ1 = position.dcaBaseSize ? parseFloat(position.dcaBaseSize) : null;
+      if (storedQ1) {
+        console.log(`💾 Position has stored q1=${storedQ1.toFixed(6)} - will use for consistent layer sizing`);
+      } else {
+        console.warn(`⚠️ Position missing dcaBaseSize - will recalculate (may cause inconsistent sizing)`);
+      }
+      
       // Calculate next DCA layer using mathematical framework
       const apiKey = process.env.ASTER_API_KEY;
       const secretKey = process.env.ASTER_SECRET_KEY;
@@ -819,6 +827,7 @@ export class StrategyEngine extends EventEmitter {
         position.side as 'long' | 'short',
         position.layersFilled,
         initialEntryPrice,
+        storedQ1, // Pass stored q1 for consistent exponential sizing
         apiKey,
         secretKey
       );
