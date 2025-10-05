@@ -30,6 +30,18 @@ export class CascadeDetector {
   private currentScore: number = 0;
   private coolingCounter: number = 0;
   
+  // Store last calculated values for getCurrentStatus()
+  private lastLQ: number = 0;
+  private lastRET: number = 0;
+  private lastOI: number = 0;
+  private lastMedianLiq: number = 0;
+  private lastDOI_1m: number = 0;
+  private lastDOI_3m: number = 0;
+  private lastReversalQuality: number = 0;
+  private lastRQBucket: 'poor' | 'ok' | 'good' | 'excellent' = 'poor';
+  private lastVolatilityRegime: 'low' | 'medium' | 'high' = 'low';
+  private lastRQThresholdAdjusted: number = 1;
+  
   private readonly WINDOW_1M = 60;
   private readonly WINDOW_5M = 300;
   private readonly COOLING_SECONDS = 6;
@@ -233,21 +245,33 @@ export class CascadeDetector {
     const { reversal_quality, rq_bucket } = this.calculateReversalQuality(LQ, RET, dOI_1m, dOI_3m);
     const { volatility_regime, rq_threshold_adjusted } = this.calculateVolatilityRegime(RET);
 
+    // Store calculated values for getCurrentStatus()
+    this.lastLQ = parseFloat(LQ.toFixed(1));
+    this.lastRET = parseFloat(RET.toFixed(1));
+    this.lastOI = parseFloat(OI.toFixed(1));
+    this.lastMedianLiq = parseFloat(medianLiq.toFixed(0));
+    this.lastDOI_1m = dOI_1m;
+    this.lastDOI_3m = dOI_3m;
+    this.lastReversalQuality = reversal_quality;
+    this.lastRQBucket = rq_bucket;
+    this.lastVolatilityRegime = volatility_regime;
+    this.lastRQThresholdAdjusted = rq_threshold_adjusted;
+
     return {
       score,
-      LQ: parseFloat(LQ.toFixed(1)),
-      RET: parseFloat(RET.toFixed(1)),
-      OI: parseFloat(OI.toFixed(1)),
+      LQ: this.lastLQ,
+      RET: this.lastRET,
+      OI: this.lastOI,
       light: this.currentLight,
       autoBlock,
       autoEnabled: this.autoEnabled,
-      medianLiq: parseFloat(medianLiq.toFixed(0)),
-      dOI_1m,
-      dOI_3m,
-      reversal_quality,
-      rq_bucket,
-      volatility_regime,
-      rq_threshold_adjusted
+      medianLiq: this.lastMedianLiq,
+      dOI_1m: this.lastDOI_1m,
+      dOI_3m: this.lastDOI_3m,
+      reversal_quality: this.lastReversalQuality,
+      rq_bucket: this.lastRQBucket,
+      volatility_regime: this.lastVolatilityRegime,
+      rq_threshold_adjusted: this.lastRQThresholdAdjusted
     };
   }
 
@@ -262,17 +286,19 @@ export class CascadeDetector {
   public getCurrentStatus(): CascadeStatus {
     return {
       score: this.currentScore,
-      LQ: 0,
-      RET: 0,
-      OI: 0,
+      LQ: this.lastLQ,
+      RET: this.lastRET,
+      OI: this.lastOI,
       light: this.currentLight,
       autoBlock: this.autoEnabled && (this.currentLight === 'orange' || this.currentLight === 'red'),
       autoEnabled: this.autoEnabled,
-      medianLiq: 0,
-      dOI_1m: 0,
-      dOI_3m: 0,
-      reversal_quality: 0,
-      rq_bucket: 'poor'
+      medianLiq: this.lastMedianLiq,
+      dOI_1m: this.lastDOI_1m,
+      dOI_3m: this.lastDOI_3m,
+      reversal_quality: this.lastReversalQuality,
+      rq_bucket: this.lastRQBucket,
+      volatility_regime: this.lastVolatilityRegime,
+      rq_threshold_adjusted: this.lastRQThresholdAdjusted
     };
   }
 }
