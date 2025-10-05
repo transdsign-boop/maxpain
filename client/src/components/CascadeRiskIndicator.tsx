@@ -20,6 +20,8 @@ interface CascadeStatus {
   dOI_3m: number;
   reversal_quality: number;
   rq_bucket: 'poor' | 'ok' | 'good' | 'excellent';
+  volatility_regime: 'low' | 'medium' | 'high';
+  rq_threshold_adjusted: number;
 }
 
 export default function CascadeRiskIndicator() {
@@ -35,7 +37,9 @@ export default function CascadeRiskIndicator() {
     dOI_1m: 0,
     dOI_3m: 0,
     reversal_quality: 0,
-    rq_bucket: 'poor'
+    rq_bucket: 'poor',
+    volatility_regime: 'low',
+    rq_threshold_adjusted: 1
   });
   const { toast } = useToast();
 
@@ -150,10 +154,10 @@ export default function CascadeRiskIndicator() {
   const getContextMessage = () => {
     if (status.autoBlock) {
       return "Auto blocking due to cascade risk";
-    } else if (status.reversal_quality < 1) {
-      return "Context too weak for fade";
+    } else if (status.reversal_quality < status.rq_threshold_adjusted) {
+      return `Context too weak (need ${status.rq_threshold_adjusted}+ for ${status.volatility_regime} volatility)`;
     } else {
-      return "Context OK, fades allowed on your trigger";
+      return `Context OK for ${status.volatility_regime} volatility (${status.reversal_quality}/${status.rq_threshold_adjusted})`;
     }
   };
 
