@@ -150,10 +150,10 @@ export default function CascadeRiskIndicator() {
   const getContextMessage = () => {
     if (status.autoBlock) {
       return "Auto blocking due to cascade risk";
-    } else if (status.reversal_quality < 3) {
-      return "Context weak for fade";
+    } else if (status.reversal_quality < 1) {
+      return "Context too weak for fade";
     } else {
-      return "Good context, fades allowed on your trigger";
+      return "Context OK, fades allowed on your trigger";
     }
   };
 
