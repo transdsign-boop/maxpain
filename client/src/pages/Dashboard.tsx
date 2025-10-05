@@ -583,7 +583,7 @@ export default function Dashboard() {
           <div className="flex items-center justify-between gap-1">
             {/* Left: Logo Text Only */}
             <div className="flex items-center gap-1.5 min-w-0">
-              <span className="text-sm font-bold whitespace-nowrap">MAX PAIN</span>
+              <span className="text-sm font-bold whitespace-nowrap">MPI™</span>
               <LiveModeToggle />
             </div>
 
