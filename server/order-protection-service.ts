@@ -190,6 +190,63 @@ export class OrderProtectionService {
   }
 
   /**
+   * Fetch live position from exchange for accurate quantity/entry price
+   * Filters by position side to support hedge mode correctly
+   */
+  private async fetchLiveExchangePosition(symbol: string, side: 'long' | 'short'): Promise<{ quantity: string; entryPrice: string } | null> {
+    try {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+      
+      if (!apiKey || !secretKey) {
+        return null;
+      }
+      
+      const timestamp = Date.now();
+      const params = `timestamp=${timestamp}`;
+      const signature = createHmac('sha256', secretKey)
+        .update(params)
+        .digest('hex');
+      
+      const response = await fetch(
+        `https://fapi.asterdex.com/fapi/v2/positionRisk?${params}&signature=${signature}`,
+        {
+          headers: {
+            'X-MBX-APIKEY': apiKey,
+          },
+        }
+      );
+      
+      if (!response.ok) {
+        return null;
+      }
+      
+      const positions = await response.json();
+      
+      // Filter by symbol AND side (critical for hedge mode)
+      const position = positions.find((p: any) => {
+        if (p.symbol !== symbol || parseFloat(p.positionAmt) === 0) return false;
+        
+        // Match side: negative positionAmt = short, positive = long
+        const isShort = parseFloat(p.positionAmt) < 0;
+        return (side === 'short' && isShort) || (side === 'long' && !isShort);
+      });
+      
+      if (!position) {
+        return null;
+      }
+      
+      return {
+        quantity: Math.abs(parseFloat(position.positionAmt)).toString(),
+        entryPrice: position.entryPrice
+      };
+    } catch (error) {
+      console.error(`❌ Error fetching live exchange position for ${symbol}:`, error);
+      return null;
+    }
+  }
+
+  /**
    * Check if existing exchange orders match desired state (idempotency check)
    * Returns true ONLY if there's EXACTLY 1 TP and 1 SL that match perfectly
    */
@@ -253,13 +310,20 @@ export class OrderProtectionService {
 
       const orders = await response.json();
 
-      // Filter by side if specified (for hedge mode)
+      // Filter by side AND positionSide if specified (critical for hedge mode)
       let filteredOrders = orders;
       if (side) {
         filteredOrders = orders.filter((o: any) => {
           // TP/SL orders have opposite side to position
           const orderSide = side === 'long' ? 'SELL' : 'BUY';
-          return o.side === orderSide;
+          
+          // Also filter by positionSide in hedge mode
+          // Exchange uses uppercase: 'LONG', 'SHORT', or 'BOTH'
+          const expectedPositionSide = side.toUpperCase();
+          const orderPositionSide = o.positionSide || 'BOTH';
+          
+          return o.side === orderSide && 
+                 (orderPositionSide === expectedPositionSide || orderPositionSide === 'BOTH');
         });
       }
 
@@ -401,8 +465,26 @@ export class OrderProtectionService {
       // Ensure exchange info is fetched
       await this.fetchExchangeInfo();
 
-      // Calculate desired order state
-      const desiredOrders = this.calculateDesiredOrders(position, strategy);
+      // CRITICAL FIX: Fetch live exchange position for accurate quantity/entry price
+      // Database position may be stale due to async fill processing
+      // IMPORTANT: Filter by side to support hedge mode correctly
+      const livePosition = await this.fetchLiveExchangePosition(position.symbol, position.side);
+      
+      let positionToUse = position;
+      if (livePosition) {
+        // Use live exchange data for TP/SL calculation
+        positionToUse = {
+          ...position,
+          totalQuantity: livePosition.quantity,
+          avgEntryPrice: livePosition.entryPrice
+        };
+        console.log(`🔄 Using live exchange position for ${position.symbol} ${position.side}: qty=${livePosition.quantity}, avgEntry=${livePosition.entryPrice}`);
+      } else {
+        console.warn(`⚠️ Could not fetch live position for ${position.symbol} ${position.side}, using database position as fallback`);
+      }
+
+      // Calculate desired order state using live position data
+      const desiredOrders = this.calculateDesiredOrders(positionToUse, strategy);
       const desiredSignature = this.getOrderSignature(desiredOrders);
 
       // Fetch existing orders
