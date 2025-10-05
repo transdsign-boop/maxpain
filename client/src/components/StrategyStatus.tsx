@@ -1259,7 +1259,7 @@ export function StrategyStatus() {
           </div>
         )}
 
-        <Tabs defaultValue="active" className="w-full">
+        <Tabs defaultValue="active" className="w-full mt-6">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="active" data-testid="tab-active-positions">
               Active Positions
@@ -1279,7 +1279,7 @@ export function StrategyStatus() {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="active" className="mt-4">
+          <TabsContent value="active" className="mt-3 md:mt-4">
             {displaySummary?.positions && displaySummary.positions.length > 0 ? (
               <div className="space-y-2">
                 {displaySummary.positions.map((position) => (
@@ -1308,7 +1308,7 @@ export function StrategyStatus() {
             )}
           </TabsContent>
 
-          <TabsContent value="completed" className="mt-4">
+          <TabsContent value="completed" className="mt-3 md:mt-4">
             {tradeHistory && tradeHistory.filter(item => item.type === 'trade').length > 0 ? (
               <div className="space-y-2 max-h-96 overflow-y-auto overflow-x-hidden pr-2 custom-scrollbar">
                 {tradeHistory
