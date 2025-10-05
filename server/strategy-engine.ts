@@ -489,13 +489,12 @@ export class StrategyEngine extends EventEmitter {
       return false;
     }
     
-    // REVERSAL QUALITY CHECK: Disabled for now to allow trades
-    // TODO: Re-enable and tune thresholds once we have more market data
-    // const reversalQualityThreshold = 0;
-    // if (cascadeStatus.reversal_quality < reversalQualityThreshold) {
-    //   console.log(`🚫 REVERSAL QUALITY GATE: Entry blocked - context too weak (RQ: ${cascadeStatus.reversal_quality}, bucket: ${cascadeStatus.rq_bucket}, dOI_1m: ${cascadeStatus.dOI_1m}%, dOI_3m: ${cascadeStatus.dOI_3m}%, need: ${reversalQualityThreshold}+)`);
-    //   return false;
-    // }
+    // REVERSAL QUALITY CHECK: Dynamic threshold based on market volatility
+    // High volatility = stricter requirements, Low volatility = more lenient
+    if (cascadeStatus.reversal_quality < cascadeStatus.rq_threshold_adjusted) {
+      console.log(`🚫 REVERSAL QUALITY GATE: Entry blocked - context too weak (RQ: ${cascadeStatus.reversal_quality}/${cascadeStatus.rq_threshold_adjusted}, bucket: ${cascadeStatus.rq_bucket}, volatility: ${cascadeStatus.volatility_regime}, RET: ${cascadeStatus.RET}, dOI_1m: ${cascadeStatus.dOI_1m}%, dOI_3m: ${cascadeStatus.dOI_3m}%)`);
+      return false;
+    }
     
     // Calculate percentile threshold: current liquidation must exceed specified percentile
     const currentLiquidationValue = parseFloat(liquidation.value);
