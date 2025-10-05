@@ -18,6 +18,8 @@ export interface DCAStrategyParams {
   dcaMaxRiskPercent: string;
   dcaVolatilityRef: string;
   dcaExitCushionMultiplier: string;
+  retHighThreshold: string;
+  retMediumThreshold: string;
 }
 
 /**
@@ -31,6 +33,7 @@ export async function getStrategyWithDCA(strategyId: string) {
       profit_target_percent, stop_loss_percent,
       dca_start_step_percent, dca_spacing_convexity, dca_size_growth,
       dca_max_risk_percent, dca_volatility_ref, dca_exit_cushion_multiplier,
+      ret_high_threshold, ret_medium_threshold,
       margin_mode, leverage, order_delay_ms, slippage_tolerance_percent,
       order_type, max_retry_duration_ms, margin_amount, trading_mode,
       hedge_mode, is_active, paused, live_session_started_at,
@@ -91,6 +94,12 @@ export async function updateStrategyDCAParams(
   }
   if (params.dcaExitCushionMultiplier !== undefined) {
     setParts.push(sql`dca_exit_cushion_multiplier = ${params.dcaExitCushionMultiplier}`);
+  }
+  if (params.retHighThreshold !== undefined) {
+    setParts.push(sql`ret_high_threshold = ${params.retHighThreshold}`);
+  }
+  if (params.retMediumThreshold !== undefined) {
+    setParts.push(sql`ret_medium_threshold = ${params.retMediumThreshold}`);
   }
   
   if (setParts.length === 0) {

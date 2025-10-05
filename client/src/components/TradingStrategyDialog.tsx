@@ -87,6 +87,8 @@ interface DCASettings {
   dcaMaxRiskPercent: string;
   dcaVolatilityRef: string;
   dcaExitCushionMultiplier: string;
+  retHighThreshold: string;
+  retMediumThreshold: string;
 }
 
 // DCA Settings Component
@@ -285,6 +287,46 @@ function DCASettingsSection({ strategyId, isStrategyRunning }: { strategyId: str
                 />
                 <div className="text-xs text-muted-foreground">
                   Exit target as fraction of DCA distance
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="retHighThreshold" data-testid="label-ret-high-threshold">
+                  RET High Threshold
+                </Label>
+                <Input
+                  id="retHighThreshold"
+                  data-testid="input-ret-high-threshold"
+                  type="number"
+                  step="1"
+                  min="10"
+                  max="100"
+                  value={formValues.retHighThreshold || ''}
+                  onChange={(e) => handleInputChange('retHighThreshold', e.target.value)}
+                  placeholder="35"
+                />
+                <div className="text-xs text-muted-foreground">
+                  RET ≥ this value = high volatility (requires RQ ≥ 3)
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="retMediumThreshold" data-testid="label-ret-medium-threshold">
+                  RET Medium Threshold
+                </Label>
+                <Input
+                  id="retMediumThreshold"
+                  data-testid="input-ret-medium-threshold"
+                  type="number"
+                  step="1"
+                  min="5"
+                  max="100"
+                  value={formValues.retMediumThreshold || ''}
+                  onChange={(e) => handleInputChange('retMediumThreshold', e.target.value)}
+                  placeholder="25"
+                />
+                <div className="text-xs text-muted-foreground">
+                  RET ≥ this value = medium volatility (requires RQ ≥ 2)
                 </div>
               </div>
             </div>

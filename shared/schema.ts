@@ -104,6 +104,9 @@ export const strategies = pgTable("strategies", {
   dcaMaxRiskPercent: decimal("dca_max_risk_percent", { precision: 5, scale: 2 }).notNull().default("1.0"), // Max % of account at risk
   dcaVolatilityRef: decimal("dca_volatility_ref", { precision: 5, scale: 2 }).notNull().default("1.0"), // ATR volatility reference multiplier
   dcaExitCushionMultiplier: decimal("dca_exit_cushion_multiplier", { precision: 5, scale: 2 }).notNull().default("0.6"), // Take profit at 60% of DCA distance
+  // RET (Realized Volatility) Threshold Configuration
+  retHighThreshold: decimal("ret_high_threshold", { precision: 5, scale: 2 }).notNull().default("35.0"), // RET threshold for high volatility (requires RQ >= 3)
+  retMediumThreshold: decimal("ret_medium_threshold", { precision: 5, scale: 2 }).notNull().default("25.0"), // RET threshold for medium volatility (requires RQ >= 2)
 });
 
 // Trading Sessions for Paper Trading

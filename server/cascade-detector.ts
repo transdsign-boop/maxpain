@@ -131,24 +131,28 @@ export class CascadeDetector {
     return { reversal_quality: score, rq_bucket };
   }
 
-  private calculateVolatilityRegime(RET: number): { volatility_regime: 'low' | 'medium' | 'high'; rq_threshold_adjusted: number } {
+  private calculateVolatilityRegime(
+    RET: number,
+    retHighThreshold: number = 35,
+    retMediumThreshold: number = 25
+  ): { volatility_regime: 'low' | 'medium' | 'high'; rq_threshold_adjusted: number } {
     // Use RET (realized volatility) to determine market regime
     // RET = sum of |returns| / std dev (properly normalized, asset-agnostic)
-    // Empirically calibrated for crypto: Normal crypto RET ≈ 15-25, extreme >35
+    // Thresholds are user-configurable for fine-tuning based on observed market behavior
     
     let volatility_regime: 'low' | 'medium' | 'high';
     let rq_threshold_adjusted: number;
     
-    if (RET >= 35) {
+    if (RET >= retHighThreshold) {
       // Extreme volatility: Be highly selective, require excellent quality
       volatility_regime = 'high';
       rq_threshold_adjusted = 3; // Require "good" quality
-    } else if (RET >= 25) {
+    } else if (RET >= retMediumThreshold) {
       // Elevated volatility: Moderate selectivity
       volatility_regime = 'medium';
       rq_threshold_adjusted = 2; // Require "ok" quality
     } else {
-      // Normal crypto volatility: Less selective, allow lower quality
+      // Normal/low volatility: Less selective, allow lower quality
       volatility_regime = 'low';
       rq_threshold_adjusted = 1; // Require minimal quality (poor/ok bucket)
     }
@@ -160,7 +164,9 @@ export class CascadeDetector {
     liqNotionalSameSide: number,
     ret1s: number,
     oiSnapshot: number,
-    retSideMatchesLiq: boolean
+    retSideMatchesLiq: boolean,
+    retHighThreshold: number = 35,
+    retMediumThreshold: number = 25
   ): CascadeStatus {
     this.liq1mSameSide.push(liqNotionalSameSide);
     if (this.liq1mSameSide.length > this.WINDOW_1M) {
@@ -209,8 +215,8 @@ export class CascadeDetector {
     else if (LQ >= 4) score += 1;
 
     if (retSideMatchesLiq) {
-      if (RET >= 35) score += 2;
-      else if (RET >= 25) score += 1;
+      if (RET >= retHighThreshold) score += 2;
+      else if (RET >= retMediumThreshold) score += 1;
     }
 
     if (OI >= 4) score += 2;
@@ -247,7 +253,7 @@ export class CascadeDetector {
     const autoBlock = this.autoEnabled && (this.currentLight === 'orange' || this.currentLight === 'red');
 
     const { reversal_quality, rq_bucket } = this.calculateReversalQuality(LQ, RET, dOI_1m, dOI_3m);
-    const { volatility_regime, rq_threshold_adjusted } = this.calculateVolatilityRegime(RET);
+    const { volatility_regime, rq_threshold_adjusted } = this.calculateVolatilityRegime(RET, retHighThreshold, retMediumThreshold);
 
     // Store calculated values for getCurrentStatus()
     this.lastLQ = parseFloat(LQ.toFixed(1));
