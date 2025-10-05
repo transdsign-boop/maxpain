@@ -474,7 +474,7 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
                       {unrealizedPnlPercent >= 0 ? '+' : ''}{unrealizedPnlPercent.toFixed(2)}%
                     </div>
                     <div className="text-[10px] text-muted-foreground font-mono mt-0.5">
-                      {parseFloat(position.totalQuantity).toFixed(4)} {position.symbol.replace('USDT', '')}
+                      {formatCurrency(notionalValue)}
                     </div>
                   </div>
                   <button
@@ -606,7 +606,7 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
                     {unrealizedPnlPercent >= 0 ? '+' : ''}{unrealizedPnlPercent.toFixed(2)}%
                   </div>
                   <div className="text-[10px] text-muted-foreground font-mono mt-0.5">
-                    {parseFloat(position.totalQuantity).toFixed(4)} {position.symbol.replace('USDT', '')}
+                    {formatCurrency(notionalValue)}
                   </div>
                 </div>
                 <button
