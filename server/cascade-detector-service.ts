@@ -151,7 +151,13 @@ class CascadeDetectorService {
       const oi = await this.getOpenInterest();
       this.lastOI = oi;
 
-      const status = this.detector.ingestTick(liqInfo.notional, ret1s, oi, retSideMatchesLiq);
+      // Get RET thresholds from active strategy
+      const strategies = await storage.getAllActiveStrategies();
+      const activeStrategy = strategies[0];
+      const retHighThreshold = activeStrategy ? parseFloat(activeStrategy.retHighThreshold) : 35;
+      const retMediumThreshold = activeStrategy ? parseFloat(activeStrategy.retMediumThreshold) : 25;
+
+      const status = this.detector.ingestTick(liqInfo.notional, ret1s, oi, retSideMatchesLiq, retHighThreshold, retMediumThreshold);
 
       const csvLog = [
         new Date().toISOString(),

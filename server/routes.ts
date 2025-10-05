@@ -2022,7 +2022,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         dcaSizeGrowth: strategy.dca_size_growth,
         dcaMaxRiskPercent: strategy.dca_max_risk_percent,
         dcaVolatilityRef: strategy.dca_volatility_ref,
-        dcaExitCushionMultiplier: strategy.dca_exit_cushion_multiplier
+        dcaExitCushionMultiplier: strategy.dca_exit_cushion_multiplier,
+        retHighThreshold: strategy.ret_high_threshold,
+        retMediumThreshold: strategy.ret_medium_threshold
       });
     } catch (error) {
       console.error('Error fetching DCA settings:', error);
@@ -2060,6 +2062,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const num = parseFloat(val);
           return !isNaN(num) && num >= 0.1 && num <= 2.0;
         }, "Must be between 0.1 and 2.0").nullable().optional(),
+        retHighThreshold: z.string().refine((val) => {
+          const num = parseFloat(val);
+          return !isNaN(num) && num >= 10 && num <= 100;
+        }, "Must be between 10 and 100").nullable().optional(),
+        retMediumThreshold: z.string().refine((val) => {
+          const num = parseFloat(val);
+          return !isNaN(num) && num >= 5 && num <= 100;
+        }, "Must be between 5 and 100").nullable().optional(),
       });
       
       const validatedData = dcaUpdateSchema.parse(req.body);
@@ -2089,7 +2099,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         dcaSizeGrowth: updated.dca_size_growth,
         dcaMaxRiskPercent: updated.dca_max_risk_percent,
         dcaVolatilityRef: updated.dca_volatility_ref,
-        dcaExitCushionMultiplier: updated.dca_exit_cushion_multiplier
+        dcaExitCushionMultiplier: updated.dca_exit_cushion_multiplier,
+        retHighThreshold: updated.ret_high_threshold,
+        retMediumThreshold: updated.ret_medium_threshold
       });
     } catch (error) {
       console.error('Error updating DCA settings:', error);
