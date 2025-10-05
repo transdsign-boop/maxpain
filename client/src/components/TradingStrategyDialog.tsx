@@ -1036,104 +1036,31 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                 )}
               />
 
-              {/* Recommendations Section */}
-              {!liquidityLoading && selectedSymbols.length > 0 && (
-                <>
-                  <div className="rounded-lg border p-4 space-y-3 bg-card" data-testid="recommendations-card">
-                    <div className="flex items-center gap-2">
-                      <Lightbulb className="h-4 w-4 text-primary" />
-                      <h3 className="font-medium">Recommendations Based on Your Selection</h3>
+              {/* Minimum Order Size Requirements */}
+              {selectedSymbols.length > 0 && (
+                <div className="rounded-lg border p-4 space-y-3 bg-orange-500/5 border-orange-500/20" data-testid="min-order-reminder">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="h-5 w-5 text-orange-600 dark:text-orange-400 mt-0.5 flex-shrink-0" />
+                    <div className="space-y-2 flex-1">
+                      <h3 className="font-semibold text-orange-900 dark:text-orange-100">⚠️ Exchange Minimum Order Size</h3>
+                      <div className="text-sm text-orange-800 dark:text-orange-200 space-y-2">
+                        <p>Aster DEX requires a <strong>minimum $5.00 notional value</strong> per order.</p>
+                        <div className="bg-orange-200/50 dark:bg-orange-900/30 p-3 rounded space-y-1">
+                          <p className="font-semibold">Formula: q1 = (Balance × Max Risk %) × (Start Step % / 100)</p>
+                          <p className="text-xs">
+                            • With ${currentBalance.toFixed(0)} usable balance and default settings (2% Max Risk, 0.4% Start Step), q1 = ${(currentBalance * 0.02 * 0.004).toFixed(2)}
+                          </p>
+                          <p className="text-xs">
+                            • If q1 &lt; $5, <strong>increase Max Risk %</strong> in DCA Settings below
+                          </p>
+                          <p className="text-xs">
+                            • Example: For ${currentBalance.toFixed(0)} balance, need ~{((5 / (currentBalance * 0.004)) * 100).toFixed(1)}% Max Risk to meet $5 minimum
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                    
-                    {limitingAsset && (
-                      <div className="space-y-2 text-sm">
-                        <div className="flex items-start gap-2 text-muted-foreground">
-                          <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                          <div>
-                            <span className="font-medium text-foreground">{limitingAsset.symbol}</span> has the lowest liquidity 
-                            (${(limitingAsset.liquidity?.minSideLiquidity / 1000).toFixed(1)}k on {limitingAsset.liquidity?.limitingSide} side). 
-                            All settings optimized for this asset.
-                          </div>
-                        </div>
-                        
-                        <div className="grid grid-cols-2 gap-3 pt-2">
-                          <div className="space-y-1">
-                            <div className="text-xs text-muted-foreground">Recommended Order Size</div>
-                            <div className="text-lg font-semibold text-primary" data-testid="text-recommended-order-size">
-                              ${recommendedOrderSize.toFixed(0)}
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              ({recommendedPositionSizePercent}% of balance)
-                            </div>
-                          </div>
-                          
-                          <div className="space-y-1">
-                            <div className="text-xs text-muted-foreground">Account Tier</div>
-                            <div className="text-lg font-semibold capitalize" data-testid="text-account-tier">
-                              {accountTier}
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              ${currentBalance.toFixed(0)} balance
-                            </div>
-                          </div>
-                          
-                          <div className="space-y-1">
-                            <div className="text-xs text-muted-foreground">Stop Loss / Take Profit</div>
-                            <div className="text-base font-medium" data-testid="text-recommended-sl-tp">
-                              {recommendedStopLoss.toFixed(1)}% / {recommendedTakeProfit.toFixed(1)}%
-                            </div>
-                          </div>
-                          
-                          <div className="space-y-1">
-                            <div className="text-xs text-muted-foreground">Max Layers</div>
-                            <div className="text-base font-medium" data-testid="text-recommended-max-layers">
-                              {recommendedMaxLayers}
-                            </div>
-                          </div>
-                        </div>
-
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="w-full mt-2"
-                          data-testid="button-apply-recommendations"
-                          onClick={() => {
-                            form.setValue("stopLossPercent", recommendedStopLoss.toString());
-                            form.setValue("profitTargetPercent", recommendedTakeProfit.toString());
-                            form.setValue("maxLayers", recommendedMaxLayers);
-                          }}
-                        >
-                          Apply Recommended Settings
-                        </Button>
-                      </div>
-                    )}
-
-                    {recommendedAssets.length > 0 && recommendedAssets.length < availableAssets.length && (
-                      <div className="pt-2 border-t">
-                        <div className="text-xs text-muted-foreground mb-2">
-                          Recommended assets for ${currentBalance.toFixed(0)} account ({recommendedAssets.length} assets):
-                        </div>
-                        <div className="flex flex-wrap gap-1">
-                          {recommendedAssets.slice(0, 10).map((asset: any) => (
-                            <Badge 
-                              key={asset.symbol} 
-                              variant="outline" 
-                              className="text-[10px] bg-green-500/5 text-green-600 dark:text-green-400 border-green-500/20"
-                            >
-                              {asset.symbol}
-                            </Badge>
-                          ))}
-                          {recommendedAssets.length > 10 && (
-                            <Badge variant="outline" className="text-[10px]">
-                              +{recommendedAssets.length - 10} more
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-                    )}
                   </div>
-                </>
+                </div>
               )}
 
               <Separator />
