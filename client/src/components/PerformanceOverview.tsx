@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -163,7 +163,7 @@ export default function PerformanceOverview() {
   const totalTrades = sourceChartData.length;
   
   // Set initial end index when data loads and update when viewing latest trades
-  useMemo(() => {
+  useEffect(() => {
     if (sourceChartData.length > 0) {
       if (chartEndIndex === null) {
         // Initial load - show latest trades
