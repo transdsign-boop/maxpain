@@ -489,6 +489,13 @@ export class StrategyEngine extends EventEmitter {
       return false;
     }
     
+    // REVERSAL QUALITY CHECK: Require good context for counter-trade entries
+    const reversalQualityThreshold = 3; // "good" = 3, "excellent" = 4+
+    if (cascadeStatus.reversal_quality < reversalQualityThreshold) {
+      console.log(`🚫 REVERSAL QUALITY GATE: Entry blocked - context too weak (RQ: ${cascadeStatus.reversal_quality}, bucket: ${cascadeStatus.rq_bucket}, dOI_1m: ${cascadeStatus.dOI_1m}%, dOI_3m: ${cascadeStatus.dOI_3m}%, need: ${reversalQualityThreshold}+)`);
+      return false;
+    }
+    
     // Calculate percentile threshold: current liquidation must exceed specified percentile
     const currentLiquidationValue = parseFloat(liquidation.value);
     

@@ -16,6 +16,10 @@ interface CascadeStatus {
   autoBlock: boolean;
   autoEnabled: boolean;
   medianLiq: number;
+  dOI_1m: number;
+  dOI_3m: number;
+  reversal_quality: number;
+  rq_bucket: 'poor' | 'ok' | 'good' | 'excellent';
 }
 
 export default function CascadeRiskIndicator() {
@@ -27,7 +31,11 @@ export default function CascadeRiskIndicator() {
     light: 'green',
     autoBlock: false,
     autoEnabled: true,
-    medianLiq: 0
+    medianLiq: 0,
+    dOI_1m: 0,
+    dOI_3m: 0,
+    reversal_quality: 0,
+    rq_bucket: 'poor'
   });
   const { toast } = useToast();
 
@@ -129,6 +137,26 @@ export default function CascadeRiskIndicator() {
     }
   };
 
+  const getReversalQualityBarColor = () => {
+    switch (status.rq_bucket) {
+      case 'poor': return 'bg-gray-500';
+      case 'ok': return 'bg-yellow-500';
+      case 'good': return 'bg-green-500';
+      case 'excellent': return 'bg-green-500 border-2 border-green-400';
+      default: return 'bg-gray-500';
+    }
+  };
+
+  const getContextMessage = () => {
+    if (status.autoBlock) {
+      return "Auto blocking due to cascade risk";
+    } else if (status.reversal_quality < 3) {
+      return "Context weak for fade";
+    } else {
+      return "Good context, fades allowed on your trigger";
+    }
+  };
+
   return (
     <Card data-testid="card-cascade-risk" className="overflow-hidden mt-4 md:mt-6">
       <style>{`
@@ -200,6 +228,46 @@ export default function CascadeRiskIndicator() {
                 />
               </div>
             </div>
+
+            {/* Row 3: Reversal Quality */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs text-muted-foreground">Reversal Quality</span>
+                <Badge variant="secondary" className="font-mono text-xs px-2 h-6" data-testid="badge-rq-score">
+                  {status.reversal_quality} • {status.rq_bucket}
+                </Badge>
+              </div>
+              
+              {/* 4-Segment Bar */}
+              <div className="flex gap-1">
+                {[1, 2, 3, 4].map((segment) => (
+                  <div
+                    key={segment}
+                    className={`h-2 flex-1 rounded-sm ${
+                      segment <= status.reversal_quality
+                        ? getReversalQualityBarColor()
+                        : 'bg-gray-300 dark:bg-gray-700'
+                    }`}
+                    data-testid={`rq-segment-${segment}`}
+                  />
+                ))}
+              </div>
+
+              {/* OI Deltas and Message */}
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex gap-1">
+                  <Badge variant="secondary" className="font-mono text-xs px-1.5 h-6" data-testid="tile-doi-1m">
+                    dOI 1m {status.dOI_1m.toFixed(1)}%
+                  </Badge>
+                  <Badge variant="secondary" className="font-mono text-xs px-1.5 h-6" data-testid="tile-doi-3m">
+                    dOI 3m {status.dOI_3m.toFixed(1)}%
+                  </Badge>
+                </div>
+                <span className="text-xs text-muted-foreground" data-testid="text-context-message">
+                  {getContextMessage()}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -256,6 +324,50 @@ export default function CascadeRiskIndicator() {
               data-testid="switch-auto-detect"
             />
           </div>
+        </div>
+
+        {/* Reversal Quality Row - Desktop */}
+        <div className="hidden md:flex items-center gap-4 mt-3 pt-3 border-t border-border">
+          {/* Reversal Quality Label */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <span className="text-sm font-medium whitespace-nowrap">Reversal Quality</span>
+            <Badge variant="secondary" className="font-mono text-xs px-2" data-testid="badge-rq-score">
+              {status.reversal_quality} • {status.rq_bucket}
+            </Badge>
+          </div>
+
+          {/* 4-Segment Bar */}
+          <div className="flex gap-1.5 w-32">
+            {[1, 2, 3, 4].map((segment) => (
+              <div
+                key={segment}
+                className={`h-3 flex-1 rounded-sm transition-colors ${
+                  segment <= status.reversal_quality
+                    ? getReversalQualityBarColor()
+                    : 'bg-gray-300 dark:bg-gray-700'
+                }`}
+                data-testid={`rq-segment-${segment}`}
+              />
+            ))}
+          </div>
+
+          {/* OI Deltas */}
+          <div className="flex gap-2">
+            <div className="flex flex-col items-center" data-testid="tile-doi-1m">
+              <span className="text-lg font-bold font-mono text-[rgb(190,242,100)]">{status.dOI_1m.toFixed(1)}%</span>
+              <span className="text-xs text-muted-foreground">dOI 1m</span>
+            </div>
+            
+            <div className="flex flex-col items-center" data-testid="tile-doi-3m">
+              <span className="text-lg font-bold font-mono text-[rgb(190,242,100)]">{status.dOI_3m.toFixed(1)}%</span>
+              <span className="text-xs text-muted-foreground">dOI 3m</span>
+            </div>
+          </div>
+
+          {/* Context Message */}
+          <span className="text-sm text-muted-foreground ml-auto" data-testid="text-context-message">
+            {getContextMessage()}
+          </span>
         </div>
       </CardContent>
     </Card>

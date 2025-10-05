@@ -160,7 +160,11 @@ class CascadeDetectorService {
         status.RET.toFixed(1),
         status.OI.toFixed(1),
         status.light,
-        status.autoBlock
+        status.autoBlock,
+        status.dOI_1m.toFixed(2),
+        status.dOI_3m.toFixed(2),
+        status.reversal_quality,
+        status.rq_bucket
       ].join(',');
       
       console.log(`📊 Cascade: ${csvLog}`);
