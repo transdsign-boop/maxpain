@@ -107,6 +107,9 @@ export const strategies = pgTable("strategies", {
   // RET (Realized Volatility) Threshold Configuration
   retHighThreshold: decimal("ret_high_threshold", { precision: 5, scale: 2 }).notNull().default("35.0"), // RET threshold for high volatility (requires RQ >= 3)
   retMediumThreshold: decimal("ret_medium_threshold", { precision: 5, scale: 2 }).notNull().default("25.0"), // RET threshold for medium volatility (requires RQ >= 2)
+  // Portfolio Risk Management
+  maxOpenPositions: integer("max_open_positions").notNull().default(5), // Maximum number of simultaneous open positions (0 = unlimited)
+  maxPortfolioRiskPercent: decimal("max_portfolio_risk_percent", { precision: 5, scale: 2 }).notNull().default("15.0"), // Maximum total risk across all positions as % of account
 });
 
 // Trading Sessions for Paper Trading
@@ -236,6 +239,12 @@ export const frontendStrategySchema = z.object({
   tradingMode: z.enum(["paper", "live"]).default("paper"),
   hedgeMode: z.boolean().default(false),
   isActive: z.boolean().optional().default(false),
+  // Portfolio Risk Management
+  maxOpenPositions: z.number().min(0).max(20).default(5), // 0 = unlimited
+  maxPortfolioRiskPercent: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 1 && num <= 100;
+  }, "Max portfolio risk must be between 1% and 100%").default("15.0"),
 });
 
 // Update schema for partial updates
