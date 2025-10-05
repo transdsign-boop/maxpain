@@ -124,13 +124,6 @@ export default function PerformanceOverview() {
     enabled: !!isLiveMode && !!activeStrategy,
   });
 
-  // Fetch database positions summary for paper mode risk calculation
-  const { data: positionSummaryData } = useQuery<any>({
-    queryKey: ['/api/strategies', activeStrategy?.id, 'positions', 'summary'],
-    refetchInterval: 15000,
-    enabled: !isLiveMode && !!activeStrategy,
-  });
-
   // Calculate top 3 performing assets by total P&L (only from closed positions)
   const top3Assets = useMemo(() => {
     if (!assetPerformance || assetPerformance.length === 0) return [];
@@ -384,53 +377,35 @@ export default function PerformanceOverview() {
 
     if (isLiveMode && livePositions) {
       positions = livePositions.filter(p => parseFloat(p.positionAmt) !== 0);
-    } else if (!isLiveMode && positionSummaryData?.positions) {
-      positions = positionSummaryData.positions.filter((p: any) => p.isOpen);
+    } else if (!isLiveMode) {
+      // For paper mode, we don't have positions data in this component
+      // Return zero risk for now
+      return { totalRisk: 0, riskPercentage: 0 };
     }
 
+    // Live mode: calculate from exchange position data
     const totalPotentialLoss = positions.reduce((sum, position) => {
-      if (isLiveMode) {
-        // Live mode: calculate from exchange position data
-        const entryPrice = parseFloat(position.entryPrice);
-        const quantity = Math.abs(parseFloat(position.positionAmt));
-        const isLong = parseFloat(position.positionAmt) > 0;
-        
-        // Calculate stop loss price
-        const stopLossPrice = isLong 
-          ? entryPrice * (1 - stopLossPercent / 100)
-          : entryPrice * (1 + stopLossPercent / 100);
-        
-        // Calculate loss if stop loss is hit
-        const lossPerUnit = isLong 
-          ? entryPrice - stopLossPrice
-          : stopLossPrice - entryPrice;
-        
-        const positionLoss = lossPerUnit * quantity;
-        return sum + positionLoss;
-      } else {
-        // Paper mode: calculate from database position data
-        const entryPrice = parseFloat(position.avgEntryPrice);
-        const quantity = Math.abs(parseFloat(position.totalQuantity));
-        const isLong = position.side === 'long';
-        
-        // Calculate stop loss price
-        const stopLossPrice = isLong 
-          ? entryPrice * (1 - stopLossPercent / 100)
-          : entryPrice * (1 + stopLossPercent / 100);
-        
-        // Calculate loss if stop loss is hit
-        const lossPerUnit = isLong 
-          ? entryPrice - stopLossPrice
-          : stopLossPrice - entryPrice;
-        
-        const positionLoss = lossPerUnit * quantity;
-        return sum + positionLoss;
-      }
+      const entryPrice = parseFloat(position.entryPrice);
+      const quantity = Math.abs(parseFloat(position.positionAmt));
+      const isLong = parseFloat(position.positionAmt) > 0;
+      
+      // Calculate stop loss price
+      const stopLossPrice = isLong 
+        ? entryPrice * (1 - stopLossPercent / 100)
+        : entryPrice * (1 + stopLossPercent / 100);
+      
+      // Calculate loss if stop loss is hit
+      const lossPerUnit = isLong 
+        ? entryPrice - stopLossPrice
+        : stopLossPrice - entryPrice;
+      
+      const positionLoss = lossPerUnit * quantity;
+      return sum + positionLoss;
     }, 0);
 
     const riskPct = totalBalance > 0 ? (totalPotentialLoss / totalBalance) * 100 : 0;
     return { totalRisk: totalPotentialLoss, riskPercentage: riskPct };
-  }, [activeStrategy, isLiveMode, livePositions, positionSummaryData, totalBalance]);
+  }, [activeStrategy, isLiveMode, livePositions, totalBalance]);
 
   return (
     <Card>
