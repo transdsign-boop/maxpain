@@ -171,6 +171,8 @@ export const positions = pgTable("positions", {
   maxLayers: integer("max_layers").notNull(),
   lastLayerPrice: decimal("last_layer_price", { precision: 18, scale: 8 }),
   leverage: integer("leverage").notNull().default(1), // Leverage multiplier (1-125x)
+  initialEntryPrice: decimal("initial_entry_price", { precision: 18, scale: 8 }), // First layer entry price (P0) - anchor for DCA calculations
+  dcaBaseSize: decimal("dca_base_size", { precision: 18, scale: 8 }), // q1 - base layer size used for exponential sizing
   isOpen: boolean("is_open").notNull().default(true),
   openedAt: timestamp("opened_at").notNull().defaultNow(),
   closedAt: timestamp("closed_at"),
