@@ -2948,7 +2948,8 @@ export class StrategyEngine extends EventEmitter {
         return;
       }
       
-      // Use the new OrderProtectionService for atomic, safe updates
+      // OrderProtectionService will fetch live exchange position for accurate TP/SL
+      // (Database position may be stale due to async fill processing)
       await orderProtectionService.updateProtectiveOrders(position, strategy);
       
     } catch (error) {
