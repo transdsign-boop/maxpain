@@ -1018,32 +1018,67 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                       )}
                     </FormDescription>
                     <div className="space-y-2 mt-2">
-                      {/* Render selected assets in compact format */}
-                      {availableAssets?.filter((asset: any) => field.value.includes(asset.symbol)).map((asset: any) => (
-                        <div
-                          key={asset.symbol}
-                          className="flex items-center justify-between p-2 border rounded-md hover-elevate"
-                        >
-                          <div className="flex items-center gap-2 flex-1">
-                            <span className="font-medium text-sm">{asset.symbol}</span>
-                            <span className="text-xs text-muted-foreground">({asset.liquidationCount})</span>
-                            <Badge variant="default" className="text-xs px-1.5 py-0 h-5">
-                              Selected
-                            </Badge>
+                      {/* Render selected assets in grid format with details */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                        {availableAssets?.filter((asset: any) => field.value.includes(asset.symbol)).map((asset: any) => (
+                          <div
+                            key={asset.symbol}
+                            className="border rounded-md p-2 space-y-2"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium text-sm">{asset.symbol}</span>
+                                <span className="text-xs text-muted-foreground">({asset.liquidationCount})</span>
+                              </div>
+                              <Checkbox
+                                data-testid={`checkbox-asset-${asset.symbol}`}
+                                id={`asset-${asset.symbol}`}
+                                checked={true}
+                                disabled={false}
+                                onCheckedChange={(checked) => {
+                                  if (!checked) {
+                                    field.onChange(field.value.filter(s => s !== asset.symbol));
+                                  }
+                                }}
+                              />
+                            </div>
+                            {!performanceLoading && performanceMap.get(asset.symbol) && performanceMap.get(asset.symbol).wins + performanceMap.get(asset.symbol).losses > 0 && (
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <Badge 
+                                  variant="secondary" 
+                                  className="text-[10px] px-1 py-0 h-4 bg-chart-2/10 text-chart-2 hover:bg-chart-2/20 border-chart-2/20"
+                                  data-testid={`badge-wins-${asset.symbol}`}
+                                >
+                                  {performanceMap.get(asset.symbol).wins}W
+                                </Badge>
+                                <Badge 
+                                  variant="secondary" 
+                                  className="text-[10px] px-1 py-0 h-4 bg-destructive/10 text-destructive hover:bg-destructive/20 border-destructive/20"
+                                  data-testid={`badge-losses-${asset.symbol}`}
+                                >
+                                  {performanceMap.get(asset.symbol).losses}L
+                                </Badge>
+                                <span className="text-xs text-muted-foreground">
+                                  {((performanceMap.get(asset.symbol).wins / (performanceMap.get(asset.symbol).wins + performanceMap.get(asset.symbol).losses)) * 100).toFixed(0)}%
+                                </span>
+                              </div>
+                            )}
+                            {!liquidityLoading && asset.liquidity && (
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {asset.liquidity.canHandleTradeSize ? (
+                                  <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20">
+                                    ✓ ${(asset.liquidity.minSideLiquidity / 1000).toFixed(0)}k
+                                  </Badge>
+                                ) : asset.liquidity.minSideLiquidity > 0 ? (
+                                  <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20">
+                                    ⚠ ${(asset.liquidity.minSideLiquidity / 1000).toFixed(0)}k
+                                  </Badge>
+                                ) : null}
+                              </div>
+                            )}
                           </div>
-                          <Checkbox
-                            data-testid={`checkbox-asset-${asset.symbol}`}
-                            id={`asset-${asset.symbol}`}
-                            checked={true}
-                            disabled={false}
-                            onCheckedChange={(checked) => {
-                              if (!checked) {
-                                field.onChange(field.value.filter(s => s !== asset.symbol));
-                              }
-                            }}
-                          />
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                       
                       {/* Render all unselected assets in a single collapsible group */}
                       {availableAssets?.filter((asset: any) => !field.value.includes(asset.symbol)).length > 0 && (
