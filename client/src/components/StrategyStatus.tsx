@@ -1216,53 +1216,13 @@ export function StrategyStatus() {
             )}
           </CollapsibleTrigger>
           <CollapsibleContent className="mt-3">
-            {tradeHistory && tradeHistory.length > 0 ? (
+            {tradeHistory && tradeHistory.filter(item => item.type === 'trade').length > 0 ? (
               <div className="space-y-2 max-h-96 overflow-y-auto">
-                {tradeHistory.map((item) => {
-                  if (item.type === 'change') {
-                    // Render strategy change card
-                    const change = item.data;
-                    const changes = change.changes as Record<string, { old: any; new: any }>;
-                    const changeCount = Object.keys(changes).length;
-                    
-                    return (
-                      <div
-                        key={change.id}
-                        className="p-4 rounded-lg border bg-muted/30 border-primary/20"
-                        data-testid={`strategy-change-${change.id}`}
-                      >
-                        <div className="flex items-center gap-2 mb-2">
-                          <Badge variant="outline" className="text-xs border-primary/50">
-                            Strategy Updated
-                          </Badge>
-                          <span className="text-xs text-muted-foreground">
-                            {format(new Date(change.changedAt), 'MMM d, h:mm a')}
-                          </span>
-                        </div>
-                        <div className="space-y-1">
-                          {Object.entries(changes).slice(0, 3).map(([field, value]) => (
-                            <div key={field} className="text-xs">
-                              <span className="text-muted-foreground capitalize">
-                                {field.replace(/([A-Z])/g, ' $1').trim()}:
-                              </span>
-                              <span className="text-foreground ml-1">
-                                {JSON.stringify(value.old)} → {JSON.stringify(value.new)}
-                              </span>
-                            </div>
-                          ))}
-                          {changeCount > 3 && (
-                            <div className="text-xs text-muted-foreground">
-                              +{changeCount - 3} more changes
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  } else {
-                    // Render trade card (with expandable details)
-                    return <CompletedTradeCard key={item.data.id} position={item.data} formatCurrency={formatCurrency} formatPercentage={formatPercentage} getPnlColor={getPnlColor} isHedge={closedHedgePositions.get(item.data.id) || false} />;
-                  }
-                })}
+                {tradeHistory
+                  .filter(item => item.type === 'trade')
+                  .map((item) => (
+                    <CompletedTradeCard key={item.data.id} position={item.data} formatCurrency={formatCurrency} formatPercentage={formatPercentage} getPnlColor={getPnlColor} isHedge={closedHedgePositions.get(item.data.id) || false} />
+                  ))}
               </div>
             ) : (
               <div className="text-center py-6">
