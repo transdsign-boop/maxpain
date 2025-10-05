@@ -482,6 +482,96 @@ export class StrategyEngine extends EventEmitter {
       }
     }
     
+    // PORTFOLIO RISK LIMITS CHECK: Block new entries if they WOULD exceed limits
+    const portfolioRisk = await this.calculatePortfolioRisk(strategy, session);
+    
+    // Check max open positions limit (0 = unlimited)
+    // Must check if adding ONE MORE position would exceed the limit
+    if (strategy.maxOpenPositions > 0 && portfolioRisk.openPositionCount + 1 > strategy.maxOpenPositions) {
+      console.log(`🚫 PORTFOLIO LIMIT: Opening new position would exceed limit (${portfolioRisk.openPositionCount + 1} > ${strategy.maxOpenPositions})`);
+      return false;
+    }
+    
+    // Calculate ACTUAL projected risk using DCA calculator
+    let riskCheckPassed = false;
+    try {
+      const price = parseFloat(liquidation.price);
+      let currentBalance = parseFloat(session.currentBalance);
+      const exchangeBalance = await this.getExchangeAvailableBalance(strategy);
+      if (exchangeBalance !== null) {
+        currentBalance = exchangeBalance;
+      }
+      
+      // Import DCA functions
+      const { calculateDCALevels, calculateATRPercent } = await import('./dca-calculator');
+      const { getStrategyWithDCA } = await import('./dca-sql');
+      
+      // Fetch DCA parameters
+      const strategyWithDCA = await getStrategyWithDCA(strategy.id);
+      if (!strategyWithDCA || strategyWithDCA.dca_start_step_percent == null) {
+        // Missing DCA parameters - trigger fallback
+        throw new Error('DCA parameters not configured');
+      }
+      
+      // Build full strategy with DCA params
+      const fullStrategy = {
+        ...strategy,
+        dcaStartStepPercent: String(strategyWithDCA.dca_start_step_percent),
+        dcaSpacingConvexity: String(strategyWithDCA.dca_spacing_convexity),
+        dcaSizeGrowth: String(strategyWithDCA.dca_size_growth),
+        dcaMaxRiskPercent: String(strategyWithDCA.dca_max_risk_percent),
+        dcaVolatilityRef: String(strategyWithDCA.dca_volatility_ref),
+        dcaExitCushionMultiplier: String(strategyWithDCA.dca_exit_cushion_multiplier),
+      };
+      
+      const atrPercent = await calculateATRPercent(liquidation.symbol, 10, process.env.ASTER_API_KEY, process.env.ASTER_SECRET_KEY);
+      
+      // Calculate DCA levels for prospective entry
+      const dcaResult = calculateDCALevels(fullStrategy, {
+        entryPrice: price,
+        side: positionSide as 'long' | 'short',
+        currentBalance,
+        leverage: strategy.leverage,
+        atrPercent,
+      });
+      
+      // Get total risk from DCA calculation (this is the max risk across all layers)
+      const newPositionRiskDollars = dcaResult.totalRiskDollars;
+      const newPositionRiskPercent = (newPositionRiskDollars / currentBalance) * 100;
+      const projectedRiskPercentage = portfolioRisk.riskPercentage + newPositionRiskPercent;
+      
+      // CRITICAL: Validate that calculations produced finite numbers (not NaN or Infinity)
+      if (!Number.isFinite(newPositionRiskPercent) || !Number.isFinite(projectedRiskPercentage)) {
+        throw new Error(`Invalid risk calculation: newRisk=${newPositionRiskPercent}, projected=${projectedRiskPercentage}`);
+      }
+      
+      // Check if adding this new position would exceed max portfolio risk
+      const maxRiskPercent = parseFloat(strategy.maxPortfolioRiskPercent);
+      if (projectedRiskPercentage > maxRiskPercent) {
+        console.log(`🚫 PORTFOLIO RISK LIMIT: New entry would push total risk to ${projectedRiskPercentage.toFixed(1)}% (current: ${portfolioRisk.riskPercentage.toFixed(1)}% + new: ${newPositionRiskPercent.toFixed(1)}%) > max ${maxRiskPercent}%`);
+        return false;
+      }
+      
+      riskCheckPassed = true;
+    } catch (error) {
+      console.error('⚠️ Error calculating projected risk, using conservative fallback:', error);
+      // MANDATORY fallback check - always enforce risk limit even if DCA calculation fails
+      const dcaMaxRiskPercent = parseFloat(strategy.dcaMaxRiskPercent || "1.0");
+      const projectedRiskPercentage = portfolioRisk.riskPercentage + dcaMaxRiskPercent;
+      const maxRiskPercent = parseFloat(strategy.maxPortfolioRiskPercent);
+      if (projectedRiskPercentage > maxRiskPercent) {
+        console.log(`🚫 PORTFOLIO RISK LIMIT (Fallback): New entry would push total risk to ${projectedRiskPercentage.toFixed(1)}% > max ${maxRiskPercent}%`);
+        return false;
+      }
+      riskCheckPassed = true; // Fallback check passed
+    }
+    
+    // Ensure risk check was performed
+    if (!riskCheckPassed) {
+      console.error('❌ CRITICAL: Risk check bypassed - blocking entry for safety');
+      return false;
+    }
+    
     // CASCADE DETECTOR CHECK: Block new entries when cascade risk is high
     const cascadeStatus = cascadeDetectorService.getCurrentStatus();
     if (cascadeStatus.autoEnabled && cascadeStatus.autoBlock) {
@@ -539,6 +629,102 @@ export class StrategyEngine extends EventEmitter {
     
     if (totalLayers >= strategy.maxLayers) {
       console.log(`🚫 Max layers reached: ${position.layersFilled} filled + ${pendingCount} pending = ${totalLayers}/${strategy.maxLayers}`);
+      return false;
+    }
+
+    // PORTFOLIO RISK LIMITS CHECK: Block new layers if they WOULD exceed risk limit
+    // Note: Position count limit doesn't apply to layers (we're adding to existing position)
+    let layerRiskCheckPassed = false;
+    try {
+      const session = await storage.getTradeSession(position.sessionId);
+      if (!session) {
+        throw new Error('Session not found for risk check');
+      }
+      
+      const portfolioRisk = await this.calculatePortfolioRisk(strategy, session);
+      
+      // Calculate ACTUAL projected risk using DCA calculator
+      let currentBalance = parseFloat(session.currentBalance);
+      const exchangeBalance = await this.getExchangeAvailableBalance(strategy);
+      if (exchangeBalance !== null) {
+        currentBalance = exchangeBalance;
+      }
+      
+      // Import DCA function
+      const { calculateNextLayer } = await import('./dca-calculator');
+      
+      // Calculate the next layer parameters
+      const nextLayerResult = await calculateNextLayer(
+        strategy,
+        currentBalance,
+        position.leverage,
+        position.symbol,
+        position.side as 'long' | 'short',
+        position.layersFilled,
+        parseFloat(position.initialEntryPrice || position.avgEntryPrice),
+        position.dcaBaseSize ? parseFloat(position.dcaBaseSize) : null,
+        process.env.ASTER_API_KEY,
+        process.env.ASTER_SECRET_KEY
+      );
+      
+      if (!nextLayerResult) {
+        throw new Error('DCA calculator could not calculate next layer');
+      }
+      
+      const { price: nextLayerPrice, quantity: nextLayerQuantity } = nextLayerResult;
+      
+      // Calculate stop loss price based on strategy
+      const stopLossPercent = parseFloat(strategy.stopLossPercent);
+      const stopLossPrice = position.side === 'long'
+        ? nextLayerPrice * (1 - stopLossPercent / 100)
+        : nextLayerPrice * (1 + stopLossPercent / 100);
+      
+      // Calculate dollar risk for this layer
+      const lossPerUnit = position.side === 'long'
+        ? nextLayerPrice - stopLossPrice
+        : stopLossPrice - nextLayerPrice;
+      
+      const layerRiskDollars = lossPerUnit * nextLayerQuantity;
+      const layerRiskPercent = (layerRiskDollars / currentBalance) * 100;
+      const projectedRiskPercentage = portfolioRisk.riskPercentage + layerRiskPercent;
+      
+      // CRITICAL: Validate that calculations produced finite numbers (not NaN or Infinity)
+      if (!Number.isFinite(layerRiskPercent) || !Number.isFinite(projectedRiskPercentage)) {
+        throw new Error(`Invalid layer risk calculation: layerRisk=${layerRiskPercent}, projected=${projectedRiskPercentage}`);
+      }
+      
+      const maxRiskPercent = parseFloat(strategy.maxPortfolioRiskPercent);
+      if (projectedRiskPercentage > maxRiskPercent) {
+        console.log(`🚫 PORTFOLIO RISK LIMIT (Layer): New layer would push total risk to ${projectedRiskPercentage.toFixed(1)}% (current: ${portfolioRisk.riskPercentage.toFixed(1)}% + layer: ${layerRiskPercent.toFixed(1)}%) > max ${maxRiskPercent}%`);
+        return false;
+      }
+      
+      layerRiskCheckPassed = true;
+    } catch (error) {
+      console.error('⚠️ Error calculating layer risk, using conservative fallback:', error);
+      // MANDATORY fallback check - always enforce risk limit even if DCA calculation fails
+      try {
+        const session = await storage.getTradeSession(position.sessionId);
+        if (session) {
+          const portfolioRisk = await this.calculatePortfolioRisk(strategy, session);
+          const dcaMaxRiskPercent = parseFloat(strategy.dcaMaxRiskPercent || "1.0");
+          const layerRiskEstimate = dcaMaxRiskPercent * 0.5;
+          const projectedRiskPercentage = portfolioRisk.riskPercentage + layerRiskEstimate;
+          const maxRiskPercent = parseFloat(strategy.maxPortfolioRiskPercent);
+          if (projectedRiskPercentage > maxRiskPercent) {
+            console.log(`🚫 PORTFOLIO RISK LIMIT (Layer/Fallback): Risk ${projectedRiskPercentage.toFixed(1)}% > max ${maxRiskPercent}%`);
+            return false;
+          }
+          layerRiskCheckPassed = true; // Fallback check passed
+        }
+      } catch (fallbackError) {
+        console.error('❌ CRITICAL: Fallback risk check failed for layer:', fallbackError);
+      }
+    }
+    
+    // Ensure risk check was performed
+    if (!layerRiskCheckPassed) {
+      console.error('❌ CRITICAL: Layer risk check bypassed - blocking layer for safety');
       return false;
     }
 
@@ -617,6 +803,70 @@ export class StrategyEngine extends EventEmitter {
     } catch (error) {
       console.error('❌ Error fetching exchange balance:', error);
       return null;
+    }
+  }
+
+  // Calculate current portfolio risk metrics for gating decisions
+  private async calculatePortfolioRisk(strategy: Strategy, session: TradeSession): Promise<{ openPositionCount: number; riskPercentage: number; totalRisk: number }> {
+    try {
+      // Get all open positions for this session
+      const openPositions = await storage.getOpenPositions(session.id);
+      
+      // Count open positions
+      const openPositionCount = openPositions.length;
+      
+      // If no positions, return zero risk
+      if (openPositionCount === 0) {
+        return { openPositionCount: 0, riskPercentage: 0, totalRisk: 0 };
+      }
+      
+      // Get current account balance (use exchange balance for accuracy)
+      let currentBalance = parseFloat(session.currentBalance);
+      const exchangeBalance = await this.getExchangeAvailableBalance(strategy);
+      if (exchangeBalance !== null) {
+        currentBalance = exchangeBalance;
+      }
+      
+      if (currentBalance <= 0) {
+        console.warn('⚠️ Invalid account balance for risk calculation');
+        return { openPositionCount, riskPercentage: 0, totalRisk: 0 };
+      }
+      
+      // Calculate stop loss percentage from strategy
+      const stopLossPercent = parseFloat(strategy.stopLossPercent);
+      
+      // Calculate total potential loss across all positions
+      const totalPotentialLoss = openPositions.reduce((sum, position) => {
+        const entryPrice = parseFloat(position.avgEntryPrice);
+        const quantity = Math.abs(parseFloat(position.totalQuantity));
+        const isLong = position.side === 'long';
+        
+        // Calculate stop loss price based on entry price and strategy SL%
+        const stopLossPrice = isLong 
+          ? entryPrice * (1 - stopLossPercent / 100)
+          : entryPrice * (1 + stopLossPercent / 100);
+        
+        // Calculate loss per unit
+        const lossPerUnit = isLong 
+          ? entryPrice - stopLossPrice
+          : stopLossPrice - entryPrice;
+        
+        // Calculate total position loss
+        const positionLoss = lossPerUnit * quantity;
+        return sum + positionLoss;
+      }, 0);
+      
+      // Calculate risk as percentage of account balance
+      const riskPercentage = (totalPotentialLoss / currentBalance) * 100;
+      
+      return { 
+        openPositionCount, 
+        riskPercentage, 
+        totalRisk: totalPotentialLoss 
+      };
+    } catch (error) {
+      console.error('❌ Error calculating portfolio risk:', error);
+      return { openPositionCount: 0, riskPercentage: 0, totalRisk: 0 };
     }
   }
 
