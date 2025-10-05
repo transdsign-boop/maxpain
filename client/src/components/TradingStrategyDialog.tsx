@@ -52,7 +52,7 @@ const strategyFormSchema = z.object({
   selectedAssets: z.array(z.string()).min(1, "Select at least one asset"),
   percentileThreshold: z.number().min(1).max(100),
   liquidationLookbackHours: z.number().min(1).max(24),
-  maxLayers: z.number().min(1).max(10),
+  maxLayers: z.number().min(1).max(100),
   profitTargetPercent: z.string().refine((val) => {
     const num = parseFloat(val);
     return !isNaN(num) && num >= 0.1 && num <= 20;
@@ -186,7 +186,7 @@ function DCASettingsSection({ strategyId, isStrategyRunning }: { strategyId: str
                   placeholder="0.4"
                 />
                 <div className="text-xs text-muted-foreground">
-                  First DCA level distance from entry
+                  <strong>How far the price must move against you before adding the first additional layer.</strong> For example, 0.4% means if you enter at $100, the first layer triggers at $99.60 (long) or $100.40 (short). Lower = more frequent adds, higher = fewer adds but deeper drawdowns.
                 </div>
               </div>
 
@@ -206,7 +206,7 @@ function DCASettingsSection({ strategyId, isStrategyRunning }: { strategyId: str
                   placeholder="1.2"
                 />
                 <div className="text-xs text-muted-foreground">
-                  How fast spacing increases (1.0 = linear)
+                  <strong>Controls how distance between layers increases.</strong> 1.0 = equal spacing (0.4%, 0.4%, 0.4%...). 1.2 = expanding spacing (0.4%, 0.48%, 0.58%...). Higher values mean deeper layers are spaced further apart, protecting against extreme moves.
                 </div>
               </div>
 
@@ -226,7 +226,7 @@ function DCASettingsSection({ strategyId, isStrategyRunning }: { strategyId: str
                   placeholder="1.8"
                 />
                 <div className="text-xs text-muted-foreground">
-                  How much each level grows (1.0 = equal size)
+                  <strong>How much each layer's size multiplies.</strong> 1.0 = all layers same size. 1.8 = each layer is 1.8× bigger (e.g., $10, $18, $32...). Higher ratios mean deeper layers bring your average entry price down faster, but use capital more aggressively.
                 </div>
               </div>
 
@@ -246,7 +246,7 @@ function DCASettingsSection({ strategyId, isStrategyRunning }: { strategyId: str
                   placeholder="1.0"
                 />
                 <div className="text-xs text-muted-foreground">
-                  Maximum account risk per position
+                  <strong>Maximum percentage of your account to risk on this entire position (all layers combined).</strong> For example, 1.0% on a $10,000 account = $100 total risk. The system calculates position sizes to stay within this limit even if all layers trigger.
                 </div>
               </div>
 
@@ -266,7 +266,7 @@ function DCASettingsSection({ strategyId, isStrategyRunning }: { strategyId: str
                   placeholder="1.0"
                 />
                 <div className="text-xs text-muted-foreground">
-                  Reference volatility for scaling
+                  <strong>Baseline volatility level used to scale layer spacing dynamically.</strong> When actual ATR (market volatility) is higher than this reference, layers space out more. When lower, they compress. Think of this as your "normal" volatility expectation - the system adapts spacing based on current market conditions vs. this baseline.
                 </div>
               </div>
 
@@ -286,7 +286,7 @@ function DCASettingsSection({ strategyId, isStrategyRunning }: { strategyId: str
                   placeholder="0.6"
                 />
                 <div className="text-xs text-muted-foreground">
-                  Exit target as fraction of DCA distance
+                  <strong>Determines take profit distance relative to your total DCA spacing.</strong> 0.6 = TP is 60% of the total distance you're willing to DCA. Lower values (0.3-0.5) = tighter profits, faster exits. Higher values (0.7-1.0) = let winners run more but risk giving back gains.
                 </div>
               </div>
 
@@ -306,7 +306,7 @@ function DCASettingsSection({ strategyId, isStrategyRunning }: { strategyId: str
                   placeholder="35"
                 />
                 <div className="text-xs text-muted-foreground">
-                  RET ≥ this value = high volatility (requires RQ ≥ 3)
+                  <strong>Minimum realized volatility (RET) required to enter trades when Reversal Quality is "good" (RQ≥3).</strong> RET measures actual price movement strength. Higher threshold = only trade on strong, volatile moves. Lower = trade more frequently on gentler moves. Default 35 means you need significant price action + good reversal signals.
                 </div>
               </div>
 
@@ -326,7 +326,7 @@ function DCASettingsSection({ strategyId, isStrategyRunning }: { strategyId: str
                   placeholder="25"
                 />
                 <div className="text-xs text-muted-foreground">
-                  RET ≥ this value = medium volatility (requires RQ ≥ 2)
+                  <strong>Minimum realized volatility (RET) required to enter trades when Reversal Quality is "ok" (RQ≥2).</strong> This is your secondary entry filter for moderate-quality setups. Should be lower than High Threshold. Lower values = more trades with less conviction. Higher = fewer, more selective entries even on ok signals.
                 </div>
               </div>
             </div>
@@ -1205,34 +1205,27 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                           )}
                         </div>
                         <FormControl>
-                          <Select 
-                            value={field.value.toString()} 
-                            onValueChange={(value) => field.onChange(parseInt(value))}
+                          <Input
+                            data-testid="input-max-layers"
+                            type="number"
+                            min="1"
+                            max="100"
+                            {...field}
+                            onChange={(e) => field.onChange(parseInt(e.target.value) || 1)}
                             disabled={false}
-                          >
-                            <SelectTrigger data-testid="select-max-layers">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="1">1</SelectItem>
-                              <SelectItem value="2">2</SelectItem>
-                              <SelectItem value="3">3</SelectItem>
-                              <SelectItem value="4">4</SelectItem>
-                              <SelectItem value="5">5</SelectItem>
-                              <SelectItem value="6">6</SelectItem>
-                              <SelectItem value="7">7</SelectItem>
-                              <SelectItem value="8">8</SelectItem>
-                              <SelectItem value="9">9</SelectItem>
-                              <SelectItem value="10">10</SelectItem>
-                            </SelectContent>
-                          </Select>
+                          />
                         </FormControl>
                         <FormDescription className="text-xs">
-                          Maximum positions to open for averaging
-                          {limitingAsset && recommendedMaxLayers > 0 && (
-                            <span className="text-primary ml-1">(Recommended: {recommendedMaxLayers})</span>
-                          )}
+                          Maximum positions to open for averaging (1-100)
                         </FormDescription>
+                        {limitingAsset && recommendedMaxLayers > 0 && (
+                          <div className="mt-1 flex items-center gap-1 text-xs">
+                            <Lightbulb className="h-3 w-3 text-primary" />
+                            <span className="text-primary font-medium">
+                              Suggested: {recommendedMaxLayers} based on {accountTier} account tier and current liquidity
+                            </span>
+                          </div>
+                        )}
                         <FormMessage />
                       </FormItem>
                     )}
