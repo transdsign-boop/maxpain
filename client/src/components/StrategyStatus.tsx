@@ -304,14 +304,45 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
   const rawTP = Number(strategy?.profitTargetPercent);
   const sanitizedTP = Number.isFinite(rawTP) && rawTP > 0 ? rawTP : 1;
   
-  // Calculate SL and TP prices using sanitized values
-  const stopLossPrice = position.side === 'long'
+  // Calculate SL and TP prices using sanitized values (with exchange rounding)
+  // Matches backend roundPrice logic - floor to nearest tick size
+  const calculateRoundedPrice = (rawPrice: number) => {
+    // Tick size approximation based on price magnitude (matches exchange tick sizes)
+    let decimals: number;
+    let tickSize: number;
+    
+    if (rawPrice >= 1000) {
+      tickSize = 0.1;
+      decimals = 1;
+    } else if (rawPrice >= 100) {
+      tickSize = 0.01;
+      decimals = 2;
+    } else if (rawPrice >= 10) {
+      tickSize = 0.001;
+      decimals = 3;
+    } else if (rawPrice >= 1) {
+      tickSize = 0.0001;
+      decimals = 4;
+    } else {
+      // For prices < 1 (like DOGE at ~0.26), use 5 decimals
+      tickSize = 0.00001;
+      decimals = 5;
+    }
+    
+    const rounded = Math.floor(rawPrice / tickSize) * tickSize;
+    return parseFloat(rounded.toFixed(decimals));
+  };
+  
+  const rawStopLossPrice = position.side === 'long'
     ? avgEntry * (1 - sanitizedSL / 100)
     : avgEntry * (1 + sanitizedSL / 100);
     
-  const takeProfitPrice = position.side === 'long'
+  const rawTakeProfitPrice = position.side === 'long'
     ? avgEntry * (1 + sanitizedTP / 100)
     : avgEntry * (1 - sanitizedTP / 100);
+  
+  const stopLossPrice = calculateRoundedPrice(rawStopLossPrice);
+  const takeProfitPrice = calculateRoundedPrice(rawTakeProfitPrice);
 
   // Calculate liquidation price based on leverage (isolated margin)
   const maintenanceMarginFactor = 0.95;
