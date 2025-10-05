@@ -45,6 +45,7 @@ interface LiveAccountData {
   totalWalletBalance: string;
   totalUnrealizedProfit: string;
   totalMarginBalance: string;
+  totalInitialMargin: string;
   availableBalance: string;
   maxWithdrawAmount: string;
   usdcBalance: string;
@@ -341,6 +342,15 @@ export default function PerformanceOverview() {
   const availableBalance = isLiveMode 
     ? (liveAccount ? parseFloat(liveAccount.availableBalance) : 0)
     : (paperSession ? paperSession.currentBalance - paperMarginInUse : 0);
+
+  // Calculate margin in use and exposure
+  const marginInUse = isLiveMode 
+    ? (liveAccount ? parseFloat(liveAccount.totalInitialMargin || '0') : 0)
+    : paperMarginInUse;
+  
+  const totalExposure = isLiveMode 
+    ? (marginInUse * leverage)
+    : (paperSession?.totalExposure || 0);
 
   // Calculate percentages
   const unrealizedPnlPercent = totalBalance > 0 ? (unrealizedPnl / totalBalance) * 100 : 0;
@@ -680,6 +690,16 @@ export default function PerformanceOverview() {
             <div className="ticker-content">
               {/* First set */}
               <div className="ticker-item">
+                <DollarSign className="h-3 w-3 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground">In Use</span>
+                <span className="text-xs font-mono font-semibold" data-testid="ticker-margin-in-use">{formatCurrency(marginInUse)}</span>
+              </div>
+              <div className="ticker-item">
+                <TrendingUp className="h-3 w-3 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground">Exposure</span>
+                <span className="text-xs font-mono font-semibold" data-testid="ticker-total-exposure">{formatCurrency(totalExposure)}</span>
+              </div>
+              <div className="ticker-item">
                 <Award className="h-3 w-3 text-[rgb(190,242,100)]" />
                 <span className="text-xs text-muted-foreground">Best Trade</span>
                 <span className="text-xs font-mono font-semibold text-[rgb(190,242,100)]">{formatCurrency(displayPerformance.bestTrade)}</span>
@@ -710,6 +730,16 @@ export default function PerformanceOverview() {
                 <span className="text-xs font-mono font-semibold text-[rgb(251,146,60)]">{formatCurrency(displayPerformance.averageLoss)}</span>
               </div>
               {/* Duplicate set for seamless loop */}
+              <div className="ticker-item">
+                <DollarSign className="h-3 w-3 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground">In Use</span>
+                <span className="text-xs font-mono font-semibold">{formatCurrency(marginInUse)}</span>
+              </div>
+              <div className="ticker-item">
+                <TrendingUp className="h-3 w-3 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground">Exposure</span>
+                <span className="text-xs font-mono font-semibold">{formatCurrency(totalExposure)}</span>
+              </div>
               <div className="ticker-item">
                 <Award className="h-3 w-3 text-[rgb(190,242,100)]" />
                 <span className="text-xs text-muted-foreground">Best Trade</span>

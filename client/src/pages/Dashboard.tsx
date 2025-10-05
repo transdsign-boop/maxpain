@@ -483,17 +483,6 @@ export default function Dashboard() {
     }).format(value);
   };
 
-  // Calculate margin in use and total exposure
-  const leverage = activeStrategy?.leverage || 1;
-  
-  const marginInUse = isLiveMode && liveAccount
-    ? parseFloat(liveAccount.totalInitialMargin || '0')
-    : (positionSummary ? (positionSummary.totalExposure / leverage) : 0);
-    
-  const totalExposure = isLiveMode && liveAccount
-    ? (marginInUse * leverage)
-    : (positionSummary?.totalExposure || 0);
-
   return (
     <div className="min-h-screen bg-background">
       {/* Header - Optimized for Mobile */}
@@ -507,29 +496,6 @@ export default function Dashboard() {
 
           <div className="flex items-center gap-8">
             <ConnectionStatus isConnected={isConnected} />
-            
-            {/* Margin Metrics */}
-            {(positionSummary || (isLiveMode && liveAccount)) && (
-              <>
-                <div className="h-10 w-px bg-border" />
-                <div className="flex items-center gap-3 text-xs">
-                  <div className="flex flex-col">
-                    <div className="text-muted-foreground">In Use</div>
-                    <div className="font-mono font-semibold" data-testid="text-margin-in-use">
-                      {formatCurrency(marginInUse)}
-                    </div>
-                  </div>
-                  <div className="flex flex-col">
-                    <div className="text-muted-foreground">Exposure</div>
-                    <div className="font-mono font-semibold" data-testid="text-total-exposure">
-                      {formatCurrency(totalExposure)}
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
-            
-            <div className="h-10 w-px bg-border" />
             
             {/* Start/Stop Button */}
             {activeStrategy && (
