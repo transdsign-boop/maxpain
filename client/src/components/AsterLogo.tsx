@@ -31,7 +31,7 @@ export default function AsterLogo({ className = "" }: { className?: string }) {
       
       <div className="flex flex-col leading-tight">
         <span className="text-xl font-bold tracking-tight">MAX PAIN</span>
-        <span className="text-xs text-muted-foreground tracking-wider">LIQUIDATION COUNTER TRADING</span>
+        <span className="text-xs text-muted-foreground tracking-wider">LIQUIDATION HUNTER BOT</span>
       </div>
     </div>
   );
