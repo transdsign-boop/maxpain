@@ -248,8 +248,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAvailableAssets(): Promise<{ symbol: string; count: number; latestTimestamp: Date }[]> {
-    // Only return data from last 5 days
-    const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+    // Only return data from last 30 days
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     
     const result = await db.select({
       symbol: liquidations.symbol,
@@ -257,7 +257,7 @@ export class DatabaseStorage implements IStorage {
       latestTimestamp: drizzleSql<Date>`MAX(${liquidations.timestamp})`
     })
     .from(liquidations)
-    .where(gte(liquidations.timestamp, fiveDaysAgo))
+    .where(gte(liquidations.timestamp, thirtyDaysAgo))
     .groupBy(liquidations.symbol)
     .orderBy(desc(drizzleSql`COUNT(*)`)); // Sort by liquidation count descending
     
