@@ -3252,9 +3252,9 @@ export class StrategyEngine extends EventEmitter {
         await orderProtectionService.verifyAllPositions(session.id, strategy);
         
         // 3. Keep data retention active (delete old liquidations)
-        const deletedCount = await storage.deleteOldLiquidations(5);
+        const deletedCount = await storage.deleteOldLiquidations(30);
         if (deletedCount > 0) {
-          console.log(`  ✓ Deleted ${deletedCount} liquidations older than 5 days`);
+          console.log(`  ✓ Deleted ${deletedCount} liquidations older than 30 days`);
         }
         
         console.log(`✅ Reconciliation complete: ${orphanedCount} orphaned orders cleaned`);
@@ -3317,9 +3317,9 @@ export class StrategyEngine extends EventEmitter {
       }
       
       // 5. Delete old liquidations
-      const deletedCount = await storage.deleteOldLiquidations(5);
+      const deletedCount = await storage.deleteOldLiquidations(30);
       if (deletedCount > 0) {
-        console.log(`  ✓ Deleted ${deletedCount} liquidations older than 5 days`);
+        console.log(`  ✓ Deleted ${deletedCount} liquidations older than 30 days`);
       }
       
       const totalActions = orphanedCount + staleCount + repairedCount + fixedCount + deletedCount;

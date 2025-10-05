@@ -36,7 +36,7 @@ Preferred communication style: Simple, everyday language.
 - **Schema**: Dedicated tables for liquidations, strategies, positions, fills, sessions, and snapshots with indexing.
 - **Connection**: Connection pooling with `@neondatabase/serverless` HTTP driver.
 - **Migrations**: Drizzle Kit.
-- **Data Retention**: Liquidation data automatically retained for 5 days only; older data deleted every 5 minutes. Trading data (positions, fills, sessions) is permanently preserved through archiving (never deleted).
+- **Data Retention**: Liquidation data automatically retained for 30 days only; older data deleted every 5 minutes. Trading data (positions, fills, sessions) is permanently preserved through archiving (never deleted).
 - **Important**: All runtime operations use the Neon database. The app never uses local database storage.
 
 ### Real-time Data Features
