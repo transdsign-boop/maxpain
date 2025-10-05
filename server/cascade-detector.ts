@@ -121,22 +121,23 @@ export class CascadeDetector {
   private calculateVolatilityRegime(RET: number): { volatility_regime: 'low' | 'medium' | 'high'; rq_threshold_adjusted: number } {
     // Use RET (return volatility) to determine market regime
     // RET represents normalized volatility - higher values = more volatile
+    // Tuned thresholds: RET typically ranges 0-10, adjusted for real market conditions
     
     let volatility_regime: 'low' | 'medium' | 'high';
     let rq_threshold_adjusted: number;
     
-    if (RET >= 6) {
+    if (RET >= 4) {
       // High volatility: Be more selective, require higher quality
       volatility_regime = 'high';
       rq_threshold_adjusted = 3; // Require "good" quality
-    } else if (RET >= 3) {
+    } else if (RET >= 2.5) {
       // Medium volatility: Moderate selectivity
       volatility_regime = 'medium';
       rq_threshold_adjusted = 2; // Require "ok" quality
     } else {
       // Low volatility: Less selective, allow lower quality
       volatility_regime = 'low';
-      rq_threshold_adjusted = 1; // Require minimal quality
+      rq_threshold_adjusted = 1; // Require minimal quality (poor/ok bucket)
     }
     
     return { volatility_regime, rq_threshold_adjusted };
