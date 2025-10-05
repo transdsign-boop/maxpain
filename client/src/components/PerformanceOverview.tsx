@@ -117,6 +117,20 @@ export default function PerformanceOverview() {
     refetchInterval: 15000,
   });
 
+  // Fetch live positions for risk calculation
+  const { data: livePositions } = useQuery<any[]>({
+    queryKey: ['/api/live/positions'],
+    refetchInterval: 15000,
+    enabled: !!isLiveMode && !!activeStrategy,
+  });
+
+  // Fetch database positions summary for paper mode risk calculation
+  const { data: positionSummaryData } = useQuery<any>({
+    queryKey: ['/api/strategies', activeStrategy?.id, 'positions', 'summary'],
+    refetchInterval: 15000,
+    enabled: !isLiveMode && !!activeStrategy,
+  });
+
   // Calculate top 3 performing assets by total P&L (only from closed positions)
   const top3Assets = useMemo(() => {
     if (!assetPerformance || assetPerformance.length === 0) return [];
@@ -361,6 +375,63 @@ export default function PerformanceOverview() {
     : (paperSession?.startingBalance || 0);
   const realizedPnlPercent = startingBalance > 0 ? (displayPerformance.totalRealizedPnl / startingBalance) * 100 : 0;
 
+  // Calculate total risk - potential loss if all stop losses are hit
+  const { totalRisk, riskPercentage } = useMemo(() => {
+    if (!activeStrategy) return { totalRisk: 0, riskPercentage: 0 };
+
+    const stopLossPercent = Number(activeStrategy.stopLossPercent) || 2;
+    let positions: any[] = [];
+
+    if (isLiveMode && livePositions) {
+      positions = livePositions.filter(p => parseFloat(p.positionAmt) !== 0);
+    } else if (!isLiveMode && positionSummaryData?.positions) {
+      positions = positionSummaryData.positions.filter((p: any) => p.isOpen);
+    }
+
+    const totalPotentialLoss = positions.reduce((sum, position) => {
+      if (isLiveMode) {
+        // Live mode: calculate from exchange position data
+        const entryPrice = parseFloat(position.entryPrice);
+        const quantity = Math.abs(parseFloat(position.positionAmt));
+        const isLong = parseFloat(position.positionAmt) > 0;
+        
+        // Calculate stop loss price
+        const stopLossPrice = isLong 
+          ? entryPrice * (1 - stopLossPercent / 100)
+          : entryPrice * (1 + stopLossPercent / 100);
+        
+        // Calculate loss if stop loss is hit
+        const lossPerUnit = isLong 
+          ? entryPrice - stopLossPrice
+          : stopLossPrice - entryPrice;
+        
+        const positionLoss = lossPerUnit * quantity;
+        return sum + positionLoss;
+      } else {
+        // Paper mode: calculate from database position data
+        const entryPrice = parseFloat(position.avgEntryPrice);
+        const quantity = parseFloat(position.totalQuantity);
+        const isLong = position.side === 'long';
+        
+        // Calculate stop loss price
+        const stopLossPrice = isLong 
+          ? entryPrice * (1 - stopLossPercent / 100)
+          : entryPrice * (1 + stopLossPercent / 100);
+        
+        // Calculate loss if stop loss is hit
+        const lossPerUnit = isLong 
+          ? entryPrice - stopLossPrice
+          : stopLossPrice - entryPrice;
+        
+        const positionLoss = lossPerUnit * quantity;
+        return sum + positionLoss;
+      }
+    }, 0);
+
+    const riskPct = totalBalance > 0 ? (totalPotentialLoss / totalBalance) * 100 : 0;
+    return { totalRisk: totalPotentialLoss, riskPercentage: riskPct };
+  }, [activeStrategy, isLiveMode, livePositions, positionSummaryData, totalBalance]);
+
   return (
     <Card>
       <CardHeader>
@@ -380,10 +451,10 @@ export default function PerformanceOverview() {
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Main Balance Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Main Balance Section with Risk Bar */}
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_2fr_auto] gap-6">
           {/* Total Balance - Prominent */}
-          <div className="space-y-2 lg:col-span-1">
+          <div className="space-y-2">
             <div className="flex items-center gap-2">
               <DollarSign className="h-4 w-4 text-muted-foreground" />
               <div className="text-xs text-muted-foreground uppercase tracking-wider">Total Balance</div>
@@ -400,7 +471,7 @@ export default function PerformanceOverview() {
           </div>
 
           {/* Available & Realized */}
-          <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             <div className="space-y-2">
               <div className="text-xs text-muted-foreground uppercase tracking-wider">Available</div>
               <div className="text-3xl font-mono font-bold" data-testid="text-available-balance">
@@ -418,6 +489,41 @@ export default function PerformanceOverview() {
               </div>
               <div className="text-xs text-muted-foreground">
                 {realizedPnlPercent >= 0 ? '+' : ''}{realizedPnlPercent.toFixed(2)}% · {displayPerformance.totalTrades} trades
+              </div>
+            </div>
+          </div>
+
+          {/* Risk Pressure Bar */}
+          <div className="flex flex-col items-center gap-2 lg:border-l lg:pl-6" data-testid="container-risk-bar">
+            <div className="text-xs text-muted-foreground uppercase tracking-wider text-center whitespace-nowrap">Total Risk</div>
+            <div className="relative flex flex-col items-center">
+              {/* Vertical Bar Container */}
+              <div className="relative h-40 w-12 bg-muted rounded-md overflow-hidden border border-border">
+                {/* Risk Fill */}
+                <div 
+                  className={`absolute bottom-0 left-0 right-0 transition-all duration-300 ${
+                    riskPercentage > 15 ? 'bg-red-600 dark:bg-red-500' :
+                    riskPercentage > 8 ? 'bg-orange-500 dark:bg-orange-400' :
+                    'bg-lime-600 dark:bg-lime-500'
+                  }`}
+                  style={{ height: `${Math.min(100, riskPercentage)}%` }}
+                  data-testid="bar-risk-fill"
+                />
+                {/* Percentage Label Inside Bar */}
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-xs font-mono font-bold text-white mix-blend-difference">
+                    {riskPercentage.toFixed(1)}%
+                  </span>
+                </div>
+              </div>
+              {/* Dollar Amount Below Bar */}
+              <div className="mt-2 text-center">
+                <div className="text-sm font-mono font-bold text-red-600 dark:text-red-400" data-testid="text-risk-amount">
+                  -${totalRisk.toFixed(2)}
+                </div>
+                <div className="text-[10px] text-muted-foreground">
+                  if all SL hit
+                </div>
               </div>
             </div>
           </div>
