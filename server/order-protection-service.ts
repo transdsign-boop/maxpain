@@ -134,7 +134,7 @@ export class OrderProtectionService {
    * Calculate desired TP/SL orders based on position
    */
   private calculateDesiredOrders(position: Position, strategy: Strategy): DesiredOrder[] {
-    const entryPrice = parseFloat(position.initialEntryPrice || position.avgEntryPrice);
+    const entryPrice = parseFloat(position.avgEntryPrice);
     const quantity = parseFloat(position.totalQuantity);
     const tpPercent = parseFloat(strategy.profitTargetPercent);
     const slPercent = parseFloat(strategy.stopLossPercent);
