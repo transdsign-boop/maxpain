@@ -4,7 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Search, Plus, X, TrendingUp, RotateCcw, Loader2 } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Search, Plus, X, TrendingUp, RotateCcw, Loader2, ChevronDown } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 
 interface Asset {
@@ -240,61 +241,68 @@ export default function AssetSelector({ selectedAssets, onAssetsChange }: AssetS
                 const isSelected = selectedAssets.includes(asset.symbol);
                 const performance = performanceMap.get(asset.symbol);
                 return (
-                  <div
+                  <Collapsible
                     key={asset.symbol}
-                    className="flex items-center justify-between p-2 hover-elevate rounded-md border"
+                    open={isSelected}
+                    className="border rounded-md"
                     data-testid={`asset-item-${asset.symbol.replace('/', '-')}`}
                   >
-                    <div className="flex items-center gap-3 flex-1">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-sm">{asset.symbol}</span>
-                          {!performanceLoading && !performanceError && performance && performance.wins + performance.losses > 0 && (
-                            <div className="flex items-center gap-1">
-                              <Badge 
-                                variant="secondary" 
-                                className="text-xs px-1.5 py-0 h-5 bg-chart-2/10 text-chart-2 hover:bg-chart-2/20 border-chart-2/20"
-                                data-testid={`badge-wins-${asset.symbol.replace('/', '-')}`}
-                              >
-                                {performance.wins}W
-                              </Badge>
-                              <Badge 
-                                variant="secondary" 
-                                className="text-xs px-1.5 py-0 h-5 bg-destructive/10 text-destructive hover:bg-destructive/20 border-destructive/20"
-                                data-testid={`badge-losses-${asset.symbol.replace('/', '-')}`}
-                              >
-                                {performance.losses}L
-                              </Badge>
-                            </div>
-                          )}
-                        </div>
+                    <div className="flex items-center justify-between p-2 hover-elevate">
+                      <CollapsibleTrigger className="flex items-center gap-2 flex-1 text-left">
+                        <ChevronDown className={`h-4 w-4 transition-transform ${isSelected ? 'transform rotate-0' : 'transform -rotate-90'}`} />
+                        <span className="font-medium text-sm">{asset.symbol}</span>
+                        {isSelected && (
+                          <Badge variant="default" className="text-xs px-1.5 py-0 h-5">
+                            Selected
+                          </Badge>
+                        )}
+                      </CollapsibleTrigger>
+                      <Button
+                        variant={isSelected ? "destructive" : "default"}
+                        size="sm"
+                        onClick={() => isSelected ? handleRemoveAsset(asset.symbol) : handleAddAsset(asset.symbol)}
+                        data-testid={`button-toggle-${asset.symbol.replace('/', '-')}`}
+                      >
+                        {isSelected ? (
+                          <X className="h-4 w-4" />
+                        ) : (
+                          <Plus className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
+                    <CollapsibleContent>
+                      <div className="px-2 pb-2 space-y-2 border-t pt-2 mx-2">
                         <div className="text-xs text-muted-foreground flex items-center gap-2">
                           <span>{asset.baseAsset}/{asset.quoteAsset}</span>
                           <span className="text-chart-1">{asset.contractType || 'PERPETUAL'}</span>
-                          {!performanceLoading && !performanceError && performance && performance.wins + performance.losses > 0 && (
+                        </div>
+                        {!performanceLoading && !performanceError && performance && performance.wins + performance.losses > 0 && (
+                          <div className="flex items-center gap-2">
+                            <Badge 
+                              variant="secondary" 
+                              className="text-xs px-1.5 py-0 h-5 bg-chart-2/10 text-chart-2 hover:bg-chart-2/20 border-chart-2/20"
+                              data-testid={`badge-wins-${asset.symbol.replace('/', '-')}`}
+                            >
+                              {performance.wins}W
+                            </Badge>
+                            <Badge 
+                              variant="secondary" 
+                              className="text-xs px-1.5 py-0 h-5 bg-destructive/10 text-destructive hover:bg-destructive/20 border-destructive/20"
+                              data-testid={`badge-losses-${asset.symbol.replace('/', '-')}`}
+                            >
+                              {performance.losses}L
+                            </Badge>
                             <span 
-                              className={performance.winRate >= 50 ? "text-chart-2" : "text-destructive"}
+                              className={`text-xs ${performance.winRate >= 50 ? "text-chart-2" : "text-destructive"}`}
                               data-testid={`text-winrate-${asset.symbol.replace('/', '-')}`}
                             >
                               {performance.winRate.toFixed(0)}% win rate
                             </span>
-                          )}
-                        </div>
+                          </div>
+                        )}
                       </div>
-                    </div>
-                    <Button
-                      variant={isSelected ? "destructive" : "default"}
-                      size="sm"
-                      onClick={() => isSelected ? handleRemoveAsset(asset.symbol) : handleAddAsset(asset.symbol)}
-                      data-testid={`button-toggle-${asset.symbol.replace('/', '-')}`}
-                    >
-                      {isSelected ? (
-                        <X className="h-4 w-4" />
-                      ) : (
-                        <Plus className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </div>
+                    </CollapsibleContent>
+                  </Collapsible>
                 );
               })}
               
