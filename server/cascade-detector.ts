@@ -13,10 +13,15 @@ interface CascadeStatus {
   rq_bucket: 'poor' | 'ok' | 'good' | 'excellent';
 }
 
+interface OISnapshot {
+  value: number;
+  timestamp: number;
+}
+
 export class CascadeDetector {
   private liq1mSameSide: number[] = [];
   private ret1m: number[] = [];
-  private oi5m: number[] = [];
+  private oi5m: OISnapshot[] = [];
   
   private autoEnabled: boolean;
   private currentLight: 'green' | 'yellow' | 'orange' | 'red' = 'green';
@@ -63,6 +68,54 @@ export class CascadeDetector {
     }
   }
 
+  private calculateOIDelta(secondsAgo: number): number {
+    if (this.oi5m.length === 0) return 0;
+    
+    const now = Date.now();
+    const targetTime = now - (secondsAgo * 1000);
+    const currentOI = this.oi5m[this.oi5m.length - 1].value;
+    
+    let closestSnapshot: OISnapshot | null = null;
+    let minTimeDiff = Infinity;
+    
+    for (const snapshot of this.oi5m) {
+      const timeDiff = Math.abs(snapshot.timestamp - targetTime);
+      if (timeDiff < minTimeDiff) {
+        minTimeDiff = timeDiff;
+        closestSnapshot = snapshot;
+      }
+    }
+    
+    if (!closestSnapshot || closestSnapshot.value === 0) return 0;
+    
+    const percentChange = ((currentOI - closestSnapshot.value) / closestSnapshot.value) * 100;
+    return parseFloat(percentChange.toFixed(2));
+  }
+
+  private calculateReversalQuality(LQ: number, RET: number, dOI_1m: number, dOI_3m: number): { reversal_quality: number; rq_bucket: 'poor' | 'ok' | 'good' | 'excellent' } {
+    let score = 0;
+    
+    if (LQ >= 8) score += 2;
+    else if (LQ >= 6) score += 1;
+    
+    if (RET >= 3) score += 1;
+    
+    if (dOI_1m <= -1.0 || dOI_3m <= -1.5) score += 2;
+    else if (dOI_1m <= -0.5 || dOI_3m <= -1.0) score += 1;
+    
+    if (dOI_1m > 0 && dOI_3m > 0) score -= 2;
+    
+    score = Math.max(0, score);
+    
+    let rq_bucket: 'poor' | 'ok' | 'good' | 'excellent';
+    if (score <= 1) rq_bucket = 'poor';
+    else if (score === 2) rq_bucket = 'ok';
+    else if (score === 3) rq_bucket = 'good';
+    else rq_bucket = 'excellent';
+    
+    return { reversal_quality: score, rq_bucket };
+  }
+
   public ingestTick(
     liqNotionalSameSide: number,
     ret1s: number,
@@ -79,7 +132,8 @@ export class CascadeDetector {
       this.ret1m.shift();
     }
 
-    this.oi5m.push(oiSnapshot);
+    const now = Date.now();
+    this.oi5m.push({ value: oiSnapshot, timestamp: now });
     if (this.oi5m.length > this.WINDOW_5M) {
       this.oi5m.shift();
     }
@@ -95,12 +149,16 @@ export class CascadeDetector {
 
     let OI = 0;
     if (this.oi5m.length >= 2) {
-      const oiPrev = Math.max(...this.oi5m.slice(0, -1));
-      const oiNow = this.oi5m[this.oi5m.length - 1];
+      const oiValues = this.oi5m.map(s => s.value);
+      const oiPrev = Math.max(...oiValues.slice(0, -1));
+      const oiNow = this.oi5m[this.oi5m.length - 1].value;
       if (oiPrev > 0) {
         OI = Math.max(0, ((oiPrev - oiNow) / oiPrev) * 100);
       }
     }
+
+    const dOI_1m = this.calculateOIDelta(60);
+    const dOI_3m = this.calculateOIDelta(180);
 
     let score = 0;
     
@@ -145,6 +203,8 @@ export class CascadeDetector {
 
     const autoBlock = this.autoEnabled && (this.currentLight === 'orange' || this.currentLight === 'red');
 
+    const { reversal_quality, rq_bucket } = this.calculateReversalQuality(LQ, RET, dOI_1m, dOI_3m);
+
     return {
       score,
       LQ: parseFloat(LQ.toFixed(1)),
@@ -153,7 +213,11 @@ export class CascadeDetector {
       light: this.currentLight,
       autoBlock,
       autoEnabled: this.autoEnabled,
-      medianLiq: parseFloat(medianLiq.toFixed(0))
+      medianLiq: parseFloat(medianLiq.toFixed(0)),
+      dOI_1m,
+      dOI_3m,
+      reversal_quality,
+      rq_bucket
     };
   }
 
@@ -174,7 +238,11 @@ export class CascadeDetector {
       light: this.currentLight,
       autoBlock: this.autoEnabled && (this.currentLight === 'orange' || this.currentLight === 'red'),
       autoEnabled: this.autoEnabled,
-      medianLiq: 0
+      medianLiq: 0,
+      dOI_1m: 0,
+      dOI_3m: 0,
+      reversal_quality: 0,
+      rq_bucket: 'poor'
     };
   }
 }
