@@ -185,20 +185,20 @@ function CompletedTradeCard({ position, formatCurrency, formatPercentage, getPnl
                     <p className="text-xs font-medium text-muted-foreground/70 mb-1">Entry Layers ({entryFills.length})</p>
                     <div className="space-y-1">
                       {entryFills.sort((a, b) => a.layerNumber - b.layerNumber).map((fill) => (
-                        <div key={fill.id} className="flex items-center justify-between text-xs py-1 px-2 rounded bg-muted/30">
-                          <div className="flex items-center gap-2 flex-1">
-                            <Badge variant="outline" className="text-xs h-5">L{fill.layerNumber}</Badge>
-                            <span className="text-foreground">
-                              {parseFloat(fill.quantity).toFixed(4)} @ {formatCurrency(parseFloat(fill.price))}
+                        <div key={fill.id} className="text-xs py-1 px-2 rounded bg-muted/30 space-y-1">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="text-xs h-5">L{fill.layerNumber}</Badge>
+                              <span className="text-foreground">
+                                {parseFloat(fill.quantity).toFixed(4)} @ {formatCurrency(parseFloat(fill.price))}
+                              </span>
+                            </div>
+                            <span className="text-muted-foreground text-xs">
+                              {formatCurrency(parseFloat(fill.fee || '0'))}
                             </span>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground/70">
-                              {format(new Date(fill.filledAt), 'MMM d, h:mm:ss a')}
-                            </span>
-                            <span className="text-muted-foreground text-xs">
-                              Fee: {formatCurrency(parseFloat(fill.fee || '0'))}
-                            </span>
+                          <div className="text-xs text-muted-foreground/70">
+                            {format(new Date(fill.filledAt), 'MMM d, h:mm a')}
                           </div>
                         </div>
                       ))}
@@ -210,20 +210,20 @@ function CompletedTradeCard({ position, formatCurrency, formatPercentage, getPnl
                     <p className="text-xs font-medium text-muted-foreground/70 mb-1">Exit</p>
                     <div className="space-y-1">
                       {exitFills.map((fill) => (
-                        <div key={fill.id} className="flex items-center justify-between text-xs py-1 px-2 rounded bg-muted/30">
-                          <div className="flex items-center gap-2 flex-1">
-                            <Badge variant="outline" className="text-xs h-5">Exit</Badge>
-                            <span className="text-foreground">
-                              {parseFloat(fill.quantity).toFixed(4)} @ {formatCurrency(parseFloat(fill.price))}
+                        <div key={fill.id} className="text-xs py-1 px-2 rounded bg-muted/30 space-y-1">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="text-xs h-5">Exit</Badge>
+                              <span className="text-foreground">
+                                {parseFloat(fill.quantity).toFixed(4)} @ {formatCurrency(parseFloat(fill.price))}
+                              </span>
+                            </div>
+                            <span className="text-muted-foreground text-xs">
+                              {formatCurrency(parseFloat(fill.fee || '0'))}
                             </span>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground/70">
-                              {format(new Date(fill.filledAt), 'MMM d, h:mm:ss a')}
-                            </span>
-                            <span className="text-muted-foreground text-xs">
-                              Fee: {formatCurrency(parseFloat(fill.fee || '0'))}
-                            </span>
+                          <div className="text-xs text-muted-foreground/70">
+                            {format(new Date(fill.filledAt), 'MMM d, h:mm a')}
                           </div>
                         </div>
                       ))}
@@ -1216,7 +1216,7 @@ export function StrategyStatus() {
 
           <TabsContent value="completed" className="mt-4">
             {tradeHistory && tradeHistory.filter(item => item.type === 'trade').length > 0 ? (
-              <div className="space-y-2 max-h-96 overflow-y-auto">
+              <div className="space-y-2 max-h-96 overflow-y-auto overflow-x-hidden pr-2 custom-scrollbar">
                 {tradeHistory
                   .filter(item => item.type === 'trade')
                   .map((item) => (
