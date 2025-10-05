@@ -112,7 +112,8 @@ export class CascadeDetector {
     if (LQ >= 8) score += 2;
     else if (LQ >= 6) score += 1;
     
-    if (RET >= 3) score += 1;
+    // Award point for sufficient volatility (indicates meaningful price action)
+    if (RET >= 6) score += 1;
     
     if (dOI_1m <= -1.0 || dOI_3m <= -1.5) score += 2;
     else if (dOI_1m <= -0.5 || dOI_3m <= -1.0) score += 1;
@@ -131,23 +132,24 @@ export class CascadeDetector {
   }
 
   private calculateVolatilityRegime(RET: number): { volatility_regime: 'low' | 'medium' | 'high'; rq_threshold_adjusted: number } {
-    // Use RET (return volatility) to determine market regime
-    // RET represents normalized volatility - higher values = more volatile
-    // Tuned thresholds: RET typically ranges 0-10, adjusted for real market conditions
+    // Use RET (realized volatility) to determine market regime
+    // RET = sum of |returns| / std dev (properly normalized, asset-agnostic)
+    // Baseline: For 60 samples random walk, RET ≈ sqrt(60) ≈ 7.7
+    // Values significantly above baseline indicate genuine high volatility
     
     let volatility_regime: 'low' | 'medium' | 'high';
     let rq_threshold_adjusted: number;
     
-    if (RET >= 4) {
-      // High volatility: Be more selective, require higher quality
+    if (RET >= 10) {
+      // Very high volatility: Be highly selective, require excellent quality
       volatility_regime = 'high';
       rq_threshold_adjusted = 3; // Require "good" quality
-    } else if (RET >= 2.5) {
-      // Medium volatility: Moderate selectivity
+    } else if (RET >= 6) {
+      // Elevated volatility: Moderate selectivity
       volatility_regime = 'medium';
       rq_threshold_adjusted = 2; // Require "ok" quality
     } else {
-      // Low volatility: Less selective, allow lower quality
+      // Normal/low volatility: Less selective, allow lower quality
       volatility_regime = 'low';
       rq_threshold_adjusted = 1; // Require minimal quality (poor/ok bucket)
     }
@@ -183,7 +185,10 @@ export class CascadeDetector {
     const sumLiq = this.liq1mSameSide.reduce((sum, val) => sum + val, 0);
     const LQ = medianLiq > 0 ? sumLiq / medianLiq : 0;
 
-    const sumRet = Math.abs(this.ret1m.reduce((sum, val) => sum + val, 0));
+    // RET: Realized volatility - sum of absolute returns normalized by std dev
+    // This measures total price variation regardless of direction
+    // Properly normalized to work across all asset classes (stocks, crypto, forex, etc.)
+    const sumRet = this.ret1m.reduce((sum, val) => sum + Math.abs(val), 0);
     const RET = retSigma > 0 ? sumRet / retSigma : 0;
 
     let OI = 0;
@@ -205,8 +210,8 @@ export class CascadeDetector {
     else if (LQ >= 4) score += 1;
 
     if (retSideMatchesLiq) {
-      if (RET >= 4) score += 2;
-      else if (RET >= 2.5) score += 1;
+      if (RET >= 10) score += 2;
+      else if (RET >= 6) score += 1;
     }
 
     if (OI >= 4) score += 2;
