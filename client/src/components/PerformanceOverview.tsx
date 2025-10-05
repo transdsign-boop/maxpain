@@ -224,6 +224,48 @@ export default function PerformanceOverview() {
     refetchInterval: 10000,
   });
 
+  // Calculate total risk - moved here to ensure hooks are always called in the same order
+  const { totalRisk, riskPercentage } = useMemo(() => {
+    if (!activeStrategy) return { totalRisk: 0, riskPercentage: 0 };
+
+    const stopLossPercent = Number(activeStrategy.stopLossPercent) || 2;
+    let positions: any[] = [];
+
+    if (isLiveMode && livePositions) {
+      positions = livePositions.filter(p => parseFloat(p.positionAmt) !== 0);
+    } else if (!isLiveMode) {
+      return { totalRisk: 0, riskPercentage: 0 };
+    }
+
+    // Calculate total balance for percentage
+    const unrealizedPnl = isLiveMode 
+      ? (liveAccount ? parseFloat(liveAccount.totalUnrealizedProfit) : 0)
+      : (paperSession?.unrealizedPnl || 0);
+    const totalBalance = isLiveMode 
+      ? (liveAccount ? parseFloat(liveAccount.totalWalletBalance || '0') + unrealizedPnl : 0)
+      : (paperSession?.currentBalance || 0);
+
+    const totalPotentialLoss = positions.reduce((sum, position) => {
+      const entryPrice = parseFloat(position.entryPrice);
+      const quantity = Math.abs(parseFloat(position.positionAmt));
+      const isLong = parseFloat(position.positionAmt) > 0;
+      
+      const stopLossPrice = isLong 
+        ? entryPrice * (1 - stopLossPercent / 100)
+        : entryPrice * (1 + stopLossPercent / 100);
+      
+      const lossPerUnit = isLong 
+        ? entryPrice - stopLossPrice
+        : stopLossPrice - entryPrice;
+      
+      const positionLoss = lossPerUnit * quantity;
+      return sum + positionLoss;
+    }, 0);
+
+    const riskPct = totalBalance > 0 ? (totalPotentialLoss / totalBalance) * 100 : 0;
+    return { totalRisk: totalPotentialLoss, riskPercentage: riskPct };
+  }, [activeStrategy, isLiveMode, livePositions, liveAccount, paperSession]);
+
   // Use unified performance data for both modes
   const displayPerformance = performance;
   const displayLoading = isLoading || chartLoading || (isLiveMode && liveAccountLoading) || (!isLiveMode && paperSessionLoading);
@@ -367,45 +409,6 @@ export default function PerformanceOverview() {
     ? totalBalance - displayPerformance.totalRealizedPnl - unrealizedPnl
     : (paperSession?.startingBalance || 0);
   const realizedPnlPercent = startingBalance > 0 ? (displayPerformance.totalRealizedPnl / startingBalance) * 100 : 0;
-
-  // Calculate total risk - potential loss if all stop losses are hit
-  const { totalRisk, riskPercentage } = useMemo(() => {
-    if (!activeStrategy) return { totalRisk: 0, riskPercentage: 0 };
-
-    const stopLossPercent = Number(activeStrategy.stopLossPercent) || 2;
-    let positions: any[] = [];
-
-    if (isLiveMode && livePositions) {
-      positions = livePositions.filter(p => parseFloat(p.positionAmt) !== 0);
-    } else if (!isLiveMode) {
-      // For paper mode, we don't have positions data in this component
-      // Return zero risk for now
-      return { totalRisk: 0, riskPercentage: 0 };
-    }
-
-    // Live mode: calculate from exchange position data
-    const totalPotentialLoss = positions.reduce((sum, position) => {
-      const entryPrice = parseFloat(position.entryPrice);
-      const quantity = Math.abs(parseFloat(position.positionAmt));
-      const isLong = parseFloat(position.positionAmt) > 0;
-      
-      // Calculate stop loss price
-      const stopLossPrice = isLong 
-        ? entryPrice * (1 - stopLossPercent / 100)
-        : entryPrice * (1 + stopLossPercent / 100);
-      
-      // Calculate loss if stop loss is hit
-      const lossPerUnit = isLong 
-        ? entryPrice - stopLossPrice
-        : stopLossPrice - entryPrice;
-      
-      const positionLoss = lossPerUnit * quantity;
-      return sum + positionLoss;
-    }, 0);
-
-    const riskPct = totalBalance > 0 ? (totalPotentialLoss / totalBalance) * 100 : 0;
-    return { totalRisk: totalPotentialLoss, riskPercentage: riskPct };
-  }, [activeStrategy, isLiveMode, livePositions, totalBalance]);
 
   return (
     <Card>
