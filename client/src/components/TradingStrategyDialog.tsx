@@ -16,7 +16,7 @@ import { Switch } from "@/components/ui/switch";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Play, Square, TrendingUp, DollarSign, Layers, Target, Trash2, Key, CheckCircle2, XCircle, Loader2, Download, Upload, Lightbulb, AlertCircle, Activity, ChevronDown } from "lucide-react";
+import { Play, Square, TrendingUp, DollarSign, Layers, Target, Trash2, Key, CheckCircle2, XCircle, Loader2, Download, Upload, Lightbulb, AlertCircle, Activity, ChevronDown, Shield } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -42,6 +42,8 @@ interface Strategy {
   tradingMode: "paper" | "live";
   hedgeMode: boolean;
   isActive: boolean;
+  maxOpenPositions: number;
+  maxPortfolioRiskPercent: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -75,6 +77,11 @@ const strategyFormSchema = z.object({
     return !isNaN(num) && num >= 1 && num <= 100;
   }, "Account usage must be between 1% and 100%"),
   hedgeMode: z.boolean(),
+  maxOpenPositions: z.number().min(0).max(20),
+  maxPortfolioRiskPercent: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 1 && num <= 100;
+  }, "Max portfolio risk must be between 1% and 100%"),
 });
 
 type StrategyFormData = z.infer<typeof strategyFormSchema>;
@@ -437,6 +444,8 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
       maxRetryDurationMs: 30000,
       marginAmount: "10.0",
       hedgeMode: false,
+      maxOpenPositions: 5,
+      maxPortfolioRiskPercent: "15.0",
     }
   });
 
@@ -608,6 +617,8 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         maxRetryDurationMs: strategy.maxRetryDurationMs,
         marginAmount: String(strategy.marginAmount),
         hedgeMode: strategy.hedgeMode,
+        maxOpenPositions: strategy.maxOpenPositions || 5,
+        maxPortfolioRiskPercent: String(strategy.maxPortfolioRiskPercent || "15.0"),
       });
     },
     onError: () => {
@@ -907,6 +918,8 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         maxRetryDurationMs: strategy.maxRetryDurationMs,
         marginAmount: strategy.marginAmount,
         hedgeMode: strategy.hedgeMode,
+        maxOpenPositions: strategy.maxOpenPositions || 5,
+        maxPortfolioRiskPercent: String(strategy.maxPortfolioRiskPercent || "15.0"),
       });
     } else if (strategies && strategies.length === 0) {
       // No strategies available, clear active strategy
@@ -1375,6 +1388,70 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                       </FormItem>
                     )}
                   />
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Portfolio Risk Limits */}
+              <div className="space-y-4">
+                <Label className="text-base font-medium flex items-center gap-2">
+                  <Shield className="h-4 w-4" />
+                  Portfolio Risk Limits
+                </Label>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="maxOpenPositions"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel data-testid="label-max-open-positions">Max Open Positions</FormLabel>
+                        <FormControl>
+                          <Input
+                            data-testid="input-max-open-positions"
+                            type="number"
+                            min="0"
+                            max="20"
+                            {...field}
+                            onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
+                            disabled={false}
+                          />
+                        </FormControl>
+                        <FormDescription className="text-xs">
+                          Maximum simultaneous positions (0 = unlimited)
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="maxPortfolioRiskPercent"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel data-testid="label-max-portfolio-risk">Max Total Risk %</FormLabel>
+                        <FormControl>
+                          <Input
+                            data-testid="input-max-portfolio-risk"
+                            type="text"
+                            placeholder="15.0"
+                            {...field}
+                            disabled={false}
+                          />
+                        </FormControl>
+                        <FormDescription className="text-xs">
+                          Maximum aggregate risk across all positions (1-100%)
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <div className="text-xs text-muted-foreground bg-muted/30 p-3 rounded-md">
+                  <strong>Protection:</strong> New positions will be blocked when either limit is reached. This prevents excessive risk exposure across your portfolio.
                 </div>
               </div>
 
