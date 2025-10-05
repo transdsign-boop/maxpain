@@ -1064,15 +1064,29 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                               </div>
                             )}
                             {!liquidityLoading && asset.liquidity && asset.liquidity.maxSafeOrderSize > 0 && (
-                              <div className="flex items-center gap-2 flex-wrap">
-                                {asset.liquidity.canHandleTradeSize ? (
-                                  <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20">
-                                    ✓ Max: ${asset.liquidity.maxSafeOrderSize >= 1000 ? (asset.liquidity.maxSafeOrderSize / 1000).toFixed(1) + 'k' : asset.liquidity.maxSafeOrderSize.toFixed(0)}
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-1 flex-wrap">
+                                  {asset.liquidity.riskLevel === 'safe' ? (
+                                    <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20">
+                                      ✓ Max: ${asset.liquidity.maxSafeOrderSize >= 1000 ? (asset.liquidity.maxSafeOrderSize / 1000).toFixed(1) + 'k' : asset.liquidity.maxSafeOrderSize.toFixed(0)}
+                                    </Badge>
+                                  ) : asset.liquidity.riskLevel === 'caution' ? (
+                                    <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20">
+                                      ⚠ Max: ${asset.liquidity.maxSafeOrderSize >= 1000 ? (asset.liquidity.maxSafeOrderSize / 1000).toFixed(1) + 'k' : asset.liquidity.maxSafeOrderSize.toFixed(0)}
+                                    </Badge>
+                                  ) : (
+                                    <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20">
+                                      ⛔ Max: ${asset.liquidity.maxSafeOrderSize >= 1000 ? (asset.liquidity.maxSafeOrderSize / 1000).toFixed(1) + 'k' : asset.liquidity.maxSafeOrderSize.toFixed(0)}
+                                    </Badge>
+                                  )}
+                                  <Badge variant="secondary" className="text-[10px] px-1 py-0 h-4 bg-muted/50">
+                                    {asset.liquidity.participationRate.toFixed(1)}% {asset.liquidity.liquidityType.includes('volume') ? 'vol' : 'book'}
                                   </Badge>
-                                ) : (
-                                  <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20">
-                                    ⚠ Max: ${asset.liquidity.maxSafeOrderSize >= 1000 ? (asset.liquidity.maxSafeOrderSize / 1000).toFixed(1) + 'k' : asset.liquidity.maxSafeOrderSize.toFixed(0)}
-                                  </Badge>
+                                </div>
+                                {asset.liquidity.clipSize > 0 && (
+                                  <div className="text-[10px] text-muted-foreground">
+                                    Clip: ${asset.liquidity.clipSize >= 1000 ? (asset.liquidity.clipSize / 1000).toFixed(1) + 'k' : asset.liquidity.clipSize.toFixed(0)}/order
+                                  </div>
                                 )}
                               </div>
                             )}
