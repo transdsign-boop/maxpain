@@ -160,7 +160,7 @@ export default function LiveLiquidationsSidebar({
           variant="ghost"
           size="icon"
           onClick={() => onToggleCollapse(!isCollapsed)}
-          className="absolute -left-10 top-4 bg-background border shadow-md hover-elevate"
+          className="absolute -left-10 top-4 bg-background/50 border-border/30 opacity-40 hover:opacity-100 transition-opacity hover-elevate"
           data-testid="button-toggle-sidebar"
         >
           {isCollapsed ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
