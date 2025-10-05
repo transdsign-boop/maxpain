@@ -410,7 +410,7 @@ export default function PerformanceOverview() {
       } else {
         // Paper mode: calculate from database position data
         const entryPrice = parseFloat(position.avgEntryPrice);
-        const quantity = parseFloat(position.totalQuantity);
+        const quantity = Math.abs(parseFloat(position.totalQuantity));
         const isLong = position.side === 'long';
         
         // Calculate stop loss price
