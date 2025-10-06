@@ -233,6 +233,7 @@ export const frontendStrategySchema = z.object({
   }, "Slippage tolerance must be between 0.1% and 5%").default("0.5"),
   orderType: z.enum(["market", "limit"]).default("limit"),
   maxRetryDurationMs: z.number().min(5000).max(300000).default(30000), // 5s to 5min
+  priceChaseMode: z.boolean().default(true),
   marginAmount: z.string().refine((val) => {
     const num = parseFloat(val);
     return num >= 1 && num <= 100;
