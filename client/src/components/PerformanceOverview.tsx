@@ -432,40 +432,40 @@ export default function PerformanceOverview() {
         {/* Main Balance Section with Risk Bar */}
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_2fr_auto] gap-6">
           {/* Total Balance - Prominent */}
-          <div className="space-y-2">
+          <div className="space-y-3">
             <div className="flex items-center gap-2">
-              <DollarSign className="h-4 w-4 text-muted-foreground" />
-              <div className="text-xs text-muted-foreground uppercase tracking-wider">Total Balance</div>
+              <DollarSign className="h-5 w-5 text-muted-foreground" />
+              <div className="text-sm text-muted-foreground uppercase tracking-wider">Total Balance</div>
             </div>
-            <div className="text-5xl font-mono font-bold" data-testid="text-total-balance">
+            <div className="text-7xl font-mono font-bold" data-testid="text-total-balance">
               ${totalBalance.toFixed(2)}
             </div>
-            <div className={`text-sm font-mono ${unrealizedPnl >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`}>
+            <div className={`text-base font-mono ${unrealizedPnl >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`}>
               Unrealized: {unrealizedPnl >= 0 ? '+' : ''}${unrealizedPnl.toFixed(2)}
             </div>
-            <div className={`text-xs text-muted-foreground`}>
+            <div className={`text-sm text-muted-foreground`}>
               {unrealizedPnlPercent >= 0 ? '+' : ''}{unrealizedPnlPercent.toFixed(2)}%
             </div>
           </div>
 
           {/* Available & Realized */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <div className="text-xs text-muted-foreground uppercase tracking-wider">Available</div>
-              <div className="text-3xl font-mono font-bold" data-testid="text-available-balance">
+            <div className="space-y-3">
+              <div className="text-sm text-muted-foreground uppercase tracking-wider">Available</div>
+              <div className="text-5xl font-mono font-bold" data-testid="text-available-balance">
                 ${availableBalance.toFixed(2)}
               </div>
-              <div className="text-xs text-muted-foreground">
+              <div className="text-sm text-muted-foreground">
                 For trading
               </div>
             </div>
 
-            <div className="space-y-2">
-              <div className="text-xs text-muted-foreground uppercase tracking-wider">Realized P&L</div>
-              <div className={`text-3xl font-mono font-bold ${displayPerformance.totalRealizedPnl >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`} data-testid="text-realized-pnl">
+            <div className="space-y-3">
+              <div className="text-sm text-muted-foreground uppercase tracking-wider">Realized P&L</div>
+              <div className={`text-5xl font-mono font-bold ${displayPerformance.totalRealizedPnl >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`} data-testid="text-realized-pnl">
                 {formatCurrency(displayPerformance.totalRealizedPnl)}
               </div>
-              <div className="text-xs text-muted-foreground">
+              <div className="text-sm text-muted-foreground">
                 {realizedPnlPercent >= 0 ? '+' : ''}{realizedPnlPercent.toFixed(2)}% · {displayPerformance.totalTrades} trades
               </div>
             </div>
