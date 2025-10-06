@@ -6,7 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import LiquidationRow from "./LiquidationRow";
-import { ChevronLeft, ChevronRight, Activity, Zap } from "lucide-react";
+import { ChevronLeft, ChevronRight, Activity, Zap, Clock } from "lucide-react";
+import { useElapsedTime } from "@/hooks/use-elapsed-time";
 
 interface Liquidation {
   id: string;
@@ -142,6 +143,17 @@ export default function LiveLiquidationsSidebar({
     return { text: ordinal, color: 'bg-gray-500 text-white' };
   };
 
+  // Component to display elapsed time for a liquidation
+  function ElapsedTimeDisplay({ timestamp }: { timestamp: Date }) {
+    const elapsed = useElapsedTime(timestamp);
+    return (
+      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+        <Clock className="h-3 w-3" />
+        <span>{elapsed}</span>
+      </div>
+    );
+  }
+
   return (
     <>
       {/* Desktop Sidebar */}
@@ -231,12 +243,15 @@ export default function LiveLiquidationsSidebar({
                           {liquidation.side.toUpperCase()}
                         </Badge>
                       </div>
-                      <div className="text-xs text-muted-foreground font-mono">
-                        {new Date(liquidation.timestamp).toLocaleTimeString([], { 
-                          hour: '2-digit', 
-                          minute: '2-digit',
-                          second: '2-digit'
-                        })}
+                      <div className="flex flex-col items-end gap-0.5">
+                        <div className="text-xs text-muted-foreground font-mono">
+                          {new Date(liquidation.timestamp).toLocaleTimeString([], { 
+                            hour: '2-digit', 
+                            minute: '2-digit',
+                            second: '2-digit'
+                          })}
+                        </div>
+                        <ElapsedTimeDisplay timestamp={new Date(liquidation.timestamp)} />
                       </div>
                     </div>
                     
@@ -405,8 +420,11 @@ export default function LiveLiquidationsSidebar({
                         </div>
                         <div className="text-sm font-bold font-mono">{formatValue(parseFloat(liquidation.value))}</div>
                       </div>
-                      <div className="text-xs text-muted-foreground font-mono">
-                        @ ${parseFloat(liquidation.price).toFixed(4)}
+                      <div className="flex items-center justify-between">
+                        <div className="text-xs text-muted-foreground font-mono">
+                          @ ${parseFloat(liquidation.price).toFixed(4)}
+                        </div>
+                        <ElapsedTimeDisplay timestamp={new Date(liquidation.timestamp)} />
                       </div>
                       {index === 0 && (
                         <div className="absolute -left-1 top-1/2 transform -translate-y-1/2 w-1 h-8 bg-primary rounded-r animate-pulse"></div>
