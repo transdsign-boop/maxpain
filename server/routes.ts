@@ -17,6 +17,12 @@ const LIQUIDATION_WINDOW_SECONDS = 60;
 // Fixed user ID for personal app (no authentication needed)
 const DEFAULT_USER_ID = "personal_user";
 
+// Sanitize strategy object before sending to frontend (remove sensitive API secrets)
+function sanitizeStrategy(strategy: any) {
+  const { bybitApiSecret, ...safeStrategy } = strategy;
+  return safeStrategy;
+}
+
 // Simple cache to prevent excessive API calls to Aster DEX
 interface CacheEntry<T> {
   data: T;
@@ -960,7 +966,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/strategies", async (req, res) => {
     try {
       const strategies = await storage.getStrategiesByUser(DEFAULT_USER_ID);
-      res.json(strategies);
+      // Strip out sensitive API secrets before sending to frontend
+      const safeStrategies = strategies.map(sanitizeStrategy);
+      res.json(safeStrategies);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch strategies" });
     }
@@ -1973,7 +1981,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
       
       const strategy = await storage.createStrategy(strategyData);
-      res.status(201).json(strategy);
+      // Strip sensitive API secrets before sending to frontend
+      res.status(201).json(sanitizeStrategy(strategy));
     } catch (error) {
       console.error('Error creating strategy:', error);
       if (error instanceof Error && 'issues' in error) {
@@ -1994,6 +2003,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const existingStrategy = await storage.getStrategy(strategyId);
       if (!existingStrategy) {
         return res.status(404).json({ error: "Strategy not found" });
+      }
+      
+      // Validate: Demo mode requires Bybit API credentials
+      if (validatedUpdates.tradingMode === 'demo') {
+        const bybitKey = validatedUpdates.bybitApiKey || existingStrategy.bybitApiKey;
+        const bybitSecret = validatedUpdates.bybitApiSecret || existingStrategy.bybitApiSecret;
+        
+        if (!bybitKey || !bybitSecret) {
+          return res.status(400).json({ 
+            error: "Bybit API credentials required for demo mode",
+            details: "Please provide both Bybit API key and secret to use demo trading on Bybit testnet" 
+          });
+        }
       }
       
       // Track changes for active sessions
@@ -2027,9 +2049,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (validatedUpdates.tradingMode === 'live') {
           updateData.liveSessionStartedAt = new Date().toISOString();
           console.log('🟢 Starting new live trading session');
-        } else if (validatedUpdates.tradingMode === 'paper') {
+        } else if (validatedUpdates.tradingMode === 'demo') {
           updateData.liveSessionStartedAt = null;
-          console.log('📄 Switching to paper trading mode - clearing live session timestamp');
+          console.log('📄 Switching to demo trading mode - clearing live session timestamp');
         }
       }
       
@@ -2056,14 +2078,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
-      // Fetch and return refreshed strategy
+      // Fetch and return refreshed strategy (without sensitive secrets)
       const updatedStrategy = await storage.getStrategy(strategyId);
       console.log('📊 Updated strategy from DB:', JSON.stringify(updatedStrategy, null, 2));
       
       // Notify strategy engine to reload the strategy
       strategyEngine.reloadStrategy(strategyId);
       
-      res.status(200).json(updatedStrategy);
+      // Strip sensitive API secrets before sending to frontend
+      res.status(200).json(sanitizeStrategy(updatedStrategy));
     } catch (error) {
       console.error('Error updating strategy:', error);
       if (error instanceof Error && 'issues' in error) {
@@ -2368,6 +2391,78 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error syncing balance:', error);
       res.status(500).json({ error: "Failed to sync balance" });
+    }
+  });
+
+  // Bybit API routes
+  app.post("/api/bybit/test-connection", async (req, res) => {
+    try {
+      const { apiKey, apiSecret } = req.body;
+      
+      if (!apiKey || !apiSecret) {
+        return res.status(400).json({ error: "API key and secret required" });
+      }
+      
+      // Import BybitClient class
+      const { BybitClient } = await import('./bybit-client');
+      
+      // Create a new client instance for this request
+      const client = new BybitClient(apiKey, apiSecret);
+      
+      // Test connection by fetching wallet balance
+      const result = await client.getBalance();
+      
+      res.json({ 
+        success: true, 
+        message: "Connection successful",
+        balance: result.balance 
+      });
+    } catch (error: any) {
+      console.error('Error testing Bybit connection:', error);
+      res.status(400).json({ 
+        success: false, 
+        error: error.message || "Failed to connect" 
+      });
+    }
+  });
+
+  app.post("/api/bybit/balance", async (req, res) => {
+    try {
+      const { apiKey, apiSecret } = req.body;
+      
+      if (!apiKey || !apiSecret) {
+        return res.status(400).json({ error: "API key and secret required" });
+      }
+      
+      const { BybitClient } = await import('./bybit-client');
+      const client = new BybitClient(apiKey, apiSecret);
+      
+      const result = await client.getBalance();
+      
+      res.json({ balance: result.balance });
+    } catch (error: any) {
+      console.error('Error fetching Bybit balance:', error);
+      res.status(500).json({ error: error.message || "Failed to fetch balance" });
+    }
+  });
+
+  app.post("/api/bybit/positions", async (req, res) => {
+    try {
+      const { apiKey, apiSecret } = req.body;
+      
+      if (!apiKey || !apiSecret) {
+        return res.status(400).json({ error: "API key and secret required" });
+      }
+      
+      const { BybitClient } = await import('./bybit-client');
+      const client = new BybitClient(apiKey, apiSecret);
+      
+      const positions = await client.getPositions('USDT');
+      
+      res.json({ positions: positions || [] });
+    } catch (error: any) {
+      console.error('Error fetching Bybit positions:', error);
+      res.status(500).json({ error: error.message || "Failed to fetch positions" });
     }
   });
 
