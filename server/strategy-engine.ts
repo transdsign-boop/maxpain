@@ -13,6 +13,7 @@ import { fetchActualFills, aggregateFills } from './exchange-utils';
 import { orderProtectionService } from './order-protection-service';
 import { cascadeDetectorService } from './cascade-detector-service';
 import { calculateNextLayer, calculateATRPercent } from './dca-calculator';
+import { bybitOrderManager } from './bybit-order-manager';
 
 // Aster DEX fee schedule
 const ASTER_MAKER_FEE_PERCENT = 0.01;  // 0.01% for limit orders (adds liquidity) 
@@ -1213,8 +1214,60 @@ export class StrategyEngine extends EventEmitter {
         if (finalDeviation <= slippageTolerance) {
           console.log(`✅ Price acceptable: $${currentPrice} (deviation: ${(finalDeviation * 100).toFixed(2)}%)`);
           
-          // Check if this is live or paper trading
-          if (session.mode === 'live') {
+          // Route to appropriate exchange based on session exchange type
+          // Default to 'aster' for backward compatibility with legacy sessions
+          const sessionExchange = session.exchange || 'aster';
+          
+          if (session.mode === 'demo' && strategy.bybitApiKey && strategy.bybitApiSecret) {
+            // Execute demo order on Bybit testnet (real execution with fake money)
+            console.log(`🎯 Executing Bybit demo order: ${quantity.toFixed(4)} ${symbol} at $${orderPrice}`);
+            
+            // Initialize Bybit client if not already done
+            if (!bybitOrderManager.isInitialized()) {
+              bybitOrderManager.initialize(strategy.bybitApiKey, strategy.bybitApiSecret);
+            }
+            
+            if (!bybitOrderManager.isInitialized()) {
+              console.error('❌ Bybit client not initialized - missing API credentials');
+              return;
+            }
+            
+            // Execute order on Bybit
+            const bybitOrderResult = await bybitOrderManager.executeEntryOrder({
+              symbol,
+              side: positionSide || 'long',
+              quantity: quantity.toString(),
+              orderType: strategy.orderType,
+              price: orderPrice.toString(),
+              leverage: strategy.leverage,
+            });
+            
+            if (!bybitOrderResult.success) {
+              console.error(`❌ Bybit order failed: ${bybitOrderResult.error}`);
+              return;
+            }
+            
+            console.log(`✅ BYBIT DEMO ORDER EXECUTED: ${quantity.toFixed(4)} ${symbol} at $${orderPrice}`);
+            console.log(`📝 Order ID: ${bybitOrderResult.orderId || 'N/A'}`);
+            
+            // Store order record (NOT paper trading simulation - this is a real Bybit execution record)
+            const order = await storage.placePaperOrder({
+              sessionId: session.id,
+              symbol,
+              side,
+              orderType: strategy.orderType,
+              quantity: quantity.toString(),
+              price: orderPrice.toString(),
+              triggerLiquidationId,
+              layerNumber,
+            });
+            
+            // TODO: Fetch actual fill data from Bybit API for accurate fill price and fees
+            // For now, use estimated values (Bybit fills happen immediately for market orders)
+            const estimatedFee = (quantity * orderPrice) * (strategy.orderType === 'market' ? ASTER_TAKER_FEE_PERCENT : ASTER_MAKER_FEE_PERCENT) / 100;
+            await this.fillPaperOrder(order, orderPrice, quantity, estimatedFee);
+            
+          } else if (sessionExchange === 'aster' || session.mode === 'live') {
             // Execute live order on Aster DEX
             // Only pass positionSide if the EXCHANGE is in dual mode (not based on strategy settings)
             const liveOrderResult = await this.executeLiveOrder({
@@ -3206,14 +3259,28 @@ export class StrategyEngine extends EventEmitter {
         return;
       }
       
-      // Only update TP/SL for live trading mode
-      if (strategy.tradingMode !== 'live') {
+      // Determine which exchange to use based on trading mode
+      const isDemo = strategy.tradingMode === 'demo';
+      const isLive = strategy.tradingMode === 'live';
+      
+      if (!isDemo && !isLive) {
+        // Skip TP/SL for old paper trading simulations
         return;
       }
       
-      // OrderProtectionService will fetch live exchange position for accurate TP/SL
-      // (Database position may be stale due to async fill processing)
-      await orderProtectionService.updateProtectiveOrders(position, strategy);
+      if (isDemo) {
+        // Use Bybit order manager for demo trading
+        if (!bybitOrderManager.isInitialized() && strategy.bybitApiKey && strategy.bybitApiSecret) {
+          bybitOrderManager.initialize(strategy.bybitApiKey, strategy.bybitApiSecret);
+        }
+        
+        if (bybitOrderManager.isInitialized()) {
+          await bybitOrderManager.updateProtectiveOrders(position, strategy);
+        }
+      } else if (isLive) {
+        // Use Aster order protection service for live trading
+        await orderProtectionService.updateProtectiveOrders(position, strategy);
+      }
       
     } catch (error) {
       console.error('❌ Error updating protective orders:', error);

@@ -18,7 +18,7 @@ export default function LiveModeToggle() {
 
   // Toggle trading mode mutation
   const toggleModeMutation = useMutation({
-    mutationFn: async (newMode: 'live' | 'paper') => {
+    mutationFn: async (newMode: 'live' | 'demo') => {
       if (!activeStrategy) throw new Error('No active strategy');
       
       const updateData: any = {
@@ -38,10 +38,10 @@ export default function LiveModeToggle() {
     onSuccess: (strategy) => {
       queryClient.invalidateQueries({ queryKey: ['/api/strategies'] });
       toast({
-        title: strategy.tradingMode === 'live' ? "Live Trading Enabled" : "Paper Trading Enabled",
+        title: strategy.tradingMode === 'live' ? "Aster DEX Live Trading" : "Bybit Demo Trading",
         description: strategy.tradingMode === 'live' 
-          ? "Real trades will now be executed on Aster DEX" 
-          : "All trades are now simulated",
+          ? "Real money trades on Aster DEX" 
+          : "Demo trades on Bybit testnet (fake money)",
       });
     },
     onError: () => {
@@ -55,7 +55,7 @@ export default function LiveModeToggle() {
 
   const handleToggle = (checked: boolean) => {
     if (isStrategyRunning) return;
-    toggleModeMutation.mutate(checked ? 'live' : 'paper');
+    toggleModeMutation.mutate(checked ? 'live' : 'demo');
   };
 
   if (!activeStrategy) return null;
@@ -74,7 +74,7 @@ export default function LiveModeToggle() {
           className="text-sm font-medium cursor-pointer hidden md:block"
           data-testid="label-live-mode"
         >
-          {isLiveMode ? "Live" : "Paper"}
+          {isLiveMode ? "Aster DEX" : "Bybit Demo"}
         </Label>
       </div>
     </div>

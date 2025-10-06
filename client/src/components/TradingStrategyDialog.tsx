@@ -40,7 +40,9 @@ interface Strategy {
   maxRetryDurationMs: number;
   priceChaseMode: boolean;
   marginAmount: string;
-  tradingMode: "paper" | "live";
+  tradingMode: "demo" | "live";
+  bybitApiKey?: string;
+  bybitApiSecret?: string;
   hedgeMode: boolean;
   isActive: boolean;
   maxOpenPositions: number;
@@ -78,6 +80,8 @@ const strategyFormSchema = z.object({
     const num = parseFloat(val);
     return !isNaN(num) && num >= 1 && num <= 100;
   }, "Account usage must be between 1% and 100%"),
+  bybitApiKey: z.string().optional(),
+  bybitApiSecret: z.string().optional(),
   hedgeMode: z.boolean(),
   maxOpenPositions: z.number().min(0).max(20),
   maxPortfolioRiskPercent: z.string().refine((val) => {
@@ -620,6 +624,8 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         maxRetryDurationMs: strategy.maxRetryDurationMs,
         priceChaseMode: strategy.priceChaseMode,
         marginAmount: String(strategy.marginAmount),
+        bybitApiKey: strategy.bybitApiKey || '',
+        bybitApiSecret: strategy.bybitApiSecret || '',
         hedgeMode: strategy.hedgeMode,
         maxOpenPositions: strategy.maxOpenPositions || 5,
         maxPortfolioRiskPercent: String(strategy.maxPortfolioRiskPercent || "15.0"),
@@ -645,7 +651,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
       setActiveStrategy(updatedStrategy);
       toast({
         title: "Strategy Started",
-        description: `${updatedStrategy.tradingMode === 'live' ? 'Live' : 'Paper'} trading strategy is now active and monitoring liquidations.`,
+        description: `${updatedStrategy.tradingMode === 'live' ? 'Aster DEX live' : 'Bybit demo'} trading strategy is now active and monitoring liquidations.`,
       });
       queryClient.invalidateQueries({ queryKey: ['/api/strategies'] });
     },
@@ -922,6 +928,8 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         maxRetryDurationMs: strategy.maxRetryDurationMs,
         priceChaseMode: strategy.priceChaseMode,
         marginAmount: strategy.marginAmount,
+        bybitApiKey: strategy.bybitApiKey || '',
+        bybitApiSecret: strategy.bybitApiSecret || '',
         hedgeMode: strategy.hedgeMode,
         maxOpenPositions: strategy.maxOpenPositions || 5,
         maxPortfolioRiskPercent: String(strategy.maxPortfolioRiskPercent || "15.0"),
@@ -1737,11 +1745,78 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
 
               <Separator />
 
-              {/* API Connection */}
+              {/* Bybit API Credentials (for Demo Mode) */}
+              <Collapsible>
+                <div className="space-y-4">
+                  <CollapsibleTrigger className="w-full">
+                    <div className="flex items-center justify-between cursor-pointer hover-elevate p-3 rounded-md">
+                      <Label className="text-base font-medium flex items-center gap-2 cursor-pointer">
+                        <Shield className="h-4 w-4" />
+                        Bybit Testnet API (Demo Mode)
+                        <ChevronDown className="h-4 w-4" />
+                      </Label>
+                    </div>
+                  </CollapsibleTrigger>
+                  
+                  <CollapsibleContent>
+                    <div className="space-y-4 pt-2">
+                      <div className="text-sm text-muted-foreground bg-muted/30 p-3 rounded-md">
+                        Demo mode uses Bybit testnet for realistic order execution with fake money. Get free testnet API credentials at <a href="https://testnet.bybit.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">testnet.bybit.com</a>
+                      </div>
+                      
+                      <FormField
+                        control={form.control}
+                        name="bybitApiKey"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel data-testid="label-bybit-api-key">Bybit API Key</FormLabel>
+                            <FormControl>
+                              <Input
+                                {...field}
+                                type="text"
+                                placeholder="Enter your Bybit testnet API key"
+                                data-testid="input-bybit-api-key"
+                              />
+                            </FormControl>
+                            <FormDescription>
+                              Your Bybit testnet API key for demo trading
+                            </FormDescription>
+                          </FormItem>
+                        )}
+                      />
+                      
+                      <FormField
+                        control={form.control}
+                        name="bybitApiSecret"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel data-testid="label-bybit-api-secret">Bybit API Secret</FormLabel>
+                            <FormControl>
+                              <Input
+                                {...field}
+                                type="password"
+                                placeholder="Enter your Bybit testnet API secret"
+                                data-testid="input-bybit-api-secret"
+                              />
+                            </FormControl>
+                            <FormDescription>
+                              Your Bybit testnet API secret (stored securely)
+                            </FormDescription>
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  </CollapsibleContent>
+                </div>
+              </Collapsible>
+
+              <Separator />
+
+              {/* API Connection (Aster DEX - Live Mode) */}
               <div className="space-y-4">
                 <Label className="text-base font-medium flex items-center gap-2">
                   <Key className="h-4 w-4" />
-                  API Connection
+                  Aster DEX API (Live Mode)
                 </Label>
                 
                 <div className="space-y-3">
