@@ -71,6 +71,10 @@ export class StrategyEngine extends EventEmitter {
   private fillCooldownMs: number = 30000; // 30 second cooldown between layers/entries
   private leverageSetForSymbols: Map<string, number> = new Map(); // symbol -> leverage value (track actual leverage configured on exchange)
   private pendingQ1Values: Map<string, number> = new Map(); // "sessionId-symbol-side" -> q1 base layer size for position being created
+  
+  // Cached credentials loaded at startup (NEVER from environment variables)
+  private cachedApiKey: string = '';
+  private cachedSecretKey: string = '';
 
   constructor() {
     super();
@@ -179,11 +183,32 @@ export class StrategyEngine extends EventEmitter {
     console.log('🚀 StrategyEngine starting...');
     this.isRunning = true;
     
+    // Load credentials from default strategy for engine operations
+    // (Individual operations will use their own strategy credentials when available)
+    try {
+      const DEFAULT_USER_ID = 'default_user';
+      const defaultStrategy = await storage.getOrCreateDefaultStrategy(DEFAULT_USER_ID);
+      if (defaultStrategy.asterApiKey && defaultStrategy.asterApiSecret) {
+        this.cachedApiKey = defaultStrategy.asterApiKey;
+        this.cachedSecretKey = defaultStrategy.asterApiSecret;
+        console.log('✅ Loaded API credentials from Global Settings');
+      } else {
+        console.log('⚠️ API credentials not configured - some engine features unavailable');
+      }
+    } catch (error) {
+      console.error('❌ Failed to load credentials at startup:', error);
+    }
+    
     // Fetch exchange info for precision requirements (for live trading)
     await this.fetchExchangeInfo();
     
-    // Fetch and cache the exchange's position mode setting
-    this.exchangePositionMode = await this.fetchExchangePositionMode();
+    // Fetch and cache the exchange's position mode setting (only if credentials available)
+    if (this.cachedApiKey && this.cachedSecretKey) {
+      this.exchangePositionMode = await this.fetchExchangePositionMode(this.cachedApiKey, this.cachedSecretKey);
+    } else {
+      console.log('⚠️ Skipping position mode check - credentials not available');
+      this.exchangePositionMode = 'one-way'; // Default assumption
+    }
     
     // Load active strategies and sessions
     await this.loadActiveStrategies();
@@ -1006,7 +1031,7 @@ export class StrategyEngine extends EventEmitter {
         const currentLeverage = this.leverageSetForSymbols.get(liquidation.symbol);
         if (currentLeverage !== leverage) {
           console.log(`⚙️ Setting ${liquidation.symbol} leverage to ${leverage}x on exchange...`);
-          const leverageSet = await this.setLeverage(liquidation.symbol, leverage);
+          const leverageSet = await this.setLeverage(liquidation.symbol, leverage, this.cachedApiKey, this.cachedSecretKey);
           if (leverageSet) {
             this.leverageSetForSymbols.set(liquidation.symbol, leverage);
           } else {
@@ -1767,13 +1792,10 @@ export class StrategyEngine extends EventEmitter {
 
 
   // Get the exchange's position mode (one-way or dual)
-  private async fetchExchangePositionMode(): Promise<'one-way' | 'dual'> {
+  private async fetchExchangePositionMode(apiKey: string, secretKey: string): Promise<'one-way' | 'dual'> {
     try {
-      const apiKey = process.env.ASTER_API_KEY;
-      const secretKey = process.env.ASTER_SECRET_KEY;
-      
       if (!apiKey || !secretKey) {
-        console.error('❌ Cannot determine position mode: API keys not configured');
+        console.error('❌ Cannot determine position mode: API credentials not configured');
         return 'one-way'; // Default to one-way mode
       }
       
@@ -1811,13 +1833,10 @@ export class StrategyEngine extends EventEmitter {
   }
 
   // Get all exchange positions from Aster DEX
-  private async getExchangePositions(): Promise<any[]> {
+  private async getExchangePositions(apiKey: string, secretKey: string): Promise<any[]> {
     try {
-      const apiKey = process.env.ASTER_API_KEY;
-      const secretKey = process.env.ASTER_SECRET_KEY;
-      
       if (!apiKey || !secretKey) {
-        console.error('❌ Aster DEX API keys not configured');
+        console.error('❌ Aster DEX credentials not configured');
         return [];
       }
       
@@ -1875,14 +1894,11 @@ export class StrategyEngine extends EventEmitter {
   }
 
   // Cancel an order on Aster DEX
-  private async cancelExchangeOrder(symbol: string, orderId: string): Promise<{ success: boolean; error?: string }> {
+  private async cancelExchangeOrder(symbol: string, orderId: string, apiKey: string, secretKey: string): Promise<{ success: boolean; error?: string }> {
     try {
-      const apiKey = process.env.ASTER_API_KEY;
-      const secretKey = process.env.ASTER_SECRET_KEY;
-      
       if (!apiKey || !secretKey) {
-        console.error('❌ Aster DEX API keys not configured');
-        return { success: false, error: 'API keys not configured' };
+        console.error('❌ Aster DEX credentials not configured');
+        return { success: false, error: 'API credentials not configured' };
       }
       
       const timestamp = Date.now();
@@ -1926,13 +1942,10 @@ export class StrategyEngine extends EventEmitter {
   }
 
   // Get all open orders from Aster DEX
-  private async getOpenOrders(): Promise<any[]> {
+  private async getOpenOrders(apiKey: string, secretKey: string): Promise<any[]> {
     try {
-      const apiKey = process.env.ASTER_API_KEY;
-      const secretKey = process.env.ASTER_SECRET_KEY;
-      
       if (!apiKey || !secretKey) {
-        console.error('❌ Aster DEX API keys not configured');
+        console.error('❌ Aster DEX credentials not configured');
         return [];
       }
       
@@ -1967,13 +1980,10 @@ export class StrategyEngine extends EventEmitter {
   }
 
   // Set leverage for a symbol on Aster DEX
-  private async setLeverage(symbol: string, leverage: number): Promise<boolean> {
+  private async setLeverage(symbol: string, leverage: number, apiKey: string, secretKey: string): Promise<boolean> {
     try {
-      const apiKey = process.env.ASTER_API_KEY;
-      const secretKey = process.env.ASTER_SECRET_KEY;
-      
       if (!apiKey || !secretKey) {
-        console.error('❌ Aster DEX API keys not configured');
+        console.error('❌ Aster DEX credentials not configured');
         return false;
       }
       
@@ -2019,13 +2029,10 @@ export class StrategyEngine extends EventEmitter {
   }
 
   // Cancel an order on Aster DEX
-  private async cancelOrder(symbol: string, orderId: string): Promise<boolean> {
+  private async cancelOrder(symbol: string, orderId: string, apiKey: string, secretKey: string): Promise<boolean> {
     try {
-      const apiKey = process.env.ASTER_API_KEY;
-      const secretKey = process.env.ASTER_SECRET_KEY;
-      
       if (!apiKey || !secretKey) {
-        console.error('❌ Aster DEX API keys not configured');
+        console.error('❌ Aster DEX credentials not configured');
         return false;
       }
       
@@ -2082,7 +2089,7 @@ export class StrategyEngine extends EventEmitter {
       }
 
       // Get all open orders from Aster DEX
-      const allOrders = await this.getOpenOrders();
+      const allOrders = await this.getOpenOrders(this.cachedApiKey, this.cachedSecretKey);
       if (allOrders.length === 0) {
         console.log('✅ No open orders found on exchange');
         return 0;
@@ -2192,7 +2199,7 @@ export class StrategyEngine extends EventEmitter {
         }
 
         // Cancel the orphaned order
-        const canceled = await this.cancelOrder(symbol, orderId);
+        const canceled = await this.cancelOrder(symbol, orderId, this.cachedApiKey, this.cachedSecretKey);
         if (canceled) {
           canceledCount++;
         }
@@ -2221,7 +2228,7 @@ export class StrategyEngine extends EventEmitter {
         return 0;
       }
 
-      const allOrders = await this.getOpenOrders();
+      const allOrders = await this.getOpenOrders(this.cachedApiKey, this.cachedSecretKey);
       if (allOrders.length === 0) {
         return 0;
       }
@@ -2249,7 +2256,7 @@ export class StrategyEngine extends EventEmitter {
             
             console.log(`⚠️ Found stale limit order ${orderId}, age: ${ageSeconds.toFixed(0)}s`);
             
-            const canceled = await this.cancelOrder(symbol, orderId);
+            const canceled = await this.cancelOrder(symbol, orderId, this.cachedApiKey, this.cachedSecretKey);
             if (canceled) {
               canceledCount++;
             }
@@ -2279,13 +2286,13 @@ export class StrategyEngine extends EventEmitter {
       }
 
       // Get all exchange positions
-      const exchangePositions = await this.getExchangePositions();
+      const exchangePositions = await this.getExchangePositions(this.cachedApiKey, this.cachedSecretKey);
       if (exchangePositions.length === 0) {
         return 0;
       }
 
       // Get all open orders
-      const allOrders = await this.getOpenOrders();
+      const allOrders = await this.getOpenOrders(this.cachedApiKey, this.cachedSecretKey);
       
       // Process each position
       for (const exchangePos of exchangePositions) {
@@ -2457,13 +2464,13 @@ export class StrategyEngine extends EventEmitter {
       }
 
       // Get all exchange positions
-      const exchangePositions = await this.getExchangePositions();
+      const exchangePositions = await this.getExchangePositions(this.cachedApiKey, this.cachedSecretKey);
       if (exchangePositions.length === 0) {
         return results;
       }
 
       // Get all open orders
-      const allOrders = await this.getOpenOrders();
+      const allOrders = await this.getOpenOrders(this.cachedApiKey, this.cachedSecretKey);
       
       // Process each position
       for (const exchangePos of exchangePositions) {
@@ -2569,13 +2576,13 @@ export class StrategyEngine extends EventEmitter {
       let fixedCount = 0;
 
       // Get all exchange positions
-      const exchangePositions = await this.getExchangePositions();
+      const exchangePositions = await this.getExchangePositions(this.cachedApiKey, this.cachedSecretKey);
       if (exchangePositions.length === 0) {
         return 0;
       }
 
       // Get all open orders
-      const allOrders = await this.getOpenOrders();
+      const allOrders = await this.getOpenOrders(this.cachedApiKey, this.cachedSecretKey);
       
       // Process each position
       for (const exchangePos of exchangePositions) {
@@ -2655,7 +2662,7 @@ export class StrategyEngine extends EventEmitter {
           console.log(`   Entry: $${entryPrice.toFixed(2)}, Stop-loss: ${stopLossPercent}%, Leverage: ${strategy.leverage}x`);
           
           // Cancel the incorrect order
-          const cancelResult = await this.cancelExchangeOrder(symbol, existingSlOrder.orderId);
+          const cancelResult = await this.cancelExchangeOrder(symbol, existingSlOrder.orderId, this.cachedApiKey, this.cachedSecretKey);
           if (cancelResult.success) {
             console.log(`   ✓ Canceled incorrect SL order`);
             
@@ -3325,7 +3332,7 @@ export class StrategyEngine extends EventEmitter {
   }
   
   // Fetch all open orders for a symbol from the exchange
-  private async fetchExchangeOrders(symbol: string): Promise<Array<{ 
+  private async fetchExchangeOrders(symbol: string, apiKey: string, secretKey: string): Promise<Array<{ 
     symbol: string; 
     type: string; 
     positionSide: string;
@@ -3333,9 +3340,6 @@ export class StrategyEngine extends EventEmitter {
     stopPrice?: string;
   }>> {
     try {
-      const apiKey = process.env.ASTER_API_KEY;
-      const secretKey = process.env.ASTER_SECRET_KEY;
-      
       if (!apiKey || !secretKey) {
         return [];
       }
@@ -3384,11 +3388,8 @@ export class StrategyEngine extends EventEmitter {
   }
 
   // Get active TP/SL orders for a specific position (symbol + side) from the exchange
-  private async getActiveTPSLOrders(symbol: string, positionSide: string): Promise<Array<{ orderId: string; type: string }>> {
+  private async getActiveTPSLOrders(symbol: string, positionSide: string, apiKey: string, secretKey: string): Promise<Array<{ orderId: string; type: string }>> {
     try {
-      const apiKey = process.env.ASTER_API_KEY;
-      const secretKey = process.env.ASTER_SECRET_KEY;
-      
       if (!apiKey || !secretKey) {
         return [];
       }
@@ -3451,12 +3452,9 @@ export class StrategyEngine extends EventEmitter {
   }
 
   // Cancel an order on the exchange
-  private async cancelExchangeOrder(symbol: string, orderId: string): Promise<void> {
-    const apiKey = process.env.ASTER_API_KEY;
-    const secretKey = process.env.ASTER_SECRET_KEY;
-    
+  private async cancelExchangeOrder(symbol: string, orderId: string, apiKey: string, secretKey: string): Promise<void> {
     if (!apiKey || !secretKey) {
-      throw new Error('API keys not configured');
+      throw new Error('API credentials not configured');
     }
     
     const timestamp = Date.now();
