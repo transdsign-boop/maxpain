@@ -302,6 +302,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } else if (exchange === 'bybit') {
         const apiKey = activeStrategy?.bybitApiKey;
         const secretKey = activeStrategy?.bybitApiSecret;
+        const endpoint = activeStrategy?.bybitEndpoint || 'demo';
         
         if (!apiKey || !secretKey) {
           return res.status(200).json({ 
@@ -310,8 +311,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
         }
         
+        // Get correct base URL based on endpoint
+        const baseUrl = endpoint === 'demo' 
+          ? 'https://api-demo.bybit.com' 
+          : 'https://api-testnet.bybit.com';
+        
         // Simple test: fetch server time (public endpoint)
-        const response = await fetch('https://api-testnet.bybit.com/v5/market/time', {
+        const response = await fetch(`${baseUrl}/v5/market/time`, {
           method: 'GET',
           headers: {
             'X-BAPI-API-KEY': apiKey
@@ -319,9 +325,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
         
         if (!response.ok) {
+          const body = await response.text();
           return res.status(200).json({ 
             success: false, 
-            error: `Bybit API returned ${response.status}` 
+            error: `Bybit API returned ${response.status}: ${body.substring(0, 100)}` 
           });
         }
         

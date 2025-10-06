@@ -43,6 +43,7 @@ interface Strategy {
   tradingMode: "demo" | "live";
   bybitApiKey?: string;
   bybitApiSecret?: string;
+  bybitEndpoint?: "demo" | "testnet";
   asterApiKey?: string;
   asterApiSecret?: string;
   hedgeMode: boolean;
@@ -84,6 +85,7 @@ const strategyFormSchema = z.object({
   }, "Account usage must be between 1% and 100%"),
   bybitApiKey: z.string().optional(),
   bybitApiSecret: z.string().optional(),
+  bybitEndpoint: z.enum(["demo", "testnet"]).default("demo"),
   asterApiKey: z.string().optional(),
   asterApiSecret: z.string().optional(),
   hedgeMode: z.boolean(),
@@ -630,6 +632,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         marginAmount: String(strategy.marginAmount),
         bybitApiKey: strategy.bybitApiKey || '',
         bybitApiSecret: strategy.bybitApiSecret || '',
+        bybitEndpoint: strategy.bybitEndpoint || 'demo',
         asterApiKey: strategy.asterApiKey || '',
         asterApiSecret: strategy.asterApiSecret || '',
         hedgeMode: strategy.hedgeMode,
@@ -936,6 +939,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         marginAmount: strategy.marginAmount,
         bybitApiKey: strategy.bybitApiKey || '',
         bybitApiSecret: strategy.bybitApiSecret || '',
+        bybitEndpoint: strategy.bybitEndpoint || 'demo',
         asterApiKey: strategy.asterApiKey || '',
         asterApiSecret: strategy.asterApiSecret || '',
         hedgeMode: strategy.hedgeMode,
@@ -1769,8 +1773,38 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                   <CollapsibleContent>
                     <div className="space-y-4 pt-2">
                       <div className="text-sm text-muted-foreground bg-muted/30 p-3 rounded-md">
-                        Demo mode uses Bybit testnet for realistic order execution with fake money. Get free testnet API credentials at <a href="https://testnet.bybit.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">testnet.bybit.com</a>
+                        <strong>Demo Trading</strong> (api-demo.bybit.com): Create API keys from your main Bybit account while in "Demo Trading" mode. Uses real market data with simulated funds. <a href="https://www.bybit.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Learn more</a>
+                        <br/><br/>
+                        <strong>Testnet</strong> (api-testnet.bybit.com): Separate testing platform. Create API keys at <a href="https://testnet.bybit.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">testnet.bybit.com</a>
                       </div>
+                      
+                      <FormField
+                        control={form.control}
+                        name="bybitEndpoint"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel data-testid="label-bybit-endpoint">Bybit Endpoint</FormLabel>
+                            <Select 
+                              onValueChange={field.onChange} 
+                              defaultValue={field.value}
+                              value={field.value}
+                            >
+                              <FormControl>
+                                <SelectTrigger data-testid="select-bybit-endpoint">
+                                  <SelectValue placeholder="Select endpoint" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="demo">Demo Trading (api-demo.bybit.com)</SelectItem>
+                                <SelectItem value="testnet">Testnet (api-testnet.bybit.com)</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <FormDescription>
+                              Choose which Bybit environment your API keys are from
+                            </FormDescription>
+                          </FormItem>
+                        )}
+                      />
                       
                       <FormField
                         control={form.control}

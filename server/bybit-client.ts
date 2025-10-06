@@ -1,26 +1,39 @@
 import { RestClientV5 } from 'bybit-api';
 
 /**
- * Bybit Testnet API Client
+ * Bybit API Client
  * 
- * Wrapper for Bybit testnet API with HMAC-SHA256 authentication.
- * Used for demo trading with fake funds on Bybit's test environment.
+ * Wrapper for Bybit API with HMAC-SHA256 authentication.
+ * Supports both Demo Trading (api-demo.bybit.com) and Testnet (api-testnet.bybit.com).
  */
 export class BybitClient {
   private client: RestClientV5;
   private apiKey: string;
   private apiSecret: string;
+  private endpoint: 'demo' | 'testnet';
 
-  constructor(apiKey: string, apiSecret: string) {
+  constructor(apiKey: string, apiSecret: string, endpoint: 'demo' | 'testnet' = 'demo') {
     this.apiKey = apiKey;
     this.apiSecret = apiSecret;
+    this.endpoint = endpoint;
 
-    // Initialize REST client for testnet
-    this.client = new RestClientV5({
-      key: apiKey,
-      secret: apiSecret,
-      testnet: true, // Use testnet environment
-    });
+    // Initialize REST client
+    // Note: The bybit-api library uses 'testnet: true' for testnet.bybit.com
+    // For demo.bybit.com, we need to use 'demoTrading: true'
+    if (endpoint === 'demo') {
+      this.client = new RestClientV5({
+        key: apiKey,
+        secret: apiSecret,
+        testnet: false,
+        demoTrading: true, // Use demo trading environment
+      });
+    } else {
+      this.client = new RestClientV5({
+        key: apiKey,
+        secret: apiSecret,
+        testnet: true, // Use testnet environment
+      });
+    }
   }
 
   /**
