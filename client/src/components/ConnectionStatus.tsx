@@ -44,7 +44,12 @@ export default function ConnectionStatus({ isConnected }: ConnectionStatusProps)
             timestamp: new Date()
           });
         } else {
-          setAsterApiConnected(true);
+          const data = await response.json();
+          if (data.success) {
+            setAsterApiConnected(true);
+          } else {
+            setAsterApiConnected(false);
+          }
         }
       } catch (error: any) {
         setAsterApiConnected(false);
@@ -72,7 +77,12 @@ export default function ConnectionStatus({ isConnected }: ConnectionStatusProps)
             timestamp: new Date()
           });
         } else {
-          setBybitApiConnected(true);
+          const data = await response.json();
+          if (data.success) {
+            setBybitApiConnected(true);
+          } else {
+            setBybitApiConnected(false);
+          }
         }
       } catch (error: any) {
         setBybitApiConnected(false);
