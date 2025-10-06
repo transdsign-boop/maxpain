@@ -1271,8 +1271,7 @@ export class StrategyEngine extends EventEmitter {
             
             // Initialize Bybit client if not already done
             if (!bybitOrderManager.isInitialized()) {
-              const endpoint = strategy.bybitEndpoint || 'demo';
-              bybitOrderManager.initialize(strategy.bybitApiKey, strategy.bybitApiSecret, endpoint);
+              bybitOrderManager.initialize(strategy.bybitApiKey, strategy.bybitApiSecret);
             }
             
             if (!bybitOrderManager.isInitialized()) {
@@ -3316,8 +3315,7 @@ export class StrategyEngine extends EventEmitter {
       if (isDemo) {
         // Use Bybit order manager for demo trading
         if (!bybitOrderManager.isInitialized() && strategy.bybitApiKey && strategy.bybitApiSecret) {
-          const endpoint = strategy.bybitEndpoint || 'demo';
-          bybitOrderManager.initialize(strategy.bybitApiKey, strategy.bybitApiSecret, endpoint);
+          bybitOrderManager.initialize(strategy.bybitApiKey, strategy.bybitApiSecret);
         }
         
         if (bybitOrderManager.isInitialized()) {
