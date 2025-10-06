@@ -43,7 +43,6 @@ interface Strategy {
   tradingMode: "demo" | "live";
   bybitApiKey?: string;
   bybitApiSecret?: string;
-  bybitEndpoint?: "demo" | "testnet";
   asterApiKey?: string;
   asterApiSecret?: string;
   hedgeMode: boolean;
@@ -85,7 +84,6 @@ const strategyFormSchema = z.object({
   }, "Account usage must be between 1% and 100%"),
   bybitApiKey: z.string().optional(),
   bybitApiSecret: z.string().optional(),
-  bybitEndpoint: z.enum(["demo", "testnet"]).default("demo"),
   asterApiKey: z.string().optional(),
   asterApiSecret: z.string().optional(),
   hedgeMode: z.boolean(),
@@ -632,7 +630,6 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         marginAmount: String(strategy.marginAmount),
         bybitApiKey: strategy.bybitApiKey || '',
         bybitApiSecret: strategy.bybitApiSecret || '',
-        bybitEndpoint: strategy.bybitEndpoint || 'demo',
         asterApiKey: strategy.asterApiKey || '',
         asterApiSecret: strategy.asterApiSecret || '',
         hedgeMode: strategy.hedgeMode,
@@ -939,7 +936,6 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         marginAmount: strategy.marginAmount,
         bybitApiKey: strategy.bybitApiKey || '',
         bybitApiSecret: strategy.bybitApiSecret || '',
-        bybitEndpoint: strategy.bybitEndpoint || 'demo',
         asterApiKey: strategy.asterApiKey || '',
         asterApiSecret: strategy.asterApiSecret || '',
         hedgeMode: strategy.hedgeMode,
