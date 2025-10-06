@@ -464,10 +464,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "symbol parameter required" });
       }
       
+      // Fetch credentials from Global Settings (NEVER use environment variables)
+      const strategy = await getOrCreateDefaultStrategy(DEFAULT_USER_ID);
+      const apiKey = strategy.asterApiKey || '';
+      
       // Fetch order book data from Aster DEX
       const orderBookResponse = await fetch(`https://fapi.asterdex.com/fapi/v1/depth?symbol=${symbol}&limit=100`, {
         headers: {
-          'X-MBX-APIKEY': process.env.ASTER_API_KEY || ''
+          'X-MBX-APIKEY': apiKey
         }
       });
       
@@ -515,6 +519,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "symbols array required" });
       }
 
+      // Fetch credentials from Global Settings (NEVER use environment variables)
+      const strategy = await getOrCreateDefaultStrategy(DEFAULT_USER_ID);
+      const apiKey = strategy.asterApiKey || '';
+
       const liquidityData = await Promise.all(
         symbols.map(async (symbol) => {
           try {
@@ -524,7 +532,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 `https://fapi.asterdex.com/fapi/v1/depth?symbol=${symbol}&limit=20`,
                 {
                   headers: {
-                    'X-MBX-APIKEY': process.env.ASTER_API_KEY || ''
+                    'X-MBX-APIKEY': apiKey
                   }
                 }
               ),
@@ -532,7 +540,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 `https://fapi.asterdex.com/fapi/v1/ticker/24hr?symbol=${symbol}`,
                 {
                   headers: {
-                    'X-MBX-APIKEY': process.env.ASTER_API_KEY || ''
+                    'X-MBX-APIKEY': apiKey
                   }
                 }
               )
@@ -676,10 +684,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "symbol parameter required" });
       }
       
+      // Fetch credentials from Global Settings (NEVER use environment variables)
+      const strategy = await getOrCreateDefaultStrategy(DEFAULT_USER_ID);
+      const apiKey = strategy.asterApiKey || '';
+      
       // Fetch funding rate data from Aster DEX
       const fundingResponse = await fetch(`https://fapi.asterdex.com/fapi/v1/fundingRate?symbol=${symbol}&limit=24`, {
         headers: {
-          'X-MBX-APIKEY': process.env.ASTER_API_KEY || ''
+          'X-MBX-APIKEY': apiKey
         }
       });
       
@@ -733,13 +745,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "symbol parameter required" });
       }
       
+      // Fetch credentials from Global Settings (NEVER use environment variables)
+      const strategy = await getOrCreateDefaultStrategy(DEFAULT_USER_ID);
+      const apiKey = strategy.asterApiKey || '';
+      
       // Fetch both order book and funding data in parallel
       const [orderBookResponse, fundingResponse] = await Promise.all([
         fetch(`https://fapi.asterdex.com/fapi/v1/depth?symbol=${symbol}&limit=100`, {
-          headers: { 'X-MBX-APIKEY': process.env.ASTER_API_KEY || '' }
+          headers: { 'X-MBX-APIKEY': apiKey }
         }),
         fetch(`https://fapi.asterdex.com/fapi/v1/fundingRate?symbol=${symbol}&limit=8`, {
-          headers: { 'X-MBX-APIKEY': process.env.ASTER_API_KEY || '' }
+          headers: { 'X-MBX-APIKEY': apiKey }
         })
       ]);
       
@@ -835,10 +851,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const endTime = Date.now();
       const startTime = endTime - (hours * 60 * 60 * 1000);
       
+      // Fetch credentials from Global Settings (NEVER use environment variables)
+      const strategy = await getOrCreateDefaultStrategy(DEFAULT_USER_ID);
+      const apiKey = strategy.asterApiKey || '';
+      
       // Fetch klines data from Aster DEX
       const klinesResponse = await fetch(`https://fapi.asterdex.com/fapi/v1/klines?symbol=${symbol}&interval=${interval}&startTime=${startTime}&endTime=${endTime}&limit=1000`, {
         headers: {
-          'X-MBX-APIKEY': process.env.ASTER_API_KEY || ''
+          'X-MBX-APIKEY': apiKey
         }
       });
       
@@ -888,11 +908,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const sinceTimestamp = new Date(Date.now() - hours * 60 * 60 * 1000);
       
+      // Fetch credentials from Global Settings (NEVER use environment variables)
+      const strategy = await getOrCreateDefaultStrategy(DEFAULT_USER_ID);
+      const apiKey = strategy.asterApiKey || '';
+      
       // Fetch liquidations and price data in parallel
       const [liquidations, klinesResponse] = await Promise.all([
         storage.getLiquidationAnalytics(symbol, sinceTimestamp),
         fetch(`https://fapi.asterdex.com/fapi/v1/klines?symbol=${symbol}&interval=${interval}&startTime=${sinceTimestamp.getTime()}&endTime=${Date.now()}&limit=1000`, {
-          headers: { 'X-MBX-APIKEY': process.env.ASTER_API_KEY || '' }
+          headers: { 'X-MBX-APIKEY': apiKey }
         })
       ]);
       
@@ -1001,11 +1025,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json(cached);
       }
 
-      const apiKey = process.env.ASTER_API_KEY;
-      const secretKey = process.env.ASTER_SECRET_KEY;
+      // Fetch credentials from database (NEVER use environment variables)
+      const strategy = await storage.getOrCreateDefaultStrategy(DEFAULT_USER_ID);
+      const apiKey = strategy.asterApiKey || '';
+      const secretKey = strategy.asterApiSecret || '';
 
       if (!apiKey || !secretKey) {
-        return res.status(400).json({ error: "Aster DEX API keys not configured" });
+        return res.status(400).json({ error: "Aster DEX credentials not configured in Global Settings" });
       }
 
       // Create signed request to get account information
@@ -1070,11 +1096,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json(cached);
       }
 
-      const apiKey = process.env.ASTER_API_KEY;
-      const secretKey = process.env.ASTER_SECRET_KEY;
+      // Fetch credentials from database (NEVER use environment variables)
+      const strategy = await storage.getOrCreateDefaultStrategy(DEFAULT_USER_ID);
+      const apiKey = strategy.asterApiKey || '';
+      const secretKey = strategy.asterApiSecret || '';
 
       if (!apiKey || !secretKey) {
-        return res.status(400).json({ error: "Aster DEX API keys not configured" });
+        return res.status(400).json({ error: "Aster DEX credentials not configured in Global Settings" });
       }
 
       // Create signed request to get position information
@@ -1144,11 +1172,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json(cached);
       }
 
-      const apiKey = process.env.ASTER_API_KEY;
-      const secretKey = process.env.ASTER_SECRET_KEY;
+      // Fetch credentials from database (NEVER use environment variables)
+      const strategy = await storage.getOrCreateDefaultStrategy(DEFAULT_USER_ID);
+      const apiKey = strategy.asterApiKey || '';
+      const secretKey = strategy.asterApiSecret || '';
 
       if (!apiKey || !secretKey) {
-        return res.status(400).json({ error: "Aster DEX API keys not configured" });
+        return res.status(400).json({ error: "Aster DEX credentials not configured in Global Settings" });
       }
 
       // Optional query parameter for symbol filtering
@@ -1196,11 +1226,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // One-time cleanup: Cancel all open TP/SL orders on the exchange
   app.post("/api/live/cleanup-orders", async (req, res) => {
     try {
-      const apiKey = process.env.ASTER_API_KEY;
-      const secretKey = process.env.ASTER_SECRET_KEY;
+      // Fetch credentials from database (NEVER use environment variables)
+      const strategy = await storage.getOrCreateDefaultStrategy(DEFAULT_USER_ID);
+      const apiKey = strategy.asterApiKey || '';
+      const secretKey = strategy.asterApiSecret || '';
 
       if (!apiKey || !secretKey) {
-        return res.status(400).json({ error: "Aster DEX API keys not configured" });
+        return res.status(400).json({ error: "Aster DEX credentials not configured in Global Settings" });
       }
 
       console.log('🧹 Starting manual cleanup of all open TP/SL orders...');
@@ -1300,13 +1332,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Ensure all open positions have TP/SL orders
   app.post("/api/live/ensure-tpsl", async (req, res) => {
     try {
-      const apiKey = process.env.ASTER_API_KEY;
-      const secretKey = process.env.ASTER_SECRET_KEY;
-
-      if (!apiKey || !secretKey) {
-        return res.status(400).json({ error: "Aster DEX API keys not configured" });
-      }
-
       console.log('🛡️ Ensuring all open positions have TP/SL orders...');
 
       // Get the active strategy to get TP/SL percentages
@@ -1315,6 +1340,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (!activeStrategy) {
         return res.status(400).json({ error: "No active strategy found" });
+      }
+
+      // Fetch credentials from strategy (NEVER use environment variables)
+      const apiKey = activeStrategy.asterApiKey || '';
+      const secretKey = activeStrategy.asterApiSecret || '';
+
+      if (!apiKey || !secretKey) {
+        return res.status(400).json({ error: "Aster DEX credentials not configured in Global Settings" });
       }
 
       if (activeStrategy.tradingMode !== 'live') {
@@ -1557,13 +1590,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get account trade history from Aster DEX (filtered by live session start time)
   app.get("/api/live/trades", async (req, res) => {
     try {
-      const apiKey = process.env.ASTER_API_KEY;
-      const secretKey = process.env.ASTER_SECRET_KEY;
-
-      if (!apiKey || !secretKey) {
-        return res.status(400).json({ error: "Aster DEX API keys not configured" });
-      }
-
       // Get the active strategy to check session start time
       const strategies = await storage.getStrategiesByUser(DEFAULT_USER_ID);
       const activeStrategy = strategies.find(s => s.isActive);
@@ -1571,6 +1597,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // If no active strategy or not in live mode, return empty array
       if (!activeStrategy || activeStrategy.tradingMode !== 'live') {
         return res.json([]);
+      }
+
+      // Fetch credentials from strategy (NEVER use environment variables)
+      const apiKey = activeStrategy.asterApiKey || '';
+      const secretKey = activeStrategy.asterApiSecret || '';
+
+      if (!apiKey || !secretKey) {
+        return res.status(400).json({ error: "Aster DEX credentials not configured in Global Settings" });
       }
 
       // Use live session start time to filter trades (only show current session trades)
@@ -1772,8 +1806,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Only fetch funding costs if in live mode with API credentials
       if (activeStrategy.tradingMode === 'live') {
-        const apiKey = process.env.ASTER_API_KEY;
-        const secretKey = process.env.ASTER_SECRET_KEY;
+        // Fetch credentials from strategy (NEVER use environment variables)
+        const apiKey = activeStrategy.asterApiKey || '';
+        const secretKey = activeStrategy.asterApiSecret || '';
 
         if (apiKey && secretKey) {
           try {
@@ -2369,12 +2404,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "No active session found" });
       }
       
-      // Fetch current exchange balance
-      const apiKey = process.env.ASTER_API_KEY;
-      const secretKey = process.env.ASTER_SECRET_KEY;
+      // Fetch credentials from strategy (NEVER use environment variables)
+      const apiKey = strategy.asterApiKey || '';
+      const secretKey = strategy.asterApiSecret || '';
       
       if (!apiKey || !secretKey) {
-        return res.status(400).json({ error: "Exchange API keys not configured" });
+        return res.status(400).json({ error: "Aster DEX credentials not configured in Global Settings" });
       }
       
       const timestamp = Date.now();
@@ -2734,15 +2769,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Helper function to sync live fills from exchange to database
   async function syncLiveFills(strategyId: string, sessionId: string): Promise<void> {
-    const apiKey = process.env.ASTER_API_KEY;
-    const secretKey = process.env.ASTER_SECRET_KEY;
-
-    if (!apiKey || !secretKey) {
+    const strategy = await storage.getStrategy(strategyId);
+    if (!strategy || !strategy.liveSessionStartedAt) {
       return;
     }
 
-    const strategy = await storage.getStrategy(strategyId);
-    if (!strategy || !strategy.liveSessionStartedAt) {
+    // Fetch credentials from strategy (NEVER use environment variables)
+    const apiKey = strategy.asterApiKey || '';
+    const secretKey = strategy.asterApiSecret || '';
+
+    if (!apiKey || !secretKey) {
       return;
     }
 
@@ -2841,11 +2877,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // In LIVE mode: Fetch positions from exchange
       if (strategy.tradingMode === 'live') {
-        const apiKey = process.env.ASTER_API_KEY;
-        const secretKey = process.env.ASTER_SECRET_KEY;
+        // Fetch credentials from strategy (NEVER use environment variables)
+        const apiKey = strategy.asterApiKey || '';
+        const secretKey = strategy.asterApiSecret || '';
 
         if (!apiKey || !secretKey) {
-          return res.status(400).json({ error: "Aster DEX API keys not configured" });
+          return res.status(400).json({ error: "Aster DEX credentials not configured in Global Settings" });
         }
 
         // Get the active session (should exist from mode switch, but create if missing)
@@ -3460,12 +3497,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.json([]);
         }
 
-        // Fetch actual fills from exchange
-        const apiKey = process.env.ASTER_API_KEY;
-        const secretKey = process.env.ASTER_SECRET_KEY;
+        // Fetch credentials from strategy (NEVER use environment variables)
+        const apiKey = activeStrategy.asterApiKey || '';
+        const secretKey = activeStrategy.asterApiSecret || '';
 
         if (!apiKey || !secretKey) {
-          return res.status(400).json({ error: 'Aster DEX API keys not configured' });
+          return res.status(400).json({ error: 'Aster DEX credentials not configured in Global Settings' });
         }
 
         const sessionStartTime = new Date(activeStrategy.liveSessionStartedAt as unknown as string).getTime();
@@ -3645,11 +3682,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (positionId.startsWith('live-')) {
         console.log(`🔴 Attempting to close LIVE position: ${positionId}`);
         
-        const apiKey = process.env.ASTER_API_KEY;
-        const secretKey = process.env.ASTER_SECRET_KEY;
+        // Get active strategy for credentials (NEVER use environment variables)
+        const strategy = await getOrCreateDefaultStrategy(DEFAULT_USER_ID);
+        const apiKey = strategy.asterApiKey || '';
+        const secretKey = strategy.asterApiSecret || '';
 
         if (!apiKey || !secretKey) {
-          return res.status(400).json({ error: 'Aster DEX API keys not configured' });
+          return res.status(400).json({ error: 'Aster DEX credentials not configured in Global Settings' });
         }
 
         // Extract symbol from live position ID (format: live-ETHUSDT-SHORT)
@@ -4204,11 +4243,9 @@ async function connectToAsterDEX(clients: Set<WebSocket>) {
 }
 
 // Get or create a listen key for User Data Stream
-async function getOrCreateListenKey(): Promise<string | null> {
-  const apiKey = process.env.ASTER_API_KEY;
-  
+async function getOrCreateListenKey(apiKey: string): Promise<string | null> {
   if (!apiKey) {
-    console.error('❌ ASTER_API_KEY not configured - cannot create User Data Stream');
+    console.error('❌ Aster DEX credentials not configured - cannot create User Data Stream');
     return null;
   }
 
@@ -4247,9 +4284,7 @@ async function getOrCreateListenKey(): Promise<string | null> {
 }
 
 // Send keepalive to extend listen key validity
-async function sendKeepalive(): Promise<boolean> {
-  const apiKey = process.env.ASTER_API_KEY;
-  
+async function sendKeepalive(apiKey: string): Promise<boolean> {
   if (!apiKey || !currentListenKey) {
     return false;
   }
@@ -4280,13 +4315,13 @@ async function sendKeepalive(): Promise<boolean> {
 }
 
 // Start keepalive interval (every 30 minutes)
-function startKeepalive() {
+function startKeepalive(apiKey: string) {
   if (keepaliveInterval) {
     clearInterval(keepaliveInterval);
   }
 
   keepaliveInterval = setInterval(async () => {
-    const success = await sendKeepalive();
+    const success = await sendKeepalive(apiKey);
     if (!success) {
       console.error('❌ Keepalive failed - reconnecting User Data Stream...');
       connectToUserDataStream();
@@ -4299,6 +4334,15 @@ function startKeepalive() {
 // Connect to User Data Stream for real-time account/position updates
 async function connectToUserDataStream() {
   try {
+    // Fetch credentials from strategy (NEVER use environment variables)
+    const strategy = await getOrCreateDefaultStrategy(DEFAULT_USER_ID);
+    const apiKey = strategy.asterApiKey || '';
+    
+    if (!apiKey) {
+      console.log('⚠️ Aster DEX credentials not configured - User Data Stream unavailable');
+      return;
+    }
+
     // Close existing connection
     if (userDataWs) {
       userDataWs.close();
@@ -4306,7 +4350,7 @@ async function connectToUserDataStream() {
     }
 
     // Get listen key
-    const listenKey = await getOrCreateListenKey();
+    const listenKey = await getOrCreateListenKey(apiKey);
     if (!listenKey) {
       console.error('❌ Cannot connect to User Data Stream without listen key');
       return;
@@ -4317,7 +4361,7 @@ async function connectToUserDataStream() {
 
     userDataWs.on('open', () => {
       console.log('✅ Connected to User Data Stream - real-time position/balance updates enabled');
-      startKeepalive();
+      startKeepalive(apiKey);
     });
 
     userDataWs.on('message', (data) => {
