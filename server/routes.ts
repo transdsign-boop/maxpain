@@ -188,14 +188,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const strategies = await storage.getStrategiesByUser(DEFAULT_USER_ID);
       const activeStrategy = strategies.find((s: any) => s.isActive);
       
-      // Use stored credentials from strategy, fallback to environment variables
-      const apiKey = activeStrategy?.asterApiKey || process.env.ASTER_API_KEY;
-      const secretKey = activeStrategy?.asterApiSecret || process.env.ASTER_SECRET_KEY;
+      // Use ONLY stored credentials from Global Settings (no environment variable fallback)
+      const apiKey = activeStrategy?.asterApiKey;
+      const secretKey = activeStrategy?.asterApiSecret;
 
       if (!apiKey || !secretKey) {
         return res.status(400).json({ 
           success: false, 
-          error: "API credentials not configured. Please add Aster DEX API credentials in Global Settings or set ASTER_API_KEY and ASTER_SECRET_KEY environment variables." 
+          error: "API credentials not configured. Please add your Aster DEX API key and secret in Global Settings." 
         });
       }
 
