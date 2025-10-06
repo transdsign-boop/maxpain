@@ -1760,7 +1760,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                     <div className="flex items-center justify-between cursor-pointer hover-elevate p-3 rounded-md">
                       <Label className="text-base font-medium flex items-center gap-2 cursor-pointer">
                         <Shield className="h-4 w-4" />
-                        Bybit Testnet API (Demo Mode)
+                        Bybit Demo Trading API
                         <ChevronDown className="h-4 w-4" />
                       </Label>
                     </div>
@@ -1769,38 +1769,8 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                   <CollapsibleContent>
                     <div className="space-y-4 pt-2">
                       <div className="text-sm text-muted-foreground bg-muted/30 p-3 rounded-md">
-                        <strong>Demo Trading</strong> (api-demo.bybit.com): Create API keys from your main Bybit account while in "Demo Trading" mode. Uses real market data with simulated funds. <a href="https://www.bybit.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Learn more</a>
-                        <br/><br/>
-                        <strong>Testnet</strong> (api-testnet.bybit.com): Separate testing platform. Create API keys at <a href="https://testnet.bybit.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">testnet.bybit.com</a>
+                        Demo mode uses Bybit Demo Trading for realistic order execution with simulated funds. Create API keys from your main Bybit account while in "Demo Trading" mode. <a href="https://www.bybit.com/en/help-center/article/FAQ-Demo-Trading" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Learn more</a>
                       </div>
-                      
-                      <FormField
-                        control={form.control}
-                        name="bybitEndpoint"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel data-testid="label-bybit-endpoint">Bybit Endpoint</FormLabel>
-                            <Select 
-                              onValueChange={field.onChange} 
-                              defaultValue={field.value}
-                              value={field.value}
-                            >
-                              <FormControl>
-                                <SelectTrigger data-testid="select-bybit-endpoint">
-                                  <SelectValue placeholder="Select endpoint" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                <SelectItem value="demo">Demo Trading (api-demo.bybit.com)</SelectItem>
-                                <SelectItem value="testnet">Testnet (api-testnet.bybit.com)</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <FormDescription>
-                              Choose which Bybit environment your API keys are from
-                            </FormDescription>
-                          </FormItem>
-                        )}
-                      />
                       
                       <FormField
                         control={form.control}
@@ -1815,7 +1785,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                                 placeholder={
                                   (activeStrategy as any)?.hasBybitApiKey
                                     ? "Already configured - leave blank to keep"
-                                    : "Enter your Bybit testnet API key"
+                                    : "Enter your Bybit demo API key"
                                 }
                                 data-testid="input-bybit-api-key"
                               />
@@ -1823,7 +1793,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                             <FormDescription>
                               {(activeStrategy as any)?.hasBybitApiKey 
                                 ? "Key is stored securely - only enter a new value to update"
-                                : "Your Bybit testnet API key for demo trading"}
+                                : "Your Bybit demo API key from your main account"}
                             </FormDescription>
                           </FormItem>
                         )}
@@ -1842,7 +1812,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                                 placeholder={
                                   (activeStrategy as any)?.hasBybitApiSecret
                                     ? "Already configured - leave blank to keep"
-                                    : "Enter your Bybit testnet API secret"
+                                    : "Enter your Bybit demo API secret"
                                 }
                                 data-testid="input-bybit-api-secret"
                               />
@@ -1850,7 +1820,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                             <FormDescription>
                               {(activeStrategy as any)?.hasBybitApiSecret 
                                 ? "Secret is stored securely - only enter a new value to update"
-                                : "Your Bybit testnet API secret (stored securely)"}
+                                : "Your Bybit demo API secret (stored securely)"}
                             </FormDescription>
                           </FormItem>
                         )}
