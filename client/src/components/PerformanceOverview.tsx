@@ -699,14 +699,17 @@ export default function PerformanceOverview() {
                     x1={group.startTrade}
                     x2={group.endTrade}
                     yAxisId="left"
-                    fill={index % 2 === 0 ? 'hsl(var(--muted))' : 'transparent'}
-                    fillOpacity={0.2}
+                    fill={index % 2 === 0 ? 'hsl(var(--accent))' : 'transparent'}
+                    fillOpacity={0.15}
+                    stroke={index % 2 === 0 ? 'hsl(var(--accent-border))' : 'transparent'}
+                    strokeOpacity={0.3}
                     label={{
-                      value: `${format(new Date(group.date), 'MMM d')} (${group.trades})`,
-                      position: 'top',
-                      fill: 'hsl(var(--muted-foreground))',
-                      fontSize: 11,
-                      fontWeight: 500
+                      value: `${format(new Date(group.date), 'MMM d')} • ${group.trades} trades`,
+                      position: 'insideTop',
+                      fill: 'hsl(var(--foreground))',
+                      fontSize: 12,
+                      fontWeight: 600,
+                      offset: 5
                     }}
                   />
                 ))}
