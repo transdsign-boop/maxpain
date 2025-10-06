@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { Link } from "wouter";
 import ConnectionStatus from "@/components/ConnectionStatus";
 import LiveLiquidationsSidebar from "@/components/LiveLiquidationsSidebar";
 import LiquidationAnalyticsModal from "@/components/LiquidationAnalyticsModal";
@@ -15,7 +16,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Settings2, Pause, Play, AlertTriangle, BarChart3, Menu } from "lucide-react";
+import { Settings2, Pause, Play, AlertTriangle, BarChart3, Menu, BookOpen } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -529,6 +530,18 @@ export default function Dashboard() {
               </Button>
             )}
             
+            {/* Documentation Button */}
+            <Link href="/documentation">
+              <Button 
+                variant="outline" 
+                size="icon"
+                data-testid="button-documentation"
+                title="Professional Documentation"
+              >
+                <BookOpen className="h-4 w-4" />
+              </Button>
+            </Link>
+            
             {/* Trading Strategy Button */}
             <Button 
               variant="default" 
@@ -605,6 +618,16 @@ export default function Dashboard() {
                     <SheetTitle>Settings</SheetTitle>
                   </SheetHeader>
                   <div className="space-y-4">
+                    <Link href="/documentation" className="block">
+                      <Button 
+                        variant="outline" 
+                        className="w-full justify-start"
+                        data-testid="button-documentation-mobile"
+                      >
+                        <BookOpen className="h-4 w-4 mr-2" />
+                        Documentation
+                      </Button>
+                    </Link>
                     <Button 
                       variant="outline" 
                       className="w-full justify-start"
