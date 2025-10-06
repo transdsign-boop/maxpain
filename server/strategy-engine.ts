@@ -3631,7 +3631,7 @@ export class StrategyEngine extends EventEmitter {
         const session = await storage.getOrCreateActiveSession(DEFAULT_USER_ID);
         
         // 1. Clean up orphaned orders (orders for closed positions)
-        const orphanedCount = await orderProtectionService.reconcileOrphanedOrders(session.id);
+        const orphanedCount = await orderProtectionService.reconcileOrphanedOrders(session.id, strategy);
         
         // 2. Verify all open positions have correct TP/SL orders (self-healing)
         await orderProtectionService.verifyAllPositions(session.id, strategy);

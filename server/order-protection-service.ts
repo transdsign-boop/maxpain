@@ -467,13 +467,22 @@ export class OrderProtectionService {
         return { success: true };
       }
 
+      // Extract credentials from strategy (NEVER use environment variables)
+      const apiKey = strategy.asterApiKey || '';
+      const secretKey = strategy.asterApiSecret || '';
+      
+      if (!apiKey || !secretKey) {
+        console.error('❌ Aster DEX credentials not configured in strategy');
+        return { success: false, error: 'API credentials not configured' };
+      }
+
       // Ensure exchange info is fetched
       await this.fetchExchangeInfo();
 
       // CRITICAL FIX: Fetch live exchange position for accurate quantity/entry price
       // Database position may be stale due to async fill processing
       // IMPORTANT: Filter by side to support hedge mode correctly
-      const livePosition = await this.fetchLiveExchangePosition(position.symbol, position.side);
+      const livePosition = await this.fetchLiveExchangePosition(position.symbol, position.side, apiKey, secretKey);
       
       let positionToUse = position;
       if (livePosition) {
@@ -493,7 +502,7 @@ export class OrderProtectionService {
       const desiredSignature = this.getOrderSignature(desiredOrders);
 
       // Fetch existing orders
-      const existingOrders = await this.fetchExchangeOrders(position.symbol, position.side);
+      const existingOrders = await this.fetchExchangeOrders(position.symbol, position.side, apiKey, secretKey);
       const tpslOrders = existingOrders.filter(
         o => o.type === 'LIMIT' || o.type === 'STOP_MARKET'
       );
@@ -520,7 +529,7 @@ export class OrderProtectionService {
         console.log(`   Cancelling ${tpslOrders.length} existing orders...`);
         
         for (const order of tpslOrders) {
-          const cancelled = await this.cancelExchangeOrder(position.symbol, order.orderId);
+          const cancelled = await this.cancelExchangeOrder(position.symbol, order.orderId, apiKey, secretKey);
           if (cancelled) {
             cancelledOrders.push(order);
             console.log(`   ✅ Cancelled ${order.type} #${order.orderId}`);
@@ -535,7 +544,9 @@ export class OrderProtectionService {
                 oldOrder.type,
                 oldOrder.side,
                 parseFloat(oldOrder.origQty),
-                parseFloat(oldOrder.type === 'LIMIT' ? oldOrder.price : oldOrder.stopPrice)
+                parseFloat(oldOrder.type === 'LIMIT' ? oldOrder.price : oldOrder.stopPrice),
+                apiKey,
+                secretKey
               );
               
               if (restoreResult.success) {
@@ -557,7 +568,9 @@ export class OrderProtectionService {
         tpOrder.type,
         tpOrder.side,
         tpOrder.quantity,
-        tpOrder.price
+        tpOrder.price,
+        apiKey,
+        secretKey
       );
 
       if (!tpResult.success) {
@@ -571,7 +584,9 @@ export class OrderProtectionService {
             oldOrder.type,
             oldOrder.side,
             parseFloat(oldOrder.origQty),
-            parseFloat(oldOrder.type === 'LIMIT' ? oldOrder.price : oldOrder.stopPrice)
+            parseFloat(oldOrder.type === 'LIMIT' ? oldOrder.price : oldOrder.stopPrice),
+            apiKey,
+            secretKey
           );
           
           if (restoreResult.success) {
@@ -593,7 +608,9 @@ export class OrderProtectionService {
         slOrder.type,
         slOrder.side,
         slOrder.quantity,
-        slOrder.price
+        slOrder.price,
+        apiKey,
+        secretKey
       );
 
       if (!slResult.success) {
@@ -604,7 +621,7 @@ export class OrderProtectionService {
         // Cancel the TP we just placed
         if (tpResult.orderId) {
           console.log(`   Cancelling TP order #${tpResult.orderId}`);
-          await this.cancelExchangeOrder(position.symbol, tpResult.orderId);
+          await this.cancelExchangeOrder(position.symbol, tpResult.orderId, apiKey, secretKey);
         }
         
         // Restore ONLY the orders we successfully cancelled
@@ -615,7 +632,9 @@ export class OrderProtectionService {
             oldOrder.type,
             oldOrder.side,
             parseFloat(oldOrder.origQty),
-            parseFloat(oldOrder.type === 'LIMIT' ? oldOrder.price : oldOrder.stopPrice)
+            parseFloat(oldOrder.type === 'LIMIT' ? oldOrder.price : oldOrder.stopPrice),
+            apiKey,
+            secretKey
           );
           
           if (restoreResult.success) {
@@ -646,9 +665,18 @@ export class OrderProtectionService {
    * Fetches ALL open orders from exchange to catch orphans for fully closed symbols
    * Only cancels orders for symbols we actively manage (have fills in database)
    */
-  async reconcileOrphanedOrders(sessionId: string): Promise<number> {
+  async reconcileOrphanedOrders(sessionId: string, strategy: Strategy): Promise<number> {
     try {
       console.log(`🔍 Reconciling orphaned orders for session ${sessionId}...`);
+
+      // Extract credentials from strategy (NEVER use environment variables)
+      const apiKey = strategy.asterApiKey || '';
+      const secretKey = strategy.asterApiSecret || '';
+      
+      if (!apiKey || !secretKey) {
+        console.warn('⚠️ Aster DEX credentials not configured, skipping orphaned order reconciliation');
+        return 0;
+      }
 
       // Get all open positions for this session
       const positions = await storage.getOpenPositions(sessionId);
@@ -663,7 +691,7 @@ export class OrderProtectionService {
 
       // Fetch ALL open orders from exchange (not filtered by symbol)
       // This ensures we catch orphaned orders for fully closed positions
-      const allOrders = await this.fetchAllExchangeOrders();
+      const allOrders = await this.fetchAllExchangeOrders(apiKey, secretKey);
       
       // Group orders by symbol for efficient processing
       const ordersBySymbol = new Map<string, ExchangeOrder[]>();
@@ -694,7 +722,7 @@ export class OrderProtectionService {
           // If no open position for this symbol-side, order is orphaned
           if (!openSymbols.has(positionKey)) {
             console.log(`🗑️ Orphaned order found: ${symbol} ${order.type} #${order.orderId} (no ${orderSide} position)`);
-            const cancelled = await this.cancelExchangeOrder(symbol, order.orderId);
+            const cancelled = await this.cancelExchangeOrder(symbol, order.orderId, apiKey, secretKey);
             if (cancelled) {
               totalCancelled++;
               console.log(`   ✅ Cancelled orphaned order #${order.orderId}`);
@@ -748,11 +776,8 @@ export class OrderProtectionService {
   /**
    * Fetch ALL open orders from exchange (all symbols)
    */
-  private async fetchAllExchangeOrders(): Promise<ExchangeOrder[]> {
+  private async fetchAllExchangeOrders(apiKey: string, secretKey: string): Promise<ExchangeOrder[]> {
     try {
-      const apiKey = process.env.ASTER_API_KEY;
-      const secretKey = process.env.ASTER_SECRET_KEY;
-
       if (!apiKey || !secretKey) return [];
 
       const timestamp = Date.now();
