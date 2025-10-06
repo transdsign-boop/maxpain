@@ -262,6 +262,86 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Test exchange API connection (for status indicators)
+  app.get("/api/test-connection", async (req, res) => {
+    try {
+      const exchange = (req.query.exchange as string) || 'aster';
+      
+      // Get active strategy to check for stored credentials
+      const strategies = await storage.getStrategiesByUser(DEFAULT_USER_ID);
+      const activeStrategy = strategies.find((s: any) => s.isActive);
+      
+      if (exchange === 'aster') {
+        const apiKey = activeStrategy?.asterApiKey;
+        const secretKey = activeStrategy?.asterApiSecret;
+        
+        if (!apiKey || !secretKey) {
+          return res.status(200).json({ 
+            success: false, 
+            error: "Aster API credentials not configured" 
+          });
+        }
+        
+        // Simple test: fetch ticker info (public endpoint with auth)
+        const response = await fetch('https://fapi.asterdex.com/fapi/v1/exchangeInfo', {
+          method: 'GET',
+          headers: {
+            'X-MBX-APIKEY': apiKey
+          }
+        });
+        
+        if (!response.ok) {
+          return res.status(200).json({ 
+            success: false, 
+            error: `Aster API returned ${response.status}` 
+          });
+        }
+        
+        return res.json({ success: true });
+        
+      } else if (exchange === 'bybit') {
+        const apiKey = activeStrategy?.bybitApiKey;
+        const secretKey = activeStrategy?.bybitApiSecret;
+        
+        if (!apiKey || !secretKey) {
+          return res.status(200).json({ 
+            success: false, 
+            error: "Bybit API credentials not configured" 
+          });
+        }
+        
+        // Simple test: fetch server time (public endpoint)
+        const response = await fetch('https://api-testnet.bybit.com/v5/market/time', {
+          method: 'GET',
+          headers: {
+            'X-BAPI-API-KEY': apiKey
+          }
+        });
+        
+        if (!response.ok) {
+          return res.status(200).json({ 
+            success: false, 
+            error: `Bybit API returned ${response.status}` 
+          });
+        }
+        
+        return res.json({ success: true });
+        
+      } else {
+        return res.status(400).json({ 
+          success: false, 
+          error: "Invalid exchange parameter. Use 'aster' or 'bybit'" 
+        });
+      }
+      
+    } catch (error: any) {
+      res.status(200).json({ 
+        success: false, 
+        error: error?.message || "Connection test failed" 
+      });
+    }
+  });
+
   // Export settings and strategy configuration
   app.get("/api/settings/export", async (req, res) => {
     try {
@@ -465,7 +545,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Fetch credentials from Global Settings (NEVER use environment variables)
-      const strategy = await getOrCreateDefaultStrategy(DEFAULT_USER_ID);
+      const strategy = await storage.getOrCreateDefaultStrategy(DEFAULT_USER_ID);
       const apiKey = strategy.asterApiKey || '';
       
       // Fetch order book data from Aster DEX
@@ -520,7 +600,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Fetch credentials from Global Settings (NEVER use environment variables)
-      const strategy = await getOrCreateDefaultStrategy(DEFAULT_USER_ID);
+      const strategy = await storage.getOrCreateDefaultStrategy(DEFAULT_USER_ID);
       const apiKey = strategy.asterApiKey || '';
 
       const liquidityData = await Promise.all(
@@ -685,7 +765,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Fetch credentials from Global Settings (NEVER use environment variables)
-      const strategy = await getOrCreateDefaultStrategy(DEFAULT_USER_ID);
+      const strategy = await storage.getOrCreateDefaultStrategy(DEFAULT_USER_ID);
       const apiKey = strategy.asterApiKey || '';
       
       // Fetch funding rate data from Aster DEX
@@ -746,7 +826,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Fetch credentials from Global Settings (NEVER use environment variables)
-      const strategy = await getOrCreateDefaultStrategy(DEFAULT_USER_ID);
+      const strategy = await storage.getOrCreateDefaultStrategy(DEFAULT_USER_ID);
       const apiKey = strategy.asterApiKey || '';
       
       // Fetch both order book and funding data in parallel
@@ -852,7 +932,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const startTime = endTime - (hours * 60 * 60 * 1000);
       
       // Fetch credentials from Global Settings (NEVER use environment variables)
-      const strategy = await getOrCreateDefaultStrategy(DEFAULT_USER_ID);
+      const strategy = await storage.getOrCreateDefaultStrategy(DEFAULT_USER_ID);
       const apiKey = strategy.asterApiKey || '';
       
       // Fetch klines data from Aster DEX
@@ -909,7 +989,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const sinceTimestamp = new Date(Date.now() - hours * 60 * 60 * 1000);
       
       // Fetch credentials from Global Settings (NEVER use environment variables)
-      const strategy = await getOrCreateDefaultStrategy(DEFAULT_USER_ID);
+      const strategy = await storage.getOrCreateDefaultStrategy(DEFAULT_USER_ID);
       const apiKey = strategy.asterApiKey || '';
       
       // Fetch liquidations and price data in parallel
@@ -3683,7 +3763,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`🔴 Attempting to close LIVE position: ${positionId}`);
         
         // Get active strategy for credentials (NEVER use environment variables)
-        const strategy = await getOrCreateDefaultStrategy(DEFAULT_USER_ID);
+        const strategy = await storage.getOrCreateDefaultStrategy(DEFAULT_USER_ID);
         const apiKey = strategy.asterApiKey || '';
         const secretKey = strategy.asterApiSecret || '';
 
@@ -4335,7 +4415,7 @@ function startKeepalive(apiKey: string) {
 async function connectToUserDataStream() {
   try {
     // Fetch credentials from strategy (NEVER use environment variables)
-    const strategy = await getOrCreateDefaultStrategy(DEFAULT_USER_ID);
+    const strategy = await storage.getOrCreateDefaultStrategy(DEFAULT_USER_ID);
     const apiKey = strategy.asterApiKey || '';
     
     if (!apiKey) {
