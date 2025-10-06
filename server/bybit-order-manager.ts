@@ -16,8 +16,8 @@ export class BybitOrderManager {
   /**
    * Initialize Bybit client with API credentials
    */
-  initialize(apiKey: string, apiSecret: string) {
-    this.client = new BybitClient(apiKey, apiSecret);
+  initialize(apiKey: string, apiSecret: string, endpoint: 'demo' | 'testnet' = 'demo') {
+    this.client = new BybitClient(apiKey, apiSecret, endpoint);
   }
 
   /**
