@@ -1890,19 +1890,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         sessionFills.push(...fills);
       }
       
-      // Filter for closed positions only
-      let closedPositions = allPositions.filter(p => p.isOpen === false && p.closedAt);
-      
-      closedPositions = closedPositions.sort((a, b) => new Date(a.closedAt!).getTime() - new Date(b.closedAt!).getTime());
+      // Sort all positions by their timestamp (closedAt for closed, openedAt for open)
+      const sortedPositions = allPositions.sort((a, b) => {
+        const aTime = a.closedAt ? new Date(a.closedAt).getTime() : new Date(a.openedAt).getTime();
+        const bTime = b.closedAt ? new Date(b.closedAt).getTime() : new Date(b.openedAt).getTime();
+        return aTime - bTime;
+      });
 
-      if (closedPositions.length === 0) {
+      if (sortedPositions.length === 0) {
         return res.json([]);
       }
       
       let cumulativePnl = 0;
-      const chartData = closedPositions.map((position, index) => {
-        // CRITICAL: realizedPnl is ALREADY in DOLLARS (not percentage!)
-        const grossPnlDollar = parseFloat(position.realizedPnl || '0');
+      const chartData = sortedPositions.map((position, index) => {
+        // For closed positions use realizedPnl, for open use unrealizedPnl
+        const grossPnlDollar = position.isOpen 
+          ? parseFloat(position.unrealizedPnl || '0')
+          : parseFloat(position.realizedPnl || '0');
         
         // Calculate fees for this position
         const positionOpenTime = new Date(position.openedAt).getTime();
@@ -1924,15 +1928,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         // Net P&L = Gross P&L - Fees
         const netPnlDollar = grossPnlDollar - totalFees;
-        cumulativePnl += netPnlDollar;
+        
+        // Only add to cumulative if position is closed
+        if (!position.isOpen) {
+          cumulativePnl += netPnlDollar;
+        }
+        
+        // Use closedAt for closed positions, openedAt for open positions
+        const displayTime = position.closedAt 
+          ? new Date(position.closedAt).getTime()
+          : new Date(position.openedAt).getTime();
         
         return {
           tradeNumber: index + 1,
-          timestamp: new Date(position.closedAt!).getTime(),
+          timestamp: displayTime,
           symbol: position.symbol,
           side: position.side,
           pnl: netPnlDollar,
-          cumulativePnl: cumulativePnl,
+          cumulativePnl: position.isOpen ? cumulativePnl : cumulativePnl, // Show current cumulative for both
           entryPrice: parseFloat(position.avgEntryPrice),
           quantity: parseFloat(position.totalQuantity),
         };
