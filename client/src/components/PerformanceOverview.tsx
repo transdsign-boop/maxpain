@@ -222,13 +222,14 @@ export default function PerformanceOverview() {
     if (!chartData || chartData.length === 0) return [];
     
     const groups: Array<{
-      date: string;
+      dateTimestamp: number;
       startTrade: number;
       endTrade: number;
       trades: number;
     }> = [];
     
     let currentDate: string | null = null;
+    let currentDateTimestamp: number | null = null;
     let startTrade: number | null = null;
     
     chartData.forEach((trade, index) => {
@@ -238,9 +239,9 @@ export default function PerformanceOverview() {
       
       if (tradeDate !== currentDate) {
         // Save previous group
-        if (currentDate && startTrade !== null) {
+        if (currentDate && startTrade !== null && currentDateTimestamp !== null) {
           groups.push({
-            date: currentDate,
+            dateTimestamp: currentDateTimestamp,
             startTrade,
             endTrade: chartData[index - 1].tradeNumber,
             trades: index - chartData.findIndex(t => {
@@ -250,17 +251,18 @@ export default function PerformanceOverview() {
           });
         }
         
-        // Start new group
+        // Start new group - store the actual timestamp
         currentDate = tradeDate;
+        currentDateTimestamp = trade.timestamp;
         startTrade = trade.tradeNumber;
       }
     });
     
     // Add final group
-    if (currentDate && startTrade !== null) {
+    if (currentDate && startTrade !== null && currentDateTimestamp !== null) {
       const lastTrade = chartData[chartData.length - 1];
       groups.push({
-        date: currentDate,
+        dateTimestamp: currentDateTimestamp,
         startTrade,
         endTrade: lastTrade.tradeNumber,
         trades: chartData.length - chartData.findIndex(t => {
@@ -703,7 +705,7 @@ export default function PerformanceOverview() {
                 {/* Day grouping blocks */}
                 {dayGroups.map((group, index) => (
                   <ReferenceArea
-                    key={group.date}
+                    key={`day-${group.dateTimestamp}`}
                     x1={group.startTrade}
                     x2={group.endTrade}
                     yAxisId="left"
@@ -712,7 +714,7 @@ export default function PerformanceOverview() {
                     stroke={index % 2 === 0 ? 'hsl(var(--accent-border))' : 'transparent'}
                     strokeOpacity={0.3}
                     label={{
-                      value: `${format(new Date(group.date), 'MMM d')} • ${group.trades} trades`,
+                      value: `${format(new Date(group.dateTimestamp), 'MMM d')} • ${group.trades} trades`,
                       position: 'insideBottom',
                       fill: 'hsl(var(--foreground))',
                       fontSize: 12,
