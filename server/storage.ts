@@ -25,9 +25,7 @@ const sql = neon(databaseUrl);
 
 // Helper functions for camelCase <-> snake_case conversion (DEEP)
 const toSnakeCase = (str: string): string => 
-  str.replace(/[A-Z]/g, (letter, offset) => 
-    offset === 0 ? letter.toLowerCase() : `_${letter.toLowerCase()}`
-  );
+  str.charAt(0).toLowerCase() + str.slice(1).replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
 
 const toCamelCase = (str: string): string =>
   str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
