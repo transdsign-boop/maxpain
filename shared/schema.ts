@@ -91,7 +91,7 @@ export const strategies = pgTable("strategies", {
   maxRetryDurationMs: integer("max_retry_duration_ms").notNull().default(30000), // How long to chase price before giving up (milliseconds)
   priceChaseMode: boolean("price_chase_mode").notNull().default(true), // Automatically update limit price to chase market during liquidation events
   marginAmount: decimal("margin_amount", { precision: 5, scale: 2 }).notNull().default("10.0"), // Percentage of account to use for trading
-  tradingMode: text("trading_mode").notNull().default("paper"), // "paper" or "live"
+  tradingMode: text("trading_mode").notNull().default("demo"), // "demo" (Bybit testnet) or "live" (Aster DEX)
   hedgeMode: boolean("hedge_mode").notNull().default(false), // Allow simultaneous long and short positions on same asset
   isActive: boolean("is_active").notNull().default(false),
   paused: boolean("paused").notNull().default(false), // Temporarily pause trading without deactivating strategy
@@ -111,13 +111,17 @@ export const strategies = pgTable("strategies", {
   // Portfolio Risk Management
   maxOpenPositions: integer("max_open_positions").notNull().default(5), // Maximum number of simultaneous open positions (0 = unlimited)
   maxPortfolioRiskPercent: decimal("max_portfolio_risk_percent", { precision: 5, scale: 2 }).notNull().default("15.0"), // Maximum total risk across all positions as % of account
+  // Bybit API Credentials (for demo trading)
+  bybitApiKey: text("bybit_api_key"), // Bybit testnet API key
+  bybitApiSecret: text("bybit_api_secret"), // Bybit testnet API secret
 });
 
-// Trading Sessions for Paper Trading
+// Trading Sessions
 export const tradeSessions = pgTable("trade_sessions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   strategyId: varchar("strategy_id").notNull(), // References strategies.id
-  mode: text("mode").notNull().default("paper"), // "paper" or "live"
+  mode: text("mode").notNull().default("demo"), // "demo" or "live"
+  exchange: text("exchange").notNull().default("bybit"), // "bybit" (demo) or "aster" (live)
   startingBalance: decimal("starting_balance", { precision: 18, scale: 8 }).notNull().default("10000.0"),
   currentBalance: decimal("current_balance", { precision: 18, scale: 8 }).notNull(),
   totalPnl: decimal("total_pnl", { precision: 18, scale: 8 }).notNull().default("0.0"),
@@ -157,6 +161,7 @@ export const fills = pgTable("fills", {
   value: decimal("value", { precision: 18, scale: 8 }).notNull(),
   fee: decimal("fee", { precision: 18, scale: 8 }).notNull().default("0.0"),
   layerNumber: integer("layer_number").notNull(),
+  exchange: text("exchange").notNull().default("bybit"), // "bybit" or "aster"
   filledAt: timestamp("filled_at").notNull().defaultNow(),
 }, (table) => ({
   // Unique constraint to prevent duplicate fills from race conditions
@@ -180,6 +185,7 @@ export const positions = pgTable("positions", {
   leverage: integer("leverage").notNull().default(1), // Leverage multiplier (1-125x)
   initialEntryPrice: decimal("initial_entry_price", { precision: 18, scale: 8 }), // First layer entry price (P0) - anchor for DCA calculations
   dcaBaseSize: decimal("dca_base_size", { precision: 18, scale: 8 }), // q1 - base layer size used for exponential sizing
+  exchange: text("exchange").notNull().default("bybit"), // "bybit" or "aster"
   isOpen: boolean("is_open").notNull().default(true),
   openedAt: timestamp("opened_at").notNull().defaultNow(),
   closedAt: timestamp("closed_at"),
@@ -238,8 +244,11 @@ export const frontendStrategySchema = z.object({
     const num = parseFloat(val);
     return num >= 1 && num <= 100;
   }, "Account usage must be between 1% and 100%").default("10.0"),
-  tradingMode: z.enum(["paper", "live"]).default("paper"),
+  tradingMode: z.enum(["demo", "live"]).default("demo"),
   hedgeMode: z.boolean().default(false),
+  // Bybit API Credentials (optional, required for demo mode)
+  bybitApiKey: z.string().optional(),
+  bybitApiSecret: z.string().optional(),
   isActive: z.boolean().optional().default(false),
   // Portfolio Risk Management
   maxOpenPositions: z.number().min(0).max(20).default(5), // 0 = unlimited
