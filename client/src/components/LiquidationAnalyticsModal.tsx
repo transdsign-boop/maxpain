@@ -6,6 +6,7 @@ import {
 } from "@/components/ui/dialog";
 import { useQuery } from "@tanstack/react-query";
 import HistoricalLiquidationTable from "./HistoricalLiquidationTable";
+import LiquidationPriceChart from "./LiquidationPriceChart";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Activity } from "lucide-react";
 
@@ -61,6 +62,14 @@ export default function LiquidationAnalyticsModal({
         </DialogHeader>
         
         <div className="flex-1 overflow-y-auto space-y-4">
+          {/* Liquidation Price Chart */}
+          {selectedLiquidation && (
+            <LiquidationPriceChart 
+              symbol={selectedLiquidation.symbol}
+              hours={24}
+            />
+          )}
+
           {/* Historical Liquidations */}
           <Card>
             <CardHeader>
