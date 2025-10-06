@@ -421,23 +421,29 @@ export default function PerformanceOverview() {
 
   const isProfitable = displayPerformance.totalPnl >= 0;
 
-  // Calculate independent domains for better bar visibility
-  const calculateDomain = (data: TradeDataPoint[] | undefined, key: 'pnl' | 'cumulativePnl'): [number, number] => {
-    if (!data || data.length === 0) return [-100, 100];
+  // Calculate unified domain that aligns zero across both axes
+  const calculateUnifiedDomain = (): [number, number] => {
+    if (!chartData || chartData.length === 0) return [-100, 100];
     
-    const values = data.map(d => d[key]);
-    const minValue = Math.min(...values, 0); // Always include zero
-    const maxValue = Math.max(...values, 0); // Always include zero
+    // Get all values from both pnl bars and cumulative line
+    const pnlValues = chartData.map(d => d.pnl);
+    const cumulativeValues = chartData.map(d => d.cumulativePnl);
     
-    // Calculate range and add 15% padding on each side
+    // Find the overall min and max across both datasets
+    const minValue = Math.min(...pnlValues, ...cumulativeValues, 0);
+    const maxValue = Math.max(...pnlValues, ...cumulativeValues, 0);
+    
+    // Calculate range and add 15% padding to fill vertical space
     const range = maxValue - minValue;
     const padding = range * 0.15;
     
+    // Return unified domain so zero aligns on both axes
     return [minValue - padding, maxValue + padding];
   };
 
-  const pnlDomain = calculateDomain(chartData, 'pnl');
-  const cumulativePnlDomain = calculateDomain(chartData, 'cumulativePnl');
+  const unifiedDomain = calculateUnifiedDomain();
+  const pnlDomain = unifiedDomain;
+  const cumulativePnlDomain = unifiedDomain;
 
   const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
