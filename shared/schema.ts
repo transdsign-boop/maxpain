@@ -114,6 +114,9 @@ export const strategies = pgTable("strategies", {
   // Bybit API Credentials (for demo trading)
   bybitApiKey: text("bybit_api_key"), // Bybit testnet API key
   bybitApiSecret: text("bybit_api_secret"), // Bybit testnet API secret
+  // Aster DEX API Credentials (for live trading)
+  asterApiKey: text("aster_api_key"), // Aster DEX API key
+  asterApiSecret: text("aster_api_secret"), // Aster DEX API secret
 });
 
 // Trading Sessions
