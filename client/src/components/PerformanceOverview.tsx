@@ -181,41 +181,57 @@ export default function PerformanceOverview() {
   const canGoForward = actualEndIndex < totalTrades;
   
   // Add interpolated points at zero crossings for smooth color transitions
-  const chartData = paginatedSourceData.flatMap((point, index, arr) => {
-    if (index === 0) return [point];
+  const chartData = useMemo(() => {
+    if (paginatedSourceData.length === 0) return [];
     
-    const prev = arr[index - 1];
-    const curr = point;
+    // Add starting point at zero for cumulative P&L line
+    const firstTrade = paginatedSourceData[0];
+    const startingPoint = {
+      ...firstTrade,
+      tradeNumber: firstTrade.tradeNumber - 0.5,
+      timestamp: firstTrade.timestamp - 1000,
+      pnl: 0,
+      cumulativePnl: 0,
+    };
     
-    // Check if line crosses zero
-    if ((prev.cumulativePnl >= 0 && curr.cumulativePnl < 0) || 
-        (prev.cumulativePnl < 0 && curr.cumulativePnl >= 0)) {
-      // Calculate interpolated point at zero
-      const ratio = Math.abs(prev.cumulativePnl) / (Math.abs(prev.cumulativePnl) + Math.abs(curr.cumulativePnl));
-      const interpolatedTradeNumber = prev.tradeNumber + ratio * (curr.tradeNumber - prev.tradeNumber);
-      const interpolatedTimestamp = prev.timestamp + ratio * (curr.timestamp - prev.timestamp);
+    const withStartPoint = [startingPoint, ...paginatedSourceData];
+    
+    return withStartPoint.flatMap((point, index, arr) => {
+      if (index === 0) return [point];
       
-      return [
-        {
-          ...prev,
-          tradeNumber: interpolatedTradeNumber - 0.001,
-          timestamp: interpolatedTimestamp - 1,
-          cumulativePnl: 0,
-          pnl: 0
-        },
-        {
-          ...curr,
-          tradeNumber: interpolatedTradeNumber + 0.001,
-          timestamp: interpolatedTimestamp + 1,
-          cumulativePnl: 0,
-          pnl: 0
-        },
-        curr
-      ];
-    }
-    
-    return [curr];
-  });
+      const prev = arr[index - 1];
+      const curr = point;
+      
+      // Check if line crosses zero
+      if ((prev.cumulativePnl >= 0 && curr.cumulativePnl < 0) || 
+          (prev.cumulativePnl < 0 && curr.cumulativePnl >= 0)) {
+        // Calculate interpolated point at zero
+        const ratio = Math.abs(prev.cumulativePnl) / (Math.abs(prev.cumulativePnl) + Math.abs(curr.cumulativePnl));
+        const interpolatedTradeNumber = prev.tradeNumber + ratio * (curr.tradeNumber - prev.tradeNumber);
+        const interpolatedTimestamp = prev.timestamp + ratio * (curr.timestamp - prev.timestamp);
+        
+        return [
+          {
+            ...prev,
+            tradeNumber: interpolatedTradeNumber - 0.001,
+            timestamp: interpolatedTimestamp - 1,
+            cumulativePnl: 0,
+            pnl: 0
+          },
+          {
+            ...curr,
+            tradeNumber: interpolatedTradeNumber + 0.001,
+            timestamp: interpolatedTimestamp + 1,
+            cumulativePnl: 0,
+            pnl: 0
+          },
+          curr
+        ];
+      }
+      
+      return [curr];
+    });
+  }, [paginatedSourceData]);
 
   // Group trades by day for visual blocks - MOVED HERE to fix React Hooks order
   const dayGroups = useMemo(() => {
