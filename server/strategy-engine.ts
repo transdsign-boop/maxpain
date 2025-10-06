@@ -1326,6 +1326,7 @@ export class StrategyEngine extends EventEmitter {
             let actualFillsData: any[] | null = null;
             let retryCount = 0;
             const maxRetries = 3;
+            const { apiKey, secretKey } = this.getStrategyCredentials(strategy);
             
             while (retryCount < maxRetries && liveOrderResult.orderId) {
               // Small delay to allow exchange to process the fill
@@ -1336,6 +1337,8 @@ export class StrategyEngine extends EventEmitter {
               const fillResult = await fetchActualFills({
                 symbol,
                 orderId: liveOrderResult.orderId,
+                apiKey,
+                secretKey,
               });
               
               if (fillResult.success && fillResult.fills && fillResult.fills.length > 0) {
@@ -3162,6 +3165,7 @@ export class StrategyEngine extends EventEmitter {
         let actualFillsData: any[] | null = null;
         let retryCount = 0;
         const maxRetries = 3;
+        const { apiKey, secretKey } = this.getStrategyCredentials(strategy);
         
         while (retryCount < maxRetries && liveOrderResult.orderId) {
           // Small delay to allow exchange to process the fill
@@ -3172,6 +3176,8 @@ export class StrategyEngine extends EventEmitter {
           const fillResult = await fetchActualFills({
             symbol: position.symbol,
             orderId: liveOrderResult.orderId,
+            apiKey,
+            secretKey,
           });
           
           if (fillResult.success && fillResult.fills && fillResult.fills.length > 0) {
