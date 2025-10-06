@@ -398,21 +398,24 @@ export default function PerformanceOverview() {
 
   const isProfitable = displayPerformance.totalPnl >= 0;
 
-  // Calculate symmetric domain for 1:1 scale
-  const calculateSymmetricDomain = (data: TradeDataPoint[] | undefined, key: 'pnl' | 'cumulativePnl') => {
+  // Calculate dynamic domain that fills vertical space and shifts zero line
+  const calculateDynamicDomain = (data: TradeDataPoint[] | undefined, key: 'pnl' | 'cumulativePnl'): [number, number] => {
     if (!data || data.length === 0) return [-100, 100];
     
     const values = data.map(d => d[key]);
-    const maxAbsValue = Math.max(...values.map(Math.abs));
+    const minValue = Math.min(...values);
+    const maxValue = Math.max(...values);
     
-    // Add 10% padding and round to nice numbers
-    const paddedMax = maxAbsValue * 1.1;
+    // Calculate range and add 15% padding on each side to fill vertical space
+    const range = maxValue - minValue;
+    const padding = range * 0.15;
     
-    return [-paddedMax, paddedMax];
+    // Return asymmetric domain that shifts zero line as needed
+    return [minValue - padding, maxValue + padding];
   };
 
-  const pnlDomain = calculateSymmetricDomain(chartData, 'pnl');
-  const cumulativePnlDomain = calculateSymmetricDomain(chartData, 'cumulativePnl');
+  const pnlDomain = calculateDynamicDomain(chartData, 'pnl');
+  const cumulativePnlDomain = calculateDynamicDomain(chartData, 'cumulativePnl');
 
   const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
