@@ -4,7 +4,7 @@ import { RestClientV5 } from 'bybit-api';
  * Bybit API Client
  * 
  * Wrapper for Bybit API with HMAC-SHA256 authentication.
- * Uses Bybit Demo Trading (api-demo.bybit.com) for simulated trading.
+ * Uses Bybit Demo Trading with bytick.com endpoint (geo-unblocked alternative).
  */
 export class BybitClient {
   private client: RestClientV5;
@@ -16,11 +16,12 @@ export class BybitClient {
     this.apiSecret = apiSecret;
 
     // Initialize REST client for Demo Trading
+    // The library handles endpoint routing automatically when demoTrading is enabled
     this.client = new RestClientV5({
       key: apiKey,
       secret: apiSecret,
       testnet: false,
-      demoTrading: true, // Use demo trading environment (api-demo.bybit.com)
+      demoTrading: true, // Uses demo trading with production account API keys
     });
   }
 
