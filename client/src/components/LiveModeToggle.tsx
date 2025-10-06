@@ -44,10 +44,26 @@ export default function LiveModeToggle() {
           : "Demo trades on Bybit testnet (fake money)",
       });
     },
-    onError: () => {
+    onError: (error: any) => {
+      let errorMessage = "Failed to toggle trading mode. Please try again.";
+      
+      if (error?.message) {
+        const match = error.message.match(/400: (.+)/);
+        if (match) {
+          try {
+            const errorData = JSON.parse(match[1]);
+            errorMessage = errorData.details || errorData.error || errorMessage;
+          } catch {
+            errorMessage = match[1];
+          }
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
       toast({
         title: "Error",
-        description: "Failed to toggle trading mode. Please try again.",
+        description: errorMessage,
         variant: "destructive",
       });
     }
