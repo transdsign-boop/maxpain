@@ -414,19 +414,19 @@ export default function PerformanceOverview() {
 
   const isProfitable = displayPerformance.totalPnl >= 0;
 
-  // Calculate dynamic domain that fills vertical space and shifts zero line
+  // Calculate dynamic domain that fills vertical space and always includes zero
   const calculateDynamicDomain = (data: TradeDataPoint[] | undefined, key: 'pnl' | 'cumulativePnl'): [number, number] => {
     if (!data || data.length === 0) return [-100, 100];
     
     const values = data.map(d => d[key]);
-    const minValue = Math.min(...values);
-    const maxValue = Math.max(...values);
+    const minValue = Math.min(...values, 0); // Always include zero
+    const maxValue = Math.max(...values, 0); // Always include zero
     
     // Calculate range and add 15% padding on each side to fill vertical space
     const range = maxValue - minValue;
     const padding = range * 0.15;
     
-    // Return asymmetric domain that shifts zero line as needed
+    // Return domain that always includes zero with padding
     return [minValue - padding, maxValue + padding];
   };
 
