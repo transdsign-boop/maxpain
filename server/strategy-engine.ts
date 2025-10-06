@@ -1199,10 +1199,19 @@ export class StrategyEngine extends EventEmitter {
         
         // Check if current price is within slippage tolerance
         const priceDeviation = Math.abs(currentPrice - targetPrice) / targetPrice;
-        const orderPrice = strategy.orderType === 'market' ? currentPrice : targetPrice;
         
-        if (priceDeviation <= slippageTolerance) {
-          console.log(`✅ Price acceptable: $${currentPrice} (deviation: ${(priceDeviation * 100).toFixed(2)}%)`);
+        // Price chase mode: automatically update target price to chase market during liquidation events
+        let effectiveTargetPrice = targetPrice;
+        if (strategy.priceChaseMode && priceDeviation > slippageTolerance) {
+          effectiveTargetPrice = currentPrice;
+          console.log(`🏃 Price chase: updating limit from $${targetPrice.toFixed(6)} to $${currentPrice.toFixed(6)} (deviation: ${(priceDeviation * 100).toFixed(2)}%)`);
+        }
+        
+        const orderPrice = strategy.orderType === 'market' ? currentPrice : effectiveTargetPrice;
+        const finalDeviation = Math.abs(currentPrice - effectiveTargetPrice) / effectiveTargetPrice;
+        
+        if (finalDeviation <= slippageTolerance) {
+          console.log(`✅ Price acceptable: $${currentPrice} (deviation: ${(finalDeviation * 100).toFixed(2)}%)`);
           
           // Check if this is live or paper trading
           if (session.mode === 'live') {
@@ -2934,7 +2943,7 @@ export class StrategyEngine extends EventEmitter {
       
       // Check if we should chase the price (update limit if market moved too far)
       const priceDeviation = Math.abs(currentPrice - targetPrice) / targetPrice;
-      if (priceDeviation > slippageTolerance) {
+      if (strategy.priceChaseMode && priceDeviation > slippageTolerance) {
         // Update the limit price to chase the market
         const newLimitPrice = currentPrice;
         console.log(`🏃 Chasing price for ${order.symbol}: updating limit from $${orderPrice} to $${newLimitPrice} (deviation: ${(priceDeviation * 100).toFixed(2)}%)`);
