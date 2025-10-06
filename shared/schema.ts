@@ -111,10 +111,9 @@ export const strategies = pgTable("strategies", {
   // Portfolio Risk Management
   maxOpenPositions: integer("max_open_positions").notNull().default(5), // Maximum number of simultaneous open positions (0 = unlimited)
   maxPortfolioRiskPercent: decimal("max_portfolio_risk_percent", { precision: 5, scale: 2 }).notNull().default("15.0"), // Maximum total risk across all positions as % of account
-  // Bybit API Credentials (for demo trading)
-  bybitApiKey: text("bybit_api_key"), // Bybit testnet/demo API key
-  bybitApiSecret: text("bybit_api_secret"), // Bybit testnet/demo API secret
-  bybitEndpoint: text("bybit_endpoint").notNull().default("demo"), // "demo" (api-demo.bybit.com) or "testnet" (api-testnet.bybit.com)
+  // Bybit API Credentials (for demo trading - api-demo.bybit.com)
+  bybitApiKey: text("bybit_api_key"), // Bybit demo API key
+  bybitApiSecret: text("bybit_api_secret"), // Bybit demo API secret
   // Aster DEX API Credentials (for live trading)
   asterApiKey: text("aster_api_key"), // Aster DEX API key
   asterApiSecret: text("aster_api_secret"), // Aster DEX API secret
@@ -253,7 +252,6 @@ export const frontendStrategySchema = z.object({
   // Bybit API Credentials (optional, required for demo mode)
   bybitApiKey: z.string().optional(),
   bybitApiSecret: z.string().optional(),
-  bybitEndpoint: z.enum(["demo", "testnet"]).default("demo"),
   isActive: z.boolean().optional().default(false),
   // Portfolio Risk Management
   maxOpenPositions: z.number().min(0).max(20).default(5), // 0 = unlimited
