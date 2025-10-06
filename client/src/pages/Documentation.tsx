@@ -31,481 +31,635 @@ export default function Documentation() {
 
       {/* Content */}
       <main className="max-w-4xl mx-auto px-6 py-12">
-        <article className="prose prose-slate dark:prose-invert max-w-none prose-headings:font-semibold prose-h1:text-4xl prose-h2:text-2xl prose-h2:mt-12 prose-h2:mb-4 prose-h3:text-xl prose-h3:mt-6 prose-h3:mb-3">
+        <article className="space-y-12">
           
           {/* Title */}
-          <div className="text-center mb-16 print:mb-12">
-            <h1 className="mb-3">MPI™ Liquidation Hunter Bot</h1>
+          <div className="text-center pb-8 border-b">
+            <h1 className="text-4xl font-bold mb-3">MPI™ Liquidation Hunter Bot</h1>
             <p className="text-xl text-muted-foreground mb-2">Professional Trading Documentation</p>
             <p className="text-sm text-muted-foreground">Version 2.0 | Max Pain Industry™ | October 2025</p>
           </div>
 
           {/* Executive Summary */}
           <section>
-            <h2>Executive Summary</h2>
-            <p className="lead">
+            <h2 className="text-2xl font-semibold mb-6">Executive Summary</h2>
+            <p className="text-lg mb-6">
               The MPI™ Liquidation Hunter Bot is a sophisticated algorithmic trading system designed to capitalize on liquidation events in cryptocurrency futures markets. By detecting and counter-trading forced liquidations on the Aster DEX exchange, the bot exploits temporary price dislocations to generate consistent returns with advanced risk management.
             </p>
             
-            <p><strong>Key Capabilities:</strong></p>
-            <ul>
-              <li>Real-time liquidation detection with cascade risk analysis</li>
-              <li>Advanced Dollar Cost Averaging (DCA) with volatility-based sizing</li>
-              <li>Multi-layer risk management with portfolio-level controls</li>
-              <li>Paper trading mode for risk-free strategy testing</li>
-              <li>Complete performance analytics with permanent data retention</li>
-              <li>24/7 automated trading with live exchange integration</li>
-            </ul>
+            {/* Key Metrics Grid */}
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 my-8">
+              <div className="border rounded-lg p-4 text-center">
+                <div className="text-3xl font-bold mb-1">18+</div>
+                <div className="text-sm text-muted-foreground">Trading Pairs</div>
+              </div>
+              <div className="border rounded-lg p-4 text-center">
+                <div className="text-3xl font-bold mb-1">&lt;1s</div>
+                <div className="text-sm text-muted-foreground">Detection Latency</div>
+              </div>
+              <div className="border rounded-lg p-4 text-center">
+                <div className="text-3xl font-bold mb-1">24/7</div>
+                <div className="text-sm text-muted-foreground">Automated Trading</div>
+              </div>
+              <div className="border rounded-lg p-4 text-center">
+                <div className="text-3xl font-bold mb-1">1-125x</div>
+                <div className="text-sm text-muted-foreground">Leverage Range</div>
+              </div>
+              <div className="border rounded-lg p-4 text-center">
+                <div className="text-3xl font-bold mb-1">∞</div>
+                <div className="text-sm text-muted-foreground">Data Retention</div>
+              </div>
+              <div className="border rounded-lg p-4 text-center">
+                <div className="text-3xl font-bold mb-1">4-Tier</div>
+                <div className="text-sm text-muted-foreground">Risk Scoring</div>
+              </div>
+            </div>
+
+            <div className="border-l-4 border-muted pl-4 my-6">
+              <p className="font-semibold mb-3">Core Capabilities:</p>
+              <ul className="space-y-2 text-muted-foreground">
+                <li>• Real-time liquidation detection with cascade risk analysis</li>
+                <li>• Advanced Dollar Cost Averaging (DCA) with volatility-based sizing</li>
+                <li>• Multi-layer risk management with portfolio-level controls</li>
+                <li>• Paper trading mode for risk-free strategy testing</li>
+                <li>• Complete performance analytics with permanent data retention</li>
+              </ul>
+            </div>
           </section>
 
           {/* What is Liquidation Hunting */}
           <section>
-            <h2>What is Liquidation Hunting?</h2>
+            <h2 className="text-2xl font-semibold mb-6">What is Liquidation Hunting?</h2>
             
-            <h3>The Market Opportunity</h3>
-            <p>
-              When leveraged traders get liquidated, their positions are forcefully closed at market price, creating temporary price dislocations. These liquidation events create three key opportunities:
+            <h3 className="text-xl font-semibold mb-4">The Market Opportunity</h3>
+            <p className="mb-4">
+              When leveraged traders get liquidated, their positions are forcefully closed at market price, creating temporary price dislocations:
             </p>
-            <ol>
-              <li><strong>Oversold/Overbought Conditions:</strong> Forced market orders create temporary price extremes</li>
-              <li><strong>Cascade Effects:</strong> One liquidation can trigger others, amplifying price movements</li>
-              <li><strong>Mean Reversion:</strong> Prices typically revert after forced liquidation pressure subsides</li>
-            </ol>
 
-            <h3>Our Trading Strategy</h3>
-            <p>The MPI™ Liquidation Hunter Bot employs a systematic five-step approach:</p>
-            <ol>
-              <li><strong>Monitor:</strong> Real-time liquidation streams from Aster DEX</li>
-              <li><strong>Analyze:</strong> Cascade risk and market microstructure indicators</li>
-              <li><strong>Identify:</strong> High-quality reversal opportunities using proprietary scoring</li>
-              <li><strong>Execute:</strong> Counter-trend positions with precision order placement</li>
-              <li><strong>Manage:</strong> Dynamic risk control through DCA and protective stops</li>
-            </ol>
+            {/* Opportunity Table */}
+            <div className="border rounded-lg overflow-hidden mb-6">
+              <table className="w-full">
+                <thead className="bg-muted/50">
+                  <tr>
+                    <th className="text-left p-3 font-semibold">Event Type</th>
+                    <th className="text-left p-3 font-semibold">Market Impact</th>
+                    <th className="text-left p-3 font-semibold">Trading Opportunity</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  <tr>
+                    <td className="p-3">Oversold Conditions</td>
+                    <td className="p-3 text-muted-foreground">Forced selling creates price extremes</td>
+                    <td className="p-3">Buy at discount</td>
+                  </tr>
+                  <tr>
+                    <td className="p-3">Cascade Effects</td>
+                    <td className="p-3 text-muted-foreground">One liquidation triggers others</td>
+                    <td className="p-3">Amplified reversals</td>
+                  </tr>
+                  <tr>
+                    <td className="p-3">Mean Reversion</td>
+                    <td className="p-3 text-muted-foreground">Prices normalize after pressure</td>
+                    <td className="p-3">Profit on reversion</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
 
-            <p><strong>Counter-Trading Logic:</strong></p>
-            <ul>
-              <li>When long positions liquidate (selling pressure) → Execute LONG positions (buy the dip)</li>
-              <li>When short positions liquidate (buying pressure) → Execute SHORT positions (sell the rally)</li>
-            </ul>
+            <h3 className="text-xl font-semibold mb-4">Trading Strategy Process</h3>
+            
+            {/* Process Flow */}
+            <div className="space-y-3 mb-6">
+              <div className="flex items-start gap-4 p-4 border rounded-lg">
+                <div className="flex-shrink-0 w-8 h-8 rounded-full border-2 flex items-center justify-center font-bold">1</div>
+                <div>
+                  <div className="font-semibold mb-1">Monitor</div>
+                  <div className="text-sm text-muted-foreground">Real-time liquidation streams from Aster DEX</div>
+                </div>
+              </div>
+              <div className="flex items-start gap-4 p-4 border rounded-lg">
+                <div className="flex-shrink-0 w-8 h-8 rounded-full border-2 flex items-center justify-center font-bold">2</div>
+                <div>
+                  <div className="font-semibold mb-1">Analyze</div>
+                  <div className="text-sm text-muted-foreground">Cascade risk and market microstructure indicators</div>
+                </div>
+              </div>
+              <div className="flex items-start gap-4 p-4 border rounded-lg">
+                <div className="flex-shrink-0 w-8 h-8 rounded-full border-2 flex items-center justify-center font-bold">3</div>
+                <div>
+                  <div className="font-semibold mb-1">Identify</div>
+                  <div className="text-sm text-muted-foreground">High-quality reversal opportunities using proprietary scoring</div>
+                </div>
+              </div>
+              <div className="flex items-start gap-4 p-4 border rounded-lg">
+                <div className="flex-shrink-0 w-8 h-8 rounded-full border-2 flex items-center justify-center font-bold">4</div>
+                <div>
+                  <div className="font-semibold mb-1">Execute</div>
+                  <div className="text-sm text-muted-foreground">Counter-trend positions with precision order placement</div>
+                </div>
+              </div>
+              <div className="flex items-start gap-4 p-4 border rounded-lg">
+                <div className="flex-shrink-0 w-8 h-8 rounded-full border-2 flex items-center justify-center font-bold">5</div>
+                <div>
+                  <div className="font-semibold mb-1">Manage</div>
+                  <div className="text-sm text-muted-foreground">Dynamic risk control through DCA and protective stops</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Counter-Trading Logic */}
+            <div className="border rounded-lg p-6 bg-muted/30">
+              <h4 className="font-semibold mb-4 text-center">Counter-Trading Logic</h4>
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="text-center p-4 border rounded">
+                  <div className="font-semibold mb-2">Long Liquidations</div>
+                  <div className="text-sm text-muted-foreground mb-2">Selling Pressure Detected</div>
+                  <div className="text-sm">→ Execute <strong>LONG</strong> Position</div>
+                </div>
+                <div className="text-center p-4 border rounded">
+                  <div className="font-semibold mb-2">Short Liquidations</div>
+                  <div className="text-sm text-muted-foreground mb-2">Buying Pressure Detected</div>
+                  <div className="text-sm">→ Execute <strong>SHORT</strong> Position</div>
+                </div>
+              </div>
+            </div>
           </section>
 
           {/* Core Features */}
           <section>
-            <h2>Core Features</h2>
+            <h2 className="text-2xl font-semibold mb-6">Core Features</h2>
 
-            <h3>1. Real-Time Liquidation Detection</h3>
-            <p><strong>Intelligent Signal Processing:</strong></p>
-            <ul>
-              <li>WebSocket connection to Aster DEX with sub-second latency</li>
-              <li>Configurable percentile thresholds (1st through 99th percentile)</li>
-              <li>Multi-symbol monitoring across 18+ cryptocurrency pairs</li>
-              <li>Lookback window analysis (1-24 hours configurable)</li>
-              <li>Duplicate liquidation filtering and deduplication</li>
-            </ul>
+            {/* Feature 1: Detection */}
+            <div className="mb-8">
+              <h3 className="text-xl font-semibold mb-4">1. Real-Time Liquidation Detection</h3>
+              
+              <div className="border rounded-lg overflow-hidden mb-4">
+                <table className="w-full">
+                  <thead className="bg-muted/50">
+                    <tr>
+                      <th className="text-left p-3 font-semibold">Component</th>
+                      <th className="text-left p-3 font-semibold">Specification</th>
+                      <th className="text-left p-3 font-semibold">Range</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    <tr>
+                      <td className="p-3">Connection Type</td>
+                      <td className="p-3 text-muted-foreground">WebSocket Stream</td>
+                      <td className="p-3">&lt;1s latency</td>
+                    </tr>
+                    <tr>
+                      <td className="p-3">Percentile Filter</td>
+                      <td className="p-3 text-muted-foreground">Configurable Threshold</td>
+                      <td className="p-3">1st - 99th</td>
+                    </tr>
+                    <tr>
+                      <td className="p-3">Symbol Coverage</td>
+                      <td className="p-3 text-muted-foreground">Multi-Asset Monitoring</td>
+                      <td className="p-3">18+ pairs</td>
+                    </tr>
+                    <tr>
+                      <td className="p-3">Lookback Window</td>
+                      <td className="p-3 text-muted-foreground">Historical Analysis</td>
+                      <td className="p-3">1-24 hours</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
 
-            <p><strong>Cascade Risk Analysis:</strong></p>
-            <ul>
-              <li><strong>LQ Score:</strong> Liquidation quantity relative to median (scale: 0-∞)</li>
-              <li><strong>RET Score:</strong> Realized volatility indicator (scale: 0-∞)</li>
-              <li><strong>OI Delta:</strong> Open interest changes (1min & 3min windows)</li>
-              <li><strong>Reversal Quality:</strong> Four-tier classification (Poor, OK, Good, Excellent)</li>
-              <li><strong>Auto-Block System:</strong> Prevents trading during extreme cascade events</li>
-            </ul>
+              <div className="border-l-4 border-muted pl-4">
+                <p className="font-semibold mb-2">Cascade Risk Scoring:</p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                  <div>
+                    <div className="font-semibold">LQ Score</div>
+                    <div className="text-muted-foreground">Liquidation quantity vs median</div>
+                  </div>
+                  <div>
+                    <div className="font-semibold">RET Score</div>
+                    <div className="text-muted-foreground">Realized volatility indicator</div>
+                  </div>
+                  <div>
+                    <div className="font-semibold">OI Delta</div>
+                    <div className="text-muted-foreground">Open interest changes</div>
+                  </div>
+                  <div>
+                    <div className="font-semibold">Quality Tier</div>
+                    <div className="text-muted-foreground">Poor / OK / Good / Excellent</div>
+                  </div>
+                </div>
+              </div>
+            </div>
 
-            <h3>2. Advanced DCA (Dollar Cost Averaging) System</h3>
-            
-            <p><strong>Volatility-Based Step Spacing:</strong></p>
-            <p className="font-mono text-sm">c<sub>k</sub> = Δ<sub>1</sub> × k<sup>p</sup> × max(1, ATR/V<sub>ref</sub>)</p>
-            <ul>
-              <li>Δ<sub>1</sub> = Starting step distance (e.g., 0.4%)</li>
-              <li>p = Convexity factor (e.g., 1.2) for widening layer spacing</li>
-              <li>V<sub>ref</sub> = Reference volatility baseline</li>
-            </ul>
+            {/* Feature 2: DCA */}
+            <div className="mb-8">
+              <h3 className="text-xl font-semibold mb-4">2. Advanced DCA System</h3>
+              
+              <div className="grid md:grid-cols-2 gap-4 mb-4">
+                <div className="border rounded-lg p-4">
+                  <div className="font-semibold mb-3">Volatility-Based Spacing</div>
+                  <div className="font-mono text-sm bg-muted p-3 rounded mb-3">
+                    c<sub>k</sub> = Δ<sub>1</sub> × k<sup>p</sup> × max(1, ATR/V<sub>ref</sub>)
+                  </div>
+                  <div className="text-sm text-muted-foreground space-y-1">
+                    <div>Δ<sub>1</sub> = Starting step (e.g., 0.4%)</div>
+                    <div>p = Convexity factor (e.g., 1.2)</div>
+                    <div>V<sub>ref</sub> = Volatility baseline</div>
+                  </div>
+                </div>
+                
+                <div className="border rounded-lg p-4">
+                  <div className="font-semibold mb-3">Exponential Size Growth</div>
+                  <div className="font-mono text-sm bg-muted p-3 rounded mb-3">
+                    w<sub>k</sub> = g<sup>(k-1)</sup>
+                  </div>
+                  <div className="text-sm text-muted-foreground space-y-1">
+                    <div>g = Growth ratio (e.g., 1.8x)</div>
+                    <div>k = Layer number</div>
+                    <div>Progressive position sizing</div>
+                  </div>
+                </div>
+              </div>
 
-            <p><strong>Exponential Size Growth:</strong></p>
-            <p className="font-mono text-sm">w<sub>k</sub> = g<sup>(k-1)</sup></p>
-            <p>Where g = growth ratio (e.g., 1.8x per layer)</p>
+              <div className="border rounded-lg overflow-hidden">
+                <table className="w-full">
+                  <thead className="bg-muted/50">
+                    <tr>
+                      <th className="text-left p-3 font-semibold">Exit Type</th>
+                      <th className="text-left p-3 font-semibold">Calculation Method</th>
+                      <th className="text-left p-3 font-semibold">Update Frequency</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    <tr>
+                      <td className="p-3">Take Profit</td>
+                      <td className="p-3 text-muted-foreground">Volatility-adjusted + exit cushion</td>
+                      <td className="p-3">After each layer</td>
+                    </tr>
+                    <tr>
+                      <td className="p-3">Stop Loss</td>
+                      <td className="p-3 text-muted-foreground">% from weighted avg entry</td>
+                      <td className="p-3">After each layer</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
 
-            <p><strong>Dynamic Exit Pricing:</strong></p>
-            <ul>
-              <li><strong>Take Profit:</strong> Volatility-adjusted distance with exit cushion multiplier</li>
-              <li><strong>Stop Loss:</strong> Calculated from weighted average entry price</li>
-              <li><strong>Auto-Update:</strong> TP/SL recalculated after each layer fill</li>
-            </ul>
+            {/* Feature 3: Risk Management */}
+            <div className="mb-8">
+              <h3 className="text-xl font-semibold mb-4">3. Portfolio Risk Management</h3>
+              
+              <div className="border rounded-lg overflow-hidden">
+                <table className="w-full">
+                  <thead className="bg-muted/50">
+                    <tr>
+                      <th className="text-left p-3 font-semibold">Control Type</th>
+                      <th className="text-left p-3 font-semibold">Parameter</th>
+                      <th className="text-left p-3 font-semibold">Range</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    <tr>
+                      <td className="p-3">Position Limits</td>
+                      <td className="p-3 text-muted-foreground">Max open positions</td>
+                      <td className="p-3">0-20 (0 = unlimited)</td>
+                    </tr>
+                    <tr>
+                      <td className="p-3">Portfolio Risk</td>
+                      <td className="p-3 text-muted-foreground">Max exposure %</td>
+                      <td className="p-3">1-100%</td>
+                    </tr>
+                    <tr>
+                      <td className="p-3">Margin Allocation</td>
+                      <td className="p-3 text-muted-foreground">Available funds %</td>
+                      <td className="p-3">1-100%</td>
+                    </tr>
+                    <tr>
+                      <td className="p-3">Leverage Control</td>
+                      <td className="p-3 text-muted-foreground">Per-trade leverage</td>
+                      <td className="p-3">1-125x</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
 
-            <p><strong>Risk-Aware Position Sizing:</strong></p>
-            <ul>
-              <li>Total position risk capped at configurable percentage of account balance</li>
-              <li>Layer-by-layer risk calculation accounting for cumulative exposure</li>
-            </ul>
-
-            <h3>3. Portfolio Risk Management</h3>
-            <p><strong>Multi-Layer Protection:</strong></p>
-            <ul>
-              <li>Maximum open positions (0-20 concurrent positions, 0 = unlimited)</li>
-              <li>Maximum portfolio risk percentage (1-100% of account balance)</li>
-              <li>Configurable margin allocation (1-100% of available funds)</li>
-              <li>Per-trade leverage control (1-125x with safety warnings)</li>
-              <li>Real-time exposure monitoring and position tracking</li>
-              <li>Emergency "Close All Positions" function</li>
-            </ul>
-
-            <h3>4. Intelligent Order Execution</h3>
-            <p><strong>Smart Order Management:</strong></p>
-            <ul>
-              <li><strong>Price Chase Mode:</strong> Automatically adjusts limit prices during rapid market moves</li>
-              <li><strong>Order Delay:</strong> Configurable wait time between detection and execution (100ms-30s)</li>
-              <li><strong>Slippage Tolerance:</strong> Maximum acceptable price deviation (0.1-5%)</li>
-              <li><strong>Retry Duration:</strong> Maximum time to pursue price target (5s-5min)</li>
-              <li><strong>Batch Execution:</strong> Efficient order placement for multiple layers</li>
-              <li><strong>Atomic Updates:</strong> Cancel-and-replace for TP/SL modifications</li>
-            </ul>
-
-            <h3>5. Market Direction Analysis</h3>
-            <p><strong>Multi-Factor Sentiment Scoring:</strong></p>
-            <ul>
-              <li><strong>Order Book Pressure (60% weight):</strong> Bid/ask depth imbalance analysis</li>
-              <li><strong>Funding Rates (40% weight):</strong> Current funding rate directional bias</li>
-              <li><strong>Output:</strong> Directional confidence score (0-100%) with bias indication</li>
-            </ul>
-
-            <h3>6. Liquidity Analysis & Asset Ranking</h3>
-            <p><strong>Real-Time Liquidity Metrics:</strong></p>
-            <ul>
-              <li>Bid/ask depth measurement at best price levels</li>
-              <li>Trade size capacity analysis for position sizing</li>
-              <li>Slippage estimation for various order sizes</li>
-            </ul>
-
-            <p><strong>Asset Ranking Modes:</strong></p>
-            <ol>
-              <li>By Liquidation Activity (default ranking)</li>
-              <li>By Best Liquidity (optimal for large positions)</li>
-              <li>Alphabetical (simple symbol ordering)</li>
-            </ol>
+            {/* Feature 4: Order Execution */}
+            <div className="mb-8">
+              <h3 className="text-xl font-semibold mb-4">4. Intelligent Order Execution</h3>
+              
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="border rounded-lg p-4 text-center">
+                  <div className="font-semibold mb-2">Price Chase</div>
+                  <div className="text-2xl font-bold mb-1">Yes</div>
+                  <div className="text-xs text-muted-foreground">Auto-adjust limits</div>
+                </div>
+                <div className="border rounded-lg p-4 text-center">
+                  <div className="font-semibold mb-2">Order Delay</div>
+                  <div className="text-2xl font-bold mb-1">100ms-30s</div>
+                  <div className="text-xs text-muted-foreground">Configurable wait</div>
+                </div>
+                <div className="border rounded-lg p-4 text-center">
+                  <div className="font-semibold mb-2">Slippage</div>
+                  <div className="text-2xl font-bold mb-1">0.1-5%</div>
+                  <div className="text-xs text-muted-foreground">Max deviation</div>
+                </div>
+                <div className="border rounded-lg p-4 text-center">
+                  <div className="font-semibold mb-2">Retry</div>
+                  <div className="text-2xl font-bold mb-1">5s-5min</div>
+                  <div className="text-xs text-muted-foreground">Chase duration</div>
+                </div>
+              </div>
+            </div>
           </section>
 
-          {/* Trading Strategy */}
+          {/* Risk Management System */}
           <section>
-            <h2>Trading Strategy Logic</h2>
+            <h2 className="text-2xl font-semibold mb-6">Risk Management System</h2>
 
-            <h3>Entry Requirements</h3>
-            <p>All conditions must be satisfied for trade execution:</p>
-            <ol>
-              <li><strong>Asset Filter:</strong> Symbol must be in selected assets list</li>
-              <li><strong>Percentile Threshold:</strong> Liquidation size must meet or exceed configured percentile</li>
-              <li><strong>Cascade Risk:</strong> Reversal quality must meet minimum threshold requirement</li>
-              <li><strong>Portfolio Limits:</strong> Must not exceed maximum position count or risk limit</li>
-              <li><strong>Cooldown Period:</strong> No recent entry for the same symbol (prevents over-trading)</li>
-            </ol>
+            {/* Cascade Auto-Block */}
+            <div className="border rounded-lg p-6 mb-6 bg-muted/20">
+              <h3 className="text-lg font-semibold mb-4">Cascade Detection Auto-Block</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="text-center p-3 border rounded">
+                  <div className="font-bold text-lg mb-1">Red</div>
+                  <div className="text-sm mb-2">Score ≥6</div>
+                  <div className="text-xs text-muted-foreground">All entries blocked</div>
+                </div>
+                <div className="text-center p-3 border rounded">
+                  <div className="font-bold text-lg mb-1">Orange</div>
+                  <div className="text-sm mb-2">Score ≥4</div>
+                  <div className="text-xs text-muted-foreground">High risk warning</div>
+                </div>
+                <div className="text-center p-3 border rounded">
+                  <div className="font-bold text-lg mb-1">Yellow</div>
+                  <div className="text-sm mb-2">Score ≥2</div>
+                  <div className="text-xs text-muted-foreground">Moderate caution</div>
+                </div>
+                <div className="text-center p-3 border rounded">
+                  <div className="font-bold text-lg mb-1">Green</div>
+                  <div className="text-sm mb-2">Score &lt;2</div>
+                  <div className="text-xs text-muted-foreground">Normal operation</div>
+                </div>
+              </div>
+            </div>
 
-            <h3>Layer Addition Logic</h3>
-            <p>Additional layers are added when:</p>
-            <ul>
-              <li>New qualifying liquidation detected for existing position symbol</li>
-              <li>Price has moved against current position (DCA trigger activated)</li>
-              <li>Current layer count is below maximum configured layers</li>
-              <li>Additional position risk remains below portfolio risk limit</li>
-            </ul>
-
-            <h3>Exit Conditions</h3>
-            <p><strong>Take Profit:</strong> Calculated using volatility-adjusted distance with configurable exit cushion multiplier. Automatically updated after each layer addition.</p>
-            
-            <p><strong>Stop Loss:</strong> Fixed percentage from weighted average entry price (typical range: 2-5%). Protects against adverse price movements.</p>
-            
-            <p><strong>Manual Exit:</strong> Individual positions can be closed manually, or all positions can be emergency-stopped via dashboard controls.</p>
+            {/* Multi-Layer Protection */}
+            <div className="grid md:grid-cols-2 gap-6">
+              <div className="border rounded-lg p-4">
+                <h4 className="font-semibold mb-3">Position-Level Controls</h4>
+                <ul className="space-y-2 text-sm text-muted-foreground">
+                  <li>• Max risk per trade (% of account)</li>
+                  <li>• Position size limits (min/max)</li>
+                  <li>• Leverage limits with warnings</li>
+                  <li>• Dynamic stop loss protection</li>
+                </ul>
+              </div>
+              <div className="border rounded-lg p-4">
+                <h4 className="font-semibold mb-3">Portfolio-Level Controls</h4>
+                <ul className="space-y-2 text-sm text-muted-foreground">
+                  <li>• Max total exposure (% of account)</li>
+                  <li>• Max positions per symbol</li>
+                  <li>• Concentration limits</li>
+                  <li>• Real-time P&L monitoring</li>
+                </ul>
+              </div>
+            </div>
           </section>
 
-          {/* Risk Management */}
+          {/* Performance Metrics */}
           <section>
-            <h2>Risk Management System</h2>
+            <h2 className="text-2xl font-semibold mb-6">Performance Tracking</h2>
 
-            <h3>Position-Level Controls</h3>
-            <ul>
-              <li>Maximum risk per trade (configurable % of account balance)</li>
-              <li>Position size limits (minimum and maximum notional values)</li>
-              <li>Minimum position size enforcement for cost efficiency</li>
-              <li>Leverage limits (1-125x with visual warnings above 20x)</li>
-              <li>Dynamic stop loss protection with automatic updates</li>
-            </ul>
+            <div className="border rounded-lg overflow-hidden mb-6">
+              <table className="w-full">
+                <thead className="bg-muted/50">
+                  <tr>
+                    <th className="text-left p-3 font-semibold">Metric</th>
+                    <th className="text-left p-3 font-semibold">Description</th>
+                    <th className="text-left p-3 font-semibold">Purpose</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  <tr>
+                    <td className="p-3 font-medium">Total Trades</td>
+                    <td className="p-3 text-muted-foreground">Open + Closed positions</td>
+                    <td className="p-3 text-sm">Activity volume</td>
+                  </tr>
+                  <tr>
+                    <td className="p-3 font-medium">Win Rate</td>
+                    <td className="p-3 text-muted-foreground">% of profitable trades</td>
+                    <td className="p-3 text-sm">Strategy accuracy</td>
+                  </tr>
+                  <tr>
+                    <td className="p-3 font-medium">Total P&L</td>
+                    <td className="p-3 text-muted-foreground">Realized + Unrealized</td>
+                    <td className="p-3 text-sm">Account growth</td>
+                  </tr>
+                  <tr>
+                    <td className="p-3 font-medium">Profit Factor</td>
+                    <td className="p-3 text-muted-foreground">Gross profit / loss ratio</td>
+                    <td className="p-3 text-sm">Strategy efficiency</td>
+                  </tr>
+                  <tr>
+                    <td className="p-3 font-medium">Max Drawdown</td>
+                    <td className="p-3 text-muted-foreground">Peak to trough decline</td>
+                    <td className="p-3 text-sm">Risk assessment</td>
+                  </tr>
+                  <tr>
+                    <td className="p-3 font-medium">Avg Win/Loss</td>
+                    <td className="p-3 text-muted-foreground">Mean per trade</td>
+                    <td className="p-3 text-sm">Trade sizing</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
 
-            <h3>Portfolio-Level Controls</h3>
-            <ul>
-              <li>Maximum total exposure (% of account balance)</li>
-              <li>Maximum positions per symbol (prevents concentration)</li>
-              <li>Maximum open positions across all symbols</li>
-              <li>Symbol concentration limits and diversification enforcement</li>
-              <li>Real-time profit & loss monitoring with alerts</li>
-            </ul>
-
-            <h3>Market Condition Filters</h3>
-            <p><strong>Cascade Detection Auto-Block System:</strong></p>
-            <ul>
-              <li><strong>Red Status (Score ≥6):</strong> All new entries blocked - extreme risk</li>
-              <li><strong>Orange Status (Score ≥4):</strong> High-risk warning - proceed with caution</li>
-              <li><strong>Yellow Status (Score ≥2):</strong> Moderate caution - elevated risk</li>
-              <li><strong>Green Status (Score &lt;2):</strong> Normal operation - acceptable risk</li>
-            </ul>
-
-            <h3>Order Execution Safety</h3>
-            <ul>
-              <li>Idempotency protection to prevent duplicate order placement</li>
-              <li>Atomic cancel-then-place operations for TP/SL updates</li>
-              <li>Live order verification and automatic correction</li>
-              <li>Orphaned order cleanup (5-second monitoring cycle)</li>
-              <li>Price chase safety limits to prevent runaway orders</li>
-            </ul>
-          </section>
-
-          {/* Technical Architecture */}
-          <section>
-            <h2>Technical Architecture</h2>
-
-            <h3>Real-Time Data Infrastructure</h3>
-            <ul>
-              <li>WebSocket streams with sub-second latency for liquidations</li>
-              <li>REST API integration with HMAC-SHA256 authentication</li>
-              <li>Rate limiting and request queuing for API compliance</li>
-              <li>Connection pooling for high-performance database access</li>
-            </ul>
-
-            <h3>Database Architecture</h3>
-            <p><strong>Neon PostgreSQL (Serverless):</strong></p>
-            <ul>
-              <li>Permanent data retention - ALL trading data preserved forever</li>
-              <li>Session-based organization for live/paper mode separation</li>
-              <li>Automatic archiving (liquidations: 30-day retention, trades: permanent)</li>
-              <li>Connection pooling via serverless HTTP driver</li>
-            </ul>
-
-            <h3>Technology Stack</h3>
-            <p><strong>Frontend:</strong> React 18, TypeScript, Vite, Radix UI, shadcn/ui, Tailwind CSS</p>
-            <p><strong>Backend:</strong> Node.js, Express, TypeScript, Drizzle ORM</p>
-            <p><strong>Database:</strong> PostgreSQL (Neon Serverless), Connection Pooling</p>
-            <p><strong>Real-Time:</strong> WebSocket (Aster DEX), User Data Streams</p>
-
-            <h3>Core Services</h3>
-            <ul>
-              <li><strong>Strategy Engine:</strong> Core trading logic, signal processing, position management</li>
-              <li><strong>Cascade Detector:</strong> Real-time liquidation analysis, reversal quality scoring</li>
-              <li><strong>DCA Calculator:</strong> Mathematical DCA computation, volatility scaling, dynamic exits</li>
-              <li><strong>Order Protection Service:</strong> TP/SL management, idempotency, orphaned order cleanup</li>
-            </ul>
-          </section>
-
-          {/* Performance Tracking */}
-          <section>
-            <h2>Performance Tracking</h2>
-
-            <h3>Key Metrics</h3>
-            <ul>
-              <li><strong>Total Trades:</strong> Combined open and closed position count</li>
-              <li><strong>Win Rate:</strong> Percentage of profitable closed trades</li>
-              <li><strong>Total P&L:</strong> Realized gains/losses plus unrealized position values</li>
-              <li><strong>Profit Factor:</strong> Gross profit divided by gross loss ratio</li>
-              <li><strong>Maximum Drawdown:</strong> Largest peak-to-trough decline</li>
-              <li><strong>Average Win/Loss:</strong> Mean profit and loss per trade</li>
-            </ul>
-
-            <h3>Interactive Performance Chart</h3>
-            <ul>
-              <li>Per-trade P&L bars with color coding (lime = profit, orange = loss)</li>
-              <li>Cumulative P&L line graph tracking account growth</li>
-              <li>Day-based grouping with trade count indicators</li>
-              <li>Strategy change markers for parameter adjustments</li>
-              <li>Pagination support for large historical datasets</li>
-              <li>Automatic Y-axis scaling with zero reference baseline</li>
-            </ul>
+            <div className="border-l-4 border-muted pl-4">
+              <p className="font-semibold mb-2">Interactive Chart Features:</p>
+              <div className="grid md:grid-cols-2 gap-x-6 gap-y-2 text-sm text-muted-foreground">
+                <div>• Per-trade P&L bars with color coding</div>
+                <div>• Cumulative P&L trend line</div>
+                <div>• Day-based grouping with counts</div>
+                <div>• Strategy change markers</div>
+                <div>• Pagination for large datasets</div>
+                <div>• Auto-scaling Y-axis</div>
+              </div>
+            </div>
           </section>
 
           {/* Getting Started */}
           <section>
-            <h2>Getting Started</h2>
+            <h2 className="text-2xl font-semibold mb-6">Getting Started</h2>
 
-            <h3>Step 1: Initial Setup</h3>
-            <p><strong>Prerequisites:</strong></p>
-            <ul>
-              <li>Aster DEX account with API access enabled</li>
-              <li>API Key and Secret Key credentials</li>
-              <li>Funded account (minimum $100 recommended for testing)</li>
-            </ul>
+            <div className="space-y-6">
+              {/* Step 1 */}
+              <div className="border rounded-lg p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="flex-shrink-0 w-10 h-10 rounded-full border-2 flex items-center justify-center font-bold text-lg">1</div>
+                  <h3 className="text-lg font-semibold">Initial Setup</h3>
+                </div>
+                <div className="ml-13 space-y-3">
+                  <div>
+                    <div className="font-semibold text-sm mb-1">Prerequisites:</div>
+                    <div className="text-sm text-muted-foreground">Aster DEX account • API credentials • Minimum $100 balance</div>
+                  </div>
+                  <div>
+                    <div className="font-semibold text-sm mb-1">Steps:</div>
+                    <div className="text-sm text-muted-foreground">Settings → API Connection → Enter credentials → Test connection</div>
+                  </div>
+                </div>
+              </div>
 
-            <p><strong>Configuration Steps:</strong></p>
-            <ol>
-              <li>Access Settings via the header Settings button</li>
-              <li>Navigate to "API Connection" tab</li>
-              <li>Enter your Aster DEX API credentials</li>
-              <li>Click "Test Connection" to verify (displays account balance)</li>
-            </ol>
+              {/* Step 2 */}
+              <div className="border rounded-lg p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="flex-shrink-0 w-10 h-10 rounded-full border-2 flex items-center justify-center font-bold text-lg">2</div>
+                  <h3 className="text-lg font-semibold">Paper Trading</h3>
+                </div>
+                <div className="ml-13">
+                  <div className="text-sm text-muted-foreground mb-3">Test strategies risk-free with simulated funds</div>
+                  <div className="grid md:grid-cols-3 gap-3 text-sm">
+                    <div className="border rounded p-3">
+                      <div className="font-semibold mb-1">Configure</div>
+                      <div className="text-muted-foreground text-xs">Set parameters</div>
+                    </div>
+                    <div className="border rounded p-3">
+                      <div className="font-semibold mb-1">Set Mode</div>
+                      <div className="text-muted-foreground text-xs">Select Paper</div>
+                    </div>
+                    <div className="border rounded p-3">
+                      <div className="font-semibold mb-1">Activate</div>
+                      <div className="text-muted-foreground text-xs">Monitor results</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
 
-            <h3>Step 2: Paper Trading (Strongly Recommended)</h3>
-            <p><strong>Purpose:</strong> Test strategies risk-free with simulated funds based on real market conditions.</p>
-            
-            <p><strong>Setup Process:</strong></p>
-            <ol>
-              <li>Create new strategy or use default configuration</li>
-              <li>Ensure "Trading Mode" is set to Paper</li>
-              <li>Configure desired risk parameters and asset selection</li>
-              <li>Click "Activate Strategy" to begin simulation</li>
-              <li>Monitor performance without risking real capital</li>
-            </ol>
-
-            <h3>Step 3: Transitioning to Live Trading</h3>
-            <p><strong>Pre-Live Checklist:</strong></p>
-            <ul>
-              <li>Tested strategy thoroughly in paper mode (minimum 20-50 trades recommended)</li>
-              <li>Reviewed and understood all risk parameters and their implications</li>
-              <li>Set appropriate position limits based on account size</li>
-              <li>Configured portfolio risk caps (recommended: start with 20-30% max)</li>
-              <li>Verified API credentials are correct and have trading permissions</li>
-              <li>Ensured sufficient account balance for planned position sizes</li>
-            </ul>
-
-            <h3>Best Practices</h3>
-            <p><strong>Risk Management:</strong></p>
-            <ul>
-              <li>Always start with paper trading to validate strategy</li>
-              <li>Use conservative leverage (5-10x recommended for beginners)</li>
-              <li>Set stop losses on every position</li>
-              <li>Never risk more than 2-5% of account per trade</li>
-            </ul>
-
-            <p><strong>Strategy Optimization:</strong></p>
-            <ul>
-              <li>Review performance after 20-50 trades before making adjustments</li>
-              <li>Adjust percentile threshold based on win rate and market conditions</li>
-              <li>Fine-tune DCA parameters gradually based on results</li>
-            </ul>
-
-            <p><strong>Operational Guidelines:</strong></p>
-            <ul>
-              <li>Check bot status daily for proper operation</li>
-              <li>Monitor cascade risk indicator before major market events</li>
-              <li>Maintain sufficient balance for margin requirements</li>
-              <li>Export settings monthly for backup purposes</li>
-            </ul>
+              {/* Step 3 */}
+              <div className="border rounded-lg p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="flex-shrink-0 w-10 h-10 rounded-full border-2 flex items-center justify-center font-bold text-lg">3</div>
+                  <h3 className="text-lg font-semibold">Live Trading Checklist</h3>
+                </div>
+                <div className="ml-13">
+                  <div className="grid md:grid-cols-2 gap-2 text-sm">
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 border rounded flex items-center justify-center text-xs">✓</div>
+                      <span className="text-muted-foreground">Tested in paper mode (20+ trades)</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 border rounded flex items-center justify-center text-xs">✓</div>
+                      <span className="text-muted-foreground">Reviewed risk parameters</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 border rounded flex items-center justify-center text-xs">✓</div>
+                      <span className="text-muted-foreground">Set position limits</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 border rounded flex items-center justify-center text-xs">✓</div>
+                      <span className="text-muted-foreground">Verified sufficient balance</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </section>
 
-          {/* Safety & Security */}
+          {/* Technical Architecture */}
           <section>
-            <h2>Safety & Security</h2>
+            <h2 className="text-2xl font-semibold mb-6">Technical Architecture</h2>
 
-            <h3>API Security</h3>
-            <ul>
-              <li>HMAC-SHA256 signature authentication for all exchange requests</li>
-              <li>API keys stored securely as environment variables</li>
-              <li>Rate limiting implementation to prevent API abuse</li>
-              <li>Request queuing for proper order management</li>
-            </ul>
+            <div className="grid md:grid-cols-4 gap-4 mb-6">
+              <div className="border rounded-lg p-4 text-center">
+                <div className="font-semibold mb-1">Frontend</div>
+                <div className="text-sm text-muted-foreground">React + TypeScript</div>
+              </div>
+              <div className="border rounded-lg p-4 text-center">
+                <div className="font-semibold mb-1">Backend</div>
+                <div className="text-sm text-muted-foreground">Node.js + Express</div>
+              </div>
+              <div className="border rounded-lg p-4 text-center">
+                <div className="font-semibold mb-1">Database</div>
+                <div className="text-sm text-muted-foreground">Neon PostgreSQL</div>
+              </div>
+              <div className="border rounded-lg p-4 text-center">
+                <div className="font-semibold mb-1">UI</div>
+                <div className="text-sm text-muted-foreground">Radix + Tailwind</div>
+              </div>
+            </div>
 
-            <h3>Trading Safety Layers</h3>
-            <p><strong>Pre-Trade Validations:</strong></p>
-            <ul>
-              <li>Account balance verification before order placement</li>
-              <li>Position size limit checks against configured maximums</li>
-              <li>Portfolio risk calculations and limit enforcement</li>
-              <li>Exchange-specific requirement validation</li>
-            </ul>
-
-            <p><strong>In-Trade Protection:</strong></p>
-            <ul>
-              <li>Immediate TP/SL placement upon position entry</li>
-              <li>Continuous order verification and correction</li>
-              <li>Orphaned order cleanup every 5 seconds</li>
-              <li>Position state synchronization with exchange</li>
-            </ul>
-
-            <p><strong>Post-Trade Safeguards:</strong></p>
-            <ul>
-              <li>Fill confirmation and reconciliation</li>
-              <li>P&L calculation and verification</li>
-              <li>Position data synchronization</li>
-              <li>Funding cost tracking and attribution</li>
-            </ul>
-
-            <h3>Emergency Controls</h3>
-            <ul>
-              <li>One-click emergency stop to close all positions</li>
-              <li>Strategy pause/resume functionality</li>
-              <li>Live session termination capability</li>
-              <li>Manual position override and adjustment</li>
-            </ul>
+            <div className="border rounded-lg overflow-hidden">
+              <table className="w-full">
+                <thead className="bg-muted/50">
+                  <tr>
+                    <th className="text-left p-3 font-semibold">Service</th>
+                    <th className="text-left p-3 font-semibold">Function</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  <tr>
+                    <td className="p-3 font-medium">Strategy Engine</td>
+                    <td className="p-3 text-muted-foreground">Core trading logic, signal processing, position management</td>
+                  </tr>
+                  <tr>
+                    <td className="p-3 font-medium">Cascade Detector</td>
+                    <td className="p-3 text-muted-foreground">Real-time liquidation analysis, reversal quality scoring</td>
+                  </tr>
+                  <tr>
+                    <td className="p-3 font-medium">DCA Calculator</td>
+                    <td className="p-3 text-muted-foreground">Mathematical position sizing, volatility scaling, exits</td>
+                  </tr>
+                  <tr>
+                    <td className="p-3 font-medium">Order Protection</td>
+                    <td className="p-3 text-muted-foreground">TP/SL management, idempotency, orphaned order cleanup</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </section>
 
           {/* Disclaimer */}
           <section>
-            <h2>Risk Disclaimer</h2>
+            <h2 className="text-2xl font-semibold mb-6">Risk Disclaimer</h2>
             
-            <p className="font-semibold">
-              Trading cryptocurrency derivatives involves substantial risk of loss and is not suitable for all investors.
-            </p>
-            
-            <p>
-              Past performance is not indicative of future results. The MPI™ Liquidation Hunter Bot is an algorithmic trading tool and does not guarantee profits. Users should be aware of the following risks:
-            </p>
+            <div className="border-2 rounded-lg p-6 bg-muted/20">
+              <p className="font-semibold mb-4">
+                Trading cryptocurrency derivatives involves substantial risk of loss and is not suitable for all investors.
+              </p>
+              
+              <div className="space-y-4 text-sm">
+                <div>
+                  <div className="font-semibold mb-2">Market Risks:</div>
+                  <ul className="space-y-1 text-muted-foreground">
+                    <li>• Extreme volatility can cause rapid losses</li>
+                    <li>• Leverage amplifies gains and losses</li>
+                    <li>• Cascades may be unpredictable</li>
+                  </ul>
+                </div>
+                
+                <div>
+                  <div className="font-semibold mb-2">Technical Risks:</div>
+                  <ul className="space-y-1 text-muted-foreground">
+                    <li>• Exchange downtime may prevent order management</li>
+                    <li>• Software bugs or errors may occur</li>
+                    <li>• Network latency may impact execution</li>
+                  </ul>
+                </div>
 
-            <p><strong>Market Risks:</strong></p>
-            <ul>
-              <li>Cryptocurrency markets exhibit extreme volatility that can result in rapid and substantial losses</li>
-              <li>Leverage amplifies both potential gains and potential losses</li>
-              <li>Liquidation cascades can be unpredictable and may extend beyond historical patterns</li>
-              <li>Market conditions can change rapidly, rendering historical strategies ineffective</li>
-            </ul>
-
-            <p><strong>Technical Risks:</strong></p>
-            <ul>
-              <li>Exchange downtime or connectivity issues may prevent proper order management</li>
-              <li>Software bugs or errors may occur despite extensive testing</li>
-              <li>API rate limits or restrictions may affect execution</li>
-              <li>Network latency may impact order placement timing</li>
-            </ul>
-
-            <p><strong>User Responsibility:</strong></p>
-            <p>
-              You are solely responsible for your trading decisions and their outcomes. It is strongly recommended to:
-            </p>
-            <ul>
-              <li>Always begin with paper trading to understand the system</li>
-              <li>Never trade with money you cannot afford to lose</li>
-              <li>Set appropriate risk limits based on your personal risk tolerance</li>
-              <li>Monitor positions regularly and maintain adequate account balance</li>
-              <li>Understand all features and risks before activating live trading</li>
-            </ul>
-
-            <p>
-              By using this software, you acknowledge and accept these risks and agree that Max Pain Industry™ and its developers are not liable for any trading losses incurred.
-            </p>
+                <p className="font-semibold pt-2">
+                  You are solely responsible for trading decisions. Always use paper trading first. Never trade with money you cannot afford to lose.
+                </p>
+              </div>
+            </div>
           </section>
 
-          {/* Conclusion */}
-          <section>
-            <h2>Conclusion</h2>
-            
-            <p>
-              The MPI™ Liquidation Hunter Bot represents a sophisticated approach to algorithmic trading, combining real-time market microstructure analysis with advanced risk management to capitalize on liquidation-driven price inefficiencies.
-            </p>
-
-            <p><strong>Core Strengths:</strong></p>
-            <ul>
-              <li>Institutional-grade DCA system with mathematical precision</li>
-              <li>Multi-layer risk management protecting trading capital</li>
-              <li>Real-time cascade detection preventing exposure to extreme events</li>
-              <li>Complete performance transparency with permanent historical data retention</li>
-              <li>Paper trading mode enabling risk-free strategy development</li>
-              <li>Flexible configuration accommodating various risk tolerances and account sizes</li>
-            </ul>
-
-            <p className="text-center mt-12 mb-8">
-              <strong className="text-lg">MPI™ - Max Pain Industry</strong><br/>
-              <em className="text-muted-foreground">"Hunt the Hunters"</em>
-            </p>
-          </section>
-
-          <hr className="my-8" />
-
-          <p className="text-center text-sm text-muted-foreground">
-            Document Version 2.0 | October 2025 | Max Pain Industry™
-          </p>
+          {/* Footer */}
+          <div className="text-center pt-8 border-t">
+            <p className="font-bold text-lg mb-1">MPI™ - Max Pain Industry</p>
+            <p className="text-sm text-muted-foreground italic mb-4">"Hunt the Hunters"</p>
+            <p className="text-xs text-muted-foreground">Document Version 2.0 | October 2025</p>
+          </div>
         </article>
       </main>
 
@@ -526,27 +680,19 @@ export default function Documentation() {
             display: none !important;
           }
           
-          .print\\:mb-12 {
-            margin-bottom: 3rem;
-          }
-          
           h1, h2, h3, h4, h5, h6 {
             page-break-after: avoid;
             break-after: avoid;
           }
           
-          p, li {
-            orphans: 3;
-            widows: 3;
-          }
-          
-          ul, ol {
+          table, .border {
             page-break-inside: avoid;
+            break-inside: avoid;
           }
           
-          .lead {
-            font-size: 1.125rem;
-            line-height: 1.75;
+          tr {
+            page-break-inside: avoid;
+            break-inside: avoid;
           }
         }
       `}</style>
