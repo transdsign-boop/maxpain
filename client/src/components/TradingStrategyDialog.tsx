@@ -43,6 +43,8 @@ interface Strategy {
   tradingMode: "demo" | "live";
   bybitApiKey?: string;
   bybitApiSecret?: string;
+  asterApiKey?: string;
+  asterApiSecret?: string;
   hedgeMode: boolean;
   isActive: boolean;
   maxOpenPositions: number;
@@ -82,6 +84,8 @@ const strategyFormSchema = z.object({
   }, "Account usage must be between 1% and 100%"),
   bybitApiKey: z.string().optional(),
   bybitApiSecret: z.string().optional(),
+  asterApiKey: z.string().optional(),
+  asterApiSecret: z.string().optional(),
   hedgeMode: z.boolean(),
   maxOpenPositions: z.number().min(0).max(20),
   maxPortfolioRiskPercent: z.string().refine((val) => {
@@ -626,6 +630,8 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         marginAmount: String(strategy.marginAmount),
         bybitApiKey: strategy.bybitApiKey || '',
         bybitApiSecret: strategy.bybitApiSecret || '',
+        asterApiKey: strategy.asterApiKey || '',
+        asterApiSecret: strategy.asterApiSecret || '',
         hedgeMode: strategy.hedgeMode,
         maxOpenPositions: strategy.maxOpenPositions || 5,
         maxPortfolioRiskPercent: String(strategy.maxPortfolioRiskPercent || "15.0"),
@@ -930,6 +936,8 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         marginAmount: strategy.marginAmount,
         bybitApiKey: strategy.bybitApiKey || '',
         bybitApiSecret: strategy.bybitApiSecret || '',
+        asterApiKey: strategy.asterApiKey || '',
+        asterApiSecret: strategy.asterApiSecret || '',
         hedgeMode: strategy.hedgeMode,
         maxOpenPositions: strategy.maxOpenPositions || 5,
         maxPortfolioRiskPercent: String(strategy.maxPortfolioRiskPercent || "15.0"),
@@ -1774,12 +1782,18 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                               <Input
                                 {...field}
                                 type="text"
-                                placeholder="Enter your Bybit testnet API key"
+                                placeholder={
+                                  (activeStrategy as any)?.hasBybitApiKey
+                                    ? "Already configured - leave blank to keep"
+                                    : "Enter your Bybit testnet API key"
+                                }
                                 data-testid="input-bybit-api-key"
                               />
                             </FormControl>
                             <FormDescription>
-                              Your Bybit testnet API key for demo trading
+                              {(activeStrategy as any)?.hasBybitApiKey 
+                                ? "Key is stored securely - only enter a new value to update"
+                                : "Your Bybit testnet API key for demo trading"}
                             </FormDescription>
                           </FormItem>
                         )}
@@ -1795,12 +1809,18 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                               <Input
                                 {...field}
                                 type="password"
-                                placeholder="Enter your Bybit testnet API secret"
+                                placeholder={
+                                  (activeStrategy as any)?.hasBybitApiSecret
+                                    ? "Already configured - leave blank to keep"
+                                    : "Enter your Bybit testnet API secret"
+                                }
                                 data-testid="input-bybit-api-secret"
                               />
                             </FormControl>
                             <FormDescription>
-                              Your Bybit testnet API secret (stored securely)
+                              {(activeStrategy as any)?.hasBybitApiSecret 
+                                ? "Secret is stored securely - only enter a new value to update"
+                                : "Your Bybit testnet API secret (stored securely)"}
                             </FormDescription>
                           </FormItem>
                         )}
@@ -1812,83 +1832,146 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
 
               <Separator />
 
-              {/* API Connection (Aster DEX - Live Mode) */}
-              <div className="space-y-4">
-                <Label className="text-base font-medium flex items-center gap-2">
-                  <Key className="h-4 w-4" />
-                  Aster DEX API (Live Mode)
-                </Label>
-                
-                <div className="space-y-3">
-                  <div className="text-sm text-muted-foreground">
-                    Test your Aster DEX API connection to ensure live trading will work correctly. Your API credentials are securely stored as environment variables.
-                  </div>
+              {/* Aster DEX API Credentials (for Live Mode) */}
+              <Collapsible>
+                <div className="space-y-4">
+                  <CollapsibleTrigger className="w-full">
+                    <div className="flex items-center justify-between cursor-pointer hover-elevate p-3 rounded-md">
+                      <Label className="text-base font-medium flex items-center gap-2 cursor-pointer">
+                        <Key className="h-4 w-4" />
+                        Aster DEX API (Live Mode)
+                        <ChevronDown className="h-4 w-4" />
+                      </Label>
+                    </div>
+                  </CollapsibleTrigger>
                   
-                  <div className="flex items-center gap-3">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => testConnectionMutation.mutate()}
-                      disabled={testConnectionMutation.isPending}
-                      data-testid="button-test-api-connection"
-                    >
-                      {testConnectionMutation.isPending ? (
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      ) : (
-                        <Key className="h-4 w-4 mr-2" />
-                      )}
-                      Test Connection
-                    </Button>
-                    
-                    {apiTestResult && (
-                      <div className="flex items-center gap-2">
-                        {apiTestResult.success ? (
-                          <>
-                            <CheckCircle2 className="h-5 w-5 text-lime-600 dark:text-lime-400" />
-                            <span className="text-sm font-medium text-lime-600 dark:text-lime-400">
-                              Connected
-                            </span>
-                          </>
-                        ) : (
-                          <>
-                            <XCircle className="h-5 w-5 text-red-700 dark:text-red-500" />
-                            <span className="text-sm font-medium text-red-700 dark:text-red-500">
-                              Failed
-                            </span>
-                          </>
+                  <CollapsibleContent>
+                    <div className="space-y-4 pt-2">
+                      <div className="text-sm text-muted-foreground bg-muted/30 p-3 rounded-md">
+                        Live mode uses Aster DEX for real money trading. Enter your Aster DEX API credentials to enable live trading. If left blank, environment variables will be used.
+                      </div>
+                      
+                      <FormField
+                        control={form.control}
+                        name="asterApiKey"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel data-testid="label-aster-api-key">Aster API Key</FormLabel>
+                            <FormControl>
+                              <Input
+                                {...field}
+                                type="text"
+                                placeholder={
+                                  (activeStrategy as any)?.hasAsterApiKey
+                                    ? "Already configured - leave blank to keep"
+                                    : "Enter your Aster DEX API key"
+                                }
+                                data-testid="input-aster-api-key"
+                              />
+                            </FormControl>
+                            <FormDescription>
+                              {(activeStrategy as any)?.hasAsterApiKey 
+                                ? "Key is stored securely - only enter a new value to update"
+                                : "Your Aster DEX API key for live trading"}
+                            </FormDescription>
+                          </FormItem>
+                        )}
+                      />
+                      
+                      <FormField
+                        control={form.control}
+                        name="asterApiSecret"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel data-testid="label-aster-api-secret">Aster API Secret</FormLabel>
+                            <FormControl>
+                              <Input
+                                {...field}
+                                type="password"
+                                placeholder={
+                                  (activeStrategy as any)?.hasAsterApiSecret
+                                    ? "Already configured - leave blank to keep"
+                                    : "Enter your Aster DEX API secret"
+                                }
+                                data-testid="input-aster-api-secret"
+                              />
+                            </FormControl>
+                            <FormDescription>
+                              {(activeStrategy as any)?.hasAsterApiSecret 
+                                ? "Secret is stored securely - only enter a new value to update"
+                                : "Your Aster DEX API secret (stored securely)"}
+                            </FormDescription>
+                          </FormItem>
+                        )}
+                      />
+                      
+                      <div className="flex items-center gap-3">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => testConnectionMutation.mutate()}
+                          disabled={testConnectionMutation.isPending}
+                          data-testid="button-test-api-connection"
+                        >
+                          {testConnectionMutation.isPending ? (
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          ) : (
+                            <Key className="h-4 w-4 mr-2" />
+                          )}
+                          Test Connection
+                        </Button>
+                        
+                        {apiTestResult && (
+                          <div className="flex items-center gap-2">
+                            {apiTestResult.success ? (
+                              <>
+                                <CheckCircle2 className="h-5 w-5 text-lime-600 dark:text-lime-400" />
+                                <span className="text-sm font-medium text-lime-600 dark:text-lime-400">
+                                  Connected
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <XCircle className="h-5 w-5 text-red-700 dark:text-red-500" />
+                                <span className="text-sm font-medium text-red-700 dark:text-red-500">
+                                  Failed
+                                </span>
+                              </>
+                            )}
+                          </div>
                         )}
                       </div>
-                    )}
-                  </div>
-                  
-                  {apiTestResult && !apiTestResult.success && apiTestResult.message && (
-                    <div className="text-sm text-red-700 dark:text-red-500 bg-red-100 dark:bg-red-950/30 p-3 rounded-md">
-                      {apiTestResult.message}
+                      
+                      {apiTestResult && !apiTestResult.success && apiTestResult.message && (
+                        <div className="text-sm text-red-700 dark:text-red-500 bg-red-100 dark:bg-red-950/30 p-3 rounded-md">
+                          {apiTestResult.message}
+                        </div>
+                      )}
+                      
+                      {apiTestResult && apiTestResult.success && apiTestResult.accountInfo && (
+                        <div className="text-sm space-y-1 bg-lime-100 dark:bg-lime-950/30 p-3 rounded-md">
+                          <div className="font-medium text-lime-900 dark:text-lime-100">Account Status:</div>
+                          <div className="grid grid-cols-3 gap-2 text-xs text-lime-800 dark:text-lime-200">
+                            <div>
+                              <span className="font-medium">Trading:</span>{' '}
+                              {apiTestResult.accountInfo.canTrade ? '✓' : '✗'}
+                            </div>
+                            <div>
+                              <span className="font-medium">Deposit:</span>{' '}
+                              {apiTestResult.accountInfo.canDeposit ? '✓' : '✗'}
+                            </div>
+                            <div>
+                              <span className="font-medium">Withdraw:</span>{' '}
+                              {apiTestResult.accountInfo.canWithdraw ? '✓' : '✗'}
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  )}
-                  
-                  {apiTestResult && apiTestResult.success && apiTestResult.accountInfo && (
-                    <div className="text-sm space-y-1 bg-lime-100 dark:bg-lime-950/30 p-3 rounded-md">
-                      <div className="font-medium text-lime-900 dark:text-lime-100">Account Status:</div>
-                      <div className="grid grid-cols-3 gap-2 text-xs text-lime-800 dark:text-lime-200">
-                        <div>
-                          <span className="font-medium">Trading:</span>{' '}
-                          {apiTestResult.accountInfo.canTrade ? '✓' : '✗'}
-                        </div>
-                        <div>
-                          <span className="font-medium">Deposit:</span>{' '}
-                          {apiTestResult.accountInfo.canDeposit ? '✓' : '✗'}
-                        </div>
-                        <div>
-                          <span className="font-medium">Withdraw:</span>{' '}
-                          {apiTestResult.accountInfo.canWithdraw ? '✓' : '✗'}
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                  </CollapsibleContent>
                 </div>
-              </div>
+              </Collapsible>
 
             </form>
           </Form>

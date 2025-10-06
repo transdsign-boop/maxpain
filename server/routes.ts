@@ -17,10 +17,23 @@ const LIQUIDATION_WINDOW_SECONDS = 60;
 // Fixed user ID for personal app (no authentication needed)
 const DEFAULT_USER_ID = "personal_user";
 
-// Sanitize strategy object before sending to frontend (remove sensitive API secrets)
+// Sanitize strategy object before sending to frontend (remove ALL sensitive API credentials)
+// Add boolean flags to indicate if credentials exist without revealing their values
 function sanitizeStrategy(strategy: any) {
-  const { bybitApiSecret, ...safeStrategy } = strategy;
-  return safeStrategy;
+  const { 
+    bybitApiKey, 
+    bybitApiSecret, 
+    asterApiKey, 
+    asterApiSecret, 
+    ...safeStrategy 
+  } = strategy;
+  return {
+    ...safeStrategy,
+    hasBybitApiKey: !!bybitApiKey,
+    hasBybitApiSecret: !!bybitApiSecret,
+    hasAsterApiKey: !!asterApiKey,
+    hasAsterApiSecret: !!asterApiSecret,
+  };
 }
 
 // Simple cache to prevent excessive API calls to Aster DEX
@@ -171,13 +184,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Test API connection
   app.post("/api/settings/test-connection", async (req, res) => {
     try {
-      const apiKey = process.env.ASTER_API_KEY;
-      const secretKey = process.env.ASTER_SECRET_KEY;
+      // Get active strategy to check for stored credentials
+      const strategies = await storage.getStrategiesByUser(DEFAULT_USER_ID);
+      const activeStrategy = strategies.find((s: any) => s.isActive);
+      
+      // Use stored credentials from strategy, fallback to environment variables
+      const apiKey = activeStrategy?.asterApiKey || process.env.ASTER_API_KEY;
+      const secretKey = activeStrategy?.asterApiSecret || process.env.ASTER_SECRET_KEY;
 
       if (!apiKey || !secretKey) {
         return res.status(400).json({ 
           success: false, 
-          error: "API credentials not configured. Please set ASTER_API_KEY and ASTER_SECRET_KEY in your secrets." 
+          error: "API credentials not configured. Please add Aster DEX API credentials in Global Settings or set ASTER_API_KEY and ASTER_SECRET_KEY environment variables." 
         });
       }
 
@@ -2043,6 +2061,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const updateData: any = {
         ...validatedUpdates
       };
+      
+      // Preserve existing API credentials if new values are empty (don't overwrite with blanks)
+      if (!validatedUpdates.bybitApiKey && existingStrategy.bybitApiKey) {
+        updateData.bybitApiKey = existingStrategy.bybitApiKey;
+      }
+      if (!validatedUpdates.bybitApiSecret && existingStrategy.bybitApiSecret) {
+        updateData.bybitApiSecret = existingStrategy.bybitApiSecret;
+      }
+      if (!validatedUpdates.asterApiKey && existingStrategy.asterApiKey) {
+        updateData.asterApiKey = existingStrategy.asterApiKey;
+      }
+      if (!validatedUpdates.asterApiSecret && existingStrategy.asterApiSecret) {
+        updateData.asterApiSecret = existingStrategy.asterApiSecret;
+      }
       
       // Set live session timestamp when switching to live mode, clear when switching to paper
       if (tradingModeChanging) {
