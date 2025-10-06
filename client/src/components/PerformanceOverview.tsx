@@ -184,21 +184,34 @@ export default function PerformanceOverview() {
   const chartData = useMemo(() => {
     if (paginatedSourceData.length === 0) return [];
     
-    // Rebase cumulative P&L to start at zero for the visible window
+    // Calculate starting balance inline (avoiding dependency issues)
+    let chartStartingBalance = 0;
+    if (isLiveMode && liveAccount) {
+      const currentBalance = parseFloat(liveAccount.totalWalletBalance || '0');
+      const currentUnrealized = parseFloat(liveAccount.totalUnrealizedProfit);
+      const totalRealized = performance?.totalRealizedPnl || 0;
+      chartStartingBalance = currentBalance - totalRealized - currentUnrealized;
+    } else if (!isLiveMode && paperSession) {
+      chartStartingBalance = paperSession.startingBalance || 0;
+    }
+    
+    // Calculate baseline from first visible trade
     const baseline = paginatedSourceData[0].cumulativePnl;
+    
+    // Rebase and add starting balance to show actual account balance over time
     const rebasedData = paginatedSourceData.map(trade => ({
       ...trade,
-      cumulativePnl: trade.cumulativePnl - baseline,
+      cumulativePnl: chartStartingBalance + (trade.cumulativePnl - baseline),
     }));
     
-    // Add starting point at zero for cumulative P&L line
+    // Add starting point at starting balance
     const firstTrade = rebasedData[0];
     const startingPoint = {
       ...firstTrade,
       tradeNumber: firstTrade.tradeNumber - 0.5,
       timestamp: firstTrade.timestamp - 1000,
       pnl: 0,
-      cumulativePnl: 0,
+      cumulativePnl: chartStartingBalance,
     };
     
     const withStartPoint = [startingPoint, ...rebasedData];
@@ -209,11 +222,11 @@ export default function PerformanceOverview() {
       const prev = arr[index - 1];
       const curr = point;
       
-      // Check if line crosses zero
-      if ((prev.cumulativePnl >= 0 && curr.cumulativePnl < 0) || 
-          (prev.cumulativePnl < 0 && curr.cumulativePnl >= 0)) {
-        // Calculate interpolated point at zero
-        const ratio = Math.abs(prev.cumulativePnl) / (Math.abs(prev.cumulativePnl) + Math.abs(curr.cumulativePnl));
+      // Check if line crosses starting balance line
+      if ((prev.cumulativePnl >= chartStartingBalance && curr.cumulativePnl < chartStartingBalance) || 
+          (prev.cumulativePnl < chartStartingBalance && curr.cumulativePnl >= chartStartingBalance)) {
+        // Calculate interpolated point at starting balance
+        const ratio = Math.abs(prev.cumulativePnl - chartStartingBalance) / (Math.abs(prev.cumulativePnl - chartStartingBalance) + Math.abs(curr.cumulativePnl - chartStartingBalance));
         const interpolatedTradeNumber = prev.tradeNumber + ratio * (curr.tradeNumber - prev.tradeNumber);
         const interpolatedTimestamp = prev.timestamp + ratio * (curr.timestamp - prev.timestamp);
         
@@ -222,14 +235,14 @@ export default function PerformanceOverview() {
             ...prev,
             tradeNumber: interpolatedTradeNumber - 0.001,
             timestamp: interpolatedTimestamp - 1,
-            cumulativePnl: 0,
+            cumulativePnl: chartStartingBalance,
             pnl: 0
           },
           {
             ...curr,
             tradeNumber: interpolatedTradeNumber + 0.001,
             timestamp: interpolatedTimestamp + 1,
-            cumulativePnl: 0,
+            cumulativePnl: chartStartingBalance,
             pnl: 0
           },
           curr
@@ -238,7 +251,7 @@ export default function PerformanceOverview() {
       
       return [curr];
     });
-  }, [paginatedSourceData]);
+  }, [paginatedSourceData, isLiveMode, liveAccount, paperSession, performance]);
 
   // Group trades by day for visual blocks - MOVED HERE to fix React Hooks order
   const dayGroups = useMemo(() => {
