@@ -184,8 +184,15 @@ export default function PerformanceOverview() {
   const chartData = useMemo(() => {
     if (paginatedSourceData.length === 0) return [];
     
+    // Rebase cumulative P&L to start at zero for the visible window
+    const baseline = paginatedSourceData[0].cumulativePnl;
+    const rebasedData = paginatedSourceData.map(trade => ({
+      ...trade,
+      cumulativePnl: trade.cumulativePnl - baseline,
+    }));
+    
     // Add starting point at zero for cumulative P&L line
-    const firstTrade = paginatedSourceData[0];
+    const firstTrade = rebasedData[0];
     const startingPoint = {
       ...firstTrade,
       tradeNumber: firstTrade.tradeNumber - 0.5,
@@ -194,7 +201,7 @@ export default function PerformanceOverview() {
       cumulativePnl: 0,
     };
     
-    const withStartPoint = [startingPoint, ...paginatedSourceData];
+    const withStartPoint = [startingPoint, ...rebasedData];
     
     return withStartPoint.flatMap((point, index, arr) => {
       if (index === 0) return [point];
