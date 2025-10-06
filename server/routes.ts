@@ -2877,6 +2877,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   side,
                   totalQuantity: quantity.toString(),
                   avgEntryPrice: entryPrice.toString(),
+                  initialEntryPrice: entryPrice.toString(), // P0: Set initial entry for DCA calculations
+                  dcaBaseSize: quantity.toString(), // q1: Use current quantity as base size (best guess for orphaned)
                   totalCost: actualMargin.toString(), // Actual margin = notional / leverage
                   layersFilled: 1,
                   maxLayers: strategy.maxLayers,
