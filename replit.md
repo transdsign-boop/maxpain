@@ -10,7 +10,9 @@ Preferred communication style: Simple, everyday language.
 **THIS APPLICATION USES NEON DATABASE EXCLUSIVELY - NEVER LOCAL/DEVELOPMENT DATABASE**
 - The `execute_sql_tool` connects to a DEVELOPMENT database that is NOT the same as the production app database
 - The actual application ALWAYS uses Neon database via `NEON_DATABASE_URL` environment variable
-- When testing schema changes or debugging database issues, you MUST use `npm run db:push` to apply changes to Neon
+- **SCHEMA CHANGES**: `drizzle.config.ts` uses DATABASE_URL (local) by design and cannot be edited. To push schema changes to Neon:
+  1. Try: `DATABASE_URL="$NEON_DATABASE_URL" npm run db:push`
+  2. If that prompts for input, apply changes directly via Node.js SQL (see Oct 2025 session for example)
 - DO NOT trust `execute_sql_tool` results - they show the development database, not the real app database
 - If columns/tables "don't exist" in execute_sql_tool but the app says they do, it's because you're looking at the wrong database
 - **REMEMBER THIS IN EVERY SESSION** - The user has had to remind about this many times
@@ -66,11 +68,12 @@ Preferred communication style: Simple, everyday language.
 
 ### Trading System
 - **Live Trading**: HMAC-SHA256 signature authentication for Aster DEX with safety checks. Automatic TP/SL management (updated after each layer). Queue-based locking for sequential updates. Uses actual fill data from Aster DEX `/fapi/v1/userTrades`. Session-based tracking.
-- **Paper Trading**: Mirrors live trading logic, using real exchange balance and fee schedule for accurate simulation, but without sending API signals.
-- **Strategy Management**: Singleton session model with continuous trading per user. Configurable liquidation lookback window. Live mode toggle creates new session boundaries.
+- **Demo Trading (Bybit Testnet)**: Replaced paper trading with Bybit testnet integration. HMAC-SHA256 signature authentication, real order execution on testnet with fake money. Bybit API credentials (key/secret) stored in strategies table, sanitized from all API responses for security. Demo mode requires credentials - backend validation enforces this with 400 error if missing.
+- **Strategy Management**: Singleton session model with continuous trading per user. Configurable liquidation lookback window. Live/demo mode toggle creates new session boundaries. Exchange routing: Live mode = Aster DEX, Demo mode = Bybit testnet.
+- **Exchange Tracking**: All positions, fills, and sessions now track `exchange` field ("aster" or "bybit") for proper routing and data isolation.
 - **DCA System**: Integrated Dollar Cost Averaging (DCA) system with ATR-based volatility scaling, convex level spacing, exponential size growth, liquidation-aware risk management, and automatic take profit/stop loss calculation. Uses a SQL wrapper to bypass Drizzle ORM caching issues for DCA parameter management. All DCA parameters are accessible in the Global Settings dialog under "DCA Settings (Advanced)".
 - **Data Integrity**: Idempotency protection for orders. Atomic cooldown system for entries/layers to prevent duplicate orders. ALL trading data (positions, fills, sessions) is permanently preserved in the database - deletion functionality has been removed to comply with data preservation requirements.
-- **Position Display**: Live mode displays only exchange positions; paper mode shows simulated positions.
+- **Position Display**: Live mode displays only exchange positions; demo mode shows simulated positions.
 
 ## External Dependencies
 
