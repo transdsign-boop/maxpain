@@ -3755,10 +3755,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         totalFillsArchived += fills.length;
         
         // Mark session as archived (inactive) with end timestamp
-        await storage.updateTradeSession(session.id, {
-          isActive: false,
-          endedAt: new Date(),
-        });
+        await storage.endTradeSession(session.id);
         
         archivedSessionCount++;
       }
