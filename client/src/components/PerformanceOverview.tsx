@@ -434,29 +434,57 @@ export default function PerformanceOverview() {
 
   const isProfitable = displayPerformance.totalPnl >= 0;
 
-  // Calculate unified domain that aligns zero across both axes
-  const calculateUnifiedDomain = (): [number, number] => {
-    if (!chartData || chartData.length === 0) return [-100, 100];
+  // Calculate domains that align starting balance with zero
+  const { pnlDomain, cumulativePnlDomain } = useMemo(() => {
+    if (!chartData || chartData.length === 0) {
+      return { pnlDomain: [-100, 100] as [number, number], cumulativePnlDomain: [-100, 100] as [number, number] };
+    }
     
-    // Get all values from both pnl bars and cumulative line
+    // Calculate starting balance from chart data
+    let startingBalance = 0;
+    if (isLiveMode && liveAccount) {
+      const currentBalance = parseFloat(liveAccount.totalWalletBalance || '0');
+      const currentUnrealized = parseFloat(liveAccount.totalUnrealizedProfit);
+      const totalRealized = performance?.totalRealizedPnl || 0;
+      startingBalance = currentBalance - totalRealized - currentUnrealized;
+    } else if (!isLiveMode && paperSession) {
+      startingBalance = paperSession.startingBalance || 0;
+    }
+    
+    // Get values for bars (centered around zero)
     const pnlValues = chartData.map(d => d.pnl);
+    const minPnl = Math.min(...pnlValues, 0);
+    const maxPnl = Math.max(...pnlValues, 0);
+    
+    // Get values for cumulative line (offset by starting balance)
     const cumulativeValues = chartData.map(d => d.cumulativePnl);
+    const minCumulative = Math.min(...cumulativeValues);
+    const maxCumulative = Math.max(...cumulativeValues);
     
-    // Find the overall min and max across both datasets
-    const minValue = Math.min(...pnlValues, ...cumulativeValues, 0);
-    const maxValue = Math.max(...pnlValues, ...cumulativeValues, 0);
+    // Calculate range for bars
+    const pnlRange = maxPnl - minPnl;
+    const pnlPadding = pnlRange * 0.15;
     
-    // Calculate range and add 15% padding to fill vertical space
-    const range = maxValue - minValue;
-    const padding = range * 0.15;
+    // Bar domain centered on zero
+    const barDomain: [number, number] = [minPnl - pnlPadding, maxPnl + pnlPadding];
     
-    // Return unified domain so zero aligns on both axes
-    return [minValue - padding, maxValue + padding];
-  };
-
-  const unifiedDomain = calculateUnifiedDomain();
-  const pnlDomain = unifiedDomain;
-  const cumulativePnlDomain = unifiedDomain;
+    // Cumulative domain offset so starting balance aligns with zero
+    // Offset = startingBalance, so we subtract it from cumulative values
+    const cumulativeOffset = startingBalance;
+    const adjustedMinCumulative = minCumulative - cumulativeOffset;
+    const adjustedMaxCumulative = maxCumulative - cumulativeOffset;
+    
+    // Match the cumulative domain range to align with bar domain
+    const cumulativeRange = adjustedMaxCumulative - adjustedMinCumulative;
+    const cumulativePadding = cumulativeRange * 0.15;
+    
+    const cumulativeDomain: [number, number] = [
+      adjustedMinCumulative - cumulativePadding + cumulativeOffset,
+      adjustedMaxCumulative + cumulativePadding + cumulativeOffset
+    ];
+    
+    return { pnlDomain: barDomain, cumulativePnlDomain: cumulativeDomain };
+  }, [chartData, isLiveMode, liveAccount, paperSession, performance]);
 
   const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
