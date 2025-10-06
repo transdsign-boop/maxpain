@@ -184,34 +184,21 @@ export default function PerformanceOverview() {
   const chartData = useMemo(() => {
     if (paginatedSourceData.length === 0) return [];
     
-    // Calculate starting balance inline (avoiding dependency issues)
-    let chartStartingBalance = 0;
-    if (isLiveMode && liveAccount) {
-      const currentBalance = parseFloat(liveAccount.totalWalletBalance || '0');
-      const currentUnrealized = parseFloat(liveAccount.totalUnrealizedProfit);
-      const totalRealized = performance?.totalRealizedPnl || 0;
-      chartStartingBalance = currentBalance - totalRealized - currentUnrealized;
-    } else if (!isLiveMode && paperSession) {
-      chartStartingBalance = paperSession.startingBalance || 0;
-    }
-    
-    // Calculate baseline from first visible trade
+    // Rebase cumulative P&L to start at zero for the visible window
     const baseline = paginatedSourceData[0].cumulativePnl;
-    
-    // Rebase and add starting balance to show actual account balance over time
     const rebasedData = paginatedSourceData.map(trade => ({
       ...trade,
-      cumulativePnl: chartStartingBalance + (trade.cumulativePnl - baseline),
+      cumulativePnl: trade.cumulativePnl - baseline,
     }));
     
-    // Add starting point at starting balance
+    // Add starting point at zero for cumulative P&L line
     const firstTrade = rebasedData[0];
     const startingPoint = {
       ...firstTrade,
       tradeNumber: firstTrade.tradeNumber - 0.5,
       timestamp: firstTrade.timestamp - 1000,
       pnl: 0,
-      cumulativePnl: chartStartingBalance,
+      cumulativePnl: 0,
     };
     
     const withStartPoint = [startingPoint, ...rebasedData];
@@ -222,11 +209,11 @@ export default function PerformanceOverview() {
       const prev = arr[index - 1];
       const curr = point;
       
-      // Check if line crosses starting balance line
-      if ((prev.cumulativePnl >= chartStartingBalance && curr.cumulativePnl < chartStartingBalance) || 
-          (prev.cumulativePnl < chartStartingBalance && curr.cumulativePnl >= chartStartingBalance)) {
-        // Calculate interpolated point at starting balance
-        const ratio = Math.abs(prev.cumulativePnl - chartStartingBalance) / (Math.abs(prev.cumulativePnl - chartStartingBalance) + Math.abs(curr.cumulativePnl - chartStartingBalance));
+      // Check if line crosses zero
+      if ((prev.cumulativePnl >= 0 && curr.cumulativePnl < 0) || 
+          (prev.cumulativePnl < 0 && curr.cumulativePnl >= 0)) {
+        // Calculate interpolated point at zero
+        const ratio = Math.abs(prev.cumulativePnl) / (Math.abs(prev.cumulativePnl) + Math.abs(curr.cumulativePnl));
         const interpolatedTradeNumber = prev.tradeNumber + ratio * (curr.tradeNumber - prev.tradeNumber);
         const interpolatedTimestamp = prev.timestamp + ratio * (curr.timestamp - prev.timestamp);
         
@@ -235,14 +222,14 @@ export default function PerformanceOverview() {
             ...prev,
             tradeNumber: interpolatedTradeNumber - 0.001,
             timestamp: interpolatedTimestamp - 1,
-            cumulativePnl: chartStartingBalance,
+            cumulativePnl: 0,
             pnl: 0
           },
           {
             ...curr,
             tradeNumber: interpolatedTradeNumber + 0.001,
             timestamp: interpolatedTimestamp + 1,
-            cumulativePnl: chartStartingBalance,
+            cumulativePnl: 0,
             pnl: 0
           },
           curr
@@ -251,7 +238,7 @@ export default function PerformanceOverview() {
       
       return [curr];
     });
-  }, [paginatedSourceData, isLiveMode, liveAccount, paperSession, performance]);
+  }, [paginatedSourceData]);
 
   // Group trades by day for visual blocks - MOVED HERE to fix React Hooks order
   const dayGroups = useMemo(() => {
@@ -434,57 +421,29 @@ export default function PerformanceOverview() {
 
   const isProfitable = displayPerformance.totalPnl >= 0;
 
-  // Calculate domains that align starting balance with zero
-  const { pnlDomain, cumulativePnlDomain } = useMemo(() => {
-    if (!chartData || chartData.length === 0) {
-      return { pnlDomain: [-100, 100] as [number, number], cumulativePnlDomain: [-100, 100] as [number, number] };
-    }
+  // Calculate unified domain that aligns zero across both axes
+  const calculateUnifiedDomain = (): [number, number] => {
+    if (!chartData || chartData.length === 0) return [-100, 100];
     
-    // Calculate starting balance from chart data
-    let startingBalance = 0;
-    if (isLiveMode && liveAccount) {
-      const currentBalance = parseFloat(liveAccount.totalWalletBalance || '0');
-      const currentUnrealized = parseFloat(liveAccount.totalUnrealizedProfit);
-      const totalRealized = performance?.totalRealizedPnl || 0;
-      startingBalance = currentBalance - totalRealized - currentUnrealized;
-    } else if (!isLiveMode && paperSession) {
-      startingBalance = paperSession.startingBalance || 0;
-    }
-    
-    // Get values for bars (centered around zero)
+    // Get all values from both pnl bars and cumulative line
     const pnlValues = chartData.map(d => d.pnl);
-    const minPnl = Math.min(...pnlValues, 0);
-    const maxPnl = Math.max(...pnlValues, 0);
-    
-    // Get values for cumulative line (offset by starting balance)
     const cumulativeValues = chartData.map(d => d.cumulativePnl);
-    const minCumulative = Math.min(...cumulativeValues);
-    const maxCumulative = Math.max(...cumulativeValues);
     
-    // Calculate range for bars
-    const pnlRange = maxPnl - minPnl;
-    const pnlPadding = pnlRange * 0.15;
+    // Find the overall min and max across both datasets
+    const minValue = Math.min(...pnlValues, ...cumulativeValues, 0);
+    const maxValue = Math.max(...pnlValues, ...cumulativeValues, 0);
     
-    // Bar domain centered on zero
-    const barDomain: [number, number] = [minPnl - pnlPadding, maxPnl + pnlPadding];
+    // Calculate range and add 15% padding to fill vertical space
+    const range = maxValue - minValue;
+    const padding = range * 0.15;
     
-    // Cumulative domain offset so starting balance aligns with zero
-    // Offset = startingBalance, so we subtract it from cumulative values
-    const cumulativeOffset = startingBalance;
-    const adjustedMinCumulative = minCumulative - cumulativeOffset;
-    const adjustedMaxCumulative = maxCumulative - cumulativeOffset;
-    
-    // Match the cumulative domain range to align with bar domain
-    const cumulativeRange = adjustedMaxCumulative - adjustedMinCumulative;
-    const cumulativePadding = cumulativeRange * 0.15;
-    
-    const cumulativeDomain: [number, number] = [
-      adjustedMinCumulative - cumulativePadding + cumulativeOffset,
-      adjustedMaxCumulative + cumulativePadding + cumulativeOffset
-    ];
-    
-    return { pnlDomain: barDomain, cumulativePnlDomain: cumulativeDomain };
-  }, [chartData, isLiveMode, liveAccount, paperSession, performance]);
+    // Return unified domain so zero aligns on both axes
+    return [minValue - padding, maxValue + padding];
+  };
+
+  const unifiedDomain = calculateUnifiedDomain();
+  const pnlDomain = unifiedDomain;
+  const cumulativePnlDomain = unifiedDomain;
 
   const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
