@@ -217,6 +217,54 @@ export default function PerformanceOverview() {
     return [curr];
   });
 
+  // Group trades by day for visual blocks - MOVED HERE to fix React Hooks order
+  const dayGroups = useMemo(() => {
+    if (!chartData || chartData.length === 0) return [];
+    
+    const groups: Array<{
+      date: string;
+      startTrade: number;
+      endTrade: number;
+      trades: number;
+    }> = [];
+    
+    let currentDate: string | null = null;
+    let startTrade: number | null = null;
+    
+    chartData.forEach((trade, index) => {
+      const tradeDate = format(new Date(trade.timestamp), 'yyyy-MM-dd');
+      
+      if (tradeDate !== currentDate) {
+        // Save previous group
+        if (currentDate && startTrade !== null) {
+          groups.push({
+            date: currentDate,
+            startTrade,
+            endTrade: chartData[index - 1].tradeNumber,
+            trades: index - chartData.findIndex(t => format(new Date(t.timestamp), 'yyyy-MM-dd') === currentDate)
+          });
+        }
+        
+        // Start new group
+        currentDate = tradeDate;
+        startTrade = trade.tradeNumber;
+      }
+    });
+    
+    // Add final group
+    if (currentDate && startTrade !== null) {
+      const lastTrade = chartData[chartData.length - 1];
+      groups.push({
+        date: currentDate,
+        startTrade,
+        endTrade: lastTrade.tradeNumber,
+        trades: chartData.length - chartData.findIndex(t => format(new Date(t.timestamp), 'yyyy-MM-dd') === currentDate)
+      });
+    }
+    
+    return groups;
+  }, [chartData]);
+
   // Fetch strategy changes for vertical lines
   const { data: strategyChanges } = useQuery<any[]>({
     queryKey: ['/api/strategies', activeStrategy?.id, 'changes'],
@@ -355,54 +403,6 @@ export default function PerformanceOverview() {
 
   const pnlDomain = calculateSymmetricDomain(chartData, 'pnl');
   const cumulativePnlDomain = calculateSymmetricDomain(chartData, 'cumulativePnl');
-
-  // Group trades by day for visual blocks
-  const dayGroups = useMemo(() => {
-    if (!chartData || chartData.length === 0) return [];
-    
-    const groups: Array<{
-      date: string;
-      startTrade: number;
-      endTrade: number;
-      trades: number;
-    }> = [];
-    
-    let currentDate: string | null = null;
-    let startTrade: number | null = null;
-    
-    chartData.forEach((trade, index) => {
-      const tradeDate = format(new Date(trade.timestamp), 'yyyy-MM-dd');
-      
-      if (tradeDate !== currentDate) {
-        // Save previous group
-        if (currentDate && startTrade !== null) {
-          groups.push({
-            date: currentDate,
-            startTrade,
-            endTrade: chartData[index - 1].tradeNumber,
-            trades: index - chartData.findIndex(t => format(new Date(t.timestamp), 'yyyy-MM-dd') === currentDate)
-          });
-        }
-        
-        // Start new group
-        currentDate = tradeDate;
-        startTrade = trade.tradeNumber;
-      }
-    });
-    
-    // Add final group
-    if (currentDate && startTrade !== null) {
-      const lastTrade = chartData[chartData.length - 1];
-      groups.push({
-        date: currentDate,
-        startTrade,
-        endTrade: lastTrade.tradeNumber,
-        trades: chartData.length - chartData.findIndex(t => format(new Date(t.timestamp), 'yyyy-MM-dd') === currentDate)
-      });
-    }
-    
-    return groups;
-  }, [chartData]);
 
   const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
