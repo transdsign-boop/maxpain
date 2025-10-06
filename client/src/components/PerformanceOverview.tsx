@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TrendingUp, TrendingDown, Target, Award, Activity, LineChart, DollarSign, Percent, ChevronLeft, ChevronRight } from "lucide-react";
-import { ComposedChart, Line, Area, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, Label } from "recharts";
+import { ComposedChart, Line, Area, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, ReferenceArea, Label } from "recharts";
 import { format } from "date-fns";
 
 interface PerformanceMetrics {
@@ -356,6 +356,54 @@ export default function PerformanceOverview() {
   const pnlDomain = calculateSymmetricDomain(chartData, 'pnl');
   const cumulativePnlDomain = calculateSymmetricDomain(chartData, 'cumulativePnl');
 
+  // Group trades by day for visual blocks
+  const dayGroups = useMemo(() => {
+    if (!chartData || chartData.length === 0) return [];
+    
+    const groups: Array<{
+      date: string;
+      startTrade: number;
+      endTrade: number;
+      trades: number;
+    }> = [];
+    
+    let currentDate: string | null = null;
+    let startTrade: number | null = null;
+    
+    chartData.forEach((trade, index) => {
+      const tradeDate = format(new Date(trade.timestamp), 'yyyy-MM-dd');
+      
+      if (tradeDate !== currentDate) {
+        // Save previous group
+        if (currentDate && startTrade !== null) {
+          groups.push({
+            date: currentDate,
+            startTrade,
+            endTrade: chartData[index - 1].tradeNumber,
+            trades: index - chartData.findIndex(t => format(new Date(t.timestamp), 'yyyy-MM-dd') === currentDate)
+          });
+        }
+        
+        // Start new group
+        currentDate = tradeDate;
+        startTrade = trade.tradeNumber;
+      }
+    });
+    
+    // Add final group
+    if (currentDate && startTrade !== null) {
+      const lastTrade = chartData[chartData.length - 1];
+      groups.push({
+        date: currentDate,
+        startTrade,
+        endTrade: lastTrade.tradeNumber,
+        trades: chartData.length - chartData.findIndex(t => format(new Date(t.timestamp), 'yyyy-MM-dd') === currentDate)
+      });
+    }
+    
+    return groups;
+  }, [chartData]);
+
   const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
@@ -643,6 +691,26 @@ export default function PerformanceOverview() {
                 />
                 <ReferenceLine yAxisId="left" y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
                 <ReferenceLine yAxisId="right" y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
+                
+                {/* Day grouping blocks */}
+                {dayGroups.map((group, index) => (
+                  <ReferenceArea
+                    key={group.date}
+                    x1={group.startTrade}
+                    x2={group.endTrade}
+                    yAxisId="left"
+                    fill={index % 2 === 0 ? 'hsl(var(--muted))' : 'transparent'}
+                    fillOpacity={0.2}
+                    label={{
+                      value: `${format(new Date(group.date), 'MMM d')} (${group.trades})`,
+                      position: 'top',
+                      fill: 'hsl(var(--muted-foreground))',
+                      fontSize: 11,
+                      fontWeight: 500
+                    }}
+                  />
+                ))}
+                
                 {/* Vertical lines for strategy changes */}
                 {strategyChanges?.map((change) => {
                   const changeTime = new Date(change.changedAt).getTime();
