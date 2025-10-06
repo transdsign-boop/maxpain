@@ -232,7 +232,9 @@ export default function PerformanceOverview() {
     let startTrade: number | null = null;
     
     chartData.forEach((trade, index) => {
-      const tradeDate = format(new Date(trade.timestamp), 'yyyy-MM-dd');
+      // Use local date for grouping
+      const tradeLocalDate = new Date(trade.timestamp);
+      const tradeDate = format(tradeLocalDate, 'yyyy-MM-dd');
       
       if (tradeDate !== currentDate) {
         // Save previous group
@@ -241,7 +243,10 @@ export default function PerformanceOverview() {
             date: currentDate,
             startTrade,
             endTrade: chartData[index - 1].tradeNumber,
-            trades: index - chartData.findIndex(t => format(new Date(t.timestamp), 'yyyy-MM-dd') === currentDate)
+            trades: index - chartData.findIndex(t => {
+              const tLocalDate = new Date(t.timestamp);
+              return format(tLocalDate, 'yyyy-MM-dd') === currentDate;
+            })
           });
         }
         
@@ -258,7 +263,10 @@ export default function PerformanceOverview() {
         date: currentDate,
         startTrade,
         endTrade: lastTrade.tradeNumber,
-        trades: chartData.length - chartData.findIndex(t => format(new Date(t.timestamp), 'yyyy-MM-dd') === currentDate)
+        trades: chartData.length - chartData.findIndex(t => {
+          const tLocalDate = new Date(t.timestamp);
+          return format(tLocalDate, 'yyyy-MM-dd') === currentDate;
+        })
       });
     }
     
