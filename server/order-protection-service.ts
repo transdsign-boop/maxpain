@@ -193,11 +193,13 @@ export class OrderProtectionService {
    * Fetch live position from exchange for accurate quantity/entry price
    * Filters by position side to support hedge mode correctly
    */
-  private async fetchLiveExchangePosition(symbol: string, side: 'long' | 'short'): Promise<{ quantity: string; entryPrice: string } | null> {
+  private async fetchLiveExchangePosition(
+    symbol: string, 
+    side: 'long' | 'short',
+    apiKey: string,
+    secretKey: string
+  ): Promise<{ quantity: string; entryPrice: string } | null> {
     try {
-      const apiKey = process.env.ASTER_API_KEY;
-      const secretKey = process.env.ASTER_SECRET_KEY;
-      
       if (!apiKey || !secretKey) {
         return null;
       }
@@ -280,11 +282,13 @@ export class OrderProtectionService {
   /**
    * Fetch all open orders for a symbol from exchange
    */
-  private async fetchExchangeOrders(symbol: string, side?: string): Promise<ExchangeOrder[]> {
+  private async fetchExchangeOrders(
+    symbol: string, 
+    side: string | undefined,
+    apiKey: string,
+    secretKey: string
+  ): Promise<ExchangeOrder[]> {
     try {
-      const apiKey = process.env.ASTER_API_KEY;
-      const secretKey = process.env.ASTER_SECRET_KEY;
-
       if (!apiKey || !secretKey) return [];
 
       const timestamp = Date.now();
@@ -346,11 +350,13 @@ export class OrderProtectionService {
   /**
    * Cancel an order on the exchange
    */
-  private async cancelExchangeOrder(symbol: string, orderId: string): Promise<boolean> {
+  private async cancelExchangeOrder(
+    symbol: string, 
+    orderId: string,
+    apiKey: string,
+    secretKey: string
+  ): Promise<boolean> {
     try {
-      const apiKey = process.env.ASTER_API_KEY;
-      const secretKey = process.env.ASTER_SECRET_KEY;
-
       if (!apiKey || !secretKey) return false;
 
       const timestamp = Date.now();
@@ -388,12 +394,11 @@ export class OrderProtectionService {
     type: 'LIMIT' | 'STOP_MARKET',
     side: 'BUY' | 'SELL',
     quantity: number,
-    price: number
+    price: number,
+    apiKey: string,
+    secretKey: string
   ): Promise<{ success: boolean; orderId?: string; error?: string }> {
     try {
-      const apiKey = process.env.ASTER_API_KEY;
-      const secretKey = process.env.ASTER_SECRET_KEY;
-
       if (!apiKey || !secretKey) {
         return { success: false, error: 'Missing API credentials' };
       }
