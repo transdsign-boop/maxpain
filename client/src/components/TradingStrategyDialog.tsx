@@ -38,6 +38,7 @@ interface Strategy {
   slippageTolerancePercent: string;
   orderType: "market" | "limit";
   maxRetryDurationMs: number;
+  priceChaseMode: boolean;
   marginAmount: string;
   tradingMode: "paper" | "live";
   hedgeMode: boolean;
@@ -72,6 +73,7 @@ const strategyFormSchema = z.object({
   }, "Slippage tolerance must be between 0.1% and 5%"),
   orderType: z.enum(["market", "limit"]),
   maxRetryDurationMs: z.number().min(5000).max(300000),
+  priceChaseMode: z.boolean(),
   marginAmount: z.string().refine((val) => {
     const num = parseFloat(val);
     return !isNaN(num) && num >= 1 && num <= 100;
@@ -442,6 +444,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
       slippageTolerancePercent: "0.5",
       orderType: "limit",
       maxRetryDurationMs: 30000,
+      priceChaseMode: true,
       marginAmount: "10.0",
       hedgeMode: false,
       maxOpenPositions: 5,
@@ -615,6 +618,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         slippageTolerancePercent: String(strategy.slippageTolerancePercent),
         orderType: strategy.orderType,
         maxRetryDurationMs: strategy.maxRetryDurationMs,
+        priceChaseMode: strategy.priceChaseMode ?? true,
         marginAmount: String(strategy.marginAmount),
         hedgeMode: strategy.hedgeMode,
         maxOpenPositions: strategy.maxOpenPositions || 5,
@@ -916,6 +920,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         slippageTolerancePercent: strategy.slippageTolerancePercent,
         orderType: strategy.orderType,
         maxRetryDurationMs: strategy.maxRetryDurationMs,
+        priceChaseMode: strategy.priceChaseMode ?? true,
         marginAmount: strategy.marginAmount,
         hedgeMode: strategy.hedgeMode,
         maxOpenPositions: strategy.maxOpenPositions || 5,
@@ -1692,6 +1697,28 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                           <span>300s</span>
                         </div>
                         <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="priceChaseMode"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                        <div className="space-y-0.5">
+                          <FormLabel data-testid="label-price-chase">Price Chase Mode</FormLabel>
+                          <FormDescription>
+                            Automatically update limit orders to chase market price during fast-moving liquidation events, ensuring DCA layers always get filled
+                          </FormDescription>
+                        </div>
+                        <FormControl>
+                          <Switch
+                            data-testid="switch-price-chase"
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        </FormControl>
                       </FormItem>
                     )}
                   />

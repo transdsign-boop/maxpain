@@ -89,6 +89,7 @@ export const strategies = pgTable("strategies", {
   slippageTolerancePercent: decimal("slippage_tolerance_percent", { precision: 5, scale: 2 }).notNull().default("0.5"), // Max slippage %
   orderType: text("order_type").notNull().default("limit"), // "market" or "limit"
   maxRetryDurationMs: integer("max_retry_duration_ms").notNull().default(30000), // How long to chase price before giving up (milliseconds)
+  priceChaseMode: boolean("price_chase_mode").notNull().default(true), // Automatically update limit price to chase market during liquidation events
   marginAmount: decimal("margin_amount", { precision: 5, scale: 2 }).notNull().default("10.0"), // Percentage of account to use for trading
   tradingMode: text("trading_mode").notNull().default("paper"), // "paper" or "live"
   hedgeMode: boolean("hedge_mode").notNull().default(false), // Allow simultaneous long and short positions on same asset
