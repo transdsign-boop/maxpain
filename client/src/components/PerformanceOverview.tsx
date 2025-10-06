@@ -705,11 +705,11 @@ export default function PerformanceOverview() {
                     strokeOpacity={0.3}
                     label={{
                       value: `${format(new Date(group.date), 'MMM d')} • ${group.trades} trades`,
-                      position: 'insideTop',
+                      position: 'insideBottom',
                       fill: 'hsl(var(--foreground))',
                       fontSize: 12,
                       fontWeight: 600,
-                      offset: 5
+                      offset: 10
                     }}
                   />
                 ))}
