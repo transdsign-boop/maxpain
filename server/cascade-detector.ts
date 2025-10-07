@@ -114,6 +114,13 @@ export class CascadeDetector {
    * Liquidation Quality (LQ):
    *   - LQ ≥ 8: +2 points (large liquidations)
    *   - LQ ≥ 6: +1 point (medium liquidations)
+   *   
+   *   Note: LQ thresholds (8, 6) are FIXED by algorithm design. These values define what
+   *   constitutes "large" vs "medium" liquidations based on the ratio sumLiq/medianLiq.
+   *   LQ = 8 means liquidations are 8x the historical median - empirically this indicates
+   *   significant market stress and high reversal probability. LQ = 6 (6x median) is the
+   *   minimum threshold for a meaningful liquidation cascade. These are NOT user-configurable
+   *   as they represent fundamental market structure breakpoints.
    * 
    * Volatility (RET):
    *   - RET ≥ retMediumThreshold: +1 point (user-configurable)
@@ -122,6 +129,12 @@ export class CascadeDetector {
    *   - dOI_1m ≤ -1.0% OR dOI_3m ≤ -1.5%: +2 points (strong OI drop)
    *   - dOI_1m ≤ -0.5% OR dOI_3m ≤ -1.0%: +1 point (moderate OI drop)
    *   - dOI_1m > 0 AND dOI_3m > 0: -2 points (OI increasing = not a reversal)
+   *   
+   *   Note: OI percentage thresholds (-1.0%, -1.5%, -0.5%, -1.0%) are FIXED by algorithm design.
+   *   These represent empirically derived breakpoints where open interest decline indicates
+   *   forced position unwinding (cascade) vs normal market activity. -1.0% in 1 minute or
+   *   -1.5% in 3 minutes represents rapid forced closures typical of liquidation cascades.
+   *   These are NOT user-configurable as they represent fundamental market microstructure.
    * 
    * Score buckets:
    *   - 0-1: "poor"
@@ -132,7 +145,7 @@ export class CascadeDetector {
   private calculateReversalQuality(LQ: number, RET: number, dOI_1m: number, dOI_3m: number, retMediumThreshold: number = 25): { reversal_quality: number; rq_bucket: 'poor' | 'ok' | 'good' | 'excellent' } {
     let score = 0;
     
-    // Liquidation Quality scoring
+    // Liquidation Quality scoring (FIXED thresholds - see function documentation)
     if (LQ >= 8) score += 2;
     else if (LQ >= 6) score += 1;
     
@@ -235,16 +248,28 @@ export class CascadeDetector {
     const dOI_1m = this.calculateOIDelta(60);
     const dOI_3m = this.calculateOIDelta(180);
 
+    // Traffic light scoring system for real-time cascade detection
+    // This differs from reversal quality scoring - it's for immediate risk assessment
     let score = 0;
     
+    // LQ thresholds (FIXED by algorithm design):
+    // - LQ >= 8: Extreme liquidations (8x median) - highest risk
+    // - LQ >= 4: Elevated liquidations (4x median) - moderate risk
+    // These breakpoints define market stress levels empirically observed during cascades
     if (LQ >= 8) score += 2;
     else if (LQ >= 4) score += 1;
 
+    // RET thresholds (user-configurable):
+    // Only counts if volatility direction matches liquidation side (retSideMatchesLiq)
     if (retSideMatchesLiq) {
       if (RET >= retHighThreshold) score += 2;
       else if (RET >= retMediumThreshold) score += 1;
     }
 
+    // OI percentage drop thresholds (FIXED by algorithm design):
+    // - OI >= 4%: Massive position unwinding over 5-minute window
+    // - OI >= 2%: Significant position unwinding over 5-minute window
+    // These represent forced closures typical of liquidation cascades, not user-configurable
     if (OI >= 4) score += 2;
     else if (OI >= 2) score += 1;
 
