@@ -249,6 +249,9 @@ export const frontendStrategySchema = z.object({
   }, "Account usage must be between 1% and 100%").default("10.0"),
   tradingMode: z.enum(["demo", "live"]).default("demo"),
   hedgeMode: z.boolean().default(false),
+  // Aster DEX API Credentials (optional, required for live mode)
+  asterApiKey: z.string().optional(),
+  asterApiSecret: z.string().optional(),
   // Bybit API Credentials (optional, required for demo mode)
   bybitApiKey: z.string().optional(),
   bybitApiSecret: z.string().optional(),
