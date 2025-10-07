@@ -1646,14 +1646,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json(responseData);
       }
 
-      // Get ALL sessions for this strategy
+      // Get ONLY ACTIVE sessions for this strategy (excludes archived)
       const allSessions = await storage.getSessionsByStrategy(activeStrategy.id);
+      const activeSessions = allSessions.filter(s => s.isActive === true);
       
-      // Get positions from ALL sessions
+      // Get positions from ACTIVE sessions only
       const allPositions: any[] = [];
       const allSessionFills: any[] = [];
       
-      for (const session of allSessions) {
+      for (const session of activeSessions) {
         const sessionPositions = await storage.getPositionsBySession(session.id);
         const sessionFills = await storage.getFillsBySession(session.id);
         allPositions.push(...sessionPositions);
@@ -1860,18 +1861,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json([]);
       }
 
-      // Get ALL sessions for this strategy
+      // Get ONLY ACTIVE sessions for this strategy (excludes archived)
       const allSessions = await storage.getSessionsByStrategy(activeStrategy.id);
+      const activeSessions = allSessions.filter(s => s.isActive === true);
       
-      if (allSessions.length === 0) {
+      if (activeSessions.length === 0) {
         return res.json([]);
       }
 
-      // Get all positions and fills from ALL sessions
+      // Get all positions and fills from ACTIVE sessions only
       const allPositions: any[] = [];
       const sessionFills: any[] = [];
       
-      for (const session of allSessions) {
+      for (const session of activeSessions) {
         const sessionPositions = await storage.getPositionsBySession(session.id);
         const fills = await storage.getFillsBySession(session.id);
         allPositions.push(...sessionPositions);
@@ -3585,6 +3587,71 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error resetting session:', error);
       res.status(500).json({ error: 'Failed to reset session' });
+    }
+  });
+
+  // Archive sessions with positions before a specific date
+  app.post('/api/strategies/:strategyId/archive-before-date', async (req, res) => {
+    try {
+      const { strategyId } = req.params;
+      const { cutoffDate } = req.body; // ISO date string, e.g., "2024-10-04T00:00:00.000Z"
+      
+      if (!cutoffDate) {
+        return res.status(400).json({ error: 'cutoffDate is required' });
+      }
+      
+      const cutoff = new Date(cutoffDate);
+      console.log(`📦 Archiving sessions with all positions before ${cutoff.toISOString()}`);
+      
+      // Get all sessions for this strategy
+      const allSessions = await storage.getSessionsByStrategy(strategyId);
+      
+      let archivedCount = 0;
+      let keptCount = 0;
+      
+      for (const session of allSessions) {
+        // Skip already archived sessions
+        if (!session.isActive) {
+          console.log(`⏭️ Session ${session.id} already archived, skipping`);
+          continue;
+        }
+        
+        // Get all positions for this session
+        const positions = await storage.getPositionsBySession(session.id);
+        const closedPositions = positions.filter(p => !p.isOpen && p.closedAt);
+        
+        // If no closed positions, skip
+        if (closedPositions.length === 0) {
+          console.log(`⏭️ Session ${session.id} has no closed positions, keeping active`);
+          keptCount++;
+          continue;
+        }
+        
+        // Check if ANY position closed on or after the cutoff date
+        const hasRecentTrades = closedPositions.some(p => 
+          new Date(p.closedAt!).getTime() >= cutoff.getTime()
+        );
+        
+        if (hasRecentTrades) {
+          console.log(`✅ Session ${session.id} has positions on/after ${cutoff.toISOString()}, keeping active`);
+          keptCount++;
+        } else {
+          // All positions are before cutoff - archive this session
+          await storage.endTradeSession(session.id);
+          console.log(`📦 Archived session ${session.id} (${closedPositions.length} positions, all before cutoff)`);
+          archivedCount++;
+        }
+      }
+      
+      res.json({
+        success: true,
+        message: `Archived ${archivedCount} session(s) with trades before ${cutoffDate}`,
+        archivedSessions: archivedCount,
+        activeSessions: keptCount
+      });
+    } catch (error) {
+      console.error('Error archiving sessions by date:', error);
+      res.status(500).json({ error: 'Failed to archive sessions' });
     }
   });
 
