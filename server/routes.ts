@@ -1079,8 +1079,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get live account balance from Aster DEX
   app.get("/api/live/account", async (req, res) => {
     try {
-      // Check cache first to prevent rate limiting (longer TTL for account data)
-      const cached = getCached<any>('live_account', ACCOUNT_CACHE_TTL_MS);
+      // Check cache first to prevent rate limiting (5 minute TTL to avoid rate limits)
+      const cached = getCached<any>('live_account', 300000); // 5 minutes
       if (cached) {
         return res.json(cached);
       }
@@ -1118,9 +1118,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           errorMessage = response.statusText;
         }
         
-        // Special handling for rate limiting
+        // Special handling for rate limiting - return stale cache if available
         if (response.status === 429) {
           console.error('⚠️ Rate limit exceeded for Aster DEX account endpoint');
+          // Try to return stale cached data (ignore TTL)
+          const staleCache = apiCache.get('live_account');
+          if (staleCache) {
+            console.log('📦 Returning stale cached account data due to rate limit');
+            return res.json(staleCache.data);
+          }
           return res.status(429).json({ 
             error: `Rate limit exceeded. Please wait before trying again. ${errorMessage}` 
           });
@@ -1171,8 +1177,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get live open positions from Aster DEX
   app.get("/api/live/positions", async (req, res) => {
     try {
-      // Check cache first to prevent rate limiting
-      const cached = getCached<any[]>('live_positions');
+      // Check cache first to prevent rate limiting (5 minute TTL)
+      const cached = getCached<any[]>('live_positions', 300000); // 5 minutes
       if (cached) {
         return res.json(cached);
       }
@@ -1204,6 +1210,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!response.ok) {
         const errorText = await response.text();
         console.error('Failed to fetch Aster DEX positions:', errorText);
+        // If rate limited, try to return stale cache
+        if (response.status === 429) {
+          const staleCache = apiCache.get('live_positions');
+          if (staleCache) {
+            console.log('📦 Returning stale cached positions due to rate limit');
+            return res.json(staleCache.data);
+          }
+        }
         return res.status(response.status).json({ error: `Aster DEX API error: ${errorText}` });
       }
 
@@ -2737,9 +2751,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { strategyId } = req.params;
       
-      // Check cache first to prevent rate limiting (2 minute cache)
+      // Check cache first to prevent rate limiting (5 minute cache)
       const cacheKey = `position_summary_${strategyId}`;
-      const cached = getCached<any>(cacheKey, 120000); // 2 minute TTL
+      const cached = getCached<any>(cacheKey, 300000); // 5 minute TTL
       if (cached) {
         return res.json(cached);
       }
@@ -2955,6 +2969,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           if (accountResponse.status === 429) {
             console.error('⚠️ Rate limit exceeded for Aster DEX account endpoint');
+            // Try to return stale cached data (ignore TTL)
+            const staleCache = apiCache.get(cacheKey);
+            if (staleCache) {
+              console.log('📦 Returning stale cached position summary due to rate limit');
+              return res.json(staleCache.data);
+            }
             return res.status(429).json({ error: `Rate limit exceeded. Please wait before trying again. ${errorMessage}` });
           } else if (accountResponse.status === 401 || accountResponse.status === 403) {
             console.error('🔑 Authentication failed for Aster DEX:', errorMessage);
