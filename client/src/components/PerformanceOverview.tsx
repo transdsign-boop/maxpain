@@ -514,9 +514,15 @@ export default function PerformanceOverview() {
                 {/* Risk Fill */}
                 <div 
                   className={`absolute bottom-0 left-0 right-0 transition-all duration-300 ${
-                    riskPercentage > 15 ? 'bg-red-600 dark:bg-red-500' :
-                    riskPercentage > 8 ? 'bg-orange-500 dark:bg-orange-400' :
-                    'bg-lime-600 dark:bg-lime-500'
+                    (() => {
+                      const maxRisk = activeStrategy ? parseFloat(activeStrategy.maxPortfolioRiskPercent) : 15;
+                      const redThreshold = maxRisk * 0.9; // Red at 90% of max
+                      const orangeThreshold = maxRisk * 0.75; // Orange at 75% of max
+                      
+                      return riskPercentage >= redThreshold ? 'bg-red-600 dark:bg-red-500' :
+                        riskPercentage >= orangeThreshold ? 'bg-orange-500 dark:bg-orange-400' :
+                        'bg-lime-600 dark:bg-lime-500';
+                    })()
                   }`}
                   style={{ height: `${Math.min(100, riskPercentage)}%` }}
                   data-testid="bar-risk-fill"
