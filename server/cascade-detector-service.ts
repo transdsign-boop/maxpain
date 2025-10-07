@@ -74,10 +74,11 @@ class CascadeDetectorService {
 
   private async getLiqNotionalLastSec(symbol: string): Promise<LiquidationInfo> {
     const now = Date.now();
-    const oneSecAgo = new Date(now - 1000);
+    // Look back 10 seconds instead of just 1 second to catch sparse liquidations
+    const tenSecondsAgo = new Date(now - 10000);
     
     try {
-      const recentLiqs = await storage.getLiquidationsSince(oneSecAgo, 1000);
+      const recentLiqs = await storage.getLiquidationsSince(tenSecondsAgo, 1000);
       
       let longNotional = 0;
       let shortNotional = 0;
