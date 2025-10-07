@@ -36,7 +36,7 @@ export async function getStrategyWithDCA(strategyId: string) {
       dca_max_risk_percent, dca_volatility_ref, dca_exit_cushion_multiplier,
       ret_high_threshold, ret_medium_threshold,
       margin_mode, leverage, order_delay_ms, slippage_tolerance_percent,
-      order_type, max_retry_duration_ms, margin_amount, trading_mode,
+      order_type, max_retry_duration_ms, margin_amount,
       hedge_mode, is_active, paused, live_session_started_at,
       created_at, updated_at
     FROM strategies
@@ -58,7 +58,7 @@ export async function getStrategiesByUserWithDCA(userId: string) {
       dca_start_step_percent, dca_spacing_convexity, dca_size_growth,
       dca_max_risk_percent, dca_volatility_ref, dca_exit_cushion_multiplier,
       margin_mode, leverage, order_delay_ms, slippage_tolerance_percent,
-      order_type, max_retry_duration_ms, margin_amount, trading_mode,
+      order_type, max_retry_duration_ms, margin_amount,
       hedge_mode, is_active, paused, live_session_started_at,
       created_at, updated_at
     FROM strategies
