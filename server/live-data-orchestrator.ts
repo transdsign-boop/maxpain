@@ -270,8 +270,10 @@ class LiveDataOrchestrator {
     wsBroadcaster.broadcast({
       type: 'live_snapshot',
       data: {
-        strategyId,
-        ...snapshot
+        snapshot: {
+          strategyId,
+          ...snapshot
+        }
       },
       timestamp: Date.now()
     });

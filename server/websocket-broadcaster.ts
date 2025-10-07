@@ -13,7 +13,8 @@ export type WebSocketEventType =
 
 export interface WebSocketEvent {
   type: WebSocketEventType;
-  data: any;
+  data?: any;
+  snapshot?: any;
   timestamp: number;
 }
 
