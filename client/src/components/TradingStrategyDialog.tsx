@@ -100,7 +100,7 @@ interface DCASettings {
 }
 
 // DCA Settings Component
-function DCASettingsSection({ strategyId, isStrategyRunning }: { strategyId: string; isStrategyRunning: boolean }) {
+function DCASettingsSection({ strategyId, isStrategyRunning, onSaveRequest }: { strategyId: string; isStrategyRunning: boolean; onSaveRequest?: () => void }) {
   const { toast } = useToast();
   const [isExpanded, setIsExpanded] = useState(true);
   
