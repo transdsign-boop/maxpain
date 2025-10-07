@@ -44,6 +44,7 @@ interface Strategy {
   isActive: boolean;
   maxOpenPositions: number;
   maxPortfolioRiskPercent: string;
+  riskLevel: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -83,6 +84,7 @@ const strategyFormSchema = z.object({
     const num = parseFloat(val);
     return !isNaN(num) && num >= 1 && num <= 100;
   }, "Max portfolio risk must be between 1% and 100%"),
+  riskLevel: z.number().min(1).max(5),
 });
 
 type StrategyFormData = z.infer<typeof strategyFormSchema>;
@@ -448,6 +450,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
       hedgeMode: false,
       maxOpenPositions: 5,
       maxPortfolioRiskPercent: "15.0",
+      riskLevel: 3, // Balanced
     }
   });
 
@@ -622,6 +625,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         hedgeMode: strategy.hedgeMode,
         maxOpenPositions: strategy.maxOpenPositions || 5,
         maxPortfolioRiskPercent: String(strategy.maxPortfolioRiskPercent || "15.0"),
+        riskLevel: strategy.riskLevel ?? 3, // Default to balanced if not set
       });
     },
     onError: () => {
@@ -924,6 +928,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         hedgeMode: strategy.hedgeMode,
         maxOpenPositions: strategy.maxOpenPositions || 5,
         maxPortfolioRiskPercent: String(strategy.maxPortfolioRiskPercent || "15.0"),
+        riskLevel: strategy.riskLevel ?? 3, // Default to balanced if not set
       });
     } else if (strategies && strategies.length === 0) {
       // No strategies available, clear active strategy
@@ -1259,6 +1264,61 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                     <FormMessage />
                   </FormItem>
                 )}
+              />
+
+              <Separator />
+
+              {/* Risk Level Slider */}
+              <FormField
+                control={form.control}
+                name="riskLevel"
+                render={({ field }) => {
+                  const riskLabels = [
+                    { value: 1, label: 'Very Conservative', color: 'text-blue-600 dark:text-blue-400' },
+                    { value: 2, label: 'Conservative', color: 'text-green-600 dark:text-green-400' },
+                    { value: 3, label: 'Balanced', color: 'text-yellow-600 dark:text-yellow-400' },
+                    { value: 4, label: 'Aggressive', color: 'text-orange-600 dark:text-orange-400' },
+                    { value: 5, label: 'Very Aggressive', color: 'text-red-600 dark:text-red-400' },
+                  ];
+                  const currentRiskLabel = riskLabels.find(r => r.value === field.value);
+
+                  return (
+                    <FormItem>
+                      <FormLabel data-testid="label-risk-level">
+                        <div className="flex items-center gap-2">
+                          <Shield className="h-4 w-4" />
+                          Entry Selectivity: <span className={currentRiskLabel?.color}>{currentRiskLabel?.label}</span>
+                        </div>
+                      </FormLabel>
+                      <FormDescription>
+                        Controls how selective the bot is when entering trades. Lower = stricter requirements, fewer trades. Higher = more lenient, more trades.
+                      </FormDescription>
+                      <FormControl>
+                        <Slider
+                          data-testid="slider-risk-level"
+                          min={1}
+                          max={5}
+                          step={1}
+                          value={[field.value]}
+                          onValueChange={(value) => field.onChange(value[0])}
+                          disabled={false}
+                          className="w-full"
+                        />
+                      </FormControl>
+                      <div className="flex justify-between text-xs">
+                        {riskLabels.map((risk) => (
+                          <span
+                            key={risk.value}
+                            className={field.value === risk.value ? risk.color + ' font-semibold' : 'text-muted-foreground'}
+                          >
+                            {risk.value}
+                          </span>
+                        ))}
+                      </div>
+                      <FormMessage />
+                    </FormItem>
+                  );
+                }}
               />
 
               <Separator />

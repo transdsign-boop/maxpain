@@ -267,6 +267,8 @@ export const frontendStrategySchema = z.object({
     const num = parseFloat(val);
     return !isNaN(num) && num >= 1 && num <= 100;
   }, "Max portfolio risk must be between 1% and 100%").default("15.0"),
+  // Entry Selectivity (Risk Level)
+  riskLevel: z.number().min(1).max(5).default(3), // 1=Very Conservative, 2=Conservative, 3=Balanced, 4=Aggressive, 5=Very Aggressive
 });
 
 // Update schema for partial updates
