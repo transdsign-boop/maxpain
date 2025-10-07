@@ -1,5 +1,10 @@
 import { useState, useEffect } from "react";
 import { AlertCircle } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface ConnectionStatusProps {
   isConnected: boolean;
@@ -206,25 +211,54 @@ export default function ConnectionStatus({ isConnected }: ConnectionStatusProps)
         </div>
 
         {/* Trade Entry Status */}
-        <div 
-          className="flex items-center gap-1.5"
-          title={getTradeStatusTitle()}
-        >
-          <div className="relative">
-            <div 
-              className={`w-2.5 h-2.5 rounded-full ${
-                tradesAllowed 
-                  ? 'bg-lime-500' 
-                  : 'bg-red-600'
-              }`}
-              data-testid="dot-trade-status"
-            />
-            {tradesAllowed && (
-              <div className="absolute inset-0 w-2.5 h-2.5 rounded-full bg-lime-500 animate-ping opacity-75" />
-            )}
-          </div>
-          <span className="text-xs text-muted-foreground">TRADE</span>
-        </div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="flex items-center gap-1.5 cursor-help">
+              <div className="relative">
+                <div 
+                  className={`w-2.5 h-2.5 rounded-full ${
+                    tradesAllowed 
+                      ? 'bg-lime-500' 
+                      : 'bg-red-600'
+                  }`}
+                  data-testid="dot-trade-status"
+                />
+                {tradesAllowed && (
+                  <div className="absolute inset-0 w-2.5 h-2.5 rounded-full bg-lime-500 animate-ping opacity-75" />
+                )}
+              </div>
+              <span className="text-xs text-muted-foreground">TRADE</span>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="max-w-sm">
+            <div className="space-y-1">
+              <p className="font-medium">{getTradeStatusTitle().split(':')[0]}:</p>
+              {!autoEnabled && (
+                <p className="text-xs text-muted-foreground">Auto-gating disabled - all entries allowed</p>
+              )}
+              {autoEnabled && readyAssets.length > 0 && (
+                <div className="text-xs">
+                  <p className="text-lime-600 dark:text-lime-400">✓ Ready: {readyAssets.join(', ')}</p>
+                  {blockedAssets.length > 0 && (
+                    <p className="text-orange-600 dark:text-orange-400 mt-0.5">
+                      ✗ Blocked: {blockedAssets.map(a => `${a.symbol} (${a.reason})`).join(', ')}
+                    </p>
+                  )}
+                </div>
+              )}
+              {autoEnabled && readyAssets.length === 0 && (
+                <div className="text-xs text-red-600 dark:text-red-400">
+                  ✗ All assets blocked:
+                  <ul className="mt-0.5 ml-4 list-disc">
+                    {blockedAssets.map(a => (
+                      <li key={a.symbol}>{a.symbol}: {a.reason}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </TooltipContent>
+        </Tooltip>
       </div>
 
       {/* API Error Display */}
