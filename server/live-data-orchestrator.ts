@@ -33,8 +33,8 @@ class LiveDataOrchestrator {
   private polling: Map<string, NodeJS.Timeout> = new Map();
   private inflightRequests: Map<string, Promise<any>> = new Map();
   private backoffTimers: Map<string, number> = new Map();
-  private readonly MIN_BACKOFF_MS = 2000;
-  private readonly MAX_BACKOFF_MS = 30000;
+  private readonly MIN_BACKOFF_MS = 5000;
+  private readonly MAX_BACKOFF_MS = 60000;
 
   constructor() {
     console.log('🎯 Live Data Orchestrator initialized');
@@ -291,15 +291,15 @@ class LiveDataOrchestrator {
     // Staggered polling intervals
     const accountInterval = setInterval(() => {
       this.fetchAccountData(strategyId);
-    }, 5000); // Every 5 seconds
+    }, 15000); // Every 15 seconds
 
     const positionsInterval = setInterval(() => {
       this.fetchPositionsData(strategyId);
-    }, 3000); // Every 3 seconds
+    }, 10000); // Every 10 seconds
 
     const summaryInterval = setInterval(() => {
       this.calculatePositionSummary(strategyId);
-    }, 3000); // Every 3 seconds
+    }, 10000); // Every 10 seconds
 
     // Store all timers
     this.polling.set(strategyId, accountInterval);
