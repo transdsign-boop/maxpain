@@ -254,9 +254,9 @@ export class CascadeDetector {
       volatility_regime = 'medium';
       rq_threshold_adjusted = 2; // Require "ok" quality
     } else {
-      // Normal/low volatility: Less selective, allow lower quality
+      // Normal/low volatility: Less selective, allow any quality
       volatility_regime = 'low';
-      rq_threshold_adjusted = 1; // Require minimal quality (poor/ok bucket)
+      rq_threshold_adjusted = 0; // No quality requirement in low volatility
     }
     
     return { volatility_regime, rq_threshold_adjusted };

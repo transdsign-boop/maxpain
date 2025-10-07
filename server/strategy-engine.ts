@@ -544,16 +544,23 @@ export class StrategyEngine extends EventEmitter {
     
     // CASCADE DETECTOR CHECK: Block new entries when cascade risk is high
     const cascadeStatus = cascadeDetectorService.getStatus(liquidation.symbol);
-    if (cascadeStatus.autoEnabled && cascadeStatus.autoBlock) {
-      console.log(`🚫 CASCADE RISK GATE [${liquidation.symbol}]: Entry blocked due to ${cascadeStatus.light.toUpperCase()} risk level (score: ${cascadeStatus.score})`);
-      return false;
-    }
     
-    // REVERSAL QUALITY CHECK: Dynamic threshold based on market volatility
-    // High volatility = stricter requirements, Low volatility = more lenient
-    if (cascadeStatus.reversal_quality < cascadeStatus.rq_threshold_adjusted) {
-      console.log(`🚫 REVERSAL QUALITY GATE [${liquidation.symbol}]: Entry blocked - context too weak (RQ: ${cascadeStatus.reversal_quality}/${cascadeStatus.rq_threshold_adjusted}, bucket: ${cascadeStatus.rq_bucket}, volatility: ${cascadeStatus.volatility_regime}, RET: ${cascadeStatus.RET}, dOI_1m: ${cascadeStatus.dOI_1m}%, dOI_3m: ${cascadeStatus.dOI_3m}%)`);
-      return false;
+    // Only apply gates if auto-gating is enabled
+    if (cascadeStatus.autoEnabled) {
+      // Traffic light gate
+      if (cascadeStatus.autoBlock) {
+        console.log(`🚫 CASCADE RISK GATE [${liquidation.symbol}]: Entry blocked due to ${cascadeStatus.light.toUpperCase()} risk level (score: ${cascadeStatus.score})`);
+        return false;
+      }
+      
+      // REVERSAL QUALITY CHECK: Dynamic threshold based on market volatility
+      // High volatility = stricter requirements, Low volatility = more lenient
+      if (cascadeStatus.reversal_quality < cascadeStatus.rq_threshold_adjusted) {
+        console.log(`🚫 REVERSAL QUALITY GATE [${liquidation.symbol}]: Entry blocked - context too weak (RQ: ${cascadeStatus.reversal_quality}/${cascadeStatus.rq_threshold_adjusted}, bucket: ${cascadeStatus.rq_bucket}, volatility: ${cascadeStatus.volatility_regime}, RET: ${cascadeStatus.RET}, dOI_1m: ${cascadeStatus.dOI_1m}%, dOI_3m: ${cascadeStatus.dOI_3m}%)`);
+        return false;
+      }
+    } else {
+      console.log(`✅ AUTO-GATING DISABLED [${liquidation.symbol}]: Bypassing cascade and reversal quality gates (RQ: ${cascadeStatus.reversal_quality}, volatility: ${cascadeStatus.volatility_regime})`);
     }
     
     // Calculate percentile threshold: current liquidation must exceed specified percentile
@@ -700,15 +707,22 @@ export class StrategyEngine extends EventEmitter {
 
     // CASCADE DETECTOR CHECK: Block new layers when cascade risk is high
     const cascadeStatus = cascadeDetectorService.getStatus(liquidation.symbol);
-    if (cascadeStatus.autoEnabled && cascadeStatus.autoBlock) {
-      console.log(`🚫 CASCADE RISK GATE (Layer) [${liquidation.symbol}]: Layer blocked due to ${cascadeStatus.light.toUpperCase()} risk level (score: ${cascadeStatus.score})`);
-      return false;
-    }
     
-    // REVERSAL QUALITY CHECK: Dynamic threshold based on market volatility
-    if (cascadeStatus.reversal_quality < cascadeStatus.rq_threshold_adjusted) {
-      console.log(`🚫 REVERSAL QUALITY GATE (Layer) [${liquidation.symbol}]: Layer blocked - context too weak (RQ: ${cascadeStatus.reversal_quality}/${cascadeStatus.rq_threshold_adjusted}, bucket: ${cascadeStatus.rq_bucket}, volatility: ${cascadeStatus.volatility_regime})`);
-      return false;
+    // Only apply gates if auto-gating is enabled
+    if (cascadeStatus.autoEnabled) {
+      // Traffic light gate
+      if (cascadeStatus.autoBlock) {
+        console.log(`🚫 CASCADE RISK GATE (Layer) [${liquidation.symbol}]: Layer blocked due to ${cascadeStatus.light.toUpperCase()} risk level (score: ${cascadeStatus.score})`);
+        return false;
+      }
+      
+      // REVERSAL QUALITY CHECK: Dynamic threshold based on market volatility
+      if (cascadeStatus.reversal_quality < cascadeStatus.rq_threshold_adjusted) {
+        console.log(`🚫 REVERSAL QUALITY GATE (Layer) [${liquidation.symbol}]: Layer blocked - context too weak (RQ: ${cascadeStatus.reversal_quality}/${cascadeStatus.rq_threshold_adjusted}, bucket: ${cascadeStatus.rq_bucket}, volatility: ${cascadeStatus.volatility_regime})`);
+        return false;
+      }
+    } else {
+      console.log(`✅ AUTO-GATING DISABLED (Layer) [${liquidation.symbol}]: Bypassing cascade and reversal quality gates (RQ: ${cascadeStatus.reversal_quality}, volatility: ${cascadeStatus.volatility_regime})`);
     }
 
     // Use configurable lookback window from strategy settings (convert hours to seconds)
