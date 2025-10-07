@@ -704,7 +704,7 @@ export default function Dashboard() {
             <DialogDescription>
               This will immediately close all open positions. This action cannot be undone.
               <br /><br />
-              Enter PIN code <strong>2233</strong> to confirm.
+              Enter your PIN code to confirm.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
