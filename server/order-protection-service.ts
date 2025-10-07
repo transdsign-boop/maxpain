@@ -193,13 +193,11 @@ export class OrderProtectionService {
    * Fetch live position from exchange for accurate quantity/entry price
    * Filters by position side to support hedge mode correctly
    */
-  private async fetchLiveExchangePosition(
-    symbol: string, 
-    side: 'long' | 'short',
-    apiKey: string,
-    secretKey: string
-  ): Promise<{ quantity: string; entryPrice: string } | null> {
+  private async fetchLiveExchangePosition(symbol: string, side: 'long' | 'short'): Promise<{ quantity: string; entryPrice: string } | null> {
     try {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+      
       if (!apiKey || !secretKey) {
         return null;
       }
@@ -282,13 +280,11 @@ export class OrderProtectionService {
   /**
    * Fetch all open orders for a symbol from exchange
    */
-  private async fetchExchangeOrders(
-    symbol: string, 
-    side: string | undefined,
-    apiKey: string,
-    secretKey: string
-  ): Promise<ExchangeOrder[]> {
+  private async fetchExchangeOrders(symbol: string, side?: string): Promise<ExchangeOrder[]> {
     try {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+
       if (!apiKey || !secretKey) return [];
 
       const timestamp = Date.now();
@@ -350,13 +346,11 @@ export class OrderProtectionService {
   /**
    * Cancel an order on the exchange
    */
-  private async cancelExchangeOrder(
-    symbol: string, 
-    orderId: string,
-    apiKey: string,
-    secretKey: string
-  ): Promise<boolean> {
+  private async cancelExchangeOrder(symbol: string, orderId: string): Promise<boolean> {
     try {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+
       if (!apiKey || !secretKey) return false;
 
       const timestamp = Date.now();
@@ -394,11 +388,12 @@ export class OrderProtectionService {
     type: 'LIMIT' | 'STOP_MARKET',
     side: 'BUY' | 'SELL',
     quantity: number,
-    price: number,
-    apiKey: string,
-    secretKey: string
+    price: number
   ): Promise<{ success: boolean; orderId?: string; error?: string }> {
     try {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+
       if (!apiKey || !secretKey) {
         return { success: false, error: 'Missing API credentials' };
       }
@@ -467,22 +462,13 @@ export class OrderProtectionService {
         return { success: true };
       }
 
-      // Extract credentials from strategy (NEVER use environment variables)
-      const apiKey = strategy.asterApiKey || '';
-      const secretKey = strategy.asterApiSecret || '';
-      
-      if (!apiKey || !secretKey) {
-        console.error('❌ Aster DEX credentials not configured in strategy');
-        return { success: false, error: 'API credentials not configured' };
-      }
-
       // Ensure exchange info is fetched
       await this.fetchExchangeInfo();
 
       // CRITICAL FIX: Fetch live exchange position for accurate quantity/entry price
       // Database position may be stale due to async fill processing
       // IMPORTANT: Filter by side to support hedge mode correctly
-      const livePosition = await this.fetchLiveExchangePosition(position.symbol, position.side, apiKey, secretKey);
+      const livePosition = await this.fetchLiveExchangePosition(position.symbol, position.side);
       
       let positionToUse = position;
       if (livePosition) {
@@ -502,7 +488,7 @@ export class OrderProtectionService {
       const desiredSignature = this.getOrderSignature(desiredOrders);
 
       // Fetch existing orders
-      const existingOrders = await this.fetchExchangeOrders(position.symbol, position.side, apiKey, secretKey);
+      const existingOrders = await this.fetchExchangeOrders(position.symbol, position.side);
       const tpslOrders = existingOrders.filter(
         o => o.type === 'LIMIT' || o.type === 'STOP_MARKET'
       );
@@ -529,7 +515,7 @@ export class OrderProtectionService {
         console.log(`   Cancelling ${tpslOrders.length} existing orders...`);
         
         for (const order of tpslOrders) {
-          const cancelled = await this.cancelExchangeOrder(position.symbol, order.orderId, apiKey, secretKey);
+          const cancelled = await this.cancelExchangeOrder(position.symbol, order.orderId);
           if (cancelled) {
             cancelledOrders.push(order);
             console.log(`   ✅ Cancelled ${order.type} #${order.orderId}`);
@@ -544,9 +530,7 @@ export class OrderProtectionService {
                 oldOrder.type,
                 oldOrder.side,
                 parseFloat(oldOrder.origQty),
-                parseFloat(oldOrder.type === 'LIMIT' ? oldOrder.price : oldOrder.stopPrice),
-                apiKey,
-                secretKey
+                parseFloat(oldOrder.type === 'LIMIT' ? oldOrder.price : oldOrder.stopPrice)
               );
               
               if (restoreResult.success) {
@@ -568,9 +552,7 @@ export class OrderProtectionService {
         tpOrder.type,
         tpOrder.side,
         tpOrder.quantity,
-        tpOrder.price,
-        apiKey,
-        secretKey
+        tpOrder.price
       );
 
       if (!tpResult.success) {
@@ -584,9 +566,7 @@ export class OrderProtectionService {
             oldOrder.type,
             oldOrder.side,
             parseFloat(oldOrder.origQty),
-            parseFloat(oldOrder.type === 'LIMIT' ? oldOrder.price : oldOrder.stopPrice),
-            apiKey,
-            secretKey
+            parseFloat(oldOrder.type === 'LIMIT' ? oldOrder.price : oldOrder.stopPrice)
           );
           
           if (restoreResult.success) {
@@ -608,9 +588,7 @@ export class OrderProtectionService {
         slOrder.type,
         slOrder.side,
         slOrder.quantity,
-        slOrder.price,
-        apiKey,
-        secretKey
+        slOrder.price
       );
 
       if (!slResult.success) {
@@ -621,7 +599,7 @@ export class OrderProtectionService {
         // Cancel the TP we just placed
         if (tpResult.orderId) {
           console.log(`   Cancelling TP order #${tpResult.orderId}`);
-          await this.cancelExchangeOrder(position.symbol, tpResult.orderId, apiKey, secretKey);
+          await this.cancelExchangeOrder(position.symbol, tpResult.orderId);
         }
         
         // Restore ONLY the orders we successfully cancelled
@@ -632,9 +610,7 @@ export class OrderProtectionService {
             oldOrder.type,
             oldOrder.side,
             parseFloat(oldOrder.origQty),
-            parseFloat(oldOrder.type === 'LIMIT' ? oldOrder.price : oldOrder.stopPrice),
-            apiKey,
-            secretKey
+            parseFloat(oldOrder.type === 'LIMIT' ? oldOrder.price : oldOrder.stopPrice)
           );
           
           if (restoreResult.success) {
@@ -665,18 +641,9 @@ export class OrderProtectionService {
    * Fetches ALL open orders from exchange to catch orphans for fully closed symbols
    * Only cancels orders for symbols we actively manage (have fills in database)
    */
-  async reconcileOrphanedOrders(sessionId: string, strategy: Strategy): Promise<number> {
+  async reconcileOrphanedOrders(sessionId: string): Promise<number> {
     try {
       console.log(`🔍 Reconciling orphaned orders for session ${sessionId}...`);
-
-      // Extract credentials from strategy (NEVER use environment variables)
-      const apiKey = strategy.asterApiKey || '';
-      const secretKey = strategy.asterApiSecret || '';
-      
-      if (!apiKey || !secretKey) {
-        console.warn('⚠️ Aster DEX credentials not configured, skipping orphaned order reconciliation');
-        return 0;
-      }
 
       // Get all open positions for this session
       const positions = await storage.getOpenPositions(sessionId);
@@ -691,7 +658,7 @@ export class OrderProtectionService {
 
       // Fetch ALL open orders from exchange (not filtered by symbol)
       // This ensures we catch orphaned orders for fully closed positions
-      const allOrders = await this.fetchAllExchangeOrders(apiKey, secretKey);
+      const allOrders = await this.fetchAllExchangeOrders();
       
       // Group orders by symbol for efficient processing
       const ordersBySymbol = new Map<string, ExchangeOrder[]>();
@@ -722,7 +689,7 @@ export class OrderProtectionService {
           // If no open position for this symbol-side, order is orphaned
           if (!openSymbols.has(positionKey)) {
             console.log(`🗑️ Orphaned order found: ${symbol} ${order.type} #${order.orderId} (no ${orderSide} position)`);
-            const cancelled = await this.cancelExchangeOrder(symbol, order.orderId, apiKey, secretKey);
+            const cancelled = await this.cancelExchangeOrder(symbol, order.orderId);
             if (cancelled) {
               totalCancelled++;
               console.log(`   ✅ Cancelled orphaned order #${order.orderId}`);
@@ -776,8 +743,11 @@ export class OrderProtectionService {
   /**
    * Fetch ALL open orders from exchange (all symbols)
    */
-  private async fetchAllExchangeOrders(apiKey: string, secretKey: string): Promise<ExchangeOrder[]> {
+  private async fetchAllExchangeOrders(): Promise<ExchangeOrder[]> {
     try {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+
       if (!apiKey || !secretKey) return [];
 
       const timestamp = Date.now();

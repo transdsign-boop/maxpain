@@ -13,7 +13,6 @@ import { fetchActualFills, aggregateFills } from './exchange-utils';
 import { orderProtectionService } from './order-protection-service';
 import { cascadeDetectorService } from './cascade-detector-service';
 import { calculateNextLayer, calculateATRPercent } from './dca-calculator';
-import { bybitOrderManager } from './bybit-order-manager';
 
 // Aster DEX fee schedule
 const ASTER_MAKER_FEE_PERCENT = 0.01;  // 0.01% for limit orders (adds liquidity) 
@@ -71,10 +70,6 @@ export class StrategyEngine extends EventEmitter {
   private fillCooldownMs: number = 30000; // 30 second cooldown between layers/entries
   private leverageSetForSymbols: Map<string, number> = new Map(); // symbol -> leverage value (track actual leverage configured on exchange)
   private pendingQ1Values: Map<string, number> = new Map(); // "sessionId-symbol-side" -> q1 base layer size for position being created
-  
-  // Cached credentials loaded at startup (NEVER from environment variables)
-  private cachedApiKey: string = '';
-  private cachedSecretKey: string = '';
 
   constructor() {
     super();
@@ -87,18 +82,6 @@ export class StrategyEngine extends EventEmitter {
     
     // Listen for liquidation events from WebSocket
     this.on('liquidation', this.handleLiquidation.bind(this));
-  }
-
-  // Get API credentials from strategy (ONLY from database, never from environment variables)
-  private getStrategyCredentials(strategy: Strategy): { apiKey: string; secretKey: string } | null {
-    if (!strategy.asterApiKey || !strategy.asterApiSecret) {
-      console.error('❌ API credentials not configured in Global Settings');
-      return null;
-    }
-    return {
-      apiKey: strategy.asterApiKey,
-      secretKey: strategy.asterApiSecret
-    };
   }
 
   // Fetch exchange info to get symbol precision requirements
@@ -183,32 +166,11 @@ export class StrategyEngine extends EventEmitter {
     console.log('🚀 StrategyEngine starting...');
     this.isRunning = true;
     
-    // Load credentials from default strategy for engine operations
-    // (Individual operations will use their own strategy credentials when available)
-    try {
-      const DEFAULT_USER_ID = 'default_user';
-      const defaultStrategy = await storage.getDefaultStrategy(DEFAULT_USER_ID);
-      if (defaultStrategy?.asterApiKey && defaultStrategy?.asterApiSecret) {
-        this.cachedApiKey = defaultStrategy.asterApiKey;
-        this.cachedSecretKey = defaultStrategy.asterApiSecret;
-        console.log('✅ Loaded API credentials from Global Settings');
-      } else {
-        console.log('⚠️ API credentials not configured - some engine features unavailable');
-      }
-    } catch (error) {
-      console.error('❌ Failed to load credentials at startup:', error);
-    }
-    
     // Fetch exchange info for precision requirements (for live trading)
     await this.fetchExchangeInfo();
     
-    // Fetch and cache the exchange's position mode setting (only if credentials available)
-    if (this.cachedApiKey && this.cachedSecretKey) {
-      this.exchangePositionMode = await this.fetchExchangePositionMode(this.cachedApiKey, this.cachedSecretKey);
-    } else {
-      console.log('⚠️ Skipping position mode check - credentials not available');
-      this.exchangePositionMode = 'one-way'; // Default assumption
-    }
+    // Fetch and cache the exchange's position mode setting
+    this.exchangePositionMode = await this.fetchExchangePositionMode();
     
     // Load active strategies and sessions
     await this.loadActiveStrategies();
@@ -283,31 +245,23 @@ export class StrategyEngine extends EventEmitter {
     });
   }
 
-  // Load active strategies for the user (no auto-creation)
+  // Load the default strategy for the user (singleton pattern)
   private async loadActiveStrategies() {
     try {
       const DEFAULT_USER_ID = "personal_user";
-      console.log('📚 Looking for existing strategies...');
+      console.log('📚 Loading default trading strategy...');
       
-      // Get existing strategies for this user (DO NOT auto-create)
-      const strategies = await storage.getStrategiesByUser(DEFAULT_USER_ID);
+      // Get or create the single default strategy for this user
+      const strategy = await storage.getOrCreateDefaultStrategy(DEFAULT_USER_ID);
       
-      if (strategies.length === 0) {
-        console.log('ℹ️ No strategies found. User must create one in Global Settings.');
-        return;
-      }
-      
-      // Find the most recently used active strategy
-      const activeStrategy = strategies.find(s => s.isActive);
-      
-      if (activeStrategy) {
-        await this.registerStrategy(activeStrategy);
-        console.log(`✅ Loaded active strategy: ${activeStrategy.name}`);
+      if (strategy.isActive) {
+        await this.registerStrategy(strategy);
+        console.log(`✅ Loaded default strategy: ${strategy.name}`);
       } else {
-        console.log(`ℹ️ No active strategies. User can start one from Global Settings.`);
+        console.log(`⏸️ Default strategy is inactive, not registering`);
       }
     } catch (error) {
-      console.error('❌ Error loading strategies:', error);
+      console.error('❌ Error loading default strategy:', error);
     }
   }
 
@@ -316,45 +270,17 @@ export class StrategyEngine extends EventEmitter {
     console.log(`📝 Registering strategy: ${strategy.name} (${strategy.id})`);
     this.activeStrategies.set(strategy.id, strategy);
     
-    // First try to get an active session for this specific strategy
-    let session = await storage.getActiveTradeSession(strategy.id);
+    // Get or create the singleton session for this user
+    // This ensures there's always exactly one persistent session
+    const session = await storage.getOrCreateActiveSession(strategy.userId);
     
-    if (!session) {
-      // No active session found - try to get the most recent session (even if inactive)
-      const allSessions = await storage.getSessionsByStrategy(strategy.id);
-      const mostRecentSession = allSessions[0]; // Already sorted by startedAt desc
-      
-      if (mostRecentSession && !mostRecentSession.endedAt) {
-        // Found an inactive but not ended session - reactivate it
-        await storage.updateTradeSession(mostRecentSession.id, {
-          isActive: true,
-          mode: strategy.tradingMode || 'paper',
-        });
-        session = { ...mostRecentSession, isActive: true, mode: strategy.tradingMode || 'paper' };
-        console.log(`🔄 Reactivated existing session ${session.id} for strategy ${strategy.id}`);
-      } else {
-        // No reusable session exists - create a new one
-        const exchangeBalance = await storage.getExchangeBalance();
-        const initialBalance = exchangeBalance || "10000.00";
-        
-        session = await storage.createTradeSession({
-          strategyId: strategy.id,
-          mode: strategy.tradingMode || 'paper',
-          startingBalance: initialBalance,
-          currentBalance: initialBalance,
-          isActive: true
-        });
-        console.log(`✅ Created new session ${session.id} for strategy ${strategy.id}`);
-      }
-    } else {
-      // Active session exists - update mode if it changed
-      if (session.mode !== strategy.tradingMode) {
-        await storage.updateTradeSession(session.id, {
-          mode: strategy.tradingMode || 'paper',
-        });
-        session.mode = strategy.tradingMode || 'paper';
-        console.log(`🔄 Updated session mode to: ${session.mode}`);
-      }
+    // Update session mode if strategy trading mode has changed
+    if (session.mode !== strategy.tradingMode) {
+      await storage.updateTradeSession(session.id, {
+        mode: strategy.tradingMode || 'paper',
+      });
+      session.mode = strategy.tradingMode || 'paper';
+      console.log(`🔄 Updated session mode to: ${session.mode}`);
     }
     
     // Store by both strategy ID and session ID for easy lookup
@@ -598,13 +524,7 @@ export class StrategyEngine extends EventEmitter {
         dcaExitCushionMultiplier: String(strategyWithDCA.dca_exit_cushion_multiplier),
       };
       
-      const credentials = this.getStrategyCredentials(strategy);
-      const atrPercent = await calculateATRPercent(
-        liquidation.symbol, 
-        10, 
-        credentials?.apiKey, 
-        credentials?.secretKey
-      );
+      const atrPercent = await calculateATRPercent(liquidation.symbol, 10, process.env.ASTER_API_KEY, process.env.ASTER_SECRET_KEY);
       
       // Calculate DCA levels for prospective entry
       const dcaResult = calculateDCALevels(fullStrategy, {
@@ -734,7 +654,6 @@ export class StrategyEngine extends EventEmitter {
       const { calculateNextLayer } = await import('./dca-calculator');
       
       // Calculate the next layer parameters
-      const credentials = this.getStrategyCredentials(strategy);
       const nextLayerResult = await calculateNextLayer(
         strategy,
         currentBalance,
@@ -744,8 +663,8 @@ export class StrategyEngine extends EventEmitter {
         position.layersFilled,
         parseFloat(position.initialEntryPrice || position.avgEntryPrice),
         position.dcaBaseSize ? parseFloat(position.dcaBaseSize) : null,
-        credentials?.apiKey,
-        credentials?.secretKey
+        process.env.ASTER_API_KEY,
+        process.env.ASTER_SECRET_KEY
       );
       
       if (!nextLayerResult) {
@@ -850,11 +769,13 @@ export class StrategyEngine extends EventEmitter {
   // Fetch available balance from exchange (for live trading)
   private async getExchangeAvailableBalance(strategy: Strategy): Promise<number | null> {
     try {
-      const credentials = this.getStrategyCredentials(strategy);
-      if (!credentials) {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+
+      if (!apiKey || !secretKey) {
+        console.error('❌ Aster DEX API keys not configured');
         return null;
       }
-      const { apiKey, secretKey } = credentials;
 
       const timestamp = Date.now();
       const params = `timestamp=${timestamp}`;
@@ -974,13 +895,7 @@ export class StrategyEngine extends EventEmitter {
       
       // Use DCA calculator to determine optimal position sizing for Layer 1
       const leverage = strategy.leverage;
-      const credentials = this.getStrategyCredentials(strategy);
-      const atrPercent = await calculateATRPercent(
-        liquidation.symbol, 
-        10, 
-        credentials?.apiKey, 
-        credentials?.secretKey
-      );
+      const atrPercent = await calculateATRPercent(liquidation.symbol, 10, process.env.ASTER_API_KEY, process.env.ASTER_SECRET_KEY);
       
       // Import DCA calculator
       const { calculateDCALevels } = await import('./dca-calculator');
@@ -1067,7 +982,7 @@ export class StrategyEngine extends EventEmitter {
         const currentLeverage = this.leverageSetForSymbols.get(liquidation.symbol);
         if (currentLeverage !== leverage) {
           console.log(`⚙️ Setting ${liquidation.symbol} leverage to ${leverage}x on exchange...`);
-          const leverageSet = await this.setLeverage(liquidation.symbol, leverage, this.cachedApiKey, this.cachedSecretKey);
+          const leverageSet = await this.setLeverage(liquidation.symbol, leverage);
           if (leverageSet) {
             this.leverageSetForSymbols.set(liquidation.symbol, leverage);
           } else {
@@ -1171,7 +1086,8 @@ export class StrategyEngine extends EventEmitter {
       }
       
       // Calculate next DCA layer using mathematical framework
-      const credentials = this.getStrategyCredentials(strategy);
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
       
       console.log(`🔍 DCA DIRECTION DEBUG: symbol=${liquidation.symbol}, position.side=${position.side}, liquidation.side=${liquidation.side}, initialEntryPrice=$${initialEntryPrice.toFixed(6)}`);
       
@@ -1184,8 +1100,8 @@ export class StrategyEngine extends EventEmitter {
         position.layersFilled,
         initialEntryPrice,
         storedQ1, // Pass stored q1 for consistent exponential sizing
-        credentials?.apiKey,
-        credentials?.secretKey
+        apiKey,
+        secretKey
       );
       
       if (!nextLayerCalc) {
@@ -1297,63 +1213,11 @@ export class StrategyEngine extends EventEmitter {
         if (finalDeviation <= slippageTolerance) {
           console.log(`✅ Price acceptable: $${currentPrice} (deviation: ${(finalDeviation * 100).toFixed(2)}%)`);
           
-          // Route to appropriate exchange based on session exchange type
-          // Default to 'aster' for backward compatibility with legacy sessions
-          const sessionExchange = session.exchange || 'aster';
-          
-          if (session.mode === 'demo' && strategy.bybitApiKey && strategy.bybitApiSecret) {
-            // Execute demo order on Bybit testnet (real execution with fake money)
-            console.log(`🎯 Executing Bybit demo order: ${quantity.toFixed(4)} ${symbol} at $${orderPrice}`);
-            
-            // Initialize Bybit client if not already done
-            if (!bybitOrderManager.isInitialized()) {
-              bybitOrderManager.initialize(strategy.bybitApiKey, strategy.bybitApiSecret);
-            }
-            
-            if (!bybitOrderManager.isInitialized()) {
-              console.error('❌ Bybit client not initialized - missing API credentials');
-              return;
-            }
-            
-            // Execute order on Bybit
-            const bybitOrderResult = await bybitOrderManager.executeEntryOrder({
-              symbol,
-              side: positionSide || 'long',
-              quantity: quantity.toString(),
-              orderType: strategy.orderType,
-              price: orderPrice.toString(),
-              leverage: strategy.leverage,
-            });
-            
-            if (!bybitOrderResult.success) {
-              console.error(`❌ Bybit order failed: ${bybitOrderResult.error}`);
-              return;
-            }
-            
-            console.log(`✅ BYBIT DEMO ORDER EXECUTED: ${quantity.toFixed(4)} ${symbol} at $${orderPrice}`);
-            console.log(`📝 Order ID: ${bybitOrderResult.orderId || 'N/A'}`);
-            
-            // Store order record (NOT paper trading simulation - this is a real Bybit execution record)
-            const order = await storage.placePaperOrder({
-              sessionId: session.id,
-              symbol,
-              side,
-              orderType: strategy.orderType,
-              quantity: quantity.toString(),
-              price: orderPrice.toString(),
-              triggerLiquidationId,
-              layerNumber,
-            });
-            
-            // TODO: Fetch actual fill data from Bybit API for accurate fill price and fees
-            // For now, use estimated values (Bybit fills happen immediately for market orders)
-            const estimatedFee = (quantity * orderPrice) * (strategy.orderType === 'market' ? ASTER_TAKER_FEE_PERCENT : ASTER_MAKER_FEE_PERCENT) / 100;
-            await this.fillPaperOrder(order, orderPrice, quantity, estimatedFee);
-            
-          } else if (sessionExchange === 'aster' || session.mode === 'live') {
+          // Check if this is live or paper trading
+          if (session.mode === 'live') {
             // Execute live order on Aster DEX
             // Only pass positionSide if the EXCHANGE is in dual mode (not based on strategy settings)
-            const liveOrderResult = await this.executeLiveOrder(strategy, {
+            const liveOrderResult = await this.executeLiveOrder({
               symbol,
               side,
               orderType: strategy.orderType,
@@ -1387,7 +1251,6 @@ export class StrategyEngine extends EventEmitter {
             let actualFillsData: any[] | null = null;
             let retryCount = 0;
             const maxRetries = 3;
-            const { apiKey, secretKey } = this.getStrategyCredentials(strategy);
             
             while (retryCount < maxRetries && liveOrderResult.orderId) {
               // Small delay to allow exchange to process the fill
@@ -1398,8 +1261,6 @@ export class StrategyEngine extends EventEmitter {
               const fillResult = await fetchActualFills({
                 symbol,
                 orderId: liveOrderResult.orderId,
-                apiKey,
-                secretKey,
               });
               
               if (fillResult.success && fillResult.fills && fillResult.fills.length > 0) {
@@ -1475,7 +1336,7 @@ export class StrategyEngine extends EventEmitter {
   }
 
   // Execute batch orders on Aster DEX (more efficient, reduces API calls)
-  private async executeBatchOrders(strategy: Strategy, orders: Array<{
+  private async executeBatchOrders(orders: Array<{
     symbol: string;
     side: string;
     orderType: string;
@@ -1484,11 +1345,13 @@ export class StrategyEngine extends EventEmitter {
     positionSide?: string;
   }>): Promise<{ success: boolean; results?: any[]; error?: string }> {
     try {
-      const credentials = this.getStrategyCredentials(strategy);
-      if (!credentials) {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+      
+      if (!apiKey || !secretKey) {
+        console.error('❌ Aster DEX API keys not configured');
         return { success: false, error: 'API keys not configured' };
       }
-      const { apiKey, secretKey } = credentials;
       
       if (orders.length === 0 || orders.length > 5) {
         console.error('❌ Batch orders must contain 1-5 orders');
@@ -1672,7 +1535,7 @@ export class StrategyEngine extends EventEmitter {
   }
 
   // Execute live order on Aster DEX with proper HMAC-SHA256 signature
-  private async executeLiveOrder(strategy: Strategy, params: {
+  private async executeLiveOrder(params: {
     symbol: string;
     side: string; // 'buy' or 'sell'
     orderType: string;
@@ -1683,11 +1546,14 @@ export class StrategyEngine extends EventEmitter {
     try {
       const { symbol, side, orderType, quantity, price, positionSide } = params;
       
-      const credentials = this.getStrategyCredentials(strategy);
-      if (!credentials) {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+      
+      // Safety check: Verify API credentials exist
+      if (!apiKey || !secretKey) {
+        console.error('❌ Aster DEX API keys not configured');
         return { success: false, error: 'API keys not configured' };
       }
-      const { apiKey, secretKey } = credentials;
       
       // Safety check: Validate order parameters
       if (quantity <= 0) {
@@ -1828,10 +1694,13 @@ export class StrategyEngine extends EventEmitter {
 
 
   // Get the exchange's position mode (one-way or dual)
-  private async fetchExchangePositionMode(apiKey: string, secretKey: string): Promise<'one-way' | 'dual'> {
+  private async fetchExchangePositionMode(): Promise<'one-way' | 'dual'> {
     try {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+      
       if (!apiKey || !secretKey) {
-        console.error('❌ Cannot determine position mode: API credentials not configured');
+        console.error('❌ Cannot determine position mode: API keys not configured');
         return 'one-way'; // Default to one-way mode
       }
       
@@ -1869,10 +1738,13 @@ export class StrategyEngine extends EventEmitter {
   }
 
   // Get all exchange positions from Aster DEX
-  private async getExchangePositions(apiKey: string, secretKey: string): Promise<any[]> {
+  private async getExchangePositions(): Promise<any[]> {
     try {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+      
       if (!apiKey || !secretKey) {
-        console.error('❌ Aster DEX credentials not configured');
+        console.error('❌ Aster DEX API keys not configured');
         return [];
       }
       
@@ -1930,11 +1802,14 @@ export class StrategyEngine extends EventEmitter {
   }
 
   // Cancel an order on Aster DEX
-  private async cancelExchangeOrder(symbol: string, orderId: string, apiKey: string, secretKey: string): Promise<{ success: boolean; error?: string }> {
+  private async cancelExchangeOrder(symbol: string, orderId: string): Promise<{ success: boolean; error?: string }> {
     try {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+      
       if (!apiKey || !secretKey) {
-        console.error('❌ Aster DEX credentials not configured');
-        return { success: false, error: 'API credentials not configured' };
+        console.error('❌ Aster DEX API keys not configured');
+        return { success: false, error: 'API keys not configured' };
       }
       
       const timestamp = Date.now();
@@ -1978,10 +1853,13 @@ export class StrategyEngine extends EventEmitter {
   }
 
   // Get all open orders from Aster DEX
-  private async getOpenOrders(apiKey: string, secretKey: string): Promise<any[]> {
+  private async getOpenOrders(): Promise<any[]> {
     try {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+      
       if (!apiKey || !secretKey) {
-        console.error('❌ Aster DEX credentials not configured');
+        console.error('❌ Aster DEX API keys not configured');
         return [];
       }
       
@@ -2016,10 +1894,13 @@ export class StrategyEngine extends EventEmitter {
   }
 
   // Set leverage for a symbol on Aster DEX
-  private async setLeverage(symbol: string, leverage: number, apiKey: string, secretKey: string): Promise<boolean> {
+  private async setLeverage(symbol: string, leverage: number): Promise<boolean> {
     try {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+      
       if (!apiKey || !secretKey) {
-        console.error('❌ Aster DEX credentials not configured');
+        console.error('❌ Aster DEX API keys not configured');
         return false;
       }
       
@@ -2065,10 +1946,13 @@ export class StrategyEngine extends EventEmitter {
   }
 
   // Cancel an order on Aster DEX
-  private async cancelOrder(symbol: string, orderId: string, apiKey: string, secretKey: string): Promise<boolean> {
+  private async cancelOrder(symbol: string, orderId: string): Promise<boolean> {
     try {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+      
       if (!apiKey || !secretKey) {
-        console.error('❌ Aster DEX credentials not configured');
+        console.error('❌ Aster DEX API keys not configured');
         return false;
       }
       
@@ -2125,7 +2009,7 @@ export class StrategyEngine extends EventEmitter {
       }
 
       // Get all open orders from Aster DEX
-      const allOrders = await this.getOpenOrders(this.cachedApiKey, this.cachedSecretKey);
+      const allOrders = await this.getOpenOrders();
       if (allOrders.length === 0) {
         console.log('✅ No open orders found on exchange');
         return 0;
@@ -2235,7 +2119,7 @@ export class StrategyEngine extends EventEmitter {
         }
 
         // Cancel the orphaned order
-        const canceled = await this.cancelOrder(symbol, orderId, this.cachedApiKey, this.cachedSecretKey);
+        const canceled = await this.cancelOrder(symbol, orderId);
         if (canceled) {
           canceledCount++;
         }
@@ -2264,7 +2148,7 @@ export class StrategyEngine extends EventEmitter {
         return 0;
       }
 
-      const allOrders = await this.getOpenOrders(this.cachedApiKey, this.cachedSecretKey);
+      const allOrders = await this.getOpenOrders();
       if (allOrders.length === 0) {
         return 0;
       }
@@ -2292,7 +2176,7 @@ export class StrategyEngine extends EventEmitter {
             
             console.log(`⚠️ Found stale limit order ${orderId}, age: ${ageSeconds.toFixed(0)}s`);
             
-            const canceled = await this.cancelOrder(symbol, orderId, this.cachedApiKey, this.cachedSecretKey);
+            const canceled = await this.cancelOrder(symbol, orderId);
             if (canceled) {
               canceledCount++;
             }
@@ -2322,13 +2206,13 @@ export class StrategyEngine extends EventEmitter {
       }
 
       // Get all exchange positions
-      const exchangePositions = await this.getExchangePositions(this.cachedApiKey, this.cachedSecretKey);
+      const exchangePositions = await this.getExchangePositions();
       if (exchangePositions.length === 0) {
         return 0;
       }
 
       // Get all open orders
-      const allOrders = await this.getOpenOrders(this.cachedApiKey, this.cachedSecretKey);
+      const allOrders = await this.getOpenOrders();
       
       // Process each position
       for (const exchangePos of exchangePositions) {
@@ -2500,13 +2384,13 @@ export class StrategyEngine extends EventEmitter {
       }
 
       // Get all exchange positions
-      const exchangePositions = await this.getExchangePositions(this.cachedApiKey, this.cachedSecretKey);
+      const exchangePositions = await this.getExchangePositions();
       if (exchangePositions.length === 0) {
         return results;
       }
 
       // Get all open orders
-      const allOrders = await this.getOpenOrders(this.cachedApiKey, this.cachedSecretKey);
+      const allOrders = await this.getOpenOrders();
       
       // Process each position
       for (const exchangePos of exchangePositions) {
@@ -2612,13 +2496,13 @@ export class StrategyEngine extends EventEmitter {
       let fixedCount = 0;
 
       // Get all exchange positions
-      const exchangePositions = await this.getExchangePositions(this.cachedApiKey, this.cachedSecretKey);
+      const exchangePositions = await this.getExchangePositions();
       if (exchangePositions.length === 0) {
         return 0;
       }
 
       // Get all open orders
-      const allOrders = await this.getOpenOrders(this.cachedApiKey, this.cachedSecretKey);
+      const allOrders = await this.getOpenOrders();
       
       // Process each position
       for (const exchangePos of exchangePositions) {
@@ -2698,7 +2582,7 @@ export class StrategyEngine extends EventEmitter {
           console.log(`   Entry: $${entryPrice.toFixed(2)}, Stop-loss: ${stopLossPercent}%, Leverage: ${strategy.leverage}x`);
           
           // Cancel the incorrect order
-          const cancelResult = await this.cancelExchangeOrder(symbol, existingSlOrder.orderId, this.cachedApiKey, this.cachedSecretKey);
+          const cancelResult = await this.cancelExchangeOrder(symbol, existingSlOrder.orderId);
           if (cancelResult.success) {
             console.log(`   ✓ Canceled incorrect SL order`);
             
@@ -3172,22 +3056,8 @@ export class StrategyEngine extends EventEmitter {
       
       // For live trading, place the actual exit order on Aster DEX
       if (!isPaperTrading) {
-        // Get the strategy from session
-        let strategy: Strategy | undefined;
-        for (const [stratId, sess] of Array.from(this.activeSessions.entries())) {
-          if (sess.id === position.sessionId) {
-            strategy = this.activeStrategies.get(stratId);
-            if (strategy) break;
-          }
-        }
-        
-        if (!strategy) {
-          console.error('❌ Strategy not found for position exit');
-          return;
-        }
-        
         const exitSide = position.side === 'long' ? 'sell' : 'buy';
-        const liveOrderResult = await this.executeLiveOrder(strategy, {
+        const liveOrderResult = await this.executeLiveOrder({
           symbol: position.symbol,
           side: exitSide,
           orderType,
@@ -3208,7 +3078,6 @@ export class StrategyEngine extends EventEmitter {
         let actualFillsData: any[] | null = null;
         let retryCount = 0;
         const maxRetries = 3;
-        const { apiKey, secretKey } = this.getStrategyCredentials(strategy);
         
         while (retryCount < maxRetries && liveOrderResult.orderId) {
           // Small delay to allow exchange to process the fill
@@ -3219,8 +3088,6 @@ export class StrategyEngine extends EventEmitter {
           const fillResult = await fetchActualFills({
             symbol: position.symbol,
             orderId: liveOrderResult.orderId,
-            apiKey,
-            secretKey,
           });
           
           if (fillResult.success && fillResult.fills && fillResult.fills.length > 0) {
@@ -3339,28 +3206,14 @@ export class StrategyEngine extends EventEmitter {
         return;
       }
       
-      // Determine which exchange to use based on trading mode
-      const isDemo = strategy.tradingMode === 'demo';
-      const isLive = strategy.tradingMode === 'live';
-      
-      if (!isDemo && !isLive) {
-        // Skip TP/SL for old paper trading simulations
+      // Only update TP/SL for live trading mode
+      if (strategy.tradingMode !== 'live') {
         return;
       }
       
-      if (isDemo) {
-        // Use Bybit order manager for demo trading
-        if (!bybitOrderManager.isInitialized() && strategy.bybitApiKey && strategy.bybitApiSecret) {
-          bybitOrderManager.initialize(strategy.bybitApiKey, strategy.bybitApiSecret);
-        }
-        
-        if (bybitOrderManager.isInitialized()) {
-          await bybitOrderManager.updateProtectiveOrders(position, strategy);
-        }
-      } else if (isLive) {
-        // Use Aster order protection service for live trading
-        await orderProtectionService.updateProtectiveOrders(position, strategy);
-      }
+      // OrderProtectionService will fetch live exchange position for accurate TP/SL
+      // (Database position may be stale due to async fill processing)
+      await orderProtectionService.updateProtectiveOrders(position, strategy);
       
     } catch (error) {
       console.error('❌ Error updating protective orders:', error);
@@ -3368,7 +3221,7 @@ export class StrategyEngine extends EventEmitter {
   }
   
   // Fetch all open orders for a symbol from the exchange
-  private async fetchExchangeOrders(symbol: string, apiKey: string, secretKey: string): Promise<Array<{ 
+  private async fetchExchangeOrders(symbol: string): Promise<Array<{ 
     symbol: string; 
     type: string; 
     positionSide: string;
@@ -3376,6 +3229,9 @@ export class StrategyEngine extends EventEmitter {
     stopPrice?: string;
   }>> {
     try {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+      
       if (!apiKey || !secretKey) {
         return [];
       }
@@ -3424,8 +3280,11 @@ export class StrategyEngine extends EventEmitter {
   }
 
   // Get active TP/SL orders for a specific position (symbol + side) from the exchange
-  private async getActiveTPSLOrders(symbol: string, positionSide: string, apiKey: string, secretKey: string): Promise<Array<{ orderId: string; type: string }>> {
+  private async getActiveTPSLOrders(symbol: string, positionSide: string): Promise<Array<{ orderId: string; type: string }>> {
     try {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+      
       if (!apiKey || !secretKey) {
         return [];
       }
@@ -3488,9 +3347,12 @@ export class StrategyEngine extends EventEmitter {
   }
 
   // Cancel an order on the exchange
-  private async cancelExchangeOrder(symbol: string, orderId: string, apiKey: string, secretKey: string): Promise<void> {
+  private async cancelExchangeOrder(symbol: string, orderId: string): Promise<void> {
+    const apiKey = process.env.ASTER_API_KEY;
+    const secretKey = process.env.ASTER_SECRET_KEY;
+    
     if (!apiKey || !secretKey) {
-      throw new Error('API credentials not configured');
+      throw new Error('API keys not configured');
     }
     
     const timestamp = Date.now();
@@ -3548,14 +3410,9 @@ export class StrategyEngine extends EventEmitter {
         }
       }
       
-      if (!strategy) {
-        console.error('❌ Strategy not found for exit order');
-        return { success: false, error: 'Strategy not found' };
-      }
-      
       // Place the live order on Aster DEX with automatic precision rounding
       // Only pass positionSide if the EXCHANGE is in dual mode (not based on strategy settings)
-      const liveOrderResult = await this.executeLiveOrder(strategy, {
+      const liveOrderResult = await this.executeLiveOrder({
         symbol: position.symbol,
         side: exitSide,
         orderType: orderType.toLowerCase(),
@@ -3667,15 +3524,11 @@ export class StrategyEngine extends EventEmitter {
         
         // Get active session and strategy
         const DEFAULT_USER_ID = "personal_user";
-        const strategy = await storage.getDefaultStrategy(DEFAULT_USER_ID);
-        if (!strategy) {
-          console.log('⚠️ No strategy found for orphan cleanup');
-          return;
-        }
+        const strategy = await storage.getOrCreateDefaultStrategy(DEFAULT_USER_ID);
         const session = await storage.getOrCreateActiveSession(DEFAULT_USER_ID);
         
         // 1. Clean up orphaned orders (orders for closed positions)
-        const orphanedCount = await orderProtectionService.reconcileOrphanedOrders(session.id, strategy);
+        const orphanedCount = await orderProtectionService.reconcileOrphanedOrders(session.id);
         
         // 2. Verify all open positions have correct TP/SL orders (self-healing)
         await orderProtectionService.verifyAllPositions(session.id, strategy);

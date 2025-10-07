@@ -20,8 +20,7 @@ interface CascadeStatus {
 }
 
 export default function ConnectionStatus({ isConnected }: ConnectionStatusProps) {
-  const [asterApiConnected, setAsterApiConnected] = useState(true);
-  const [bybitApiConnected, setBybitApiConnected] = useState(true);
+  const [apiConnected, setApiConnected] = useState(true);
   const [latestError, setLatestError] = useState<ApiError | null>(null);
   const [cascadeStatus, setCascadeStatus] = useState<CascadeStatus>({
     autoBlock: false,
@@ -32,71 +31,37 @@ export default function ConnectionStatus({ isConnected }: ConnectionStatusProps)
     volatility_regime: 'low'
   });
 
-  // Check Aster API connection health
+  // Check API connection health and capture errors
   useEffect(() => {
-    const checkAsterApiHealth = async () => {
+    const checkApiHealth = async () => {
       try {
-        const response = await fetch('/api/test-connection?exchange=aster', { method: 'GET' });
+        const response = await fetch('/api/strategies', { method: 'HEAD' });
         if (!response.ok) {
-          setAsterApiConnected(false);
+          setApiConnected(false);
           setLatestError({
-            message: `Aster API Error: ${response.status} ${response.statusText}`,
+            message: `API Error: ${response.status} ${response.statusText}`,
             timestamp: new Date()
           });
         } else {
-          const data = await response.json();
-          if (data.success) {
-            setAsterApiConnected(true);
-          } else {
-            setAsterApiConnected(false);
+          setApiConnected(true);
+          // Clear error if connection is restored
+          if (!apiConnected) {
+            setLatestError(null);
           }
         }
       } catch (error: any) {
-        setAsterApiConnected(false);
+        setApiConnected(false);
         setLatestError({
-          message: `Aster Network Error: ${error.message || 'Failed to connect to Aster API'}`,
+          message: `Network Error: ${error.message || 'Failed to connect to API'}`,
           timestamp: new Date()
         });
       }
     };
 
-    checkAsterApiHealth();
-    const interval = setInterval(checkAsterApiHealth, 10000); // Check every 10s
+    checkApiHealth();
+    const interval = setInterval(checkApiHealth, 10000); // Check every 10s
     return () => clearInterval(interval);
-  }, []);
-
-  // Check Bybit API connection health
-  useEffect(() => {
-    const checkBybitApiHealth = async () => {
-      try {
-        const response = await fetch('/api/test-connection?exchange=bybit', { method: 'GET' });
-        if (!response.ok) {
-          setBybitApiConnected(false);
-          setLatestError({
-            message: `Bybit API Error: ${response.status} ${response.statusText}`,
-            timestamp: new Date()
-          });
-        } else {
-          const data = await response.json();
-          if (data.success) {
-            setBybitApiConnected(true);
-          } else {
-            setBybitApiConnected(false);
-          }
-        }
-      } catch (error: any) {
-        setBybitApiConnected(false);
-        setLatestError({
-          message: `Bybit Network Error: ${error.message || 'Failed to connect to Bybit API'}`,
-          timestamp: new Date()
-        });
-      }
-    };
-
-    checkBybitApiHealth();
-    const interval = setInterval(checkBybitApiHealth, 10000); // Check every 10s
-    return () => clearInterval(interval);
-  }, []);
+  }, [apiConnected]);
 
   // Listen for global API errors from other components
   useEffect(() => {
@@ -153,10 +118,10 @@ export default function ConnectionStatus({ isConnected }: ConnectionStatusProps)
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-3" data-testid="connection-status">
-        {/* Aster WebSocket Connection */}
+        {/* WebSocket Connection */}
         <div 
           className="flex items-center gap-1.5"
-          title={isConnected ? "Aster WebSocket: Connected" : "Aster WebSocket: Disconnected"}
+          title={isConnected ? "WebSocket: Connected" : "WebSocket: Disconnected"}
         >
           <div className="relative">
             <div 
@@ -165,55 +130,34 @@ export default function ConnectionStatus({ isConnected }: ConnectionStatusProps)
                   ? 'bg-lime-500' 
                   : 'bg-red-600'
               }`}
-              data-testid="dot-aster-websocket-status"
+              data-testid="dot-websocket-status"
             />
             {isConnected && (
               <div className="absolute inset-0 w-2.5 h-2.5 rounded-full bg-lime-500 animate-ping opacity-75" />
             )}
           </div>
-          <span className="text-xs text-muted-foreground">Aster WS</span>
+          <span className="text-xs text-muted-foreground">WS</span>
         </div>
 
-        {/* Aster API Connection */}
+        {/* API Connection */}
         <div 
           className="flex items-center gap-1.5"
-          title={asterApiConnected ? "Aster API: Connected" : "Aster API: Disconnected"}
+          title={apiConnected ? "API: Connected" : "API: Disconnected"}
         >
           <div className="relative">
             <div 
               className={`w-2.5 h-2.5 rounded-full ${
-                asterApiConnected 
+                apiConnected 
                   ? 'bg-lime-500' 
                   : 'bg-red-600'
               }`}
-              data-testid="dot-aster-api-status"
+              data-testid="dot-api-status"
             />
-            {asterApiConnected && (
+            {apiConnected && (
               <div className="absolute inset-0 w-2.5 h-2.5 rounded-full bg-lime-500 animate-ping opacity-75" />
             )}
           </div>
-          <span className="text-xs text-muted-foreground">Aster</span>
-        </div>
-
-        {/* Bybit API Connection */}
-        <div 
-          className="flex items-center gap-1.5"
-          title={bybitApiConnected ? "Bybit Testnet API: Connected" : "Bybit Testnet API: Disconnected"}
-        >
-          <div className="relative">
-            <div 
-              className={`w-2.5 h-2.5 rounded-full ${
-                bybitApiConnected 
-                  ? 'bg-lime-500' 
-                  : 'bg-red-600'
-              }`}
-              data-testid="dot-bybit-api-status"
-            />
-            {bybitApiConnected && (
-              <div className="absolute inset-0 w-2.5 h-2.5 rounded-full bg-lime-500 animate-ping opacity-75" />
-            )}
-          </div>
-          <span className="text-xs text-muted-foreground">Bybit</span>
+          <span className="text-xs text-muted-foreground">API</span>
         </div>
 
         {/* Trade Entry Status */}
