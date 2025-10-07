@@ -12,7 +12,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { soundNotifications } from "@/lib/soundNotifications";
-import { useWebSocketData } from "@/hooks/useWebSocketData";
+import { useStrategyData } from "@/hooks/use-strategy-data";
 
 interface Fill {
   id: string;
@@ -744,25 +744,13 @@ export function StrategyStatus() {
   const [isCloseConfirmOpen, setIsCloseConfirmOpen] = useState(false);
   const [positionToClose, setPositionToClose] = useState<Position | null>(null);
 
-  // Connect to WebSocket for real-time updates
-  useWebSocketData({ enabled: true });
-
-  // First, get active strategies (long interval - WebSocket provides real-time)
-  const { data: strategies } = useQuery<any[]>({
-    queryKey: ['/api/strategies'],
-    refetchInterval: 60000, // 60s fallback, WebSocket provides real-time
-  });
-
-  // Find the active strategy
-  const activeStrategy = strategies?.find(s => s.isActive);
-
-  // Fetch live exchange positions (long interval - WebSocket provides real-time)
-  const { data: livePositionsData, isLoading, error } = useQuery<any[]>({
-    queryKey: ['/api/live/positions'],
-    refetchInterval: 120000, // 2min fallback, WebSocket provides real-time
-    enabled: !!activeStrategy,
-    retry: 2,
-  });
+  // Use centralized hook for all strategy-related data (reduces API calls by 10-20x)
+  const {
+    activeStrategy,
+    livePositions: livePositionsData,
+    livePositionsLoading: isLoading,
+    livePositionsError: error,
+  } = useStrategyData();
 
   // Fetch fills for each live position to get layer counts
   const livePositionIds = livePositionsData
