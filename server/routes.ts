@@ -267,13 +267,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const exchange = (req.query.exchange as string) || 'aster';
       
-      // Get active strategy to check for stored credentials
-      const strategies = await storage.getStrategiesByUser(DEFAULT_USER_ID);
-      const activeStrategy = strategies.find((s: any) => s.isActive);
+      // Get credentials from global settings
+      const settings = await storage.getUserSettings(DEFAULT_USER_ID);
       
       if (exchange === 'aster') {
-        const apiKey = activeStrategy?.asterApiKey;
-        const secretKey = activeStrategy?.asterApiSecret;
+        const apiKey = settings?.asterApiKey;
+        const secretKey = settings?.asterApiSecret;
         
         if (!apiKey || !secretKey) {
           return res.status(200).json({ 
@@ -300,8 +299,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json({ success: true });
         
       } else if (exchange === 'bybit') {
-        const apiKey = activeStrategy?.bybitApiKey;
-        const secretKey = activeStrategy?.bybitApiSecret;
+        const apiKey = settings?.bybitApiKey;
+        const secretKey = settings?.bybitApiSecret;
         
         if (!apiKey || !secretKey) {
           return res.status(200).json({ 

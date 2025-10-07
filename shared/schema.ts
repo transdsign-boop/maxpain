@@ -59,6 +59,11 @@ export const userSettings = pgTable("user_settings", {
   sideFilter: text("side_filter").notNull().default('all'),
   minValue: text("min_value").notNull().default('0'),
   timeRange: text("time_range").notNull().default('1h'),
+  // API Credentials
+  asterApiKey: text("aster_api_key"),
+  asterApiSecret: text("aster_api_secret"),
+  bybitApiKey: text("bybit_api_key"),
+  bybitApiSecret: text("bybit_api_secret"),
   lastUpdated: timestamp("last_updated").notNull().defaultNow(),
 });
 
