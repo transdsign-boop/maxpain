@@ -64,7 +64,12 @@ Preferred communication style: Simple, everyday language.
 - Asset Ranking: By Liquidation Activity (default), Best Liquidity, or Alphabetical.
 - Real-time Liquidity Metrics: Batch endpoint fetches order book depth, calculates bid/ask liquidity, and checks trade size capacity.
 - Intelligent Recommendations: Recommends assets and risk parameters based on account tiers, fetched account balance, and liquidity thresholds. Provides visual warnings for unsafe user settings.
-- **Rate Limit Protection**: Polling orchestrator with staggered schedule (account: 5s, positions: 3s), shared cache, request deduplication, and exponential backoff (5s→60s max). Single `/api/live/snapshot` endpoint with WebSocket broadcasts eliminates redundant API calls. Orchestrator auto-starts/stops with strategy activation.
+- **100% WebSocket Architecture (ZERO Polling)**: 
+  - **User Data Stream** → directly updates **Live Data Orchestrator** cache → broadcasts to frontend via **WebSocket Broadcaster**
+  - All live account/position data flows exclusively through WebSocket events (ACCOUNT_UPDATE, ORDER_TRADE_UPDATE)
+  - Single `/api/live/snapshot` endpoint serves in-memory cache that's continuously refreshed by WebSocket events
+  - Completely eliminates API polling to prevent rate limit bans (user-demanded requirement)
+  - **Data Flow**: Aster DEX WebSocket → user-data-stream.ts → liveDataOrchestrator.updateAccountFromWebSocket() / updatePositionsFromWebSocket() → WebSocket broadcast → Frontend
 - **Dynamic Cascade Detection**: Cascade detector automatically monitors all user-selected assets from Global Settings. Syncs on startup, strategy registration, and when selectedAssets changes. Automatically clears detectors when strategy is inactive or no assets selected, ensuring real-time monitoring always reflects current configuration.
 
 ### Security & Performance
