@@ -37,6 +37,11 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Clear any existing orchestrator intervals from previous runs
+  const { liveDataOrchestrator } = await import('./live-data-orchestrator');
+  liveDataOrchestrator.stopAll();
+  console.log('🧹 Cleared existing orchestrator intervals');
+  
   const server = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
