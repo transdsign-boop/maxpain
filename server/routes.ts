@@ -989,12 +989,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log('🔄 Syncing running strategy to database...', runningStrategy.id);
 
-      // Get the database strategy
-      const dbStrategy = await storage.getStrategy(runningStrategy.id);
+      // Find the database strategy for this user (there should only be one)
+      const existingStrategies = await storage.getStrategiesByUser(DEFAULT_USER_ID);
       
-      if (dbStrategy) {
-        // Update existing strategy
-        const updated = await storage.updateStrategy(runningStrategy.id, {
+      if (existingStrategies.length > 0) {
+        // Update the first strategy (should only be one) with running strategy's settings
+        const dbStrategy = existingStrategies[0];
+        console.log(`📝 Updating database strategy ${dbStrategy.id} with running strategy settings...`);
+        
+        const updated = await storage.updateStrategy(dbStrategy.id, {
           name: runningStrategy.name,
           selectedAssets: runningStrategy.selectedAssets,
           percentileThreshold: runningStrategy.percentileThreshold,
@@ -1024,18 +1027,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           priceChaseMode: runningStrategy.priceChaseMode
         });
         console.log('✅ Database strategy updated successfully');
-        res.json(updated);
+        res.json({ success: true, strategy: updated });
       } else {
-        // Delete old strategy and create new one with running strategy's ID
-        const existingStrategies = await storage.getStrategiesByUser(DEFAULT_USER_ID);
-        for (const oldStrategy of existingStrategies) {
-          await storage.deleteStrategy(oldStrategy.id);
-          console.log(`🗑️ Deleted old strategy: ${oldStrategy.id}`);
-        }
+        console.log('⚠️ No database strategy found - creating a new one with running strategy settings...');
         
-        // Create new strategy with exact same settings as running strategy
         const created = await storage.createStrategy({
-          id: runningStrategy.id,
           userId: runningStrategy.userId,
           name: runningStrategy.name,
           selectedAssets: runningStrategy.selectedAssets,
@@ -1066,7 +1062,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           priceChaseMode: runningStrategy.priceChaseMode
         });
         console.log('✅ Created new database strategy with running strategy settings');
-        res.json(created);
+        res.json({ success: true, strategy: created });
       }
     } catch (error) {
       console.error('❌ Error syncing strategy:', error);
