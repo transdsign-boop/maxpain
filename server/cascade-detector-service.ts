@@ -28,9 +28,8 @@ class CascadeDetectorService {
   private lastLiqReset: number = Date.now();
 
   constructor() {
-    // Start with default tracking symbols
-    const defaultSymbols = ['ETHUSDT', 'BTCUSDT', 'BNBUSDT', 'SOLUSDT'];
-    defaultSymbols.forEach(symbol => this.addSymbol(symbol));
+    // Symbols will be loaded from active strategy via syncSymbols()
+    // Call syncSymbols() after service is constructed to load from database
   }
 
   private addSymbol(symbol: string): void {
@@ -48,16 +47,21 @@ class CascadeDetectorService {
     this.clients = clients;
   }
 
-  public start(): void {
+  public async start(): Promise<void> {
     if (this.intervalId) {
       return;
     }
 
-    console.log('🚨 Cascade Detector Service started');
+    console.log('🚨 Cascade Detector Service starting...');
+    
+    // Sync symbols from active strategy before starting
+    await this.syncSymbols();
     
     this.intervalId = setInterval(() => {
       this.tick();
     }, 1000);
+    
+    console.log('✅ Cascade Detector Service started');
   }
 
   public stop(): void {
@@ -248,6 +252,57 @@ class CascadeDetectorService {
     // Return auto-enabled status from first detector (all should be same)
     const first = this.detectors.values().next().value;
     return first ? first.getAutoEnabled() : true;
+  }
+
+  public async syncSymbols(): Promise<void> {
+    try {
+      // Get active strategy from database
+      const strategies = await storage.getAllActiveStrategies();
+      const activeStrategy = strategies[0];
+      
+      if (!activeStrategy) {
+        // Clear all detectors when no active strategy
+        this.detectors.clear();
+        this.symbolData.clear();
+        console.log('⚠️ No active strategy found, cleared all cascade detectors');
+        return;
+      }
+      
+      const selectedAssets = activeStrategy.selectedAssets || [];
+      
+      if (selectedAssets.length === 0) {
+        // Clear all detectors when no assets selected
+        this.detectors.clear();
+        this.symbolData.clear();
+        console.log('⚠️ No assets selected in strategy, cleared all cascade detectors');
+        return;
+      }
+      
+      // Convert to Set for efficient lookups
+      const selectedSet = new Set(selectedAssets);
+      
+      // Remove detectors for symbols no longer selected
+      const currentSymbols = Array.from(this.detectors.keys());
+      for (const symbol of currentSymbols) {
+        if (!selectedSet.has(symbol)) {
+          this.detectors.delete(symbol);
+          this.symbolData.delete(symbol);
+          console.log(`🗑️ Removed cascade detector for ${symbol} (no longer selected)`);
+        }
+      }
+      
+      // Add detectors for newly selected symbols
+      for (const symbol of selectedAssets) {
+        if (!this.detectors.has(symbol)) {
+          this.addSymbol(symbol);
+          console.log(`✅ Added cascade detector for ${symbol}`);
+        }
+      }
+      
+      console.log(`📊 Cascade detector now monitoring ${this.detectors.size} symbols: ${Array.from(this.detectors.keys()).join(', ')}`);
+    } catch (error) {
+      console.error('❌ Error syncing cascade detector symbols:', error);
+    }
   }
 
   public getStatus(symbol: string): any {

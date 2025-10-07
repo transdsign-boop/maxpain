@@ -2187,6 +2187,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (Object.keys(changes).length > 0) {
         console.log(`🔄 Reloading strategy in engine to apply updated settings...`);
         await strategyEngine.reloadStrategy(strategyId);
+        
+        // Sync cascade detector if selectedAssets changed
+        if (changes.selectedAssets) {
+          console.log(`🔄 Syncing cascade detector with updated asset selection...`);
+          await cascadeDetectorService.syncSymbols();
+        }
       }
       
       // If there are changes and strategy has an active session, record the change
@@ -2662,7 +2668,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Initialize cascade detector service
   cascadeDetectorService.setClients(clients);
-  cascadeDetectorService.start();
+  await cascadeDetectorService.start();
   
   // Connect to Aster DEX WebSocket and relay data
   connectToAsterDEX(clients);
