@@ -2737,6 +2737,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { strategyId } = req.params;
       
+      // Check cache first to prevent rate limiting (2 minute cache)
+      const cacheKey = `position_summary_${strategyId}`;
+      const cached = getCached<any>(cacheKey, 120000); // 2 minute TTL
+      if (cached) {
+        return res.json(cached);
+      }
+      
       // Get the strategy to check trading mode
       const strategy = await storage.getStrategy(strategyId);
       if (!strategy) {
@@ -3101,6 +3108,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           positions
         };
 
+        // Cache the result to prevent rate limiting
+        setCache(cacheKey, summary);
+        
         return res.json(summary);
     } catch (error) {
       console.error('Error fetching strategy position summary:', error);
