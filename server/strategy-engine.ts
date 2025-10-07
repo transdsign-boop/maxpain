@@ -3179,49 +3179,6 @@ export class StrategyEngine extends EventEmitter {
     }
   }
 
-  // Cancel an order on the exchange
-  private async cancelExchangeOrder(symbol: string, orderId: string): Promise<void> {
-    const apiKey = process.env.ASTER_API_KEY;
-    const secretKey = process.env.ASTER_SECRET_KEY;
-    
-    if (!apiKey || !secretKey) {
-      throw new Error('API keys not configured');
-    }
-    
-    const timestamp = Date.now();
-    const params: Record<string, string | number> = {
-      symbol,
-      orderId,
-      timestamp,
-      recvWindow: 5000,
-    };
-    
-    // Create query string for signature
-    const queryString = Object.entries(params)
-      .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
-      .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
-      .join('&');
-    
-    // Generate signature
-    const signature = createHmac('sha256', secretKey)
-      .update(queryString)
-      .digest('hex');
-    
-    const signedParams = `${queryString}&signature=${signature}`;
-    
-    const response = await fetch(`https://fapi.asterdex.com/fapi/v1/order?${signedParams}`, {
-      method: 'DELETE',
-      headers: {
-        'X-MBX-APIKEY': apiKey,
-      },
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Cancel order failed (${response.status}): ${errorText}`);
-    }
-  }
-
   // Place an exit order (TP/SL) on the exchange
   private async placeExitOrder(
     position: Position,
