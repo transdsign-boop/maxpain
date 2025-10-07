@@ -3049,18 +3049,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: 'Strategy not found' });
       }
 
-      // Get ALL sessions for this strategy
+      // Get only ACTIVE (non-archived) sessions for this strategy
       const allSessions = await storage.getSessionsByStrategy(strategyId);
+      const activeSessions = allSessions.filter(session => session.isActive);
       
-      if (allSessions.length === 0) {
+      if (activeSessions.length === 0) {
         return res.json([]);
       }
 
-      // Get closed positions from ALL sessions
+      // Get closed positions from active sessions only
       const allClosedPositions: any[] = [];
       const allFills: any[] = [];
       
-      for (const session of allSessions) {
+      for (const session of activeSessions) {
         const sessionClosedPositions = await storage.getClosedPositions(session.id);
         const sessionFills = await storage.getFillsBySession(session.id);
         allClosedPositions.push(...sessionClosedPositions);
