@@ -2589,7 +2589,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Note: This doesn't change current trading - it's for analytics/review only
   app.post("/api/strategies/:id/sessions/:sessionId/load", async (req, res) => {
     try {
-      const { strategyId, sessionId } = req.params;
+      const { id: strategyId, sessionId } = req.params;
       
       // Verify strategy exists
       const strategy = await storage.getStrategy(strategyId);
