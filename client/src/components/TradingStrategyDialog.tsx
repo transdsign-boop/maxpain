@@ -40,7 +40,6 @@ interface Strategy {
   maxRetryDurationMs: number;
   priceChaseMode: boolean;
   marginAmount: string;
-  tradingMode: "paper" | "live";
   hedgeMode: boolean;
   isActive: boolean;
   maxOpenPositions: number;
@@ -645,7 +644,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
       setActiveStrategy(updatedStrategy);
       toast({
         title: "Strategy Started",
-        description: `${updatedStrategy.tradingMode === 'live' ? 'Live' : 'Paper'} trading strategy is now active and monitoring liquidations.`,
+        description: "Live trading strategy is now active and monitoring liquidations.",
       });
       queryClient.invalidateQueries({ queryKey: ['/api/strategies'] });
     },
@@ -1500,7 +1499,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Automatically fetched from your Aster DEX account for both paper and live trading
+                    Automatically fetched from your Aster DEX account
                   </p>
                 </div>
                 

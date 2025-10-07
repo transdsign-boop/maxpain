@@ -420,14 +420,14 @@ export class DatabaseStorage implements IStorage {
     // Create default strategy if doesn't exist
     const query = `
       INSERT INTO strategies (
-        user_id, name, selected_assets, is_active, trading_mode,
+        user_id, name, selected_assets, is_active,
         percentile_threshold, liquidation_lookback_hours, stop_loss_percent,
         profit_target_percent, max_layers, order_delay_ms, order_type,
         max_retry_duration_ms, slippage_tolerance_percent,
         dca_start_step_percent, dca_spacing_convexity, dca_size_growth,
         dca_max_risk_percent, dca_volatility_ref, dca_exit_cushion_multiplier
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19
       )
       RETURNING *
     `;
@@ -437,7 +437,6 @@ export class DatabaseStorage implements IStorage {
       "Liquidation Counter-Trade",
       ["BTCUSDT"],
       true,
-      "paper",
       90,
       1,
       "2.00",
@@ -492,7 +491,6 @@ export class DatabaseStorage implements IStorage {
     // Create new session if doesn't exist
     const newSession: InsertTradeSession = {
       strategyId: strategy.id,
-      mode: strategy.tradingMode,
       startingBalance: initialBalance,
       currentBalance: initialBalance,
       isActive: true
