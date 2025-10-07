@@ -23,6 +23,7 @@ class CascadeDetectorService {
   private symbolData: Map<string, SymbolData> = new Map();
   private clients: Set<WebSocket> | null = null;
   private intervalId: NodeJS.Timeout | null = null;
+  private isProcessing: boolean = false;
   
   private liqAccumulator: number = 0;
   private lastLiqReset: number = Date.now();
@@ -167,6 +168,13 @@ class CascadeDetectorService {
   }
 
   private async tick(): Promise<void> {
+    // Skip if previous tick is still processing (prevents overlapping executions)
+    if (this.isProcessing) {
+      return;
+    }
+
+    this.isProcessing = true;
+
     try {
       // Get RET thresholds and risk level from active strategy (same for all symbols)
       const strategies = await storage.getAllActiveStrategies();
@@ -226,6 +234,8 @@ class CascadeDetectorService {
       this.broadcast(allStatuses);
     } catch (error) {
       console.error('Error in cascade detector tick:', error);
+    } finally {
+      this.isProcessing = false;
     }
   }
 
