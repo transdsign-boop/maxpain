@@ -8,6 +8,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
 interface CascadeStatus {
+  symbol: string;
   score: number;
   LQ: number;
   RET: number;
@@ -25,23 +26,27 @@ interface CascadeStatus {
 }
 
 export default function CascadeRiskIndicator() {
-  const [status, setStatus] = useState<CascadeStatus>({
+  const [statuses, setStatuses] = useState<CascadeStatus[]>([]);
+  const { toast } = useToast();
+
+  // Use the first status as the primary display (or could aggregate later)
+  const status = statuses[0] || {
+    symbol: 'N/A',
     score: 0,
     LQ: 0,
     RET: 0,
     OI: 0,
-    light: 'green',
+    light: 'green' as const,
     autoBlock: false,
     autoEnabled: true,
     medianLiq: 0,
     dOI_1m: 0,
     dOI_3m: 0,
     reversal_quality: 0,
-    rq_bucket: 'poor',
-    volatility_regime: 'low',
+    rq_bucket: 'poor' as const,
+    volatility_regime: 'low' as const,
     rq_threshold_adjusted: 1
-  });
-  const { toast } = useToast();
+  };
 
   useEffect(() => {
     const ws = new WebSocket(
@@ -56,7 +61,9 @@ export default function CascadeRiskIndicator() {
       try {
         const message = JSON.parse(event.data);
         if (message.type === 'cascade_status') {
-          setStatus(message.data);
+          // message.data is now an array of statuses
+          const data = Array.isArray(message.data) ? message.data : [message.data];
+          setStatuses(data);
         }
       } catch (error) {
         console.error('Error parsing cascade status:', error);
