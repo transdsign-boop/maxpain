@@ -106,14 +106,14 @@ export class CascadeDetector {
     return parseFloat(percentChange.toFixed(2));
   }
 
-  private calculateReversalQuality(LQ: number, RET: number, dOI_1m: number, dOI_3m: number): { reversal_quality: number; rq_bucket: 'poor' | 'ok' | 'good' | 'excellent' } {
+  private calculateReversalQuality(LQ: number, RET: number, dOI_1m: number, dOI_3m: number, retMediumThreshold: number = 25): { reversal_quality: number; rq_bucket: 'poor' | 'ok' | 'good' | 'excellent' } {
     let score = 0;
     
     if (LQ >= 8) score += 2;
     else if (LQ >= 6) score += 1;
     
     // Award point for sufficient volatility (indicates meaningful price action)
-    if (RET >= 25) score += 1;
+    if (RET >= retMediumThreshold) score += 1;
     
     if (dOI_1m <= -1.0 || dOI_3m <= -1.5) score += 2;
     else if (dOI_1m <= -0.5 || dOI_3m <= -1.0) score += 1;
@@ -252,7 +252,7 @@ export class CascadeDetector {
 
     const autoBlock = this.autoEnabled && (this.currentLight === 'orange' || this.currentLight === 'red');
 
-    const { reversal_quality, rq_bucket } = this.calculateReversalQuality(LQ, RET, dOI_1m, dOI_3m);
+    const { reversal_quality, rq_bucket } = this.calculateReversalQuality(LQ, RET, dOI_1m, dOI_3m, retMediumThreshold);
     const { volatility_regime, rq_threshold_adjusted } = this.calculateVolatilityRegime(RET, retHighThreshold, retMediumThreshold);
 
     // Store calculated values for getCurrentStatus()
