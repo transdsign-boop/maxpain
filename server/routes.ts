@@ -2356,11 +2356,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         isActive: true
       });
       
-      // Register with strategy engine to create trade session
-      await strategyEngine.registerStrategy(strategy);
+      // Get the UPDATED strategy with current isActive status and tradingMode
+      const updatedStrategy = await storage.getStrategy(strategyId);
+      if (!updatedStrategy) {
+        return res.status(500).json({ error: "Failed to retrieve updated strategy" });
+      }
+      
+      // Register with strategy engine using the UPDATED strategy object
+      // This ensures the session uses the correct current tradingMode
+      await strategyEngine.registerStrategy(updatedStrategy);
       
       // Return updated strategy for easier frontend sync
-      const updatedStrategy = await storage.getStrategy(strategyId);
       res.status(200).json(updatedStrategy);
     } catch (error) {
       console.error('Error starting strategy:', error);
