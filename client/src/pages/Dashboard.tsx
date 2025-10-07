@@ -55,7 +55,7 @@ export default function Dashboard() {
   // Fetch active strategies
   const { data: strategies } = useQuery<any[]>({
     queryKey: ['/api/strategies'],
-    refetchInterval: 5000,
+    refetchInterval: 30000,
   });
 
   // Smart strategy selection: Keep showing the same strategy after pausing
@@ -82,7 +82,7 @@ export default function Dashboard() {
   // Fetch live positions from Aster DEX
   const { data: livePositions, error: livePositionsError } = useQuery<any[]>({
     queryKey: ['/api/live/positions'],
-    refetchInterval: 15000, // Reduced to 15 seconds to avoid rate limiting
+    refetchInterval: 45000, // Reduced to 45 seconds to avoid rate limiting
     enabled: !!activeStrategy,
     retry: 2,
   });
@@ -117,7 +117,7 @@ export default function Dashboard() {
       return response.json();
     },
     enabled: !!activeStrategy?.id,
-    refetchInterval: 10000, // Reduced to 10 seconds to avoid rate limiting (was 1 second)
+    refetchInterval: 30000, // Reduced to 30 seconds to avoid rate limiting (was 1 second)
   });
 
   // Stop trading mutation
