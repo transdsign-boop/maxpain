@@ -147,9 +147,9 @@ export default function LiveLiquidationsSidebar({
   function ElapsedTimeDisplay({ timestamp }: { timestamp: Date }) {
     const elapsed = useElapsedTime(timestamp);
     return (
-      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+      <div className="flex items-center gap-1 text-xs text-muted-foreground min-w-[5.5rem]">
         <Clock className="h-3 w-3 flex-shrink-0" />
-        <span className="font-mono min-w-[4.5rem] inline-block">{elapsed}</span>
+        <span className="font-mono inline-block text-right flex-1">{elapsed}</span>
       </div>
     );
   }
@@ -242,8 +242,8 @@ export default function LiveLiquidationsSidebar({
                           {liquidation.side.toUpperCase()}
                         </Badge>
                       </div>
-                      <div className="flex flex-col items-end gap-0.5">
-                        <div className="text-xs text-muted-foreground font-mono">
+                      <div className="flex flex-col items-end gap-0.5 min-w-[7rem]">
+                        <div className="text-xs text-muted-foreground font-mono whitespace-nowrap">
                           {new Date(liquidation.timestamp).toLocaleTimeString([], { 
                             hour: '2-digit', 
                             minute: '2-digit',
