@@ -2378,13 +2378,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Strategy not found" });
       }
       
-      // Update strategy to inactive status 
+      // CHANGE: Stop now just sets isActive=false without ending the session
+      // The session continues but no new trades will be executed
       await storage.updateStrategy(strategyId, { 
-        isActive: false
+        isActive: false,
+        paused: false // Clear paused flag when stopping
       });
       
-      // Unregister from strategy engine and end trade session
+      // Unregister from strategy engine (but session remains active)
       await strategyEngine.unregisterStrategy(strategyId);
+      
+      console.log(`⏸️  Strategy ${strategyId} stopped (session continues)`);
       
       // Return updated strategy for easier frontend sync
       const updatedStrategy = await storage.getStrategy(strategyId);
@@ -2450,6 +2454,150 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error resuming strategy:', error);
       res.status(500).json({ error: "Failed to resume strategy" });
+    }
+  });
+
+  // ========== SESSION MANAGEMENT ENDPOINTS ==========
+  
+  // Start a new trading session (ends current session and starts fresh)
+  app.post("/api/strategies/:id/sessions/new", async (req, res) => {
+    try {
+      const strategyId = req.params.id;
+      
+      // Verify strategy exists
+      const strategy = await storage.getStrategy(strategyId);
+      if (!strategy) {
+        return res.status(404).json({ error: "Strategy not found" });
+      }
+      
+      // End current active session if exists
+      const currentSession = await storage.getActiveTradeSession(strategyId);
+      if (currentSession) {
+        await storage.endTradeSession(currentSession.id);
+        console.log(`📋 Ended previous session ${currentSession.id}`);
+      }
+      
+      // Create new session with starting balance based on mode
+      const mode = strategy.tradingMode === 'live' ? 'live' : 'demo';
+      const exchange = mode === 'live' ? 'aster' : 'bybit';
+      
+      // For live mode, get balance from exchange. For demo, use default or user-specified balance
+      let startingBalance = '10000'; // Default for demo
+      
+      if (mode === 'live') {
+        // Get live balance from exchange
+        const apiKey = strategy.asterApiKey || '';
+        const secretKey = strategy.asterApiSecret || '';
+        
+        if (apiKey && secretKey) {
+          try {
+            const timestamp = Date.now();
+            const params = `timestamp=${timestamp}`;
+            const signature = crypto
+              .createHmac('sha256', secretKey)
+              .update(params)
+              .digest('hex');
+            
+            const response = await fetch(
+              `https://fapi.asterdex.com/fapi/v1/account?${params}&signature=${signature}`,
+              {
+                headers: { 'X-MBX-APIKEY': apiKey },
+              }
+            );
+            
+            if (response.ok) {
+              const data = await response.json();
+              const usdtAsset = data.assets?.find((asset: any) => asset.asset === 'USDT');
+              const usdtBalance = usdtAsset ? parseFloat(usdtAsset.walletBalance) : 0;
+              const usdcAsset = data.assets?.find((asset: any) => asset.asset === 'USDC');
+              const usdcBalance = usdcAsset ? parseFloat(usdcAsset.walletBalance) : 0;
+              startingBalance = String(usdtBalance || usdcBalance || 10000);
+            }
+          } catch (err) {
+            console.error('Failed to fetch live balance, using default:', err);
+          }
+        }
+      }
+      
+      const newSession = await storage.createTradeSession({
+        strategyId,
+        mode,
+        exchange,
+        startingBalance,
+        currentBalance: startingBalance,
+      });
+      
+      console.log(`🆕 Started new ${mode} session ${newSession.id} with balance $${startingBalance}`);
+      
+      // CRITICAL: Reload strategy in engine to bind to new session
+      // This ensures fills/logs write to the new session, not the old one
+      if (strategy.isActive) {
+        // Unregister then re-register to force engine to pick up new session
+        await strategyEngine.unregisterStrategy(strategyId);
+        const updatedStrategy = await storage.getStrategy(strategyId);
+        if (updatedStrategy) {
+          await strategyEngine.registerStrategy(updatedStrategy);
+          console.log(`🔄 Strategy engine reloaded with new session ${newSession.id}`);
+        }
+      } else {
+        console.log(`ℹ️  Strategy is inactive - new session ready for when trading starts`);
+      }
+      
+      res.json({
+        session: newSession,
+        message: `New ${mode} session started successfully`
+      });
+    } catch (error) {
+      console.error('Error starting new session:', error);
+      res.status(500).json({ error: "Failed to start new session" });
+    }
+  });
+  
+  // Get all sessions for a strategy
+  app.get("/api/strategies/:id/sessions", async (req, res) => {
+    try {
+      const strategyId = req.params.id;
+      
+      // Verify strategy exists
+      const strategy = await storage.getStrategy(strategyId);
+      if (!strategy) {
+        return res.status(404).json({ error: "Strategy not found" });
+      }
+      
+      const sessions = await storage.getSessionsByStrategy(strategyId);
+      res.json(sessions);
+    } catch (error) {
+      console.error('Error fetching sessions:', error);
+      res.status(500).json({ error: "Failed to fetch sessions" });
+    }
+  });
+  
+  // Load/activate a specific session (for viewing past session data)
+  // Note: This doesn't change current trading - it's for analytics/review only
+  app.post("/api/strategies/:id/sessions/:sessionId/load", async (req, res) => {
+    try {
+      const { strategyId, sessionId } = req.params;
+      
+      // Verify strategy exists
+      const strategy = await storage.getStrategy(strategyId);
+      if (!strategy) {
+        return res.status(404).json({ error: "Strategy not found" });
+      }
+      
+      // Verify session exists and belongs to this strategy
+      const session = await storage.getTradeSession(sessionId);
+      if (!session || session.strategyId !== strategyId) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+      
+      // Return session data for frontend to display
+      res.json({
+        session,
+        message: `Loaded session from ${new Date(session.startedAt).toLocaleString()}`
+      });
+    } catch (error) {
+      console.error('Error loading session:', error);
+      res.status(500).json({ error: "Failed to load session" });
     }
   });
 
