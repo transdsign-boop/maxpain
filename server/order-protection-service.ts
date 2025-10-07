@@ -457,11 +457,6 @@ export class OrderProtectionService {
     const releaseLock = await this.acquireLock(lockKey);
 
     try {
-      // Skip if not live trading
-      if (strategy.tradingMode !== 'live') {
-        return { success: true };
-      }
-
       // Ensure exchange info is fetched
       await this.fetchExchangeInfo();
 

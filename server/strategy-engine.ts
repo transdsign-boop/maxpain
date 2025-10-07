@@ -48,14 +48,6 @@ export class StrategyEngine extends EventEmitter {
   private priceCache: Map<string, number> = new Map(); // symbol -> latest price
   private symbolPrecisionCache: Map<string, SymbolPrecision> = new Map(); // symbol -> precision info
   private exchangeInfoFetched = false; // Track if exchange info has been fetched
-  private pendingPaperOrders: Map<string, {
-    order: Order;
-    strategy: Strategy;
-    targetPrice: number;
-    startTime: number;
-    maxRetryDuration: number;
-    slippageTolerance: number;
-  }> = new Map(); // Track pending paper orders for limit order simulation
   private positionCreationLocks: Map<string, Promise<void>> = new Map(); // sessionId-symbol -> lock to prevent duplicate positions
   private pendingLayerOrders: Map<string, Set<number>> = new Map(); // positionId -> Set of pending layer numbers to prevent duplicates
   private isRunning = false;
@@ -178,9 +170,6 @@ export class StrategyEngine extends EventEmitter {
     // Start periodic checks for exit conditions
     this.startExitMonitoring();
     
-    // Start monitoring pending paper orders for limit order simulation
-    this.startPaperOrderMonitoring();
-    
     // Start periodic cleanup of orphaned TP/SL orders (every 5 minutes)
     // NOTE: TP/SL updates are handled by updateProtectiveOrders() after each fill
     this.startCleanupMonitoring();
@@ -208,7 +197,6 @@ export class StrategyEngine extends EventEmitter {
     this.pendingLayerOrders.clear();
     this.activeSessions.clear();
     this.liquidationHistory.clear();
-    this.pendingPaperOrders.clear();
     this.positionCreationLocks.clear();
     console.log('✅ StrategyEngine stopped');
   }
@@ -274,19 +262,10 @@ export class StrategyEngine extends EventEmitter {
     // This ensures there's always exactly one persistent session
     const session = await storage.getOrCreateActiveSession(strategy.userId);
     
-    // Update session mode if strategy trading mode has changed
-    if (session.mode !== strategy.tradingMode) {
-      await storage.updateTradeSession(session.id, {
-        mode: strategy.tradingMode || 'paper',
-      });
-      session.mode = strategy.tradingMode || 'paper';
-      console.log(`🔄 Updated session mode to: ${session.mode}`);
-    }
-    
     // Store by both strategy ID and session ID for easy lookup
     this.activeSessions.set(strategy.id, session);
     this.activeSessions.set(session.id, session);
-    console.log(`✅ Strategy registered with session: ${session.id} (mode: ${session.mode})`);
+    console.log(`✅ Strategy registered with session: ${session.id}`);
   }
 
   // Unregister a strategy
@@ -304,26 +283,6 @@ export class StrategyEngine extends EventEmitter {
     }
     this.activeSessions.delete(strategyId);
     
-    // Now safe to cancel pending orders using captured session - strategy is already invisible
-    if (session) {
-      const ordersToCancel: string[] = [];
-      const pendingEntries = Array.from(this.pendingPaperOrders.entries());
-      for (const [orderId, orderData] of pendingEntries) {
-        if (orderData.order.sessionId === session.id) {
-          ordersToCancel.push(orderId);
-        }
-      }
-      
-      if (ordersToCancel.length > 0) {
-        console.log(`🚫 Cancelling ${ordersToCancel.length} pending orders for session ${session.id}`);
-        for (const orderId of ordersToCancel) {
-          // CRITICAL: Delete from map FIRST (synchronous) to prevent order monitor from filling
-          // the order in the window between this and the DB update
-          this.pendingPaperOrders.delete(orderId);
-          await storage.updateOrderStatus(orderId, 'cancelled');
-        }
-      }
-    }
     
     // Note: We do NOT end the trade session here to preserve open positions
     // The session stays active so positions remain visible when strategy is restarted
@@ -885,7 +844,7 @@ export class StrategyEngine extends EventEmitter {
       const exchangeBalance = await this.getExchangeAvailableBalance(strategy);
       if (exchangeBalance !== null) {
         currentBalance = exchangeBalance;
-        console.log(`📊 Using exchange balance for ${session.mode} mode: $${currentBalance.toFixed(2)}`);
+        console.log(`📊 Using exchange balance: $${currentBalance.toFixed(2)}`);
       } else {
         console.warn('⚠️ Failed to fetch exchange balance, falling back to session balance');
       }
@@ -977,18 +936,16 @@ export class StrategyEngine extends EventEmitter {
 
       console.log(`🎯 Entering ${orderSide} position for ${liquidation.symbol} at $${price} using DCA Layer 1 (qty: ${quantity.toFixed(6)} units)`);
 
-      // Set leverage on exchange if in live mode and leverage has changed
-      if (session.mode === 'live') {
-        const currentLeverage = this.leverageSetForSymbols.get(liquidation.symbol);
-        if (currentLeverage !== leverage) {
-          console.log(`⚙️ Setting ${liquidation.symbol} leverage to ${leverage}x on exchange...`);
-          const leverageSet = await this.setLeverage(liquidation.symbol, leverage);
-          if (leverageSet) {
-            this.leverageSetForSymbols.set(liquidation.symbol, leverage);
-          } else {
-            console.error(`❌ Failed to set leverage for ${liquidation.symbol}, aborting order to prevent trading with wrong leverage`);
-            throw new Error(`Failed to set leverage for ${liquidation.symbol}`);
-          }
+      // Set leverage on exchange if leverage has changed
+      const currentLeverage = this.leverageSetForSymbols.get(liquidation.symbol);
+      if (currentLeverage !== leverage) {
+        console.log(`⚙️ Setting ${liquidation.symbol} leverage to ${leverage}x on exchange...`);
+        const leverageSet = await this.setLeverage(liquidation.symbol, leverage);
+        if (leverageSet) {
+          this.leverageSetForSymbols.set(liquidation.symbol, leverage);
+        } else {
+          console.error(`❌ Failed to set leverage for ${liquidation.symbol}, aborting order to prevent trading with wrong leverage`);
+          throw new Error(`Failed to set leverage for ${liquidation.symbol}`);
         }
       }
 
@@ -1066,7 +1023,7 @@ export class StrategyEngine extends EventEmitter {
       const exchangeBalance = await this.getExchangeAvailableBalance(strategy);
       if (exchangeBalance !== null) {
         currentBalance = exchangeBalance;
-        console.log(`📊 Using exchange balance for ${session.mode} mode (layer ${nextLayer}): $${currentBalance.toFixed(2)}`);
+        console.log(`📊 Using exchange balance (layer ${nextLayer}): $${currentBalance.toFixed(2)}`);
       } else {
         console.warn('⚠️ Failed to fetch exchange balance for layer, falling back to session balance');
       }
@@ -1213,107 +1170,75 @@ export class StrategyEngine extends EventEmitter {
         if (finalDeviation <= slippageTolerance) {
           console.log(`✅ Price acceptable: $${currentPrice} (deviation: ${(finalDeviation * 100).toFixed(2)}%)`);
           
-          // Check if this is live or paper trading
-          if (session.mode === 'live') {
-            // Execute live order on Aster DEX
-            // Only pass positionSide if the EXCHANGE is in dual mode (not based on strategy settings)
-            const liveOrderResult = await this.executeLiveOrder({
+          // Execute live order on Aster DEX
+          // Only pass positionSide if the EXCHANGE is in dual mode (not based on strategy settings)
+          const liveOrderResult = await this.executeLiveOrder({
+            symbol,
+            side,
+            orderType: strategy.orderType,
+            quantity,
+            price: orderPrice,
+            // Only include positionSide if the EXCHANGE is in dual mode
+            positionSide: this.exchangePositionMode === 'dual' ? positionSide : undefined,
+          });
+          
+          if (!liveOrderResult.success) {
+            console.error(`❌ Live order failed: ${liveOrderResult.error}`);
+            return;
+          }
+          
+          console.log(`✅ LIVE ORDER EXECUTED on Aster DEX: ${quantity.toFixed(4)} ${symbol} at $${orderPrice}`);
+          console.log(`📝 Order ID: ${liveOrderResult.orderId || 'N/A'}`);
+          
+          // Track live order execution locally for position management
+          const order = await storage.placePaperOrder({
+            sessionId: session.id,
+            symbol,
+            side,
+            orderType: strategy.orderType,
+            quantity: quantity.toString(),
+            price: orderPrice.toString(),
+            triggerLiquidationId,
+            layerNumber,
+          });
+          
+          // Fetch actual fill data from exchange (with retry logic for fill propagation delay)
+          let actualFillsData: any[] | null = null;
+          let retryCount = 0;
+          const maxRetries = 3;
+          
+          while (retryCount < maxRetries && liveOrderResult.orderId) {
+            // Small delay to allow exchange to process the fill
+            if (retryCount > 0) {
+              await new Promise(resolve => setTimeout(resolve, 500)); // 500ms between retries
+            }
+            
+            const fillResult = await fetchActualFills({
               symbol,
-              side,
-              orderType: strategy.orderType,
-              quantity,
-              price: orderPrice,
-              // Only include positionSide if the EXCHANGE is in dual mode
-              positionSide: this.exchangePositionMode === 'dual' ? positionSide : undefined,
+              orderId: liveOrderResult.orderId,
             });
             
-            if (!liveOrderResult.success) {
-              console.error(`❌ Live order failed: ${liveOrderResult.error}`);
-              return;
+            if (fillResult.success && fillResult.fills && fillResult.fills.length > 0) {
+              actualFillsData = fillResult.fills; // Store ALL fills for aggregation
+              break;
             }
             
-            console.log(`✅ LIVE ORDER EXECUTED on Aster DEX: ${quantity.toFixed(4)} ${symbol} at $${orderPrice}`);
-            console.log(`📝 Order ID: ${liveOrderResult.orderId || 'N/A'}`);
+            retryCount++;
+          }
+          
+          if (actualFillsData && actualFillsData.length > 0) {
+            // Aggregate multiple fills (handles partial fills correctly)
+            const aggregated = aggregateFills(actualFillsData);
             
-            // Track live order execution locally for position management
-            const order = await storage.placePaperOrder({
-              sessionId: session.id,
-              symbol,
-              side,
-              orderType: strategy.orderType,
-              quantity: quantity.toString(),
-              price: orderPrice.toString(),
-              triggerLiquidationId,
-              layerNumber,
-            });
+            console.log(`💎 Using REAL exchange data (${actualFillsData.length} fill(s)) - Price: $${aggregated.avgPrice.toFixed(6)}, Qty: ${aggregated.totalQty.toFixed(4)}, Fee: $${aggregated.totalCommission.toFixed(4)}`);
+            console.log(`📊 Fill type: ${aggregated.isMaker ? 'MAKER' : 'TAKER'}`);
             
-            // Fetch actual fill data from exchange (with retry logic for fill propagation delay)
-            let actualFillsData: any[] | null = null;
-            let retryCount = 0;
-            const maxRetries = 3;
-            
-            while (retryCount < maxRetries && liveOrderResult.orderId) {
-              // Small delay to allow exchange to process the fill
-              if (retryCount > 0) {
-                await new Promise(resolve => setTimeout(resolve, 500)); // 500ms between retries
-              }
-              
-              const fillResult = await fetchActualFills({
-                symbol,
-                orderId: liveOrderResult.orderId,
-              });
-              
-              if (fillResult.success && fillResult.fills && fillResult.fills.length > 0) {
-                actualFillsData = fillResult.fills; // Store ALL fills for aggregation
-                break;
-              }
-              
-              retryCount++;
-            }
-            
-            if (actualFillsData && actualFillsData.length > 0) {
-              // Aggregate multiple fills (handles partial fills correctly)
-              const aggregated = aggregateFills(actualFillsData);
-              
-              console.log(`💎 Using REAL exchange data (${actualFillsData.length} fill(s)) - Price: $${aggregated.avgPrice.toFixed(6)}, Qty: ${aggregated.totalQty.toFixed(4)}, Fee: $${aggregated.totalCommission.toFixed(4)}`);
-              console.log(`📊 Fill type: ${aggregated.isMaker ? 'MAKER' : 'TAKER'}`);
-              
-              // Record fill with AGGREGATED exchange data (weighted avg price, total qty, total commission)
-              await this.fillLiveOrder(order, aggregated.avgPrice, aggregated.totalQty, aggregated.totalCommission);
-            } else {
-              console.warn(`⚠️ Could not fetch actual fill data after ${maxRetries} attempts, using order price as fallback`);
-              // Fallback to order price if we couldn't fetch actual fill
-              await this.fillPaperOrder(order, orderPrice, quantity);
-            }
+            // Record fill with AGGREGATED exchange data (weighted avg price, total qty, total commission)
+            await this.fillLiveOrder(order, aggregated.avgPrice, aggregated.totalQty, aggregated.totalCommission);
           } else {
-            // Paper trading mode - simulate the order locally
-            const order = await storage.placePaperOrder({
-              sessionId: session.id,
-              symbol,
-              side,
-              orderType: strategy.orderType,
-              quantity: quantity.toString(),
-              price: orderPrice.toString(),
-              triggerLiquidationId,
-              layerNumber,
-            });
-
-            if (strategy.orderType === 'market') {
-              // Market orders fill immediately at current price
-              await this.fillPaperOrder(order, currentPrice, quantity);
-              console.log(`✅ Paper market order filled: ${quantity.toFixed(4)} ${symbol} at $${currentPrice}`);
-            } else {
-              // Limit orders go into pending state for realistic simulation
-              this.pendingPaperOrders.set(order.id, {
-                order,
-                strategy,
-                targetPrice,
-                startTime: Date.now(),
-                maxRetryDuration,
-                slippageTolerance,
-              });
-              console.log(`📋 Paper limit order placed: ${quantity.toFixed(4)} ${symbol} at $${orderPrice} (pending fill)`);
-            }
+            console.warn(`⚠️ Could not fetch actual fill data after ${maxRetries} attempts, using order price as fallback`);
+            // Fallback to order price if we couldn't fetch actual fill
+            await this.fillPaperOrder(order, orderPrice, quantity);
           }
           
           return;
@@ -2001,10 +1926,10 @@ export class StrategyEngine extends EventEmitter {
     try {
       console.log('🧹 Starting orphaned TP/SL order cleanup...');
       
-      // Only run cleanup for live trading sessions
-      const liveSessions = Array.from(this.activeSessions.values()).filter(s => s.mode === 'live');
-      if (liveSessions.length === 0) {
-        console.log('⏭️ No active live trading sessions, skipping cleanup');
+      // Get all active sessions
+      const activeSessions = Array.from(this.activeSessions.values());
+      if (activeSessions.length === 0) {
+        console.log('⏭️ No active trading sessions, skipping cleanup');
         return 0;
       }
 
@@ -2020,9 +1945,9 @@ export class StrategyEngine extends EventEmitter {
       let canceledCount = 0;
       const currentTime = Date.now();
 
-      // Get all active positions for all live sessions
+      // Get all active positions for all sessions
       const positionsMap = new Map<string, Map<string, Position>>();
-      for (const session of liveSessions) {
+      for (const session of activeSessions) {
         const positions = await storage.getOpenPositions(session.id);
         const sessionPositions = new Map<string, Position>();
         
@@ -2142,9 +2067,9 @@ export class StrategyEngine extends EventEmitter {
   async cleanupStaleLimitOrders(): Promise<number> {
     try {
       let canceledCount = 0;
-      const liveSessions = Array.from(this.activeSessions.values()).filter(s => s.mode === 'live');
+      const activeSessions = Array.from(this.activeSessions.values());
       
-      if (liveSessions.length === 0) {
+      if (activeSessions.length === 0) {
         return 0;
       }
 
@@ -2199,9 +2124,9 @@ export class StrategyEngine extends EventEmitter {
   async autoRepairMissingTPSL(): Promise<number> {
     try {
       let repairedCount = 0;
-      const liveSessions = Array.from(this.activeSessions.values()).filter(s => s.mode === 'live');
+      const activeSessions = Array.from(this.activeSessions.values());
       
-      if (liveSessions.length === 0) {
+      if (activeSessions.length === 0) {
         return 0;
       }
 
@@ -2245,7 +2170,7 @@ export class StrategyEngine extends EventEmitter {
         let dbPosition: Position | undefined;
         let strategy: Strategy | undefined;
         
-        for (const session of liveSessions) {
+        for (const session of activeSessions) {
           const positions = await storage.getOpenPositions(session.id);
           dbPosition = positions.find(p => 
             p.symbol === symbol && 
@@ -2377,9 +2302,9 @@ export class StrategyEngine extends EventEmitter {
         slPrice?: number;
       }> = [];
       
-      const liveSessions = Array.from(this.activeSessions.values()).filter(s => s.mode === 'live');
+      const activeSessions = Array.from(this.activeSessions.values());
       
-      if (liveSessions.length === 0) {
+      if (activeSessions.length === 0) {
         return results;
       }
 
@@ -2416,7 +2341,7 @@ export class StrategyEngine extends EventEmitter {
         let dbPosition: Position | undefined;
         let strategy: Strategy | undefined;
         
-        for (const session of liveSessions) {
+        for (const session of activeSessions) {
           const positions = await storage.getOpenPositions(session.id);
           dbPosition = positions.find(p => 
             p.symbol === symbol && 
@@ -2487,9 +2412,9 @@ export class StrategyEngine extends EventEmitter {
   // Fix incorrect stop-loss orders (where stopPrice doesn't match calculated SL)
   private async fixIncorrectStopLossOrders(): Promise<number> {
     try {
-      // Only run for live sessions
-      const liveSessions = Array.from(this.activeSessions.values()).filter(s => s.mode === 'live');
-      if (liveSessions.length === 0) {
+      // Get all active sessions
+      const activeSessions = Array.from(this.activeSessions.values());
+      if (activeSessions.length === 0) {
         return 0;
       }
 
@@ -2528,7 +2453,7 @@ export class StrategyEngine extends EventEmitter {
         let dbPosition: Position | undefined;
         let strategy: Strategy | undefined;
         
-        for (const session of liveSessions) {
+        for (const session of activeSessions) {
           const positions = await storage.getOpenPositions(session.id);
           dbPosition = positions.find(p => 
             p.symbol === symbol && 
@@ -2848,117 +2773,9 @@ export class StrategyEngine extends EventEmitter {
     setInterval(async () => {
       if (!this.isRunning) return;
       
-      // Check all open positions for exit conditions
-      this.activeSessions.forEach(async (session, strategyId) => {
-        const strategy = this.activeStrategies.get(strategyId);
-        if (!strategy) return;
-
-        // CRITICAL: Only monitor PAPER positions - LIVE positions use exchange TP/SL orders
-        // Exit monitoring for live positions would compete with exchange orders and cause premature closes
-        if (session.mode === 'live') {
-          return; // Skip live positions - they have TP/SL orders on exchange
-        }
-
-        const openPositions = await storage.getOpenPositions(session.id);
-        for (const position of openPositions) {
-          await this.checkExitCondition(strategy, position);
-        }
-      });
+      // Note: Live trading uses exchange TP/SL orders
+      // No manual exit monitoring needed since positions are managed by exchange
     }, 1000); // Check every 1 second for real-time updates
-  }
-
-  // Start monitoring pending paper orders for limit order simulation
-  private startPaperOrderMonitoring() {
-    this.orderMonitorInterval = setInterval(async () => {
-      if (!this.isRunning) return;
-      
-      // Check each pending paper order
-      const pendingOrders = Array.from(this.pendingPaperOrders.entries());
-      for (const [orderId, orderData] of pendingOrders) {
-        await this.checkPaperOrderFill(orderId, orderData);
-      }
-    }, 500); // Check every 500ms for responsive limit order fills
-  }
-
-  // Check if a pending paper order should fill or timeout
-  private async checkPaperOrderFill(
-    orderId: string,
-    orderData: {
-      order: Order;
-      strategy: Strategy;
-      targetPrice: number;
-      startTime: number;
-      maxRetryDuration: number;
-      slippageTolerance: number;
-    }
-  ) {
-    try {
-      const { order, strategy, targetPrice, startTime, maxRetryDuration, slippageTolerance } = orderData;
-      const elapsedTime = Date.now() - startTime;
-      
-      // Check for timeout
-      if (elapsedTime >= maxRetryDuration) {
-        console.log(`⏰ Paper order ${order.symbol} timed out after ${maxRetryDuration}ms - cancelling`);
-        await storage.updateOrderStatus(order.id, 'cancelled');
-        this.pendingPaperOrders.delete(orderId);
-        return;
-      }
-      
-      // Fetch current market price
-      let currentPrice: number | null = null;
-      try {
-        const asterApiUrl = `https://fapi.asterdex.com/fapi/v1/ticker/price?symbol=${order.symbol}`;
-        const priceResponse = await fetch(asterApiUrl);
-        if (priceResponse.ok) {
-          const priceData = await priceResponse.json();
-          currentPrice = parseFloat(priceData.price);
-        }
-      } catch (error) {
-        // Skip this check if price fetch fails
-        return;
-      }
-      
-      if (!currentPrice) return;
-      
-      const orderPrice = parseFloat(order.price || '0');
-      const quantity = parseFloat(order.quantity);
-      
-      // Check if limit order should fill (market price crossed limit price)
-      let shouldFill = false;
-      if (order.side === 'buy') {
-        // Buy limit fills when market price drops to or below limit price
-        shouldFill = currentPrice <= orderPrice;
-      } else {
-        // Sell limit fills when market price rises to or above limit price
-        shouldFill = currentPrice >= orderPrice;
-      }
-      
-      if (shouldFill) {
-        // Fill the order at the limit price
-        console.log(`✅ Paper limit order filled: ${order.symbol} ${order.side} at $${orderPrice} (market: $${currentPrice})`);
-        await this.fillPaperOrder(order, orderPrice, quantity);
-        this.pendingPaperOrders.delete(orderId);
-        return;
-      }
-      
-      // Check if we should chase the price (update limit if market moved too far)
-      const priceDeviation = Math.abs(currentPrice - targetPrice) / targetPrice;
-      if (strategy.priceChaseMode && priceDeviation > slippageTolerance) {
-        // Update the limit price to chase the market
-        const newLimitPrice = currentPrice;
-        console.log(`🏃 Chasing price for ${order.symbol}: updating limit from $${orderPrice} to $${newLimitPrice} (deviation: ${(priceDeviation * 100).toFixed(2)}%)`);
-        
-        await storage.updateOrderStatus(order.id, 'pending', undefined, newLimitPrice.toString());
-        
-        // Update order in tracking
-        orderData.order.price = newLimitPrice.toString();
-      }
-      
-    } catch (error) {
-      console.error(`Error checking paper order ${orderId}:`, error);
-      // Clean up failed order
-      this.pendingPaperOrders.delete(orderId);
-    }
   }
 
   // Check if position should be closed
@@ -3038,24 +2855,23 @@ export class StrategyEngine extends EventEmitter {
       
       console.log(`🎯 Closing position ${position.symbol} at $${exitPrice} via ${orderType.toUpperCase()} (${exitReason}) with ${realizedPnlPercent.toFixed(2)}% P&L ($${dollarPnl.toFixed(2)})`);
 
-      // Get session to check if it's paper trading
+      // Get session
       const session = this.activeSessions.get(position.sessionId);
-      const isPaperTrading = session?.mode === 'paper';
       
-      // Calculate exit fee based on order type (SAME FOR BOTH PAPER AND LIVE)
+      // Calculate exit fee based on order type
       // Take profit = limit order (0.01% maker fee)
       // Stop loss = stop market order (0.035% taker fee)
       const quantity = parseFloat(position.totalQuantity);
       const exitValue = exitPrice * quantity;
-      const exitFee = (exitValue * feePercent) / 100; // Apply fee for BOTH paper and live
+      const exitFee = (exitValue * feePercent) / 100;
       
       // Variables to store actual or calculated fill data
       let actualExitPrice = exitPrice;
       let actualExitQty = quantity;
       let actualExitFee = exitFee;
       
-      // For live trading, place the actual exit order on Aster DEX
-      if (!isPaperTrading) {
+      // Place the actual exit order on Aster DEX
+      {
         const exitSide = position.side === 'long' ? 'sell' : 'buy';
         const liveOrderResult = await this.executeLiveOrder({
           symbol: position.symbol,
@@ -3172,8 +2988,7 @@ export class StrategyEngine extends EventEmitter {
         
         // Show detailed fee breakdown using ACTUAL data
         const actualFeePercent = (actualExitFee / actualExitValue) * 100;
-        const feeSource = isPaperTrading ? 'calculated' : 'from exchange';
-        console.log(`💸 Exit fee applied: $${actualExitFee.toFixed(4)} (${actualFeePercent.toFixed(3)}% ${orderType === 'limit' ? 'maker' : 'taker'} fee - $${actualExitValue.toFixed(2)} value - ${feeSource})`);
+        console.log(`💸 Exit fee applied: $${actualExitFee.toFixed(4)} (${actualFeePercent.toFixed(3)}% ${orderType === 'limit' ? 'maker' : 'taker'} fee - $${actualExitValue.toFixed(2)} value - from exchange)`);
         console.log(`💰 Balance updated: $${oldBalance.toFixed(2)} → $${newBalance.toFixed(2)} (P&L: $${dollarPnl.toFixed(2)}, Fee: -$${actualExitFee.toFixed(4)}, Net: $${netDollarPnl.toFixed(2)})`);
       } else {
         console.warn(`⚠️ Could not update session stats - session ${position.sessionId} not found in database`);
@@ -3203,11 +3018,6 @@ export class StrategyEngine extends EventEmitter {
       
       if (!strategy) {
         console.warn(`⚠️ Could not find strategy for session ${sessionId}, skipping TP/SL update`);
-        return;
-      }
-      
-      // Only update TP/SL for live trading mode
-      if (strategy.tradingMode !== 'live') {
         return;
       }
       
@@ -3486,17 +3296,6 @@ export class StrategyEngine extends EventEmitter {
       // Update the strategy in memory
       this.activeStrategies.set(strategyId, updatedStrategy);
       console.log(`🔄 Reloaded strategy: ${updatedStrategy.name} (${strategyId})`);
-      
-      // CRITICAL: Also update session mode if trading mode has changed
-      // This ensures live/paper trades execute correctly after mode toggle
-      const session = this.activeSessions.get(strategyId);
-      if (session && session.mode !== updatedStrategy.tradingMode) {
-        await storage.updateTradeSession(session.id, {
-          mode: updatedStrategy.tradingMode || 'paper',
-        });
-        session.mode = updatedStrategy.tradingMode || 'paper';
-        console.log(`🔄 Updated session mode to: ${session.mode}`);
-      }
     } catch (error) {
       console.error(`❌ Error reloading strategy ${strategyId}:`, error);
     }
@@ -3548,11 +3347,6 @@ export class StrategyEngine extends EventEmitter {
     }, 60 * 1000); // 1 minute
     
     console.log('🔄 Order reconciliation started: Orphan cleanup + Position verification (1 min intervals)');
-  }
-
-  // Remove a pending paper order from tracking
-  removePendingOrder(orderId: string) {
-    this.pendingPaperOrders.delete(orderId);
   }
 
   // Manual cleanup trigger - run all cleanup tasks immediately

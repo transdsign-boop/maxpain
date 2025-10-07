@@ -10,7 +10,6 @@ import { StrategyStatus } from "@/components/StrategyStatus";
 import CascadeRiskIndicator from "@/components/CascadeRiskIndicator";
 import ThemeToggle from "@/components/ThemeToggle";
 import AsterLogo from "@/components/AsterLogo";
-import LiveModeToggle from "@/components/LiveModeToggle";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -76,22 +75,20 @@ export default function Dashboard() {
       setLastViewedStrategyId(activeStrategy.id);
     }
   }, [activeStrategy?.id]);
-  
-  const isLiveMode = activeStrategy?.tradingMode === 'live';
 
-  // Fetch live account data when in live mode
+  // Fetch live account data from Aster DEX
   const { data: liveAccount, error: liveAccountError } = useQuery<any>({
     queryKey: ['/api/live/account'],
     refetchInterval: 30000, // Reduced to 30 seconds to avoid rate limiting
-    enabled: !!isLiveMode && !!activeStrategy,
+    enabled: !!activeStrategy,
     retry: 2,
   });
 
-  // Fetch live positions when in live mode
+  // Fetch live positions from Aster DEX
   const { data: livePositions, error: livePositionsError } = useQuery<any[]>({
     queryKey: ['/api/live/positions'],
     refetchInterval: 15000, // Reduced to 15 seconds to avoid rate limiting
-    enabled: !!isLiveMode && !!activeStrategy,
+    enabled: !!activeStrategy,
     retry: 2,
   });
 
@@ -492,7 +489,6 @@ export default function Dashboard() {
         <div className="hidden lg:flex items-center justify-between px-6 py-3">
           <div className="flex items-center gap-6">
             <AsterLogo data-testid="app-logo" />
-            <LiveModeToggle />
           </div>
 
           <div className="flex items-center gap-8">
@@ -563,7 +559,6 @@ export default function Dashboard() {
             {/* Left: Logo Text Only */}
             <div className="flex items-center gap-1.5 min-w-0">
               <span className="text-sm font-bold whitespace-nowrap">MPI™</span>
-              <LiveModeToggle />
             </div>
 
             {/* Right: Critical Actions */}

@@ -250,7 +250,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         settings: settings || null,
         strategies: strategies.map((s: any) => ({
           name: s.name,
-          tradingMode: s.tradingMode,
           selectedAssets: s.selectedAssets,
           percentileThreshold: Number(s.percentileThreshold),
           maxLayers: Number(s.maxLayers),
@@ -1291,13 +1290,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "No active strategy found" });
       }
 
-      if (activeStrategy.tradingMode !== 'live') {
-        return res.json({ 
-          success: false, 
-          message: "Strategy is not in live mode - TP/SL orders only for live trading" 
-        });
-      }
-
       // Get active session
       const session = await storage.getActiveTradeSession(activeStrategy.id);
       if (!session) {
@@ -1542,8 +1534,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const strategies = await storage.getStrategiesByUser(DEFAULT_USER_ID);
       const activeStrategy = strategies.find(s => s.isActive);
 
-      // If no active strategy or not in live mode, return empty array
-      if (!activeStrategy || activeStrategy.tradingMode !== 'live') {
+      // If no active strategy, return empty array
+      if (!activeStrategy) {
         return res.json([]);
       }
 
@@ -1654,15 +1646,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json(responseData);
       }
 
-      // Get ALL sessions for this strategy and filter by current trading mode
+      // Get ALL sessions for this strategy
       const allSessions = await storage.getSessionsByStrategy(activeStrategy.id);
-      const modeSessions = allSessions.filter(s => s.mode === activeStrategy.tradingMode);
       
-      // Get positions from ALL sessions matching the current mode
+      // Get positions from ALL sessions
       const allPositions: any[] = [];
       const allSessionFills: any[] = [];
       
-      for (const session of modeSessions) {
+      for (const session of allSessions) {
         const sessionPositions = await storage.getPositionsBySession(session.id);
         const sessionFills = await storage.getFillsBySession(session.id);
         allPositions.push(...sessionPositions);
@@ -1738,58 +1729,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const totalLosses = Math.abs(losingTrades.reduce((sum, pnl) => sum + pnl, 0));
       const profitFactor = totalLosses > 0 ? totalWins / totalLosses : totalWins > 0 ? 999 : 0;
 
-      // Calculate total fees from all fills across all sessions of this mode
+      // Calculate total fees from all fills across all sessions
       const totalFees = allSessionFills.reduce((sum, fill) => sum + parseFloat(fill.fee || '0'), 0);
 
-      // Calculate total funding costs for all positions across all sessions of this mode
+      // Calculate total funding costs for all positions across all sessions
       let totalFundingCost = 0;
       
-      // Only fetch funding costs if in live mode with API credentials
-      if (activeStrategy.tradingMode === 'live') {
-        const apiKey = process.env.ASTER_API_KEY;
-        const secretKey = process.env.ASTER_SECRET_KEY;
+      // Fetch funding costs with API credentials
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
 
-        if (apiKey && secretKey) {
-          try {
-            // Get the earliest session start time to fetch all funding fees
-            const sessionStartTimes = modeSessions.map(s => new Date(s.startedAt).getTime());
-            const earliestStartTime = Math.min(...sessionStartTimes);
+      if (apiKey && secretKey) {
+        try {
+          // Get the earliest session start time to fetch all funding fees
+          const sessionStartTimes = allSessions.map(s => new Date(s.startedAt).getTime());
+          const earliestStartTime = Math.min(...sessionStartTimes);
 
-            // Fetch funding fee income history from Aster DEX
-            const timestamp = Date.now();
-            const params = `incomeType=FUNDING_FEE&startTime=${earliestStartTime}&limit=1000&timestamp=${timestamp}`;
-            
-            const signature = crypto
-              .createHmac('sha256', secretKey)
-              .update(params)
-              .digest('hex');
+          // Fetch funding fee income history from Aster DEX
+          const timestamp = Date.now();
+          const params = `incomeType=FUNDING_FEE&startTime=${earliestStartTime}&limit=1000&timestamp=${timestamp}`;
+          
+          const signature = crypto
+            .createHmac('sha256', secretKey)
+            .update(params)
+            .digest('hex');
 
-            const fundingResponse = await fetch(
-              `https://fapi.asterdex.com/fapi/v1/income?${params}&signature=${signature}`,
-              {
-                headers: {
-                  'X-MBX-APIKEY': apiKey,
-                },
-              }
-            );
-
-            if (fundingResponse.ok) {
-              const fundingData = await fundingResponse.json();
-              
-              // Sum up all funding fees (negative means we paid, positive means we received)
-              // We want to show total cost as a positive number
-              totalFundingCost = fundingData.reduce((sum: number, entry: any) => {
-                const income = parseFloat(entry.income || '0');
-                return sum + Math.abs(income); // Always show as cost (positive)
-              }, 0);
-              
-              console.log(`📊 Calculated total funding cost: $${totalFundingCost.toFixed(2)} from ${fundingData.length} funding events`);
-            } else {
-              console.warn('⚠️ Failed to fetch funding fee history:', await fundingResponse.text());
+          const fundingResponse = await fetch(
+            `https://fapi.asterdex.com/fapi/v1/income?${params}&signature=${signature}`,
+            {
+              headers: {
+                'X-MBX-APIKEY': apiKey,
+              },
             }
-          } catch (error) {
-            console.error('❌ Error fetching funding costs:', error);
+          );
+
+          if (fundingResponse.ok) {
+            const fundingData = await fundingResponse.json();
+            
+            // Sum up all funding fees (negative means we paid, positive means we received)
+            // We want to show total cost as a positive number
+            totalFundingCost = fundingData.reduce((sum: number, entry: any) => {
+              const income = parseFloat(entry.income || '0');
+              return sum + Math.abs(income); // Always show as cost (positive)
+            }, 0);
+            
+            console.log(`📊 Calculated total funding cost: $${totalFundingCost.toFixed(2)} from ${fundingData.length} funding events`);
+          } else {
+            console.warn('⚠️ Failed to fetch funding fee history:', await fundingResponse.text());
           }
+        } catch (error) {
+          console.error('❌ Error fetching funding costs:', error);
         }
       }
 
@@ -1871,19 +1860,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json([]);
       }
 
-      // Get ALL sessions for this strategy and filter by current trading mode
+      // Get ALL sessions for this strategy
       const allSessions = await storage.getSessionsByStrategy(activeStrategy.id);
-      const modeSessions = allSessions.filter(s => s.mode === activeStrategy.tradingMode);
       
-      if (modeSessions.length === 0) {
+      if (allSessions.length === 0) {
         return res.json([]);
       }
 
-      // Get all positions and fills from ALL sessions matching the current mode
+      // Get all positions and fills from ALL sessions
       const allPositions: any[] = [];
       const sessionFills: any[] = [];
       
-      for (const session of modeSessions) {
+      for (const session of allSessions) {
         const sessionPositions = await storage.getPositionsBySession(session.id);
         const fills = await storage.getFillsBySession(session.id);
         allPositions.push(...sessionPositions);
@@ -1968,7 +1956,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         orderType: validatedData.orderType,
         maxRetryDurationMs: validatedData.maxRetryDurationMs,
         marginAmount: validatedData.marginAmount,
-        tradingMode: validatedData.tradingMode,
         isActive: validatedData.isActive || false,
       };
       
@@ -2001,7 +1988,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const fieldsToTrack = [
         'percentileThreshold', 'maxLayers', 'profitTargetPercent',
         'stopLossPercent', 'marginMode', 'leverage', 'orderDelayMs', 'slippageTolerancePercent',
-        'orderType', 'maxRetryDurationMs', 'marginAmount', 'tradingMode', 'selectedAssets'
+        'orderType', 'maxRetryDurationMs', 'marginAmount', 'selectedAssets'
       ];
       
       fieldsToTrack.forEach(field => {
@@ -2013,25 +2000,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       });
       
-      // Handle live session start/end
-      const tradingModeChanging = validatedUpdates.tradingMode !== undefined && 
-        existingStrategy.tradingMode !== validatedUpdates.tradingMode;
-      
       // Normalize data - liquidation window is always 60 seconds regardless of input
       const updateData: any = {
         ...validatedUpdates
       };
-      
-      // Set live session timestamp when switching to live mode, clear when switching to paper
-      if (tradingModeChanging) {
-        if (validatedUpdates.tradingMode === 'live') {
-          updateData.liveSessionStartedAt = new Date().toISOString();
-          console.log('🟢 Starting new live trading session');
-        } else if (validatedUpdates.tradingMode === 'paper') {
-          updateData.liveSessionStartedAt = null;
-          console.log('📄 Switching to paper trading mode - clearing live session timestamp');
-        }
-      }
       
       console.log('💾 Sending to database:', JSON.stringify(updateData, null, 2));
       await storage.updateStrategy(strategyId, updateData);
@@ -2292,85 +2264,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Sync paper trading balance with current exchange balance
-  app.post("/api/strategies/:id/sync-balance", async (req, res) => {
-    try {
-      const strategyId = req.params.id;
-      
-      // Verify strategy exists
-      const strategy = await storage.getStrategy(strategyId);
-      if (!strategy) {
-        return res.status(404).json({ error: "Strategy not found" });
-      }
-      
-      // Only sync for paper trading mode
-      if (strategy.tradingMode !== 'paper') {
-        return res.status(400).json({ error: "Balance sync only available in paper trading mode" });
-      }
-      
-      // Get active session
-      const session = await storage.getActiveTradeSession(strategyId);
-      if (!session) {
-        return res.status(404).json({ error: "No active session found" });
-      }
-      
-      // Fetch current exchange balance
-      const apiKey = process.env.ASTER_API_KEY;
-      const secretKey = process.env.ASTER_SECRET_KEY;
-      
-      if (!apiKey || !secretKey) {
-        return res.status(400).json({ error: "Exchange API keys not configured" });
-      }
-      
-      const timestamp = Date.now();
-      const params = `timestamp=${timestamp}`;
-      const signature = crypto
-        .createHmac('sha256', secretKey)
-        .update(params)
-        .digest('hex');
-      
-      const response = await fetch(
-        `https://fapi.asterdex.com/fapi/v1/account?${params}&signature=${signature}`,
-        {
-          headers: { 'X-MBX-APIKEY': apiKey },
-        }
-      );
-      
-      if (!response.ok) {
-        return res.status(500).json({ error: "Failed to fetch exchange balance" });
-      }
-      
-      const data = await response.json();
-      
-      // Extract USDT or USDC balance
-      const usdtAsset = data.assets?.find((asset: any) => asset.asset === 'USDT');
-      const usdtBalance = usdtAsset ? parseFloat(usdtAsset.walletBalance) : 0;
-      
-      const usdcAsset = data.assets?.find((asset: any) => asset.asset === 'USDC');
-      const usdcBalance = usdcAsset ? parseFloat(usdcAsset.walletBalance) : 0;
-      
-      const balance = usdtBalance || usdcBalance || parseFloat(data.availableBalance || '0');
-      
-      if (balance <= 0) {
-        return res.status(400).json({ error: "No valid exchange balance found" });
-      }
-      
-      // Update session balance
-      const updatedSession = await storage.updateSessionBalance(session.id, balance);
-      
-      console.log(`💰 Synced paper trading balance to exchange balance: $${balance.toFixed(2)}`);
-      
-      res.json({ 
-        success: true, 
-        balance: balance.toString(),
-        session: updatedSession
-      });
-    } catch (error) {
-      console.error('Error syncing balance:', error);
-      res.status(500).json({ error: "Failed to sync balance" });
-    }
-  });
-
   // Emergency stop route (close all open positions)
   app.post("/api/strategies/:id/emergency-stop", async (req, res) => {
     try {
@@ -2397,7 +2290,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get all open positions
       const openPositions = await storage.getOpenPositions(session.id);
       
-      const isPaperTrading = session.mode === 'paper';
       const closedPositions = [];
       let totalPnl = 0;
       
@@ -2712,28 +2604,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: 'Strategy not found' });
       }
 
-      // In LIVE mode: Fetch positions from exchange
-      if (strategy.tradingMode === 'live') {
-        const apiKey = process.env.ASTER_API_KEY;
-        const secretKey = process.env.ASTER_SECRET_KEY;
+      // Fetch positions from exchange
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
 
-        if (!apiKey || !secretKey) {
-          return res.status(400).json({ error: "Aster DEX API keys not configured" });
-        }
+      if (!apiKey || !secretKey) {
+        return res.status(400).json({ error: "Aster DEX API keys not configured" });
+      }
 
-        // Get the active session (should exist from mode switch, but create if missing)
-        let liveSession = await storage.getActiveTradeSession(strategyId);
-        if (!liveSession || liveSession.mode !== 'live') {
-          // Session doesn't exist or is wrong mode - create new live session
-          liveSession = await storage.createTradeSession({
-            strategyId,
-            mode: 'live',
-            startingBalance: '0', // Will be set from exchange
-            currentBalance: '0',
-            isActive: true
-          });
-          console.log(`✅ Created fallback live session: ${liveSession.id}`);
-        }
+      // Get the active session (create if missing)
+      let liveSession = await storage.getActiveTradeSession(strategyId);
+      if (!liveSession) {
+        // Session doesn't exist - create new session
+        liveSession = await storage.createTradeSession({
+          strategyId,
+          startingBalance: '0', // Will be set from exchange
+          currentBalance: '0',
+          isActive: true
+        });
+        console.log(`✅ Created fallback live session: ${liveSession.id}`);
+      }
 
         // Sync fills from exchange to database
         await syncLiveFills(strategyId, liveSession.id);
@@ -3058,82 +2948,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         };
 
         return res.json(summary);
-      }
-
-      // In PAPER mode: Fetch positions from database
-      const session = await storage.getActiveTradeSession(strategyId);
-      
-      if (!session) {
-        return res.status(404).json({ error: 'No active trade session found for this strategy' });
-      }
-
-      const positions = await storage.getOpenPositions(session.id);
-      const closedPositions = await storage.getClosedPositions(session.id);
-
-      // Calculate unrealized P&L from open positions
-      // Convert unrealized P&L percentages to dollar values before summing
-      const totalUnrealizedPnl = positions.reduce((sum, pos) => {
-        const pnlPercent = parseFloat(pos.unrealizedPnl || '0');
-        const totalCost = parseFloat(pos.totalCost || '0');
-        const pnlDollar = (pnlPercent / 100) * totalCost;
-        return sum + pnlDollar;
-      }, 0);
-
-      // Calculate realized P&L from closed positions
-      // This ensures accuracy even if session updates fail
-      // Get all fills to calculate total fees
-      const sessionFills = await storage.getFillsBySession(session.id);
-      
-      const totalRealizedPnl = closedPositions.reduce((sum, pos) => {
-        const pnlPercent = parseFloat(pos.unrealizedPnl || '0'); // Contains final P&L at close
-        const totalCost = parseFloat(pos.totalCost || '0');
-        const pnlDollar = (pnlPercent / 100) * totalCost;
-        
-        // Calculate total fees for this position (all fills for this symbol)
-        // This includes entry and exit fees
-        const positionFills = sessionFills.filter(f => 
-          f.symbol === pos.symbol && 
-          new Date(f.filledAt) >= new Date(pos.openedAt) &&
-          (!pos.closedAt || new Date(f.filledAt) <= new Date(pos.closedAt))
-        );
-        const totalFees = positionFills.reduce((feeSum, fill) => 
-          feeSum + parseFloat(fill.fee || '0'), 0);
-        
-        // Net P&L = Gross P&L - Fees
-        return sum + (pnlDollar - totalFees);
-      }, 0);
-
-      // Calculate current balance from starting balance + realized P&L (net of fees)
-      const startingBalance = parseFloat(session.startingBalance);
-      const currentBalance = startingBalance + totalRealizedPnl;
-      
-      // Calculate total NOTIONAL exposure (margin × leverage)
-      const totalExposure = positions.reduce((sum, pos) => {
-        const margin = parseFloat(pos.totalCost || '0');
-        const leverage = pos.leverage || 1;
-        return sum + (margin * leverage); // Notional = margin × leverage
-      }, 0);
-      const activePositions = positions.length;
-      const totalTrades = closedPositions.length;
-
-      const summary = {
-        sessionId: session.id,
-        strategyId,
-        startingBalance,
-        currentBalance,
-        totalPnl: totalRealizedPnl + totalUnrealizedPnl,
-        realizedPnl: totalRealizedPnl,
-        unrealizedPnl: totalUnrealizedPnl,
-        totalExposure,
-        activePositions,
-        totalTrades,
-        winRate: totalTrades > 0 
-          ? (closedPositions.filter(p => parseFloat(p.unrealizedPnl || '0') > 0).length / totalTrades) * 100 
-          : 0,
-        positions
-      };
-
-      res.json(summary);
     } catch (error) {
       console.error('Error fetching strategy position summary:', error);
       res.status(500).json({ error: 'Failed to fetch position summary' });
@@ -3233,20 +3047,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: 'Strategy not found' });
       }
 
-      // Get ALL sessions for this strategy and filter by current trading mode
-      // This preserves historical data when switching between modes
+      // Get ALL sessions for this strategy
       const allSessions = await storage.getSessionsByStrategy(strategyId);
-      const modeSessions = allSessions.filter(s => s.mode === strategy.tradingMode);
       
-      if (modeSessions.length === 0) {
+      if (allSessions.length === 0) {
         return res.json([]);
       }
 
-      // Get closed positions from ALL sessions matching the current mode
+      // Get closed positions from ALL sessions
       const allClosedPositions: any[] = [];
       const allFills: any[] = [];
       
-      for (const session of modeSessions) {
+      for (const session of allSessions) {
         const sessionClosedPositions = await storage.getClosedPositions(session.id);
         const sessionFills = await storage.getFillsBySession(session.id);
         allClosedPositions.push(...sessionClosedPositions);
@@ -3327,7 +3139,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         // Get active strategy to find session start time
         const strategies = await storage.getStrategiesByUser(DEFAULT_USER_ID);
-        const activeStrategy = strategies.find(s => s.isActive && s.tradingMode === 'live');
+        const activeStrategy = strategies.find(s => s.isActive);
         
         if (!activeStrategy || !activeStrategy.liveSessionStartedAt) {
           return res.json([]);
@@ -3650,11 +3462,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const notionalValue = totalCost * leverage;
       const dollarPnl = (unrealizedPnl / 100) * notionalValue;
 
-      // Get session to check trading mode
+      // Get session
       const session = await storage.getTradeSession(position.sessionId);
-      const isPaperTrading = session?.mode === 'paper';
       
-      // Manual close = limit order (take profit style) = 0.01% maker fee (SAME FOR BOTH PAPER AND LIVE)
+      // Manual close = limit order (take profit style) = 0.01% maker fee
       const quantity = parseFloat(position.totalQuantity);
       const exitValue = currentPrice * quantity;
       const exitFee = (exitValue * 0.01) / 100; // Apply fee for BOTH paper and live
@@ -3750,7 +3561,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Create a brand new session with fresh starting balance
       const newSession = await storage.createTradeSession({
         strategyId,
-        mode: strategy.tradingMode,
         startingBalance: '10000.0',
         currentBalance: '10000.0',
         totalPnl: '0.0',

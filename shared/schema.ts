@@ -91,11 +91,10 @@ export const strategies = pgTable("strategies", {
   maxRetryDurationMs: integer("max_retry_duration_ms").notNull().default(30000), // How long to chase price before giving up (milliseconds)
   priceChaseMode: boolean("price_chase_mode").notNull().default(true), // Automatically update limit price to chase market during liquidation events
   marginAmount: decimal("margin_amount", { precision: 5, scale: 2 }).notNull().default("10.0"), // Percentage of account to use for trading
-  tradingMode: text("trading_mode").notNull().default("paper"), // "paper" or "live"
   hedgeMode: boolean("hedge_mode").notNull().default(false), // Allow simultaneous long and short positions on same asset
   isActive: boolean("is_active").notNull().default(false),
   paused: boolean("paused").notNull().default(false), // Temporarily pause trading without deactivating strategy
-  liveSessionStartedAt: timestamp("live_session_started_at"), // Tracks when current live session began (null when in paper mode)
+  liveSessionStartedAt: timestamp("live_session_started_at"), // Tracks when current live session began
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   // DCA (Dollar Cost Averaging) Parameters - at end to match database column order
@@ -113,11 +112,10 @@ export const strategies = pgTable("strategies", {
   maxPortfolioRiskPercent: decimal("max_portfolio_risk_percent", { precision: 5, scale: 2 }).notNull().default("15.0"), // Maximum total risk across all positions as % of account
 });
 
-// Trading Sessions for Paper Trading
+// Trading Sessions
 export const tradeSessions = pgTable("trade_sessions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   strategyId: varchar("strategy_id").notNull(), // References strategies.id
-  mode: text("mode").notNull().default("paper"), // "paper" or "live"
   startingBalance: decimal("starting_balance", { precision: 18, scale: 8 }).notNull().default("10000.0"),
   currentBalance: decimal("current_balance", { precision: 18, scale: 8 }).notNull(),
   totalPnl: decimal("total_pnl", { precision: 18, scale: 8 }).notNull().default("0.0"),
@@ -238,7 +236,6 @@ export const frontendStrategySchema = z.object({
     const num = parseFloat(val);
     return num >= 1 && num <= 100;
   }, "Account usage must be between 1% and 100%").default("10.0"),
-  tradingMode: z.enum(["paper", "live"]).default("paper"),
   hedgeMode: z.boolean().default(false),
   isActive: z.boolean().optional().default(false),
   // Portfolio Risk Management
