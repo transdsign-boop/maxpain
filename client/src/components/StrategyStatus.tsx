@@ -750,6 +750,9 @@ export function StrategyStatus() {
     livePositions: livePositionsData,
     livePositionsLoading: isLoading,
     livePositionsError: error,
+    closedPositions,
+    strategyChanges,
+    assetPerformance,
   } = useStrategyData();
 
   // Fetch fills for each live position to get layer counts
@@ -847,27 +850,6 @@ export function StrategyStatus() {
 
   // Use live positions summary (live-only mode)
   const displaySummary = livePositionsSummary;
-
-  // Fetch closed positions (long interval - WebSocket provides real-time)
-  // Backend automatically returns appropriate data based on trading mode
-  const { data: closedPositions } = useQuery<Position[]>({
-    queryKey: ['/api/strategies', activeStrategy?.id, 'positions', 'closed'],
-    enabled: !!activeStrategy?.id,
-    refetchInterval: 60000, // 60s fallback, WebSocket provides real-time
-  });
-
-  // Fetch strategy changes for the session (long interval - WebSocket provides real-time)
-  const { data: strategyChanges } = useQuery<any[]>({
-    queryKey: ['/api/strategies', activeStrategy?.id, 'changes'],
-    enabled: !!activeStrategy?.id,
-    refetchInterval: 60000, // 60s fallback, WebSocket provides real-time
-  });
-
-  // Fetch asset performance data (long interval - WebSocket provides real-time)
-  const { data: assetPerformance } = useQuery<AssetPerformance[]>({
-    queryKey: ['/api/analytics/asset-performance'],
-    refetchInterval: 60000, // 60s fallback, WebSocket provides real-time
-  });
 
   // Calculate top 3 performing assets by total P&L (only from closed positions)
   const top3Assets = useMemo(() => {
