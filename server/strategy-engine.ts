@@ -1078,6 +1078,29 @@ export class StrategyEngine extends EventEmitter {
       
       console.log(`📐 DCA Layer ${nextLayer} for ${liquidation.symbol}: Price=$${price.toFixed(6)}, Qty=${quantity.toFixed(6)} (P0=$${initialEntryPrice.toFixed(6)})`);
 
+      // SAFETY CHECK: Ensure new layer is at a better price than the last layer
+      if (position.lastLayerPrice) {
+        const lastPrice = parseFloat(position.lastLayerPrice);
+        const isWorsePriceLong = position.side === 'long' && price >= lastPrice;
+        const isWorsePriceShort = position.side === 'short' && price <= lastPrice;
+        
+        if (isWorsePriceLong || isWorsePriceShort) {
+          console.log(`🚫 DCA SAFETY BLOCK: Layer ${nextLayer} rejected - price $${price.toFixed(6)} is worse than last layer $${lastPrice.toFixed(6)} for ${position.side.toUpperCase()} position`);
+          
+          // Remove pending marker
+          const layers = this.pendingLayerOrders.get(position.id);
+          if (layers) {
+            layers.delete(nextLayer);
+            if (layers.size === 0) {
+              this.pendingLayerOrders.delete(position.id);
+            }
+          }
+          return;
+        }
+        
+        console.log(`✅ DCA Price Check: $${price.toFixed(6)} is better than last $${lastPrice.toFixed(6)} for ${position.side.toUpperCase()}`);
+      }
+
       // Apply order delay for smart placement
       if (strategy.orderDelayMs > 0) {
         console.log(`⏱️ Applying ${strategy.orderDelayMs}ms order delay for layer ${nextLayer}...`);
