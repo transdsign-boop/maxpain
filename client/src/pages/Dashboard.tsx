@@ -3,7 +3,6 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import ConnectionStatus from "@/components/ConnectionStatus";
 import LiveLiquidationsSidebar from "@/components/LiveLiquidationsSidebar";
-import LiquidationAnalyticsModal from "@/components/LiquidationAnalyticsModal";
 import PerformanceOverview from "@/components/PerformanceOverview";
 import TradingStrategyDialog from "@/components/TradingStrategyDialog";
 import { StrategyStatus } from "@/components/StrategyStatus";
@@ -39,10 +38,6 @@ export default function Dashboard() {
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
-  
-  // Modal state for liquidation analytics
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedLiquidation, setSelectedLiquidation] = useState<Liquidation | undefined>(undefined);
   
   // Trading strategy dialog state
   const [isStrategyDialogOpen, setIsStrategyDialogOpen] = useState(false);
@@ -460,17 +455,6 @@ export default function Dashboard() {
     }
   };
 
-  // Handle liquidation click to open analytics modal
-  const handleLiquidationClick = (liquidation: Liquidation) => {
-    setSelectedLiquidation(liquidation);
-    setIsModalOpen(true);
-  };
-
-  const handleCloseModal = () => {
-    setIsModalOpen(false);
-    setSelectedLiquidation(undefined);
-  };
-
   // Format currency
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -672,7 +656,6 @@ export default function Dashboard() {
           selectedAssets={selectedAssets}
           isCollapsed={isSidebarCollapsed}
           onToggleCollapse={setIsSidebarCollapsed}
-          onLiquidationClick={handleLiquidationClick}
         />
       </div>
 
@@ -699,21 +682,10 @@ export default function Dashboard() {
               selectedAssets={selectedAssets}
               isCollapsed={false}
               onToggleCollapse={() => {}}
-              onLiquidationClick={(liq) => {
-                handleLiquidationClick(liq);
-                setIsMobileSidebarOpen(false);
-              }}
             />
           </div>
         </SheetContent>
       </Sheet>
-
-      {/* Liquidation Analytics Modal */}
-      <LiquidationAnalyticsModal
-        isOpen={isModalOpen}
-        onClose={handleCloseModal}
-        selectedLiquidation={selectedLiquidation}
-      />
 
       {/* Trading Strategy Dialog */}
       <TradingStrategyDialog

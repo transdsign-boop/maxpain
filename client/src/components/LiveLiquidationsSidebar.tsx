@@ -25,7 +25,7 @@ interface LiveLiquidationsSidebarProps {
   selectedAssets: string[];
   isCollapsed: boolean;
   onToggleCollapse: (collapsed: boolean) => void;
-  onLiquidationClick: (liquidation: Liquidation) => void;
+  onLiquidationClick?: (liquidation: Liquidation) => void;
 }
 
 export default function LiveLiquidationsSidebar({ 
@@ -220,12 +220,11 @@ export default function LiveLiquidationsSidebar({
                 {recentLiquidations.map((liquidation, index) => (
                   <div
                     key={liquidation.id}
-                    className={`relative p-3 rounded-lg border transition-all duration-200 cursor-pointer ${
+                    className={`relative p-3 rounded-lg border transition-all duration-200 ${
                       index === 0 
                         ? 'bg-gradient-to-r from-primary/10 to-primary/5 border-primary/30 ring-1 ring-primary/20 shadow-sm' 
-                        : 'bg-card hover-elevate border-border/50'
+                        : 'bg-card border-border/50'
                     }`}
-                    onClick={() => onLiquidationClick(liquidation)}
                     data-testid={`card-liquidation-${liquidation.id}`}
                   >
                     <div className="flex items-center justify-between mb-2">
@@ -389,12 +388,8 @@ export default function LiveLiquidationsSidebar({
                       className={`relative p-3 rounded-lg border transition-all duration-200 ${
                         index === 0 
                           ? 'bg-gradient-to-r from-primary/10 to-primary/5 border-primary/30 ring-1 ring-primary/20 shadow-sm' 
-                          : 'bg-card hover-elevate border-border/50'
+                          : 'bg-card border-border/50'
                       }`}
-                      onClick={() => {
-                        onLiquidationClick(liquidation);
-                        onToggleCollapse(true);
-                      }}
                     >
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
