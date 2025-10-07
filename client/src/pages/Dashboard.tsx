@@ -78,24 +78,34 @@ export default function Dashboard() {
     }
   }, [activeStrategy?.id]);
 
-  // Show toast for live data errors
+  // Show toast for live data errors (but suppress rate limit errors - they're expected)
   useEffect(() => {
     if (liveAccountError) {
-      toast({
-        title: "Live Account Error",
-        description: "Failed to fetch live account data from Aster DEX. Check your API keys.",
-        variant: "destructive",
-      });
+      const error = liveAccountError as any;
+      const isRateLimit = error?.message?.includes('429') || error?.message?.includes('Rate limit');
+      
+      if (!isRateLimit) {
+        toast({
+          title: "Live Account Error",
+          description: "Failed to fetch live account data from Aster DEX. Check your API keys.",
+          variant: "destructive",
+        });
+      }
     }
   }, [liveAccountError]);
 
   useEffect(() => {
     if (livePositionsError) {
-      toast({
-        title: "Live Positions Error",
-        description: "Failed to fetch live positions from Aster DEX.",
-        variant: "destructive",
-      });
+      const error = livePositionsError as any;
+      const isRateLimit = error?.message?.includes('429') || error?.message?.includes('Rate limit');
+      
+      if (!isRateLimit) {
+        toast({
+          title: "Live Positions Error",
+          description: "Failed to fetch live positions from Aster DEX.",
+          variant: "destructive",
+        });
+      }
     }
   }, [livePositionsError]);
 
