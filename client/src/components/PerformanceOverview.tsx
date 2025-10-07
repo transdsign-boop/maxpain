@@ -78,7 +78,7 @@ export default function PerformanceOverview() {
   // Fetch active strategy
   const { data: strategies } = useQuery<any[]>({
     queryKey: ['/api/strategies'],
-    refetchInterval: 15000,
+    refetchInterval: 30000,
   });
   const activeStrategy = strategies?.find(s => s.isActive);
 
@@ -93,25 +93,25 @@ export default function PerformanceOverview() {
   // Fetch performance overview (works for both modes)
   const { data: performance, isLoading } = useQuery<PerformanceMetrics>({
     queryKey: ['/api/performance/overview'],
-    refetchInterval: 15000,
+    refetchInterval: 30000,
   });
 
   // Fetch chart data - unified endpoint for both modes
   const { data: rawChartData, isLoading: chartLoading } = useQuery<TradeDataPoint[]>({
     queryKey: ['/api/performance/chart'],
-    refetchInterval: 15000,
+    refetchInterval: 30000,
   });
 
   // Fetch asset performance data
   const { data: assetPerformance } = useQuery<AssetPerformance[]>({
     queryKey: ['/api/analytics/asset-performance'],
-    refetchInterval: 15000,
+    refetchInterval: 30000,
   });
 
   // Fetch live positions for risk calculation
   const { data: livePositions } = useQuery<any[]>({
     queryKey: ['/api/live/positions'],
-    refetchInterval: 15000,
+    refetchInterval: 45000,
     enabled: !!activeStrategy,
   });
 

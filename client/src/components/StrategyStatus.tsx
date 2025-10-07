@@ -746,7 +746,7 @@ export function StrategyStatus() {
   // First, get active strategies
   const { data: strategies } = useQuery<any[]>({
     queryKey: ['/api/strategies'],
-    refetchInterval: 5000,
+    refetchInterval: 30000,
   });
 
   // Find the active strategy
@@ -755,7 +755,7 @@ export function StrategyStatus() {
   // Fetch live exchange positions (live-only mode)
   const { data: livePositionsData, isLoading, error } = useQuery<any[]>({
     queryKey: ['/api/live/positions'],
-    refetchInterval: 20000, // Reduced to 20 seconds to avoid rate limiting
+    refetchInterval: 45000, // Reduced to 45 seconds to avoid rate limiting
     enabled: !!activeStrategy,
     retry: 2,
   });
@@ -796,7 +796,7 @@ export function StrategyStatus() {
       return fillsMap;
     },
     enabled: livePositionIds.length > 0,
-    refetchInterval: 20000,
+    refetchInterval: 45000,
     retry: 2,
   });
 
@@ -861,20 +861,20 @@ export function StrategyStatus() {
   const { data: closedPositions } = useQuery<Position[]>({
     queryKey: ['/api/strategies', activeStrategy?.id, 'positions', 'closed'],
     enabled: !!activeStrategy?.id,
-    refetchInterval: 10000, // Refresh every 10 seconds
+    refetchInterval: 30000, // Refresh every 30 seconds
   });
 
   // Fetch strategy changes for the session
   const { data: strategyChanges } = useQuery<any[]>({
     queryKey: ['/api/strategies', activeStrategy?.id, 'changes'],
     enabled: !!activeStrategy?.id,
-    refetchInterval: 10000, // Refresh every 10 seconds
+    refetchInterval: 30000, // Refresh every 30 seconds
   });
 
   // Fetch asset performance data
   const { data: assetPerformance } = useQuery<AssetPerformance[]>({
     queryKey: ['/api/analytics/asset-performance'],
-    refetchInterval: 15000,
+    refetchInterval: 30000,
   });
 
   // Calculate top 3 performing assets by total P&L (only from closed positions)
