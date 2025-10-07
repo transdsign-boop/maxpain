@@ -1654,14 +1654,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json(responseData);
       }
 
-      // Get ALL sessions for this strategy (SHOW ALL HISTORICAL DATA REGARDLESS OF MODE)
+      // Get ALL sessions for this strategy and filter by current trading mode
       const allSessions = await storage.getSessionsByStrategy(activeStrategy.id);
+      const modeSessions = allSessions.filter(s => s.mode === activeStrategy.tradingMode);
       
-      // Get positions from ALL sessions (ALL historical data)
+      // Get positions from ALL sessions matching the current mode
       const allPositions: any[] = [];
       const allSessionFills: any[] = [];
       
-      for (const session of allSessions) {
+      for (const session of modeSessions) {
         const sessionPositions = await storage.getPositionsBySession(session.id);
         const sessionFills = await storage.getFillsBySession(session.id);
         allPositions.push(...sessionPositions);
@@ -1870,18 +1871,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json([]);
       }
 
-      // Get ALL sessions for this strategy (SHOW ALL HISTORICAL DATA REGARDLESS OF MODE)
+      // Get ALL sessions for this strategy and filter by current trading mode
       const allSessions = await storage.getSessionsByStrategy(activeStrategy.id);
+      const modeSessions = allSessions.filter(s => s.mode === activeStrategy.tradingMode);
       
-      if (allSessions.length === 0) {
+      if (modeSessions.length === 0) {
         return res.json([]);
       }
 
-      // Get all positions and fills from ALL sessions (ALL historical data)
+      // Get all positions and fills from ALL sessions matching the current mode
       const allPositions: any[] = [];
       const sessionFills: any[] = [];
       
-      for (const session of allSessions) {
+      for (const session of modeSessions) {
         const sessionPositions = await storage.getPositionsBySession(session.id);
         const fills = await storage.getFillsBySession(session.id);
         allPositions.push(...sessionPositions);
@@ -3231,19 +3233,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: 'Strategy not found' });
       }
 
-      // Get ALL sessions for this strategy (SHOW ALL HISTORICAL DATA REGARDLESS OF MODE)
-      // This truly preserves historical data when switching between modes
+      // Get ALL sessions for this strategy and filter by current trading mode
+      // This preserves historical data when switching between modes
       const allSessions = await storage.getSessionsByStrategy(strategyId);
+      const modeSessions = allSessions.filter(s => s.mode === strategy.tradingMode);
       
-      if (allSessions.length === 0) {
+      if (modeSessions.length === 0) {
         return res.json([]);
       }
 
-      // Get closed positions from ALL sessions (ALL historical data)
+      // Get closed positions from ALL sessions matching the current mode
       const allClosedPositions: any[] = [];
       const allFills: any[] = [];
       
-      for (const session of allSessions) {
+      for (const session of modeSessions) {
         const sessionClosedPositions = await storage.getClosedPositions(session.id);
         const sessionFills = await storage.getFillsBySession(session.id);
         allClosedPositions.push(...sessionClosedPositions);
