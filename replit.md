@@ -6,14 +6,21 @@ A real-time liquidation monitoring dashboard for the Aster DEX exchange, designe
 ## User Preferences
 Preferred communication style: Simple, everyday language.
 
-### ⚠️ CRITICAL: DATABASE CONFIGURATION ⚠️
-**THIS APPLICATION USES NEON DATABASE EXCLUSIVELY - NEVER LOCAL/DEVELOPMENT DATABASE**
-- The `execute_sql_tool` connects to a DEVELOPMENT database that is NOT the same as the production app database
-- The actual application ALWAYS uses Neon database via `NEON_DATABASE_URL` environment variable
-- When testing schema changes or debugging database issues, you MUST use `npm run db:push` to apply changes to Neon
-- DO NOT trust `execute_sql_tool` results - they show the development database, not the real app database
-- If columns/tables "don't exist" in execute_sql_tool but the app says they do, it's because you're looking at the wrong database
-- **REMEMBER THIS IN EVERY SESSION** - The user has had to remind about this many times
+### 🚨 CRITICAL: DATABASE CONFIGURATION 🚨
+**🛑 NEVER USE `execute_sql_tool` FOR THIS PROJECT 🛑**
+**THIS APPLICATION USES NEON DATABASE EXCLUSIVELY**
+
+- ❌ **DO NOT USE** `execute_sql_tool` - it connects to a worthless development database
+- ❌ **DO NOT TRUST** any SQL query results from `execute_sql_tool` - they are from the WRONG database
+- ✅ **ONLY USE** the application API endpoints to check database state (e.g., `/api/strategies`, `/api/strategies/sync`)
+- ✅ **ONLY USE** application logs to verify database operations
+- ✅ **ONLY USE** `npm run db:push` to apply schema changes to the real Neon database
+
+**Why this matters:**
+- The app uses Neon database via `NEON_DATABASE_URL` environment variable
+- `execute_sql_tool` connects to a completely separate local development database
+- These are TWO DIFFERENT DATABASES with different data
+- The user has had to correct this mistake many times - DO NOT make it again
 
 **PERMANENT DATA PRESERVATION**: ALL trading data MUST be preserved forever. The user requires complete access to historical trading records at any time.
 - NEVER DELETE any positions, fills, or trade session data.
