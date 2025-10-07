@@ -1198,6 +1198,106 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Listen key management for WebSocket user data stream
+  app.post("/api/live/listenKey", async (req, res) => {
+    try {
+      const apiKey = process.env.ASTER_API_KEY;
+
+      if (!apiKey) {
+        return res.status(400).json({ error: "Aster DEX API key not configured" });
+      }
+
+      const response = await fetch(
+        'https://fapi.asterdex.com/fapi/v1/listenKey',
+        {
+          method: 'POST',
+          headers: {
+            'X-MBX-APIKEY': apiKey,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Failed to create listen key:', errorText);
+        return res.status(response.status).json({ error: `Failed to create listen key: ${errorText}` });
+      }
+
+      const data = await response.json();
+      console.log('✅ Created listen key for WebSocket user data stream');
+      res.json(data);
+    } catch (error) {
+      console.error('Error creating listen key:', error);
+      res.status(500).json({ error: "Failed to create listen key" });
+    }
+  });
+
+  app.put("/api/live/listenKey", async (req, res) => {
+    try {
+      const apiKey = process.env.ASTER_API_KEY;
+
+      if (!apiKey) {
+        return res.status(400).json({ error: "Aster DEX API key not configured" });
+      }
+
+      const response = await fetch(
+        'https://fapi.asterdex.com/fapi/v1/listenKey',
+        {
+          method: 'PUT',
+          headers: {
+            'X-MBX-APIKEY': apiKey,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Failed to keepalive listen key:', errorText);
+        return res.status(response.status).json({ error: `Failed to keepalive listen key: ${errorText}` });
+      }
+
+      const data = await response.json();
+      console.log('🔄 Keepalive listen key');
+      res.json(data);
+    } catch (error) {
+      console.error('Error keepalive listen key:', error);
+      res.status(500).json({ error: "Failed to keepalive listen key" });
+    }
+  });
+
+  app.delete("/api/live/listenKey", async (req, res) => {
+    try {
+      const apiKey = process.env.ASTER_API_KEY;
+
+      if (!apiKey) {
+        return res.status(400).json({ error: "Aster DEX API key not configured" });
+      }
+
+      const response = await fetch(
+        'https://fapi.asterdex.com/fapi/v1/listenKey',
+        {
+          method: 'DELETE',
+          headers: {
+            'X-MBX-APIKEY': apiKey,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Failed to close listen key:', errorText);
+        return res.status(response.status).json({ error: `Failed to close listen key: ${errorText}` });
+      }
+
+      const data = await response.json();
+      console.log('🔚 Closed listen key');
+      res.json(data);
+    } catch (error) {
+      console.error('Error closing listen key:', error);
+      res.status(500).json({ error: "Failed to close listen key" });
+    }
+  });
+
   // Get live open positions from Aster DEX
   app.get("/api/live/positions", async (req, res) => {
     try {
