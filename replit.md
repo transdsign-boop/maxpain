@@ -65,12 +65,12 @@ Preferred communication style: Simple, everyday language.
 - Robust handling of duplicate liquidations and race conditions through atomic locking and queue-based processing.
 
 ### Trading System
-- **Live Trading**: HMAC-SHA256 signature authentication for Aster DEX with safety checks. Automatic TP/SL management (updated after each layer). Queue-based locking for sequential updates. Uses actual fill data from Aster DEX `/fapi/v1/userTrades`. Session-based tracking.
-- **Paper Trading**: Mirrors live trading logic, using real exchange balance and fee schedule for accurate simulation, but without sending API signals.
-- **Strategy Management**: Singleton session model with continuous trading per user. Configurable liquidation lookback window. Live mode toggle creates new session boundaries.
+- **Architecture**: Live-only trading application - all paper and demo modes removed for production simplicity.
+- **Live Trading**: HMAC-SHA256 signature authentication for Aster DEX with comprehensive safety checks. Automatic TP/SL management (updated after each layer). Queue-based locking for sequential updates. Uses actual fill data from Aster DEX `/fapi/v1/userTrades`. Session-based tracking with singleton session model per user.
+- **Strategy Management**: Singleton session model with continuous trading per user. Configurable liquidation lookback window. Single persistent session ensures all trading history is preserved in one place.
 - **DCA System**: Integrated Dollar Cost Averaging (DCA) system with ATR-based volatility scaling, convex level spacing, exponential size growth, liquidation-aware risk management, and automatic take profit/stop loss calculation. Uses a SQL wrapper to bypass Drizzle ORM caching issues for DCA parameter management. All DCA parameters are accessible in the Global Settings dialog under "DCA Settings (Advanced)".
 - **Data Integrity**: Idempotency protection for orders. Atomic cooldown system for entries/layers to prevent duplicate orders. ALL trading data (positions, fills, sessions) is permanently preserved in the database - deletion functionality has been removed to comply with data preservation requirements.
-- **Position Display**: Live mode displays only exchange positions; paper mode shows simulated positions.
+- **Position Display**: Displays only live exchange positions fetched from Aster DEX API, ensuring accurate real-time position tracking.
 
 ## External Dependencies
 
