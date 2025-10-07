@@ -44,8 +44,9 @@ Preferred communication style: Simple, everyday language.
 ### Backend Architecture
 - **Runtime**: Node.js with Express.js.
 - **Language**: TypeScript.
-- **Database ORM**: Drizzle ORM.
+- **Database ORM**: Drizzle ORM with raw SQL for critical operations to bypass caching.
 - **API Design**: RESTful endpoints with `/api` prefix.
+- **Data Persistence**: ALL strategy changes are immediately saved to Neon database first, then loaded into memory. Nothing is stored only in memory.
 
 ### Data Storage
 - **Database**: PostgreSQL with Neon serverless hosting (ALWAYS uses Neon, never local storage).
@@ -75,6 +76,7 @@ Preferred communication style: Simple, everyday language.
 - **Architecture**: Live-only trading application - all paper and demo modes removed for production simplicity.
 - **Live Trading**: HMAC-SHA256 signature authentication for Aster DEX with comprehensive safety checks. Automatic TP/SL management (updated after each layer). Queue-based locking for sequential updates. Uses actual fill data from Aster DEX `/fapi/v1/userTrades`. Session-based tracking with singleton session model per user.
 - **Strategy Management**: Singleton session model with continuous trading per user. Configurable liquidation lookback window. Single persistent session ensures all trading history is preserved in one place.
+- **Settings Persistence**: When settings are updated via UI, they are saved to Neon database FIRST, then the in-memory strategy is reloaded from the database. This ensures all changes persist permanently to Neon.
 - **DCA System**: Integrated Dollar Cost Averaging (DCA) system with ATR-based volatility scaling, convex level spacing, exponential size growth, liquidation-aware risk management, and automatic take profit/stop loss calculation. Uses a SQL wrapper to bypass Drizzle ORM caching issues for DCA parameter management. All DCA parameters are accessible in the Global Settings dialog under "DCA Settings (Advanced)".
 - **Data Integrity**: Idempotency protection for orders. Atomic cooldown system for entries/layers to prevent duplicate orders. ALL trading data (positions, fills, sessions) is permanently preserved in the database - deletion functionality has been removed to comply with data preservation requirements.
 - **Position Display**: Displays only live exchange positions fetched from Aster DEX API, ensuring accurate real-time position tracking.
