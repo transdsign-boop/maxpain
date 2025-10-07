@@ -750,8 +750,21 @@ export class StrategyEngine extends EventEmitter {
       );
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ Failed to fetch exchange account:', errorText);
+        let errorMessage = '';
+        try {
+          const errorText = await response.text();
+          errorMessage = errorText || response.statusText;
+        } catch {
+          errorMessage = response.statusText;
+        }
+        
+        if (response.status === 429) {
+          console.error('⚠️ Rate limit exceeded for Aster DEX account endpoint');
+        } else if (response.status === 401 || response.status === 403) {
+          console.error('🔑 Authentication failed for Aster DEX - check API keys:', errorMessage);
+        } else {
+          console.error(`❌ Failed to fetch exchange account (${response.status}):`, errorMessage);
+        }
         return null;
       }
 

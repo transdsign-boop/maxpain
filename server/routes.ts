@@ -25,14 +25,16 @@ interface CacheEntry<T> {
 }
 
 const apiCache = new Map<string, CacheEntry<any>>();
-const CACHE_TTL_MS = 10000; // 10 second cache TTL to prevent rate limiting
+const CACHE_TTL_MS = 10000; // 10 second default cache TTL
+const ACCOUNT_CACHE_TTL_MS = 30000; // 30 second cache for account data (less frequent changes)
 
-function getCached<T>(key: string): T | null {
+function getCached<T>(key: string, customTTL?: number): T | null {
   const entry = apiCache.get(key);
   if (!entry) return null;
   
+  const ttl = customTTL || CACHE_TTL_MS;
   const age = Date.now() - entry.timestamp;
-  if (age > CACHE_TTL_MS) {
+  if (age > ttl) {
     apiCache.delete(key);
     return null;
   }
@@ -1077,8 +1079,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get live account balance from Aster DEX
   app.get("/api/live/account", async (req, res) => {
     try {
-      // Check cache first to prevent rate limiting
-      const cached = getCached<any>('live_account');
+      // Check cache first to prevent rate limiting (longer TTL for account data)
+      const cached = getCached<any>('live_account', ACCOUNT_CACHE_TTL_MS);
       if (cached) {
         return res.json(cached);
       }
@@ -1087,7 +1089,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const secretKey = process.env.ASTER_SECRET_KEY;
 
       if (!apiKey || !secretKey) {
-        return res.status(400).json({ error: "Aster DEX API keys not configured" });
+        return res.status(400).json({ error: "Aster DEX API keys not configured. Please set ASTER_API_KEY and ASTER_SECRET_KEY in your environment variables." });
       }
 
       // Create signed request to get account information
@@ -1108,9 +1110,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Failed to fetch Aster DEX account:', errorText);
-        return res.status(response.status).json({ error: `Aster DEX API error: ${errorText}` });
+        let errorMessage = '';
+        try {
+          const errorText = await response.text();
+          errorMessage = errorText || response.statusText;
+        } catch {
+          errorMessage = response.statusText;
+        }
+        
+        // Special handling for rate limiting
+        if (response.status === 429) {
+          console.error('⚠️ Rate limit exceeded for Aster DEX account endpoint');
+          return res.status(429).json({ 
+            error: `Rate limit exceeded. Please wait before trying again. ${errorMessage}` 
+          });
+        }
+        
+        // Special handling for authentication errors
+        if (response.status === 401 || response.status === 403) {
+          console.error('🔑 Authentication failed for Aster DEX:', errorMessage);
+          return res.status(response.status).json({ 
+            error: `Authentication failed. Please check your API keys are correct and have proper permissions. ${errorMessage}` 
+          });
+        }
+        
+        console.error(`❌ Failed to fetch Aster DEX account (${response.status}):`, errorMessage);
+        return res.status(response.status).json({ error: `Aster DEX API error (${response.status}): ${errorMessage}` });
       }
 
       const data = await response.json();
@@ -2913,9 +2938,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         );
 
         if (!accountResponse.ok) {
-          const errorText = await accountResponse.text();
-          console.error('Failed to fetch Aster DEX account:', errorText);
-          return res.status(accountResponse.status).json({ error: `Aster DEX API error: ${errorText}` });
+          let errorMessage = '';
+          try {
+            const errorText = await accountResponse.text();
+            errorMessage = errorText || accountResponse.statusText;
+          } catch {
+            errorMessage = accountResponse.statusText;
+          }
+          
+          if (accountResponse.status === 429) {
+            console.error('⚠️ Rate limit exceeded for Aster DEX account endpoint');
+            return res.status(429).json({ error: `Rate limit exceeded. Please wait before trying again. ${errorMessage}` });
+          } else if (accountResponse.status === 401 || accountResponse.status === 403) {
+            console.error('🔑 Authentication failed for Aster DEX:', errorMessage);
+            return res.status(accountResponse.status).json({ error: `Authentication failed. Check your API keys. ${errorMessage}` });
+          }
+          
+          console.error(`❌ Failed to fetch Aster DEX account (${accountResponse.status}):`, errorMessage);
+          return res.status(accountResponse.status).json({ error: `Aster DEX API error (${accountResponse.status}): ${errorMessage}` });
         }
 
         const account = await accountResponse.json();
