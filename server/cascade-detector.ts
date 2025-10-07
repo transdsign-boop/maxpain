@@ -1,4 +1,5 @@
 interface CascadeStatus {
+  symbol: string;
   score: number;
   LQ: number;
   RET: number;
@@ -21,6 +22,7 @@ interface OISnapshot {
 }
 
 export class CascadeDetector {
+  private readonly symbol: string;
   private liq1mSameSide: number[] = [];
   private ret1m: number[] = [];
   private oi5m: OISnapshot[] = [];
@@ -46,7 +48,8 @@ export class CascadeDetector {
   private readonly WINDOW_5M = 300;
   private readonly COOLING_SECONDS = 6;
   
-  constructor(autoEnabled: boolean = true) {
+  constructor(symbol: string, autoEnabled: boolean = true) {
+    this.symbol = symbol;
     this.autoEnabled = autoEnabled;
   }
 
@@ -319,6 +322,7 @@ export class CascadeDetector {
     this.lastRQThresholdAdjusted = rq_threshold_adjusted;
 
     return {
+      symbol: this.symbol,
       score,
       LQ: this.lastLQ,
       RET: this.lastRET,
@@ -346,6 +350,7 @@ export class CascadeDetector {
 
   public getCurrentStatus(): CascadeStatus {
     return {
+      symbol: this.symbol,
       score: this.currentScore,
       LQ: this.lastLQ,
       RET: this.lastRET,
