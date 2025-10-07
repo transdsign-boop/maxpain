@@ -1,5 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useWebSocketData } from "./useWebSocketData";
+import { useEffect } from "react";
+import { queryClient } from "@/lib/queryClient";
 
 /**
  * Centralized hook for all strategy-related data fetching.
@@ -22,23 +24,36 @@ export function useStrategyData() {
   const strategies = strategiesQuery.data;
   const activeStrategy = strategies?.find(s => s.isActive);
 
-  // Fetch live account data ONCE (2min refetch as fallback)
-  const liveAccountQuery = useQuery<any>({
-    queryKey: ['/api/live/account'],
-    refetchInterval: 120000, // 2min fallback, WebSocket provides real-time
-    staleTime: 60000, // Fresh for 60s, prevents reload spam
+  // Unified live data snapshot (replaces separate account/positions queries)
+  const liveSnapshotQuery = useQuery<any>({
+    queryKey: ['/api/live/snapshot'],
+    refetchInterval: false, // Orchestrator handles polling server-side
+    staleTime: Infinity, // Only update via WebSocket
     enabled: !!activeStrategy,
     retry: 2,
   });
 
-  // Fetch live positions ONCE (2min refetch as fallback)
-  const livePositionsQuery = useQuery<any[]>({
-    queryKey: ['/api/live/positions'],
-    refetchInterval: 120000, // 2min fallback, WebSocket provides real-time
-    staleTime: 60000, // Fresh for 60s, prevents reload spam
-    enabled: !!activeStrategy,
-    retry: 2,
-  });
+  // Listen for WebSocket live_snapshot events and update cache
+  useEffect(() => {
+    if (!wsConnected) return;
+
+    const handleLiveSnapshot = (event: MessageEvent) => {
+      try {
+        const parsed = JSON.parse(event.data);
+        if (parsed.type === 'live_snapshot' && parsed.data?.snapshot) {
+          queryClient.setQueryData(['/api/live/snapshot'], parsed.data.snapshot);
+        }
+      } catch (error) {
+        console.error('Failed to parse live_snapshot event:', error);
+      }
+    };
+
+    const ws = (window as any).__tradingWs;
+    if (ws) {
+      ws.addEventListener('message', handleLiveSnapshot);
+      return () => ws.removeEventListener('message', handleLiveSnapshot);
+    }
+  }, [wsConnected]);
 
   // Fetch position summary ONCE (30s refetch)
   const positionSummaryQuery = useQuery<any>({
@@ -90,6 +105,8 @@ export function useStrategyData() {
     staleTime: 30000, // Fresh for 30s
   });
 
+  const snapshot = liveSnapshotQuery.data;
+
   return {
     // WebSocket connection status
     wsConnected,
@@ -99,14 +116,14 @@ export function useStrategyData() {
     activeStrategy,
     strategiesLoading: strategiesQuery.isLoading,
 
-    // Live exchange data
-    liveAccount: liveAccountQuery.data,
-    liveAccountLoading: liveAccountQuery.isLoading,
-    liveAccountError: liveAccountQuery.error,
+    // Live exchange data (from unified snapshot)
+    liveAccount: snapshot?.account,
+    liveAccountLoading: liveSnapshotQuery.isLoading,
+    liveAccountError: liveSnapshotQuery.error,
 
-    livePositions: livePositionsQuery.data,
-    livePositionsLoading: livePositionsQuery.isLoading,
-    livePositionsError: livePositionsQuery.error,
+    livePositions: snapshot?.positions,
+    livePositionsLoading: liveSnapshotQuery.isLoading,
+    livePositionsError: liveSnapshotQuery.error,
 
     // Position data
     positionSummary: positionSummaryQuery.data,
