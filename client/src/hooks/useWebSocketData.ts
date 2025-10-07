@@ -92,6 +92,12 @@ export function useWebSocketData(options: UseWebSocketDataOptions = {}) {
               // Invalidate strategy data
               queryClient.invalidateQueries({ queryKey: ['/api/strategies'] });
               break;
+            
+            case 'order_update':
+              // Invalidate orders and related data
+              queryClient.invalidateQueries({ queryKey: ['/api/live/open-orders'] });
+              queryClient.invalidateQueries({ queryKey: ['/api/orders'] });
+              break;
           }
         } catch (error) {
           console.error('Error parsing WebSocket message:', error);
