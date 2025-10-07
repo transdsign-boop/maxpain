@@ -590,8 +590,11 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         // Continue with update even if snapshot fails
       }
       
+      console.log('Sending update request with data:', data);
       const response = await apiRequest('PUT', `/api/strategies/${activeStrategy.id}`, data);
-      return await response.json() as Strategy;
+      const result = await response.json() as Strategy;
+      console.log('Update response:', result);
+      return result;
     },
     onSuccess: async (strategy) => {
       toast({
@@ -628,10 +631,11 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         riskLevel: strategy.riskLevel ?? 3, // Default to balanced if not set
       });
     },
-    onError: () => {
+    onError: (error) => {
+      console.error('Update strategy error:', error);
       toast({
         title: "Error",
-        description: "Failed to update strategy. Please try again.",
+        description: `Failed to update strategy: ${error instanceof Error ? error.message : 'Unknown error'}`,
         variant: "destructive",
       });
     }
