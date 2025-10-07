@@ -536,8 +536,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Fetch credentials from Global Settings (NEVER use environment variables)
-      const strategy = await storage.getOrCreateDefaultStrategy(DEFAULT_USER_ID);
-      const apiKey = strategy.asterApiKey || '';
+      const strategy = await storage.getDefaultStrategy(DEFAULT_USER_ID);
+      const apiKey = strategy?.asterApiKey || '';
       
       // Fetch order book data from Aster DEX
       const orderBookResponse = await fetch(`https://fapi.asterdex.com/fapi/v1/depth?symbol=${symbol}&limit=100`, {
@@ -591,8 +591,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Fetch credentials from Global Settings (NEVER use environment variables)
-      const strategy = await storage.getOrCreateDefaultStrategy(DEFAULT_USER_ID);
-      const apiKey = strategy.asterApiKey || '';
+      const strategy = await storage.getDefaultStrategy(DEFAULT_USER_ID);
+      const apiKey = strategy?.asterApiKey || '';
 
       const liquidityData = await Promise.all(
         symbols.map(async (symbol) => {
@@ -756,8 +756,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Fetch credentials from Global Settings (NEVER use environment variables)
-      const strategy = await storage.getOrCreateDefaultStrategy(DEFAULT_USER_ID);
-      const apiKey = strategy.asterApiKey || '';
+      const strategy = await storage.getDefaultStrategy(DEFAULT_USER_ID);
+      const apiKey = strategy?.asterApiKey || '';
       
       // Fetch funding rate data from Aster DEX
       const fundingResponse = await fetch(`https://fapi.asterdex.com/fapi/v1/fundingRate?symbol=${symbol}&limit=24`, {
@@ -817,8 +817,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Fetch credentials from Global Settings (NEVER use environment variables)
-      const strategy = await storage.getOrCreateDefaultStrategy(DEFAULT_USER_ID);
-      const apiKey = strategy.asterApiKey || '';
+      const strategy = await storage.getDefaultStrategy(DEFAULT_USER_ID);
+      const apiKey = strategy?.asterApiKey || '';
       
       // Fetch both order book and funding data in parallel
       const [orderBookResponse, fundingResponse] = await Promise.all([
@@ -923,8 +923,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const startTime = endTime - (hours * 60 * 60 * 1000);
       
       // Fetch credentials from Global Settings (NEVER use environment variables)
-      const strategy = await storage.getOrCreateDefaultStrategy(DEFAULT_USER_ID);
-      const apiKey = strategy.asterApiKey || '';
+      const strategy = await storage.getDefaultStrategy(DEFAULT_USER_ID);
+      const apiKey = strategy?.asterApiKey || '';
       
       // Fetch klines data from Aster DEX
       const klinesResponse = await fetch(`https://fapi.asterdex.com/fapi/v1/klines?symbol=${symbol}&interval=${interval}&startTime=${startTime}&endTime=${endTime}&limit=1000`, {
@@ -980,8 +980,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const sinceTimestamp = new Date(Date.now() - hours * 60 * 60 * 1000);
       
       // Fetch credentials from Global Settings (NEVER use environment variables)
-      const strategy = await storage.getOrCreateDefaultStrategy(DEFAULT_USER_ID);
-      const apiKey = strategy.asterApiKey || '';
+      const strategy = await storage.getDefaultStrategy(DEFAULT_USER_ID);
+      const apiKey = strategy?.asterApiKey || '';
       
       // Fetch liquidations and price data in parallel
       const [liquidations, klinesResponse] = await Promise.all([
@@ -1097,9 +1097,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Fetch credentials from database (NEVER use environment variables)
-      const strategy = await storage.getOrCreateDefaultStrategy(DEFAULT_USER_ID);
-      const apiKey = strategy.asterApiKey || '';
-      const secretKey = strategy.asterApiSecret || '';
+      const strategy = await storage.getDefaultStrategy(DEFAULT_USER_ID);
+      const apiKey = strategy?.asterApiKey || '';
+      const secretKey = strategy?.asterApiSecret || '';
 
       if (!apiKey || !secretKey) {
         return res.status(400).json({ error: "Aster DEX credentials not configured in Global Settings" });
@@ -1168,9 +1168,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Fetch credentials from database (NEVER use environment variables)
-      const strategy = await storage.getOrCreateDefaultStrategy(DEFAULT_USER_ID);
-      const apiKey = strategy.asterApiKey || '';
-      const secretKey = strategy.asterApiSecret || '';
+      const strategy = await storage.getDefaultStrategy(DEFAULT_USER_ID);
+      const apiKey = strategy?.asterApiKey || '';
+      const secretKey = strategy?.asterApiSecret || '';
 
       if (!apiKey || !secretKey) {
         return res.status(400).json({ error: "Aster DEX credentials not configured in Global Settings" });
@@ -1244,9 +1244,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Fetch credentials from database (NEVER use environment variables)
-      const strategy = await storage.getOrCreateDefaultStrategy(DEFAULT_USER_ID);
-      const apiKey = strategy.asterApiKey || '';
-      const secretKey = strategy.asterApiSecret || '';
+      const strategy = await storage.getDefaultStrategy(DEFAULT_USER_ID);
+      const apiKey = strategy?.asterApiKey || '';
+      const secretKey = strategy?.asterApiSecret || '';
 
       if (!apiKey || !secretKey) {
         return res.status(400).json({ error: "Aster DEX credentials not configured in Global Settings" });
@@ -1298,9 +1298,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/live/cleanup-orders", async (req, res) => {
     try {
       // Fetch credentials from database (NEVER use environment variables)
-      const strategy = await storage.getOrCreateDefaultStrategy(DEFAULT_USER_ID);
-      const apiKey = strategy.asterApiKey || '';
-      const secretKey = strategy.asterApiSecret || '';
+      const strategy = await storage.getDefaultStrategy(DEFAULT_USER_ID);
+      const apiKey = strategy?.asterApiKey || '';
+      const secretKey = strategy?.asterApiSecret || '';
 
       if (!apiKey || !secretKey) {
         return res.status(400).json({ error: "Aster DEX credentials not configured in Global Settings" });
@@ -3908,9 +3908,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`🔴 Attempting to close LIVE position: ${positionId}`);
         
         // Get active strategy for credentials (NEVER use environment variables)
-        const strategy = await storage.getOrCreateDefaultStrategy(DEFAULT_USER_ID);
-        const apiKey = strategy.asterApiKey || '';
-        const secretKey = strategy.asterApiSecret || '';
+        const strategy = await storage.getDefaultStrategy(DEFAULT_USER_ID);
+        const apiKey = strategy?.asterApiKey || '';
+        const secretKey = strategy?.asterApiSecret || '';
 
         if (!apiKey || !secretKey) {
           return res.status(400).json({ error: 'Aster DEX credentials not configured in Global Settings' });
@@ -4560,8 +4560,8 @@ function startKeepalive(apiKey: string) {
 async function connectToUserDataStream() {
   try {
     // Fetch credentials from strategy (NEVER use environment variables)
-    const strategy = await storage.getOrCreateDefaultStrategy(DEFAULT_USER_ID);
-    const apiKey = strategy.asterApiKey || '';
+    const strategy = await storage.getDefaultStrategy(DEFAULT_USER_ID);
+    const apiKey = strategy?.asterApiKey || '';
     
     if (!apiKey) {
       console.log('⚠️ Aster DEX credentials not configured - User Data Stream unavailable');

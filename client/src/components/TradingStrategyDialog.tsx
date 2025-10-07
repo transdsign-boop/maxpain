@@ -1021,6 +1021,115 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
               
+              {/* Strategy Selection and Management */}
+              <div className="space-y-4 p-4 border rounded-lg bg-muted/20">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex-1">
+                    <Label>Current Strategy</Label>
+                    <Select 
+                      value={activeStrategy?.id || "none"} 
+                      onValueChange={(value) => {
+                        if (value === "none") {
+                          setActiveStrategy(null);
+                          form.reset({
+                            name: "",
+                            selectedAssets: ["BTCUSDT"],
+                            percentileThreshold: 90,
+                            liquidationLookbackHours: 1,
+                            maxLayers: 5,
+                            profitTargetPercent: "3.00",
+                            stopLossPercent: "2.00",
+                            marginMode: "cross",
+                            leverage: 10,
+                            orderDelayMs: 1000,
+                            slippageTolerancePercent: "0.50",
+                            orderType: "market",
+                            maxRetryDurationMs: 30000,
+                            priceChaseMode: false,
+                            marginAmount: "50",
+                            bybitApiKey: "",
+                            bybitApiSecret: "",
+                            asterApiKey: "",
+                            asterApiSecret: "",
+                            hedgeMode: true,
+                            maxOpenPositions: 3,
+                            maxPortfolioRiskPercent: "20",
+                          });
+                        } else {
+                          const strategy = strategies?.find(s => s.id === value);
+                          if (strategy) {
+                            setActiveStrategy(strategy);
+                            form.reset({
+                              name: strategy.name,
+                              selectedAssets: strategy.selectedAssets,
+                              percentileThreshold: strategy.percentileThreshold,
+                              liquidationLookbackHours: strategy.liquidationLookbackHours,
+                              maxLayers: strategy.maxLayers,
+                              profitTargetPercent: strategy.profitTargetPercent,
+                              stopLossPercent: strategy.stopLossPercent,
+                              marginMode: strategy.marginMode,
+                              leverage: strategy.leverage,
+                              orderDelayMs: strategy.orderDelayMs,
+                              slippageTolerancePercent: strategy.slippageTolerancePercent,
+                              orderType: strategy.orderType,
+                              maxRetryDurationMs: strategy.maxRetryDurationMs,
+                              priceChaseMode: strategy.priceChaseMode,
+                              marginAmount: strategy.marginAmount,
+                              bybitApiKey: strategy.bybitApiKey || "",
+                              bybitApiSecret: strategy.bybitApiSecret || "",
+                              asterApiKey: strategy.asterApiKey || "",
+                              asterApiSecret: strategy.asterApiSecret || "",
+                              hedgeMode: strategy.hedgeMode,
+                              maxOpenPositions: strategy.maxOpenPositions,
+                              maxPortfolioRiskPercent: strategy.maxPortfolioRiskPercent,
+                            });
+                          }
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="w-full" data-testid="select-strategy">
+                        <SelectValue placeholder="Select a strategy or create new" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">+ Create New Strategy</SelectItem>
+                        {strategies?.map((strategy) => (
+                          <SelectItem key={strategy.id} value={strategy.id}>
+                            {strategy.name} {strategy.isActive ? "(Active)" : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  {activeStrategy && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        const currentValues = form.getValues();
+                        createStrategyMutation.mutate({
+                          ...currentValues,
+                          name: `${currentValues.name} (Copy)`,
+                        });
+                      }}
+                      disabled={createStrategyMutation.isPending}
+                      data-testid="button-save-as-new"
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      Save As New
+                    </Button>
+                  )}
+                </div>
+                
+                {activeStrategy && (
+                  <div className="text-sm text-muted-foreground">
+                    Editing: <span className="font-medium text-foreground">{activeStrategy.name}</span>
+                  </div>
+                )}
+              </div>
+
+              <Separator />
+              
               {/* Hedge Mode Toggle */}
               <FormField
                 control={form.control}

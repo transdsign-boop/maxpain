@@ -187,8 +187,8 @@ export class StrategyEngine extends EventEmitter {
     // (Individual operations will use their own strategy credentials when available)
     try {
       const DEFAULT_USER_ID = 'default_user';
-      const defaultStrategy = await storage.getOrCreateDefaultStrategy(DEFAULT_USER_ID);
-      if (defaultStrategy.asterApiKey && defaultStrategy.asterApiSecret) {
+      const defaultStrategy = await storage.getDefaultStrategy(DEFAULT_USER_ID);
+      if (defaultStrategy?.asterApiKey && defaultStrategy?.asterApiSecret) {
         this.cachedApiKey = defaultStrategy.asterApiKey;
         this.cachedSecretKey = defaultStrategy.asterApiSecret;
         console.log('✅ Loaded API credentials from Global Settings');
@@ -283,23 +283,31 @@ export class StrategyEngine extends EventEmitter {
     });
   }
 
-  // Load the default strategy for the user (singleton pattern)
+  // Load active strategies for the user (no auto-creation)
   private async loadActiveStrategies() {
     try {
       const DEFAULT_USER_ID = "personal_user";
-      console.log('📚 Loading default trading strategy...');
+      console.log('📚 Looking for existing strategies...');
       
-      // Get or create the single default strategy for this user
-      const strategy = await storage.getOrCreateDefaultStrategy(DEFAULT_USER_ID);
+      // Get existing strategies for this user (DO NOT auto-create)
+      const strategies = await storage.getStrategiesByUser(DEFAULT_USER_ID);
       
-      if (strategy.isActive) {
-        await this.registerStrategy(strategy);
-        console.log(`✅ Loaded default strategy: ${strategy.name}`);
+      if (strategies.length === 0) {
+        console.log('ℹ️ No strategies found. User must create one in Global Settings.');
+        return;
+      }
+      
+      // Find the most recently used active strategy
+      const activeStrategy = strategies.find(s => s.isActive);
+      
+      if (activeStrategy) {
+        await this.registerStrategy(activeStrategy);
+        console.log(`✅ Loaded active strategy: ${activeStrategy.name}`);
       } else {
-        console.log(`⏸️ Default strategy is inactive, not registering`);
+        console.log(`ℹ️ No active strategies. User can start one from Global Settings.`);
       }
     } catch (error) {
-      console.error('❌ Error loading default strategy:', error);
+      console.error('❌ Error loading strategies:', error);
     }
   }
 
@@ -3659,7 +3667,11 @@ export class StrategyEngine extends EventEmitter {
         
         // Get active session and strategy
         const DEFAULT_USER_ID = "personal_user";
-        const strategy = await storage.getOrCreateDefaultStrategy(DEFAULT_USER_ID);
+        const strategy = await storage.getDefaultStrategy(DEFAULT_USER_ID);
+        if (!strategy) {
+          console.log('⚠️ No strategy found for orphan cleanup');
+          return;
+        }
         const session = await storage.getOrCreateActiveSession(DEFAULT_USER_ID);
         
         // 1. Clean up orphaned orders (orders for closed positions)
