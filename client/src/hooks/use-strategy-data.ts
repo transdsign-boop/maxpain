@@ -24,36 +24,38 @@ export function useStrategyData() {
   const strategies = strategiesQuery.data;
   const activeStrategy = strategies?.find(s => s.isActive);
 
-  // Unified live data snapshot (replaces separate account/positions queries)
-  const liveSnapshotQuery = useQuery<any>({
-    queryKey: ['/api/live/snapshot'],
-    refetchInterval: false, // Orchestrator handles polling server-side
-    staleTime: Infinity, // Only update via WebSocket
+  // Live account data (cached with 5-minute TTL on server)
+  const liveAccountQuery = useQuery<any>({
+    queryKey: ['/api/live/account'],
+    refetchInterval: 60000, // Refetch every minute (server has 5-min cache)
+    staleTime: 30000, // Consider fresh for 30s
     enabled: !!activeStrategy,
     retry: 2,
   });
 
-  // Listen for WebSocket live_snapshot events and update cache
-  useEffect(() => {
-    if (!wsConnected) return;
+  // Live positions data (cached with 5-minute TTL on server)
+  const livePositionsQuery = useQuery<any[]>({
+    queryKey: ['/api/live/positions'],
+    refetchInterval: 60000, // Refetch every minute (server has 5-min cache)
+    staleTime: 30000, // Consider fresh for 30s
+    enabled: !!activeStrategy,
+    retry: 2,
+  });
 
-    const handleLiveSnapshot = (event: MessageEvent) => {
-      try {
-        const parsed = JSON.parse(event.data);
-        if (parsed.type === 'live_snapshot' && parsed.data?.snapshot) {
-          queryClient.setQueryData(['/api/live/snapshot'], parsed.data.snapshot);
-        }
-      } catch (error) {
-        console.error('Failed to parse live_snapshot event:', error);
+  // Construct snapshot from individual queries (orchestrator disabled to avoid rate limits)
+  const liveSnapshotQuery = {
+    data: liveAccountQuery.data && livePositionsQuery.data ? {
+      account: liveAccountQuery.data,
+      positions: livePositionsQuery.data,
+      summary: {
+        totalPositions: livePositionsQuery.data?.length || 0,
+        totalValue: livePositionsQuery.data?.reduce((sum: number, p: any) => 
+          sum + Math.abs(parseFloat(p.positionAmt || 0) * parseFloat(p.markPrice || 0)), 0) || 0,
       }
-    };
-
-    const ws = (window as any).__tradingWs;
-    if (ws) {
-      ws.addEventListener('message', handleLiveSnapshot);
-      return () => ws.removeEventListener('message', handleLiveSnapshot);
-    }
-  }, [wsConnected]);
+    } : null,
+    isLoading: liveAccountQuery.isLoading || livePositionsQuery.isLoading,
+    error: liveAccountQuery.error || livePositionsQuery.error,
+  };
 
   // Fetch position summary ONCE (30s refetch)
   const positionSummaryQuery = useQuery<any>({
