@@ -3240,6 +3240,12 @@ export class StrategyEngine extends EventEmitter {
     this.emit('liquidation', liquidation);
   }
 
+  // Get the currently running strategy (in-memory)
+  getRunningStrategy(): Strategy | undefined {
+    const strategies = Array.from(this.activeStrategies.values());
+    return strategies.length > 0 ? strategies[0] : undefined;
+  }
+
   // Reload a strategy when settings are updated
   async reloadStrategy(strategyId: string) {
     try {
