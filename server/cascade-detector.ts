@@ -106,18 +106,44 @@ export class CascadeDetector {
     return parseFloat(percentChange.toFixed(2));
   }
 
+  /**
+   * Calculate Reversal Quality Score
+   * 
+   * Scoring algorithm (0-6 points):
+   * 
+   * Liquidation Quality (LQ):
+   *   - LQ ≥ 8: +2 points (large liquidations)
+   *   - LQ ≥ 6: +1 point (medium liquidations)
+   * 
+   * Volatility (RET):
+   *   - RET ≥ retMediumThreshold: +1 point (user-configurable)
+   * 
+   * Open Interest Change (dOI):
+   *   - dOI_1m ≤ -1.0% OR dOI_3m ≤ -1.5%: +2 points (strong OI drop)
+   *   - dOI_1m ≤ -0.5% OR dOI_3m ≤ -1.0%: +1 point (moderate OI drop)
+   *   - dOI_1m > 0 AND dOI_3m > 0: -2 points (OI increasing = not a reversal)
+   * 
+   * Score buckets:
+   *   - 0-1: "poor"
+   *   - 2: "ok"
+   *   - 3: "good"
+   *   - 4+: "excellent"
+   */
   private calculateReversalQuality(LQ: number, RET: number, dOI_1m: number, dOI_3m: number, retMediumThreshold: number = 25): { reversal_quality: number; rq_bucket: 'poor' | 'ok' | 'good' | 'excellent' } {
     let score = 0;
     
+    // Liquidation Quality scoring
     if (LQ >= 8) score += 2;
     else if (LQ >= 6) score += 1;
     
-    // Award point for sufficient volatility (indicates meaningful price action)
+    // Volatility scoring (user-configurable threshold)
     if (RET >= retMediumThreshold) score += 1;
     
+    // Open Interest scoring
     if (dOI_1m <= -1.0 || dOI_3m <= -1.5) score += 2;
     else if (dOI_1m <= -0.5 || dOI_3m <= -1.0) score += 1;
     
+    // Penalty for increasing OI (not a reversal)
     if (dOI_1m > 0 && dOI_3m > 0) score -= 2;
     
     score = Math.max(0, score);
