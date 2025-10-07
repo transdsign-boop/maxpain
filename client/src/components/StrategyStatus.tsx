@@ -1089,9 +1089,26 @@ export function StrategyStatus() {
   };
   
   const errorStatus = error ? getErrorStatus(error) : null;
-  const hasError = error && errorStatus !== 404;
+  const hasError = error && errorStatus !== 404 && errorStatus !== 429;
   const hasNoSession = error && errorStatus === 404;
+  const isRateLimited = error && errorStatus === 429;
 
+  if (isRateLimited) {
+    // Rate limited - show a friendly message instead of an error
+    return (
+      <Card data-testid="strategy-status-rate-limited">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Target className="h-5 w-5" />
+            Strategy Status
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-muted-foreground">Position data will load in a moment...</p>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (hasError) {
     return (
