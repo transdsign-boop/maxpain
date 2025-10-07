@@ -16,6 +16,7 @@ export function useStrategyData() {
   const strategiesQuery = useQuery<any[]>({
     queryKey: ['/api/strategies'],
     refetchInterval: 60000, // 60s fallback, WebSocket provides real-time
+    staleTime: 30000, // Consider data fresh for 30s, prevents reload spam
   });
 
   const strategies = strategiesQuery.data;
@@ -25,6 +26,7 @@ export function useStrategyData() {
   const liveAccountQuery = useQuery<any>({
     queryKey: ['/api/live/account'],
     refetchInterval: 120000, // 2min fallback, WebSocket provides real-time
+    staleTime: 60000, // Fresh for 60s, prevents reload spam
     enabled: !!activeStrategy,
     retry: 2,
   });
@@ -33,6 +35,7 @@ export function useStrategyData() {
   const livePositionsQuery = useQuery<any[]>({
     queryKey: ['/api/live/positions'],
     refetchInterval: 120000, // 2min fallback, WebSocket provides real-time
+    staleTime: 60000, // Fresh for 60s, prevents reload spam
     enabled: !!activeStrategy,
     retry: 2,
   });
@@ -47,6 +50,7 @@ export function useStrategyData() {
     },
     enabled: !!activeStrategy?.id,
     refetchInterval: 30000,
+    staleTime: 20000, // Fresh for 20s
   });
 
   // Fetch strategy changes ONCE (10s refetch for recent changes)
@@ -54,24 +58,28 @@ export function useStrategyData() {
     queryKey: ['/api/strategies', activeStrategy?.id, 'changes'],
     enabled: !!activeStrategy?.id,
     refetchInterval: 10000,
+    staleTime: 5000, // Fresh for 5s
   });
 
   // Fetch performance overview ONCE (60s refetch)
   const performanceQuery = useQuery<any>({
     queryKey: ['/api/performance/overview'],
     refetchInterval: 60000,
+    staleTime: 30000, // Fresh for 30s
   });
 
   // Fetch chart data ONCE (60s refetch)
   const chartDataQuery = useQuery<any[]>({
     queryKey: ['/api/performance/chart'],
     refetchInterval: 60000,
+    staleTime: 30000, // Fresh for 30s
   });
 
   // Fetch asset performance ONCE (60s refetch)
   const assetPerformanceQuery = useQuery<any[]>({
     queryKey: ['/api/analytics/asset-performance'],
     refetchInterval: 60000,
+    staleTime: 30000, // Fresh for 30s
   });
 
   // Fetch closed positions ONCE (60s refetch)
@@ -79,6 +87,7 @@ export function useStrategyData() {
     queryKey: ['/api/strategies', activeStrategy?.id, 'positions', 'closed'],
     enabled: !!activeStrategy?.id,
     refetchInterval: 60000,
+    staleTime: 30000, // Fresh for 30s
   });
 
   return {
