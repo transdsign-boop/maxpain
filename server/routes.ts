@@ -978,6 +978,102 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Sync running strategy to database
+  app.post("/api/strategies/sync", async (req, res) => {
+    try {
+      const runningStrategy = strategyEngine.getRunningStrategy();
+      
+      if (!runningStrategy) {
+        return res.status(404).json({ error: "No strategy is currently running" });
+      }
+
+      console.log('🔄 Syncing running strategy to database...', runningStrategy.id);
+
+      // Get the database strategy
+      const dbStrategy = await storage.getStrategy(runningStrategy.id);
+      
+      if (dbStrategy) {
+        // Update existing strategy
+        const updated = await storage.updateStrategy(runningStrategy.id, {
+          name: runningStrategy.name,
+          selectedAssets: runningStrategy.selectedAssets,
+          percentileThreshold: runningStrategy.percentileThreshold,
+          liquidationLookbackHours: runningStrategy.liquidationLookbackHours,
+          maxLayers: runningStrategy.maxLayers,
+          profitTargetPercent: runningStrategy.profitTargetPercent,
+          stopLossPercent: runningStrategy.stopLossPercent,
+          marginMode: runningStrategy.marginMode,
+          leverage: runningStrategy.leverage,
+          orderDelayMs: runningStrategy.orderDelayMs,
+          slippageTolerancePercent: runningStrategy.slippageTolerancePercent,
+          orderType: runningStrategy.orderType,
+          maxRetryDurationMs: runningStrategy.maxRetryDurationMs,
+          marginAmount: runningStrategy.marginAmount,
+          hedgeMode: runningStrategy.hedgeMode,
+          isActive: runningStrategy.isActive,
+          dcaStartStepPercent: runningStrategy.dcaStartStepPercent,
+          dcaSpacingConvexity: runningStrategy.dcaSpacingConvexity,
+          dcaSizeGrowth: runningStrategy.dcaSizeGrowth,
+          dcaMaxRiskPercent: runningStrategy.dcaMaxRiskPercent,
+          dcaVolatilityRef: runningStrategy.dcaVolatilityRef,
+          dcaExitCushionMultiplier: runningStrategy.dcaExitCushionMultiplier,
+          retHighThreshold: runningStrategy.retHighThreshold,
+          retMediumThreshold: runningStrategy.retMediumThreshold,
+          maxOpenPositions: runningStrategy.maxOpenPositions,
+          maxPortfolioRiskPercent: runningStrategy.maxPortfolioRiskPercent,
+          priceChaseMode: runningStrategy.priceChaseMode
+        });
+        console.log('✅ Database strategy updated successfully');
+        res.json(updated);
+      } else {
+        // Delete old strategy and create new one with running strategy's ID
+        const existingStrategies = await storage.getStrategiesByUser(DEFAULT_USER_ID);
+        for (const oldStrategy of existingStrategies) {
+          await storage.deleteStrategy(oldStrategy.id);
+          console.log(`🗑️ Deleted old strategy: ${oldStrategy.id}`);
+        }
+        
+        // Create new strategy with exact same settings as running strategy
+        const created = await storage.createStrategy({
+          id: runningStrategy.id,
+          userId: runningStrategy.userId,
+          name: runningStrategy.name,
+          selectedAssets: runningStrategy.selectedAssets,
+          percentileThreshold: runningStrategy.percentileThreshold,
+          liquidationLookbackHours: runningStrategy.liquidationLookbackHours,
+          maxLayers: runningStrategy.maxLayers,
+          profitTargetPercent: runningStrategy.profitTargetPercent,
+          stopLossPercent: runningStrategy.stopLossPercent,
+          marginMode: runningStrategy.marginMode,
+          leverage: runningStrategy.leverage,
+          orderDelayMs: runningStrategy.orderDelayMs,
+          slippageTolerancePercent: runningStrategy.slippageTolerancePercent,
+          orderType: runningStrategy.orderType,
+          maxRetryDurationMs: runningStrategy.maxRetryDurationMs,
+          marginAmount: runningStrategy.marginAmount,
+          hedgeMode: runningStrategy.hedgeMode,
+          isActive: runningStrategy.isActive,
+          dcaStartStepPercent: runningStrategy.dcaStartStepPercent,
+          dcaSpacingConvexity: runningStrategy.dcaSpacingConvexity,
+          dcaSizeGrowth: runningStrategy.dcaSizeGrowth,
+          dcaMaxRiskPercent: runningStrategy.dcaMaxRiskPercent,
+          dcaVolatilityRef: runningStrategy.dcaVolatilityRef,
+          dcaExitCushionMultiplier: runningStrategy.dcaExitCushionMultiplier,
+          retHighThreshold: runningStrategy.retHighThreshold,
+          retMediumThreshold: runningStrategy.retMediumThreshold,
+          maxOpenPositions: runningStrategy.maxOpenPositions,
+          maxPortfolioRiskPercent: runningStrategy.maxPortfolioRiskPercent,
+          priceChaseMode: runningStrategy.priceChaseMode
+        });
+        console.log('✅ Created new database strategy with running strategy settings');
+        res.json(created);
+      }
+    } catch (error) {
+      console.error('❌ Error syncing strategy:', error);
+      res.status(500).json({ error: "Failed to sync strategy to database" });
+    }
+  });
+
   // Get live account balance from Aster DEX
   app.get("/api/live/account", async (req, res) => {
     try {
