@@ -184,19 +184,6 @@ export const positions = pgTable("positions", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-// P&L Snapshots for Analytics
-export const pnlSnapshots = pgTable("pnl_snapshots", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  sessionId: varchar("session_id").notNull(), // References tradeSessions.id
-  balance: decimal("balance", { precision: 18, scale: 8 }).notNull(),
-  totalPnl: decimal("total_pnl", { precision: 18, scale: 8 }).notNull(),
-  unrealizedPnl: decimal("unrealized_pnl", { precision: 18, scale: 8 }).notNull(),
-  realizedPnl: decimal("realized_pnl", { precision: 18, scale: 8 }).notNull(),
-  totalTrades: integer("total_trades").notNull(),
-  activePositions: integer("active_positions").notNull(),
-  snapshotAt: timestamp("snapshot_at").notNull().defaultNow(),
-});
-
 // Schema exports for strategies
 export const insertStrategySchema = createInsertSchema(strategies).omit({
   id: true,
@@ -295,15 +282,6 @@ export const insertPositionSchema = createInsertSchema(positions).omit({
 
 export type InsertPosition = z.infer<typeof insertPositionSchema>;
 export type Position = typeof positions.$inferSelect;
-
-// Schema exports for P&L snapshots
-export const insertPnlSnapshotSchema = createInsertSchema(pnlSnapshots).omit({
-  id: true,
-  snapshotAt: true,
-});
-
-export type InsertPnlSnapshot = z.infer<typeof insertPnlSnapshotSchema>;
-export type PnlSnapshot = typeof pnlSnapshots.$inferSelect;
 
 // Strategy Changes (track modifications to running strategies)
 export const strategyChanges = pgTable("strategy_changes", {
