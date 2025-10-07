@@ -12,6 +12,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { soundNotifications } from "@/lib/soundNotifications";
+import { useWebSocketData } from "@/hooks/useWebSocketData";
 
 interface Fill {
   id: string;
@@ -743,19 +744,22 @@ export function StrategyStatus() {
   const [isCloseConfirmOpen, setIsCloseConfirmOpen] = useState(false);
   const [positionToClose, setPositionToClose] = useState<Position | null>(null);
 
-  // First, get active strategies
+  // Connect to WebSocket for real-time updates
+  useWebSocketData({ enabled: true });
+
+  // First, get active strategies (long interval - WebSocket provides real-time)
   const { data: strategies } = useQuery<any[]>({
     queryKey: ['/api/strategies'],
-    refetchInterval: 30000,
+    refetchInterval: 60000, // 60s fallback, WebSocket provides real-time
   });
 
   // Find the active strategy
   const activeStrategy = strategies?.find(s => s.isActive);
 
-  // Fetch live exchange positions (live-only mode)
+  // Fetch live exchange positions (long interval - WebSocket provides real-time)
   const { data: livePositionsData, isLoading, error } = useQuery<any[]>({
     queryKey: ['/api/live/positions'],
-    refetchInterval: 45000, // Reduced to 45 seconds to avoid rate limiting
+    refetchInterval: 120000, // 2min fallback, WebSocket provides real-time
     enabled: !!activeStrategy,
     retry: 2,
   });
@@ -796,7 +800,7 @@ export function StrategyStatus() {
       return fillsMap;
     },
     enabled: livePositionIds.length > 0,
-    refetchInterval: 45000,
+    refetchInterval: 120000, // 2min fallback, WebSocket provides real-time
     retry: 2,
   });
 
@@ -856,25 +860,25 @@ export function StrategyStatus() {
   // Use live positions summary (live-only mode)
   const displaySummary = livePositionsSummary;
 
-  // Fetch closed positions
+  // Fetch closed positions (long interval - WebSocket provides real-time)
   // Backend automatically returns appropriate data based on trading mode
   const { data: closedPositions } = useQuery<Position[]>({
     queryKey: ['/api/strategies', activeStrategy?.id, 'positions', 'closed'],
     enabled: !!activeStrategy?.id,
-    refetchInterval: 30000, // Refresh every 30 seconds
+    refetchInterval: 60000, // 60s fallback, WebSocket provides real-time
   });
 
-  // Fetch strategy changes for the session
+  // Fetch strategy changes for the session (long interval - WebSocket provides real-time)
   const { data: strategyChanges } = useQuery<any[]>({
     queryKey: ['/api/strategies', activeStrategy?.id, 'changes'],
     enabled: !!activeStrategy?.id,
-    refetchInterval: 30000, // Refresh every 30 seconds
+    refetchInterval: 60000, // 60s fallback, WebSocket provides real-time
   });
 
-  // Fetch asset performance data
+  // Fetch asset performance data (long interval - WebSocket provides real-time)
   const { data: assetPerformance } = useQuery<AssetPerformance[]>({
     queryKey: ['/api/analytics/asset-performance'],
-    refetchInterval: 30000,
+    refetchInterval: 60000, // 60s fallback, WebSocket provides real-time
   });
 
   // Calculate top 3 performing assets by total P&L (only from closed positions)

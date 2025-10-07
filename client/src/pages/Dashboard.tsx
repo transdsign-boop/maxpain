@@ -18,6 +18,7 @@ import { Settings2, Pause, Play, AlertTriangle, BarChart3, Menu, BookOpen } from
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useWebSocketData } from "@/hooks/useWebSocketData";
 
 interface Liquidation {
   id: string;
@@ -52,10 +53,15 @@ export default function Dashboard() {
   // Track last viewed strategy to persist selection when pausing
   const [lastViewedStrategyId, setLastViewedStrategyId] = useState<string | null>(null);
 
-  // Fetch active strategies
+  // Connect to WebSocket for real-time updates
+  const { isConnected: wsConnected } = useWebSocketData({
+    enabled: true,
+  });
+
+  // Fetch active strategies (long interval as fallback - WebSocket provides real-time updates)
   const { data: strategies } = useQuery<any[]>({
     queryKey: ['/api/strategies'],
-    refetchInterval: 30000,
+    refetchInterval: 60000, // 60s fallback, WebSocket provides real-time
   });
 
   // Smart strategy selection: Keep showing the same strategy after pausing
@@ -71,18 +77,18 @@ export default function Dashboard() {
     }
   }, [activeStrategy?.id]);
 
-  // Fetch live account data from Aster DEX
+  // Fetch live account data from Aster DEX (long interval - WebSocket provides real-time)
   const { data: liveAccount, error: liveAccountError } = useQuery<any>({
     queryKey: ['/api/live/account'],
-    refetchInterval: 30000, // Reduced to 30 seconds to avoid rate limiting
+    refetchInterval: 120000, // 2min fallback, WebSocket provides real-time
     enabled: !!activeStrategy,
     retry: 2,
   });
 
-  // Fetch live positions from Aster DEX
+  // Fetch live positions from Aster DEX (long interval - WebSocket provides real-time)
   const { data: livePositions, error: livePositionsError } = useQuery<any[]>({
     queryKey: ['/api/live/positions'],
-    refetchInterval: 45000, // Reduced to 45 seconds to avoid rate limiting
+    refetchInterval: 120000, // 2min fallback, WebSocket provides real-time
     enabled: !!activeStrategy,
     retry: 2,
   });

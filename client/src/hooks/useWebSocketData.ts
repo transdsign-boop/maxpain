@@ -1,0 +1,148 @@
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+
+interface WebSocketEvent {
+  type: string;
+  data: any;
+  timestamp: number;
+}
+
+interface UseWebSocketDataOptions {
+  enabled?: boolean;
+  onEvent?: (event: WebSocketEvent) => void;
+}
+
+export function useWebSocketData(options: UseWebSocketDataOptions = {}) {
+  const { enabled = true, onEvent } = options;
+  const [isConnected, setIsConnected] = useState(false);
+  const [lastEvent, setLastEvent] = useState<WebSocketEvent | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const queryClient = useQueryClient();
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
+  const reconnectAttemptsRef = useRef(0);
+  const maxReconnectAttempts = 10;
+  const baseReconnectDelay = 1000;
+
+  const connect = useCallback(() => {
+    if (!enabled || wsRef.current?.readyState === WebSocket.OPEN) {
+      return;
+    }
+
+    try {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}/ws`;
+      
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        console.log('Connected to trading data WebSocket');
+        setIsConnected(true);
+        reconnectAttemptsRef.current = 0;
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const wsEvent: WebSocketEvent = JSON.parse(event.data);
+          setLastEvent(wsEvent);
+          
+          // Call custom event handler if provided
+          if (onEvent) {
+            onEvent(wsEvent);
+          }
+
+          // Automatically invalidate relevant queries based on event type
+          switch (wsEvent.type) {
+            case 'position_opened':
+            case 'position_closed':
+            case 'position_updated':
+              // Invalidate live positions
+              queryClient.invalidateQueries({ queryKey: ['/api/live/positions'] });
+              // Invalidate closed positions if a position closed
+              if (wsEvent.type === 'position_closed') {
+                queryClient.invalidateQueries({ queryKey: ['/api/strategies'], predicate: (query) => 
+                  query.queryKey[2] === 'positions' && query.queryKey[3] === 'closed'
+                });
+              }
+              break;
+            
+            case 'fill_added':
+              // Invalidate position fills
+              queryClient.invalidateQueries({ queryKey: ['/api/positions'] });
+              queryClient.invalidateQueries({ queryKey: ['/api/live/position-fills'] });
+              break;
+            
+            case 'account_updated':
+              // Invalidate account data
+              queryClient.invalidateQueries({ queryKey: ['/api/live/account'] });
+              break;
+            
+            case 'performance_updated':
+              // Invalidate performance metrics
+              queryClient.invalidateQueries({ queryKey: ['/api/performance/overview'] });
+              queryClient.invalidateQueries({ queryKey: ['/api/performance/chart'] });
+              break;
+            
+            case 'asset_performance_updated':
+              // Invalidate asset performance
+              queryClient.invalidateQueries({ queryKey: ['/api/analytics/asset-performance'] });
+              break;
+            
+            case 'strategy_updated':
+              // Invalidate strategy data
+              queryClient.invalidateQueries({ queryKey: ['/api/strategies'] });
+              break;
+          }
+        } catch (error) {
+          console.error('Error parsing WebSocket message:', error);
+        }
+      };
+
+      ws.onclose = () => {
+        console.log('Disconnected from trading data WebSocket');
+        setIsConnected(false);
+        wsRef.current = null;
+
+        // Attempt to reconnect with exponential backoff
+        if (enabled && reconnectAttemptsRef.current < maxReconnectAttempts) {
+          const delay = Math.min(
+            baseReconnectDelay * Math.pow(2, reconnectAttemptsRef.current),
+            30000 // Max 30 seconds
+          );
+          reconnectAttemptsRef.current++;
+          console.log(`Reconnecting in ${delay}ms (attempt ${reconnectAttemptsRef.current}/${maxReconnectAttempts})...`);
+          
+          reconnectTimeoutRef.current = setTimeout(() => {
+            connect();
+          }, delay);
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error('Trading data WebSocket error:', error);
+      };
+    } catch (error) {
+      console.error('Failed to create WebSocket connection:', error);
+    }
+  }, [enabled, onEvent, queryClient]);
+
+  useEffect(() => {
+    if (enabled) {
+      connect();
+    }
+
+    return () => {
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+    };
+  }, [connect, enabled]);
+
+  return {
+    isConnected,
+    lastEvent,
+  };
+}
