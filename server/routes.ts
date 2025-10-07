@@ -3051,7 +3051,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Get only ACTIVE (non-archived) sessions for this strategy
       const allSessions = await storage.getSessionsByStrategy(strategyId);
+      console.log(`📊 Total sessions for strategy: ${allSessions.length}`);
+      console.log(`📊 Session active states:`, allSessions.map(s => ({ id: s.id.substring(0, 8), isActive: s.isActive })));
+      
       const activeSessions = allSessions.filter(session => session.isActive);
+      console.log(`✅ Active sessions after filter: ${activeSessions.length}`);
       
       if (activeSessions.length === 0) {
         return res.json([]);
@@ -3100,6 +3104,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           totalFees: totalFees.toFixed(4), // Include total fees for display
         };
       });
+      
+      console.log(`📊 Returning ${closedPositionsWithFees.length} closed positions from ${activeSessions.length} active sessions`);
+      
+      // Prevent caching
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
       
       res.json(closedPositionsWithFees);
     } catch (error) {
