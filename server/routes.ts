@@ -3590,6 +3590,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Archive all empty sessions (sessions with no closed positions)
+  app.post('/api/strategies/:strategyId/archive-empty-sessions', async (req, res) => {
+    try {
+      const { strategyId } = req.params;
+      console.log(`🧹 Archiving empty sessions for strategy ${strategyId}`);
+      
+      // Get all sessions for this strategy
+      const allSessions = await storage.getSessionsByStrategy(strategyId);
+      
+      let archivedCount = 0;
+      
+      for (const session of allSessions) {
+        // Skip already archived sessions
+        if (!session.isActive) continue;
+        
+        // Get positions for this session
+        const positions = await storage.getPositionsBySession(session.id);
+        const closedPositions = positions.filter(p => !p.isOpen && p.closedAt);
+        
+        // If no closed positions, archive it
+        if (closedPositions.length === 0) {
+          await storage.endTradeSession(session.id);
+          console.log(`🧹 Archived empty session ${session.id}`);
+          archivedCount++;
+        }
+      }
+      
+      res.json({
+        success: true,
+        message: `Archived ${archivedCount} empty session(s)`,
+        archivedSessions: archivedCount
+      });
+    } catch (error) {
+      console.error('Error archiving empty sessions:', error);
+      res.status(500).json({ error: 'Failed to archive empty sessions' });
+    }
+  });
+
   // Archive sessions with positions before a specific date
   app.post('/api/strategies/:strategyId/archive-before-date', async (req, res) => {
     try {
@@ -3652,6 +3690,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error archiving sessions by date:', error);
       res.status(500).json({ error: 'Failed to archive sessions' });
+    }
+  });
+
+  // Reactivate an archived session
+  app.patch('/api/sessions/:sessionId/reactivate', async (req, res) => {
+    try {
+      const { sessionId } = req.params;
+      console.log(`🔄 Reactivating session ${sessionId}`);
+      
+      // Set this session as active and clear ended_at
+      await storage.updateTradeSession(sessionId, {
+        isActive: true,
+        endedAt: null as any
+      });
+      
+      res.json({ success: true, message: 'Session reactivated' });
+    } catch (error) {
+      console.error('Error reactivating session:', error);
+      res.status(500).json({ error: 'Failed to reactivate session' });
     }
   });
 
