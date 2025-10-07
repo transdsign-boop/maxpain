@@ -7,6 +7,7 @@ import { z } from "zod";
 import { storage } from "./storage";
 import { strategyEngine } from "./strategy-engine";
 import { cascadeDetectorService } from "./cascade-detector-service";
+import { wsBroadcaster } from "./websocket-broadcaster";
 import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySchema, updateStrategySchema, type Position, type Liquidation, type InsertFill, positions } from "@shared/schema";
 import { db } from "./db";
 import { desc } from "drizzle-orm";
@@ -2585,6 +2586,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Connect strategy engine with WebSocket clients for trade notifications
   strategyEngine.setWebSocketClients(clients);
   
+  // Connect WebSocket broadcaster for real-time event broadcasting
+  wsBroadcaster.setClients(clients);
+  
   // Initialize cascade detector service
   cascadeDetectorService.setClients(clients);
   cascadeDetectorService.start();
@@ -3523,6 +3527,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const orderResult = await orderResponse.json();
         console.log(`✅ Live position ${symbol} closed on exchange: ${side} ${quantity} (Order ID: ${orderResult.orderId})`);
 
+        // Broadcast position closed event
+        wsBroadcaster.broadcastPositionClosed({
+          symbol,
+          side: positionSide,
+          quantity: quantity.toString(),
+          orderId: orderResult.orderId,
+        });
+
         return res.json({
           success: true,
           message: `Position ${symbol} closed on exchange`,
@@ -4270,6 +4282,9 @@ async function connectToUserDataStream() {
             };
             setCache('live_account', accountData);
             console.log('✅ Updated account cache from WebSocket (balance: $' + balance.toFixed(2) + ')');
+            
+            // Broadcast account update to frontend clients
+            wsBroadcaster.broadcastAccountUpdated(accountData);
           }
           
           // Extract position data from WebSocket update
@@ -4287,6 +4302,9 @@ async function connectToUserDataStream() {
             // Update positions cache with WebSocket data (no REST call needed!)
             setCache('live_positions', positions);
             console.log('✅ Updated positions cache from WebSocket (' + positions.length + ' positions)');
+            
+            // Broadcast position update to frontend clients
+            wsBroadcaster.broadcastPositionUpdated(positions);
           }
         }
         

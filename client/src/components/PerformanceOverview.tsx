@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { TrendingUp, TrendingDown, Target, Award, Activity, LineChart, DollarSign, Percent, ChevronLeft, ChevronRight } from "lucide-react";
 import { ComposedChart, Line, Area, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, ReferenceArea, Label } from "recharts";
 import { format } from "date-fns";
+import { useWebSocketData } from "@/hooks/useWebSocketData";
 
 interface PerformanceMetrics {
   totalTrades: number;
@@ -75,43 +76,46 @@ export default function PerformanceOverview() {
   const [chartEndIndex, setChartEndIndex] = useState<number | null>(null);
   const TRADES_PER_PAGE = 50;
   
-  // Fetch active strategy
+  // Connect to WebSocket for real-time updates
+  useWebSocketData({ enabled: true });
+  
+  // Fetch active strategy (long interval - WebSocket provides real-time)
   const { data: strategies } = useQuery<any[]>({
     queryKey: ['/api/strategies'],
-    refetchInterval: 30000,
+    refetchInterval: 60000, // 60s fallback, WebSocket provides real-time
   });
   const activeStrategy = strategies?.find(s => s.isActive);
 
-  // Fetch live account data (live-only mode)
+  // Fetch live account data (long interval - WebSocket provides real-time)
   const { data: liveAccount, isLoading: liveAccountLoading } = useQuery<LiveAccountData>({
     queryKey: ['/api/live/account'],
-    refetchInterval: 30000,
+    refetchInterval: 120000, // 2min fallback, WebSocket provides real-time
     enabled: !!activeStrategy,
     retry: 2,
   });
 
-  // Fetch performance overview (works for both modes)
+  // Fetch performance overview (long interval - WebSocket provides real-time)
   const { data: performance, isLoading } = useQuery<PerformanceMetrics>({
     queryKey: ['/api/performance/overview'],
-    refetchInterval: 30000,
+    refetchInterval: 60000, // 60s fallback, WebSocket provides real-time
   });
 
-  // Fetch chart data - unified endpoint for both modes
+  // Fetch chart data (long interval - WebSocket provides real-time)
   const { data: rawChartData, isLoading: chartLoading } = useQuery<TradeDataPoint[]>({
     queryKey: ['/api/performance/chart'],
-    refetchInterval: 30000,
+    refetchInterval: 60000, // 60s fallback, WebSocket provides real-time
   });
 
-  // Fetch asset performance data
+  // Fetch asset performance data (long interval - WebSocket provides real-time)
   const { data: assetPerformance } = useQuery<AssetPerformance[]>({
     queryKey: ['/api/analytics/asset-performance'],
-    refetchInterval: 30000,
+    refetchInterval: 60000, // 60s fallback, WebSocket provides real-time
   });
 
-  // Fetch live positions for risk calculation
+  // Fetch live positions for risk calculation (long interval - WebSocket provides real-time)
   const { data: livePositions } = useQuery<any[]>({
     queryKey: ['/api/live/positions'],
-    refetchInterval: 45000,
+    refetchInterval: 120000, // 2min fallback, WebSocket provides real-time
     enabled: !!activeStrategy,
   });
 
