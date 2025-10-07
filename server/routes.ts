@@ -987,7 +987,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "No strategy is currently running" });
       }
 
-      console.log('🔄 Syncing running strategy to database...', runningStrategy.id);
+      console.log('🔄 Syncing running strategy to database...');
+      console.log('  Strategy ID:', runningStrategy.id);
+      console.log('  Max Open Positions:', runningStrategy.maxOpenPositions);
+      console.log('  Max Portfolio Risk %:', runningStrategy.maxPortfolioRiskPercent);
 
       // Find the database strategy for this user (there should only be one)
       const existingStrategies = await storage.getStrategiesByUser(DEFAULT_USER_ID);
