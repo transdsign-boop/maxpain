@@ -1,0 +1,26 @@
+
+* Each request will include a header named `X-MBX-USED-WEIGHT-(intervalNum)(intervalLetter)` that contains the used weight of all requests from the current IP.  
+* Each endpoint has a corresponding weight, and some endpoints may have different weights depending on their parameters. The more resources an endpoint consumes, the higher its weight will be.  
+* Upon receiving a 429, you are responsible for stopping requests and must not abuse the API.  
+* **If you continue to violate access limits after receiving a 429, your IP will be banned and you will receive a 418 error code.**  
+* Repeated violations of the limits will result in progressively longer bans, **from a minimum of 2 minutes up to a maximum of 3 days**.  
+* The `Retry-After` header will be sent with responses bearing 418 or 429, and will give the wait time **in seconds** (if 429\) to avoid the ban, or, if 418, until the ban ends.  
+* **Access restrictions are based on IP, not API Key**
+
+You are advised to use WebSocket messages to obtain the corresponding data as much as possible to reduce the load and rate-limit pressure from requests.
+
+### Order rate limits
+
+* Each successful order response will include a `X-MBX-ORDER-COUNT-(intervalNum)(intervalLetter)` header containing the number of order limit units currently used by the account.  
+* When the number of orders exceeds the limit, you will receive a response with status 429 but without the `Retry-After` header. Please check the order rate limits in `GET api/v1/exchangeInfo` (rateLimitType \= ORDERS) and wait until the ban period ends.  
+* Rejected or unsuccessful orders are not guaranteed to include the above header in the response.  
+* **Order placement rate limits are counted per account.**
+
+### WebSocket connection limits
+
+* The WebSocket server accepts a maximum of 5 messages per second. Messages include:  
+  * PING frame  
+  * PONG frame  
+  * Messages in JSON format, such as subscribe and unsubscribe.  
+* If a user sends messages that exceed the limit, the connection will be terminated. IPs that are repeatedly disconnected may be blocked by the server.  
+* A single connection can subscribe to up to **1024** Streams.
