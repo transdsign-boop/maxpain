@@ -110,6 +110,8 @@ export const strategies = pgTable("strategies", {
   // Portfolio Risk Management
   maxOpenPositions: integer("max_open_positions").notNull().default(5), // Maximum number of simultaneous open positions (0 = unlimited)
   maxPortfolioRiskPercent: decimal("max_portfolio_risk_percent", { precision: 5, scale: 2 }).notNull().default("15.0"), // Maximum total risk across all positions as % of account
+  // Risk Level Preset (1=Very Conservative, 2=Conservative, 3=Balanced, 4=Aggressive, 5=Very Aggressive)
+  riskLevel: integer("risk_level").notNull().default(3), // Controls how selective the system is about entering trades
 });
 
 // Trading Sessions
