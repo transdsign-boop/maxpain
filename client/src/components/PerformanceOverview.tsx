@@ -86,6 +86,7 @@ export default function PerformanceOverview() {
     chartDataLoading: chartLoading,
     assetPerformance,
     livePositions,
+    strategyChanges,
   } = useStrategyData();
 
   // Calculate top 3 performing assets by total P&L (only from closed positions)
@@ -261,9 +262,6 @@ export default function PerformanceOverview() {
     
     return groups;
   }, [chartData]);
-
-  // Get strategy changes from centralized hook
-  const { strategyChanges } = useStrategyData();
 
   // Calculate total risk (live-only mode)
   const { totalRisk, riskPercentage } = useMemo(() => {
