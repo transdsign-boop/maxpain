@@ -13,6 +13,7 @@ import { fetchActualFills, aggregateFills } from './exchange-utils';
 import { orderProtectionService } from './order-protection-service';
 import { cascadeDetectorService } from './cascade-detector-service';
 import { calculateNextLayer, calculateATRPercent } from './dca-calculator';
+import { userDataStreamManager } from './user-data-stream';
 
 // Aster DEX fee schedule
 const ASTER_MAKER_FEE_PERCENT = 0.01;  // 0.01% for limit orders (adds liquidity) 
@@ -270,20 +271,40 @@ export class StrategyEngine extends EventEmitter {
     // Sync cascade detector with strategy's selected assets
     await cascadeDetectorService.syncSymbols();
     
-    // DISABLED: Using cached endpoints instead to avoid rate limits
-    // The orchestrator polls every 3-5 seconds which exceeds Aster DEX limits
-    // Frontend should use /api/live/account and /api/live/positions (5-minute cache)
-    // const { liveDataOrchestrator } = await import('./live-data-orchestrator');
-    // liveDataOrchestrator.startPolling(strategy.id);
+    // Start WebSocket user data stream for real-time account/position updates
+    const apiKey = process.env.ASTER_API_KEY;
+    if (apiKey) {
+      try {
+        await userDataStreamManager.start({
+          apiKey,
+          onAccountUpdate: (data) => {
+            console.log('💰 Account balance updated via WebSocket');
+          },
+          onPositionUpdate: (data) => {
+            console.log('📈 Position updated via WebSocket');
+          },
+          onOrderUpdate: (data) => {
+            console.log('📦 Order updated via WebSocket');
+          }
+        });
+        console.log('✅ User data stream started for real-time updates');
+      } catch (error) {
+        console.error('⚠️ Failed to start user data stream:', error);
+      }
+    }
   }
 
   // Unregister a strategy
   async unregisterStrategy(strategyId: string) {
     console.log(`📤 Unregistering strategy: ${strategyId}`);
     
-    // DISABLED: Orchestrator polling is disabled (see registerStrategy)
-    // const { liveDataOrchestrator } = await import('./live-data-orchestrator');
-    // liveDataOrchestrator.stopPolling(strategyId);
+    // Stop WebSocket user data stream
+    try {
+      await userDataStreamManager.stop();
+      console.log('✅ User data stream stopped');
+    } catch (error) {
+      console.error('⚠️ Error stopping user data stream:', error);
+    }
     
     // CRITICAL: Capture session BEFORE removing from maps
     const session = this.activeSessions.get(strategyId);
