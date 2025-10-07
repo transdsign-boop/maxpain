@@ -8,9 +8,9 @@ import { storage } from "./storage";
 import { strategyEngine } from "./strategy-engine";
 import { cascadeDetectorService } from "./cascade-detector-service";
 import { wsBroadcaster } from "./websocket-broadcaster";
-import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySchema, updateStrategySchema, type Position, type Liquidation, type InsertFill, positions } from "@shared/schema";
+import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySchema, updateStrategySchema, type Position, type Liquidation, type InsertFill, positions, strategies } from "@shared/schema";
 import { db } from "./db";
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 
 // Fixed liquidation window - always 60 seconds regardless of user input
 const LIQUIDATION_WINDOW_SECONDS = 60;
@@ -1073,6 +1073,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('❌ Error syncing strategy:', error);
       res.status(500).json({ error: "Failed to sync strategy to database" });
+    }
+  });
+
+  // Get consolidated live data snapshot (account + positions + summary)
+  app.get("/api/live/snapshot", async (req, res) => {
+    try {
+      const { liveDataOrchestrator } = await import('./live-data-orchestrator');
+      
+      // Get active strategy
+      const activeStrategy = await db.query.strategies.findFirst({
+        where: eq(strategies.isActive, true)
+      });
+
+      if (!activeStrategy) {
+        return res.status(404).json({ error: "No active strategy found" });
+      }
+
+      // Get snapshot from orchestrator cache
+      const snapshot = liveDataOrchestrator.getSnapshot(activeStrategy.id);
+      
+      res.json(snapshot);
+    } catch (error: any) {
+      console.error('❌ Error fetching live snapshot:', error);
+      res.status(500).json({ error: `Failed to fetch live snapshot: ${error.message}` });
     }
   });
 
@@ -2320,6 +2344,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Register with strategy engine to create trade session
       await strategyEngine.registerStrategy(strategy);
       
+      // Start live data polling
+      const { liveDataOrchestrator } = await import('./live-data-orchestrator');
+      liveDataOrchestrator.startPolling(strategyId);
+      
       // Return updated strategy for easier frontend sync
       const updatedStrategy = await storage.getStrategy(strategyId);
       res.status(200).json(updatedStrategy);
@@ -2346,6 +2374,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Unregister from strategy engine and end trade session
       await strategyEngine.unregisterStrategy(strategyId);
+      
+      // Stop live data polling
+      const { liveDataOrchestrator } = await import('./live-data-orchestrator');
+      liveDataOrchestrator.stopPolling(strategyId);
       
       // Return updated strategy for easier frontend sync
       const updatedStrategy = await storage.getStrategy(strategyId);
