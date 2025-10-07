@@ -266,11 +266,19 @@ export class StrategyEngine extends EventEmitter {
     this.activeSessions.set(strategy.id, session);
     this.activeSessions.set(session.id, session);
     console.log(`✅ Strategy registered with session: ${session.id}`);
+    
+    // Start live data polling for this strategy
+    const { liveDataOrchestrator } = await import('./live-data-orchestrator');
+    liveDataOrchestrator.startPolling(strategy.id);
   }
 
   // Unregister a strategy
   async unregisterStrategy(strategyId: string) {
     console.log(`📤 Unregistering strategy: ${strategyId}`);
+    
+    // Stop live data polling for this strategy
+    const { liveDataOrchestrator } = await import('./live-data-orchestrator');
+    liveDataOrchestrator.stopPolling(strategyId);
     
     // CRITICAL: Capture session BEFORE removing from maps
     const session = this.activeSessions.get(strategyId);
