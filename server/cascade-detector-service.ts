@@ -163,11 +163,12 @@ class CascadeDetectorService {
 
   private async tick(): Promise<void> {
     try {
-      // Get RET thresholds from active strategy (same for all symbols)
+      // Get RET thresholds and risk level from active strategy (same for all symbols)
       const strategies = await storage.getAllActiveStrategies();
       const activeStrategy = strategies[0];
       const retHighThreshold = activeStrategy ? parseFloat(activeStrategy.retHighThreshold) : 35;
       const retMediumThreshold = activeStrategy ? parseFloat(activeStrategy.retMediumThreshold) : 25;
+      const riskLevel = activeStrategy?.riskLevel ?? 3; // Default to balanced
 
       const allStatuses = [];
 
@@ -193,8 +194,8 @@ class CascadeDetectorService {
         const oi = await this.getOpenInterest(symbol);
         data.lastOI = oi;
 
-        // Update detector for this symbol
-        const status = detector.ingestTick(liqInfo.notional, ret1s, oi, retSideMatchesLiq, retHighThreshold, retMediumThreshold);
+        // Update detector for this symbol (with risk level)
+        const status = detector.ingestTick(liqInfo.notional, ret1s, oi, retSideMatchesLiq, retHighThreshold, retMediumThreshold, riskLevel);
 
         allStatuses.push(status);
 

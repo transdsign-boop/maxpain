@@ -21,6 +21,14 @@ interface OISnapshot {
   timestamp: number;
 }
 
+interface RiskPreset {
+  oiPenaltyThreshold: number;    // OI increase % that triggers penalty
+  lqHighThreshold: number;       // Multiplier for high quality liquidations
+  lqMediumThreshold: number;     // Multiplier for medium quality liquidations
+  retHighMultiplier: number;     // Multiplier for retHighThreshold (e.g., 0.8 = 20% lower)
+  retMediumMultiplier: number;   // Multiplier for retMediumThreshold
+}
+
 export class CascadeDetector {
   private readonly symbol: string;
   private liq1mSameSide: number[] = [];
@@ -51,6 +59,62 @@ export class CascadeDetector {
   constructor(symbol: string, autoEnabled: boolean = true) {
     this.symbol = symbol;
     this.autoEnabled = autoEnabled;
+  }
+
+  /**
+   * Get risk preset configuration based on risk level (1-5)
+   * 
+   * Level 1 (Very Conservative): Only pristine setups, high LQ requirements
+   * Level 2 (Conservative): Strong signals required
+   * Level 3 (Balanced): Default behavior - balanced risk/reward
+   * Level 4 (Aggressive): Accept weaker signals, lower requirements
+   * Level 5 (Very Aggressive): Trade most liquidations, minimal filtering
+   */
+  static getRiskPreset(riskLevel: number): RiskPreset {
+    switch (riskLevel) {
+      case 1: // Very Conservative
+        return {
+          oiPenaltyThreshold: 0.1,    // Penalize even tiny OI increases
+          lqHighThreshold: 8,         // Need 8x median for +2 points
+          lqMediumThreshold: 6,       // Need 6x median for +1 point
+          retHighMultiplier: 1.1,     // 10% higher RET thresholds
+          retMediumMultiplier: 1.2,   // 20% higher
+        };
+      case 2: // Conservative
+        return {
+          oiPenaltyThreshold: 0.2,
+          lqHighThreshold: 7,
+          lqMediumThreshold: 5,
+          retHighMultiplier: 1.05,
+          retMediumMultiplier: 1.1,
+        };
+      case 3: // Balanced (default)
+        return {
+          oiPenaltyThreshold: 0.5,    // Tolerate small OI increases
+          lqHighThreshold: 6,         // Original thresholds
+          lqMediumThreshold: 4,
+          retHighMultiplier: 1.0,     // Original RET thresholds
+          retMediumMultiplier: 1.0,
+        };
+      case 4: // Aggressive
+        return {
+          oiPenaltyThreshold: 1.0,
+          lqHighThreshold: 5,
+          lqMediumThreshold: 3,
+          retHighMultiplier: 0.9,     // 10% lower RET thresholds
+          retMediumMultiplier: 0.85,  // 15% lower
+        };
+      case 5: // Very Aggressive
+        return {
+          oiPenaltyThreshold: 2.0,    // Almost never penalize OI increases
+          lqHighThreshold: 4,
+          lqMediumThreshold: 2,
+          retHighMultiplier: 0.8,     // 20% lower RET thresholds
+          retMediumMultiplier: 0.7,   // 30% lower
+        };
+      default:
+        return CascadeDetector.getRiskPreset(3); // Default to balanced
+    }
   }
 
   private median(arr: number[]): number {
@@ -115,15 +179,9 @@ export class CascadeDetector {
    * Scoring algorithm (0-6 points):
    * 
    * Liquidation Quality (LQ):
-   *   - LQ ≥ 8: +2 points (large liquidations)
-   *   - LQ ≥ 6: +1 point (medium liquidations)
-   *   
-   *   Note: LQ thresholds (8, 6) are FIXED by algorithm design. These values define what
-   *   constitutes "large" vs "medium" liquidations based on the ratio sumLiq/medianLiq.
-   *   LQ = 8 means liquidations are 8x the historical median - empirically this indicates
-   *   significant market stress and high reversal probability. LQ = 6 (6x median) is the
-   *   minimum threshold for a meaningful liquidation cascade. These are NOT user-configurable
-   *   as they represent fundamental market structure breakpoints.
+   *   - LQ ≥ lqHighThreshold: +2 points (large liquidations)
+   *   - LQ ≥ lqMediumThreshold: +1 point (medium liquidations)
+   *   (Thresholds adjusted by risk level preset)
    * 
    * Volatility (RET):
    *   - RET ≥ retMediumThreshold: +1 point (user-configurable)
@@ -131,13 +189,8 @@ export class CascadeDetector {
    * Open Interest Change (dOI):
    *   - dOI_1m ≤ -1.0% OR dOI_3m ≤ -1.5%: +2 points (strong OI drop)
    *   - dOI_1m ≤ -0.5% OR dOI_3m ≤ -1.0%: +1 point (moderate OI drop)
-   *   - dOI_1m > 0 AND dOI_3m > 0: -2 points (OI increasing = not a reversal)
-   *   
-   *   Note: OI percentage thresholds (-1.0%, -1.5%, -0.5%, -1.0%) are FIXED by algorithm design.
-   *   These represent empirically derived breakpoints where open interest decline indicates
-   *   forced position unwinding (cascade) vs normal market activity. -1.0% in 1 minute or
-   *   -1.5% in 3 minutes represents rapid forced closures typical of liquidation cascades.
-   *   These are NOT user-configurable as they represent fundamental market microstructure.
+   *   - dOI_1m > oiPenaltyThreshold AND dOI_3m > oiPenaltyThreshold: -2 points
+   *     (OI increasing beyond threshold = not a reversal)
    * 
    * Score buckets:
    *   - 0-1: "poor"
@@ -145,22 +198,29 @@ export class CascadeDetector {
    *   - 3: "good"
    *   - 4+: "excellent"
    */
-  private calculateReversalQuality(LQ: number, RET: number, dOI_1m: number, dOI_3m: number, retMediumThreshold: number = 25): { reversal_quality: number; rq_bucket: 'poor' | 'ok' | 'good' | 'excellent' } {
+  private calculateReversalQuality(
+    LQ: number, 
+    RET: number, 
+    dOI_1m: number, 
+    dOI_3m: number, 
+    retMediumThreshold: number = 25,
+    preset: RiskPreset = CascadeDetector.getRiskPreset(3)
+  ): { reversal_quality: number; rq_bucket: 'poor' | 'ok' | 'good' | 'excellent' } {
     let score = 0;
     
-    // Liquidation Quality scoring (FIXED thresholds - see function documentation)
-    if (LQ >= 8) score += 2;
-    else if (LQ >= 6) score += 1;
+    // Liquidation Quality scoring (thresholds from risk preset)
+    if (LQ >= preset.lqHighThreshold) score += 2;
+    else if (LQ >= preset.lqMediumThreshold) score += 1;
     
     // Volatility scoring (user-configurable threshold)
     if (RET >= retMediumThreshold) score += 1;
     
-    // Open Interest scoring
+    // Open Interest scoring (fixed drop thresholds)
     if (dOI_1m <= -1.0 || dOI_3m <= -1.5) score += 2;
     else if (dOI_1m <= -0.5 || dOI_3m <= -1.0) score += 1;
     
-    // Penalty for increasing OI (not a reversal)
-    if (dOI_1m > 0 && dOI_3m > 0) score -= 2;
+    // Penalty for increasing OI beyond preset threshold (not a reversal)
+    if (dOI_1m > preset.oiPenaltyThreshold && dOI_3m > preset.oiPenaltyThreshold) score -= 2;
     
     score = Math.max(0, score);
     
@@ -208,8 +268,15 @@ export class CascadeDetector {
     oiSnapshot: number,
     retSideMatchesLiq: boolean,
     retHighThreshold: number = 35,
-    retMediumThreshold: number = 25
+    retMediumThreshold: number = 25,
+    riskLevel: number = 3
   ): CascadeStatus {
+    // Get risk preset for this level
+    const preset = CascadeDetector.getRiskPreset(riskLevel);
+    
+    // Apply RET multipliers from preset
+    const adjustedRetHigh = retHighThreshold * preset.retHighMultiplier;
+    const adjustedRetMedium = retMediumThreshold * preset.retMediumMultiplier;
     this.liq1mSameSide.push(liqNotionalSameSide);
     if (this.liq1mSameSide.length > this.WINDOW_1M) {
       this.liq1mSameSide.shift();
@@ -262,11 +329,11 @@ export class CascadeDetector {
     if (LQ >= 8) score += 2;
     else if (LQ >= 4) score += 1;
 
-    // RET thresholds (user-configurable):
+    // RET thresholds (adjusted by risk level):
     // Only counts if volatility direction matches liquidation side (retSideMatchesLiq)
     if (retSideMatchesLiq) {
-      if (RET >= retHighThreshold) score += 2;
-      else if (RET >= retMediumThreshold) score += 1;
+      if (RET >= adjustedRetHigh) score += 2;
+      else if (RET >= adjustedRetMedium) score += 1;
     }
 
     // OI percentage drop thresholds (FIXED by algorithm design):
@@ -306,8 +373,8 @@ export class CascadeDetector {
 
     const autoBlock = this.autoEnabled && (this.currentLight === 'orange' || this.currentLight === 'red');
 
-    const { reversal_quality, rq_bucket } = this.calculateReversalQuality(LQ, RET, dOI_1m, dOI_3m, retMediumThreshold);
-    const { volatility_regime, rq_threshold_adjusted } = this.calculateVolatilityRegime(RET, retHighThreshold, retMediumThreshold);
+    const { reversal_quality, rq_bucket } = this.calculateReversalQuality(LQ, RET, dOI_1m, dOI_3m, adjustedRetMedium, preset);
+    const { volatility_regime, rq_threshold_adjusted } = this.calculateVolatilityRegime(RET, adjustedRetHigh, adjustedRetMedium);
 
     // Store calculated values for getCurrentStatus()
     this.lastLQ = parseFloat(LQ.toFixed(1));
