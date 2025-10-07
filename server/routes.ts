@@ -2450,9 +2450,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Register with strategy engine to create trade session
       await strategyEngine.registerStrategy(strategy);
       
-      // DISABLED: Using cached endpoints instead to avoid rate limits
-      // const { liveDataOrchestrator } = await import('./live-data-orchestrator');
-      // liveDataOrchestrator.startPolling(strategyId);
+      // Initialize WebSocket-only cache (NO POLLING)
+      const { liveDataOrchestrator } = await import('./live-data-orchestrator');
+      liveDataOrchestrator.start(strategyId);
       
       // Return updated strategy for easier frontend sync
       const updatedStrategy = await storage.getStrategy(strategyId);
@@ -2481,9 +2481,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Unregister from strategy engine and end trade session
       await strategyEngine.unregisterStrategy(strategyId);
       
-      // DISABLED: Orchestrator polling is disabled (see start endpoint)
-      // const { liveDataOrchestrator } = await import('./live-data-orchestrator');
-      // liveDataOrchestrator.stopPolling(strategyId);
+      // Clear WebSocket cache
+      const { liveDataOrchestrator } = await import('./live-data-orchestrator');
+      liveDataOrchestrator.stop(strategyId);
       
       // Return updated strategy for easier frontend sync
       const updatedStrategy = await storage.getStrategy(strategyId);

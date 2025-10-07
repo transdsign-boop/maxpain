@@ -148,11 +148,21 @@ class UserDataStreamManager {
     }
   }
 
-  private handleAccountUpdate(message: any): void {
+  private async handleAccountUpdate(message: any): Promise<void> {
     // Extract account balance and position updates
     const accountData = message.a;
     
     if (accountData) {
+      // Get active strategy for cache updates
+      const { db } = await import('./db');
+      const { strategies } = await import('@shared/schema');
+      const { eq } = await import('drizzle-orm');
+      const { liveDataOrchestrator } = await import('./live-data-orchestrator');
+      
+      const activeStrategy = await db.query.strategies.findFirst({
+        where: eq(strategies.isActive, true)
+      });
+
       // Balance updates
       if (accountData.B) {
         const balances = accountData.B.map((b: any) => ({
@@ -160,6 +170,11 @@ class UserDataStreamManager {
           walletBalance: b.wb,
           crossWalletBalance: b.cw,
         }));
+        
+        // Update orchestrator cache from WebSocket
+        if (activeStrategy) {
+          liveDataOrchestrator.updateAccountFromWebSocket(activeStrategy.id, balances);
+        }
         
         // Broadcast balance update
         wsBroadcaster.broadcast({
@@ -184,6 +199,11 @@ class UserDataStreamManager {
           isolatedWallet: p.iw,
           positionSide: p.ps,
         }));
+
+        // Update orchestrator cache from WebSocket
+        if (activeStrategy) {
+          liveDataOrchestrator.updatePositionsFromWebSocket(activeStrategy.id, positions);
+        }
 
         // Broadcast position update
         wsBroadcaster.broadcast({

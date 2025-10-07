@@ -1,8 +1,7 @@
 import { wsBroadcaster } from './websocket-broadcaster';
 import { db } from './db';
-import { strategies, positions } from '@shared/schema';
-import { eq, and } from 'drizzle-orm';
-import crypto from 'crypto';
+import { strategies } from '@shared/schema';
+import { eq } from 'drizzle-orm';
 
 interface LiveSnapshot {
   account: {
@@ -30,14 +29,9 @@ interface LiveSnapshot {
 
 class LiveDataOrchestrator {
   private cache: Map<string, LiveSnapshot> = new Map();
-  private polling: Map<string, NodeJS.Timeout> = new Map();
-  private inflightRequests: Map<string, Promise<any>> = new Map();
-  private backoffTimers: Map<string, number> = new Map();
-  private readonly MIN_BACKOFF_MS = 2000;
-  private readonly MAX_BACKOFF_MS = 30000;
 
   constructor() {
-    console.log('🎯 Live Data Orchestrator initialized');
+    console.log('🎯 Live Data Orchestrator initialized - 100% WebSocket mode (NO POLLING)');
   }
 
   // Get current snapshot from cache (or create empty one)
@@ -54,174 +48,35 @@ class LiveDataOrchestrator {
     return this.cache.get(strategyId)!;
   }
 
-  // Deduplicated fetch with promise memoization
-  private async fetchWithDedupe<T>(
-    key: string,
-    fetcher: () => Promise<T>
-  ): Promise<T> {
-    // If request is already in flight, return the same promise
-    if (this.inflightRequests.has(key)) {
-      console.log(`⏳ Deduplicating request: ${key}`);
-      return this.inflightRequests.get(key) as Promise<T>;
-    }
-
-    // Create new request
-    const promise = fetcher()
-      .finally(() => {
-        // Remove from inflight when done
-        this.inflightRequests.delete(key);
-      });
-
-    this.inflightRequests.set(key, promise);
-    return promise;
-  }
-
-  // Fetch account data from Aster DEX
-  private async fetchAsterAccount(): Promise<any> {
-    const apiKey = process.env.ASTER_API_KEY;
-    const secretKey = process.env.ASTER_SECRET_KEY;
-
-    if (!apiKey || !secretKey) {
-      throw new Error('API credentials not configured');
-    }
-
-    const timestamp = Date.now();
-    const params = `timestamp=${timestamp}`;
-    const signature = crypto
-      .createHmac('sha256', secretKey)
-      .update(params)
-      .digest('hex');
-
-    const response = await fetch(
-      `https://fapi.asterdex.com/fapi/v1/account?${params}&signature=${signature}`,
-      {
-        headers: {
-          'X-MBX-APIKEY': apiKey,
-        },
-      }
-    );
-
-    if (!response.ok) {
-      if (response.status === 429) {
-        throw new Error('Rate limit exceeded');
-      }
-      const error = await response.text();
-      throw new Error(`Aster API error: ${error}`);
-    }
-
-    return await response.json();
-  }
-
-  // Fetch positions data from Aster DEX
-  private async fetchAsterPositions(): Promise<any[]> {
-    const apiKey = process.env.ASTER_API_KEY;
-    const secretKey = process.env.ASTER_SECRET_KEY;
-
-    if (!apiKey || !secretKey) {
-      throw new Error('API credentials not configured');
-    }
-
-    const timestamp = Date.now();
-    const params = `timestamp=${timestamp}`;
-    const signature = crypto
-      .createHmac('sha256', secretKey)
-      .update(params)
-      .digest('hex');
-
-    const response = await fetch(
-      `https://fapi.asterdex.com/fapi/v2/positionRisk?${params}&signature=${signature}`,
-      {
-        headers: {
-          'X-MBX-APIKEY': apiKey,
-        },
-      }
-    );
-
-    if (!response.ok) {
-      if (response.status === 429) {
-        throw new Error('Rate limit exceeded');
-      }
-      const error = await response.text();
-      throw new Error(`Aster API error: ${error}`);
-    }
-
-    return await response.json();
-  }
-
-  // Fetch account data with backoff on 429
-  private async fetchAccountData(strategyId: string): Promise<void> {
-    const key = `account:${strategyId}`;
+  // Update account cache from WebSocket (called by user-data-stream)
+  updateAccountFromWebSocket(strategyId: string, balances: any[]): void {
+    const usdtBalance = balances.find((b: any) => b.asset === 'USDT');
     
-    // Check if we're in backoff
-    const backoffUntil = this.backoffTimers.get(key) || 0;
-    if (Date.now() < backoffUntil) {
-      console.log(`⏸️  Skipping account fetch (backoff until ${new Date(backoffUntil).toISOString()})`);
-      return;
-    }
-
-    try {
-      const account = await this.fetchWithDedupe(key, () => this.fetchAsterAccount());
-
-      // Success - update cache and clear backoff
+    if (usdtBalance) {
       const snapshot = this.getSnapshot(strategyId);
-      snapshot.account = account;
+      snapshot.account = {
+        availableBalance: parseFloat(usdtBalance.crossWalletBalance || '0'),
+        totalWalletBalance: parseFloat(usdtBalance.walletBalance || '0'),
+        totalUnrealizedProfit: 0,
+        totalMarginBalance: parseFloat(usdtBalance.crossWalletBalance || '0'),
+        totalPositionInitialMargin: 0,
+        canTrade: true,
+        canWithdraw: true,
+        updateTime: Date.now()
+      };
       snapshot.timestamp = Date.now();
-      snapshot.error = null;
-      this.backoffTimers.delete(key);
-      
-      // Broadcast update
+      console.log('✅ Updated account cache from WebSocket (balance: $' + snapshot.account.availableBalance.toFixed(2) + ')');
       this.broadcastSnapshot(strategyId);
-    } catch (error: any) {
-      // Handle 429 with exponential backoff
-      if (error.message?.includes('429') || error.message?.includes('Rate limit')) {
-        const currentBackoff = this.backoffTimers.get(key) || this.MIN_BACKOFF_MS;
-        const nextBackoff = Math.min(currentBackoff * 2, this.MAX_BACKOFF_MS);
-        this.backoffTimers.set(key, Date.now() + nextBackoff);
-        console.log(`🚫 Rate limited on account - backing off ${nextBackoff}ms`);
-      } else {
-        console.error(`❌ Error fetching account:`, error.message);
-        const snapshot = this.getSnapshot(strategyId);
-        snapshot.error = error.message;
-      }
     }
   }
 
-  // Fetch positions data with backoff on 429
-  private async fetchPositionsData(strategyId: string): Promise<void> {
-    const key = `positions:${strategyId}`;
-    
-    // Check if we're in backoff
-    const backoffUntil = this.backoffTimers.get(key) || 0;
-    if (Date.now() < backoffUntil) {
-      console.log(`⏸️  Skipping positions fetch (backoff until ${new Date(backoffUntil).toISOString()})`);
-      return;
-    }
-
-    try {
-      const positionsData = await this.fetchWithDedupe(key, () => this.fetchAsterPositions());
-
-      // Success - update cache and clear backoff
-      const snapshot = this.getSnapshot(strategyId);
-      snapshot.positions = positionsData;
-      snapshot.timestamp = Date.now();
-      snapshot.error = null;
-      this.backoffTimers.delete(key);
-      
-      // Broadcast update
-      this.broadcastSnapshot(strategyId);
-    } catch (error: any) {
-      // Handle 429 with exponential backoff
-      if (error.message?.includes('429') || error.message?.includes('Rate limit')) {
-        const currentBackoff = this.backoffTimers.get(key) || this.MIN_BACKOFF_MS;
-        const nextBackoff = Math.min(currentBackoff * 2, this.MAX_BACKOFF_MS);
-        this.backoffTimers.set(key, Date.now() + nextBackoff);
-        console.log(`🚫 Rate limited on positions - backing off ${nextBackoff}ms`);
-      } else {
-        console.error(`❌ Error fetching positions:`, error.message);
-        const snapshot = this.getSnapshot(strategyId);
-        snapshot.error = error.message;
-      }
-    }
+  // Update positions cache from WebSocket (called by user-data-stream)
+  updatePositionsFromWebSocket(strategyId: string, positions: any[]): void {
+    const snapshot = this.getSnapshot(strategyId);
+    snapshot.positions = positions;
+    snapshot.timestamp = Date.now();
+    console.log(`✅ Updated positions cache from WebSocket (${positions.length} positions)`);
+    this.calculatePositionSummary(strategyId);
   }
 
   // Calculate simple summary from live positions
@@ -279,67 +134,23 @@ class LiveDataOrchestrator {
     });
   }
 
-  // Start polling for a strategy
-  startPolling(strategyId: string): void {
-    if (this.polling.has(strategyId)) {
-      console.log(`✓ Already polling for strategy ${strategyId}`);
-      return;
-    }
-
-    console.log(`🚀 Starting live data polling for strategy ${strategyId}`);
-
-    // Staggered polling intervals
-    const accountInterval = setInterval(() => {
-      this.fetchAccountData(strategyId);
-    }, 5000); // Every 5 seconds
-
-    const positionsInterval = setInterval(() => {
-      this.fetchPositionsData(strategyId);
-    }, 3000); // Every 3 seconds
-
-    const summaryInterval = setInterval(() => {
-      this.calculatePositionSummary(strategyId);
-    }, 3000); // Every 3 seconds
-
-    // Store all timers
-    this.polling.set(strategyId, accountInterval);
-    this.polling.set(`${strategyId}:positions`, positionsInterval);
-    this.polling.set(`${strategyId}:summary`, summaryInterval);
-
-    // Initial fetch (staggered)
-    setTimeout(() => this.fetchAccountData(strategyId), 100);
-    setTimeout(() => this.fetchPositionsData(strategyId), 500);
-    setTimeout(() => this.calculatePositionSummary(strategyId), 1000);
+  // Initialize for a strategy (no polling, just cache setup)
+  start(strategyId: string): void {
+    console.log(`✅ Live data cache ready for strategy ${strategyId} - data will arrive via WebSocket`);
+    // Create empty snapshot - will be populated by WebSocket events
+    this.getSnapshot(strategyId);
   }
 
-  // Stop polling for a strategy
-  stopPolling(strategyId: string): void {
-    console.log(`🛑 Stopping live data polling for strategy ${strategyId}`);
-    
-    const timers = [
-      this.polling.get(strategyId),
-      this.polling.get(`${strategyId}:positions`),
-      this.polling.get(`${strategyId}:summary`)
-    ];
-
-    timers.forEach(timer => {
-      if (timer) clearInterval(timer);
-    });
-
-    this.polling.delete(strategyId);
-    this.polling.delete(`${strategyId}:positions`);
-    this.polling.delete(`${strategyId}:summary`);
+  // Stop and clear cache for a strategy
+  stop(strategyId: string): void {
+    console.log(`🛑 Clearing live data cache for strategy ${strategyId}`);
     this.cache.delete(strategyId);
   }
 
-  // Stop all polling
+  // Stop all and clear all caches
   stopAll(): void {
-    console.log('🛑 Stopping all live data polling');
-    this.polling.forEach((timer) => clearInterval(timer));
-    this.polling.clear();
+    console.log('🛑 Clearing all live data caches');
     this.cache.clear();
-    this.inflightRequests.clear();
-    this.backoffTimers.clear();
   }
 }
 
