@@ -580,15 +580,17 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
     mutationFn: async (data: StrategyFormData) => {
       if (!activeStrategy) throw new Error('No active strategy to update');
       
+      // TEMPORARILY DISABLED: Snapshot creation causing failures due to API rate limiting
+      // Will re-enable once rate limiting issues are resolved
       // Create a snapshot of the current configuration before updating
-      try {
-        await apiRequest('POST', `/api/strategies/${activeStrategy.id}/snapshots`, {
-          description: `${activeStrategy.name} - Configuration`
-        });
-      } catch (error) {
-        console.error('Failed to create snapshot:', error);
-        // Continue with update even if snapshot fails
-      }
+      // try {
+      //   await apiRequest('POST', `/api/strategies/${activeStrategy.id}/snapshots`, {
+      //     description: `${activeStrategy.name} - Configuration`
+      //   });
+      // } catch (error) {
+      //   console.error('Failed to create snapshot:', error);
+      //   // Continue with update even if snapshot fails
+      // }
       
       console.log('Sending update request with data:', data);
       const response = await apiRequest('PUT', `/api/strategies/${activeStrategy.id}`, data);
