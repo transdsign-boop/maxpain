@@ -64,6 +64,7 @@ Preferred communication style: Simple, everyday language.
 - Asset Ranking: By Liquidation Activity (default), Best Liquidity, or Alphabetical.
 - Real-time Liquidity Metrics: Batch endpoint fetches order book depth, calculates bid/ask liquidity, and checks trade size capacity.
 - Intelligent Recommendations: Recommends assets and risk parameters based on account tiers, fetched account balance, and liquidity thresholds. Provides visual warnings for unsafe user settings.
+- **Rate Limit Protection**: Polling orchestrator with staggered schedule (account: 5s, positions: 3s), shared cache, request deduplication, and exponential backoff (5s→60s max). Single `/api/live/snapshot` endpoint with WebSocket broadcasts eliminates redundant API calls. Orchestrator auto-starts/stops with strategy activation.
 
 ### Security & Performance
 - End-to-end TypeScript for type safety.
