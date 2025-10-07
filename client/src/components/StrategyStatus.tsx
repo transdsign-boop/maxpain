@@ -752,35 +752,11 @@ export function StrategyStatus() {
   // Find the active strategy
   const activeStrategy = strategies?.find(s => s.isActive);
 
-  // Then fetch positions using the strategy ID
-  const isLiveMode = activeStrategy?.tradingMode === 'live';
-
-  const { data: summary, isLoading, error } = useQuery<PositionSummary>({
-    queryKey: ['/api/strategies', activeStrategy?.id, 'positions', 'summary'],
-    queryFn: async () => {
-      if (!activeStrategy?.id) {
-        throw new Error('No active strategy');
-      }
-      const response = await fetch(`/api/strategies/${activeStrategy.id}/positions/summary`);
-      if (!response.ok) {
-        throw new Error(`${response.status}: ${await response.text()}`);
-      }
-      return response.json();
-    },
-    enabled: !!activeStrategy?.id && !isLiveMode, // Only fetch database positions in paper mode
-    refetchInterval: 10000, // Reduced to 10 seconds to avoid rate limiting
-    retry: (failureCount, error: any) => {
-      // Don't retry 404 errors - they indicate no trade session exists
-      if (error?.status === 404) return false;
-      return failureCount < 3;
-    },
-  });
-
-  // Fetch live exchange positions when in live mode
-  const { data: livePositionsData } = useQuery<any[]>({
+  // Fetch live exchange positions (live-only mode)
+  const { data: livePositionsData, isLoading, error } = useQuery<any[]>({
     queryKey: ['/api/live/positions'],
     refetchInterval: 20000, // Reduced to 20 seconds to avoid rate limiting
-    enabled: !!isLiveMode && !!activeStrategy,
+    enabled: !!activeStrategy,
     retry: 2,
   });
 
@@ -819,7 +795,7 @@ export function StrategyStatus() {
       
       return fillsMap;
     },
-    enabled: !!isLiveMode && livePositionIds.length > 0,
+    enabled: livePositionIds.length > 0,
     refetchInterval: 20000,
     retry: 2,
   });
@@ -877,8 +853,8 @@ export function StrategyStatus() {
     unrealizedPnl: livePositionsData.reduce((sum, p) => sum + parseFloat(p.unRealizedProfit || '0'), 0),
   } : undefined;
 
-  // Use live positions summary when in live mode, otherwise use database summary
-  const displaySummary = isLiveMode ? livePositionsSummary : summary;
+  // Use live positions summary (live-only mode)
+  const displaySummary = livePositionsSummary;
 
   // Fetch closed positions
   // Backend automatically returns appropriate data based on trading mode
@@ -1210,21 +1186,10 @@ export function StrategyStatus() {
     <div className="space-y-6">
     <Card data-testid="strategy-status">
       <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2">
-            <Target className="h-5 w-5" />
-            Transactions
-          </CardTitle>
-          {isLiveMode && (
-            <Badge 
-              variant="default" 
-              className="bg-[rgb(190,242,100)] text-black hover:bg-[rgb(190,242,100)] font-semibold"
-              data-testid="badge-live-mode-positions"
-            >
-              LIVE MODE
-            </Badge>
-          )}
-        </div>
+        <CardTitle className="flex items-center gap-2">
+          <Target className="h-5 w-5" />
+          Transactions
+        </CardTitle>
       </CardHeader>
       <CardContent>
         {/* Top 3 and Worst 3 Performing Assets */}

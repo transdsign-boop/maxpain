@@ -75,27 +75,18 @@ export default function PerformanceOverview() {
   const [chartEndIndex, setChartEndIndex] = useState<number | null>(null);
   const TRADES_PER_PAGE = 50;
   
-  // Fetch active strategy to check if live trading is enabled
+  // Fetch active strategy
   const { data: strategies } = useQuery<any[]>({
     queryKey: ['/api/strategies'],
     refetchInterval: 15000,
   });
   const activeStrategy = strategies?.find(s => s.isActive);
-  const isLiveMode = activeStrategy?.tradingMode === 'live';
 
-  // Fetch paper session data
-  const { data: paperSession, isLoading: paperSessionLoading } = useQuery<SessionSummary>({
-    queryKey: ['/api/strategies', activeStrategy?.id, 'positions', 'summary'],
-    refetchInterval: 15000,
-    enabled: !isLiveMode && !!activeStrategy,
-    retry: 2,
-  });
-
-  // Fetch live account data when in live mode
+  // Fetch live account data (live-only mode)
   const { data: liveAccount, isLoading: liveAccountLoading } = useQuery<LiveAccountData>({
     queryKey: ['/api/live/account'],
     refetchInterval: 30000,
-    enabled: !!isLiveMode && !!activeStrategy,
+    enabled: !!activeStrategy,
     retry: 2,
   });
 
@@ -121,7 +112,7 @@ export default function PerformanceOverview() {
   const { data: livePositions } = useQuery<any[]>({
     queryKey: ['/api/live/positions'],
     refetchInterval: 15000,
-    enabled: !!isLiveMode && !!activeStrategy,
+    enabled: !!activeStrategy,
   });
 
   // Calculate top 3 performing assets by total P&L (only from closed positions)
@@ -305,26 +296,16 @@ export default function PerformanceOverview() {
     refetchInterval: 10000,
   });
 
-  // Calculate total risk - moved here to ensure hooks are always called in the same order
+  // Calculate total risk (live-only mode)
   const { totalRisk, riskPercentage } = useMemo(() => {
     if (!activeStrategy) return { totalRisk: 0, riskPercentage: 0 };
 
     const stopLossPercent = Number(activeStrategy.stopLossPercent) || 2;
-    let positions: any[] = [];
-
-    if (isLiveMode && livePositions) {
-      positions = livePositions.filter(p => parseFloat(p.positionAmt) !== 0);
-    } else if (!isLiveMode) {
-      return { totalRisk: 0, riskPercentage: 0 };
-    }
+    const positions = livePositions ? livePositions.filter(p => parseFloat(p.positionAmt) !== 0) : [];
 
     // Calculate total balance for percentage
-    const unrealizedPnl = isLiveMode 
-      ? (liveAccount ? parseFloat(liveAccount.totalUnrealizedProfit) : 0)
-      : (paperSession?.unrealizedPnl || 0);
-    const totalBalance = isLiveMode 
-      ? (liveAccount ? parseFloat(liveAccount.totalWalletBalance || '0') + unrealizedPnl : 0)
-      : (paperSession?.currentBalance || 0);
+    const unrealizedPnl = liveAccount ? parseFloat(liveAccount.totalUnrealizedProfit) : 0;
+    const totalBalance = liveAccount ? parseFloat(liveAccount.totalWalletBalance || '0') + unrealizedPnl : 0;
 
     const totalPotentialLoss = positions.reduce((sum, position) => {
       const entryPrice = parseFloat(position.entryPrice);
@@ -345,30 +326,20 @@ export default function PerformanceOverview() {
 
     const riskPct = totalBalance > 0 ? (totalPotentialLoss / totalBalance) * 100 : 0;
     return { totalRisk: totalPotentialLoss, riskPercentage: riskPct };
-  }, [activeStrategy, isLiveMode, livePositions, liveAccount, paperSession]);
+  }, [activeStrategy, livePositions, liveAccount]);
 
-  // Use unified performance data for both modes
+  // Use unified performance data (live-only mode)
   const displayPerformance = performance;
-  const displayLoading = isLoading || chartLoading || (isLiveMode && liveAccountLoading) || (!isLiveMode && paperSessionLoading);
+  const displayLoading = isLoading || chartLoading || liveAccountLoading;
 
   if (displayLoading || !displayPerformance) {
     return (
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2">
-              <LineChart className="h-5 w-5" />
-              Performance Overview
-            </CardTitle>
-            {isLiveMode && (
-              <Badge 
-                variant="default" 
-                className="bg-[rgb(190,242,100)] text-black hover:bg-[rgb(190,242,100)] font-semibold"
-              >
-                LIVE MODE
-              </Badge>
-            )}
-          </div>
+          <CardTitle className="flex items-center gap-2">
+            <LineChart className="h-5 w-5" />
+            Performance Overview
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="text-sm text-muted-foreground">Loading performance metrics...</div>
@@ -465,57 +436,31 @@ export default function PerformanceOverview() {
     return null;
   };
 
-  // Calculate unified account metrics (same for both live and paper)
-  const unrealizedPnl = isLiveMode 
-    ? (liveAccount ? parseFloat(liveAccount.totalUnrealizedProfit) : 0)
-    : (paperSession?.unrealizedPnl || 0);
+  // Calculate unified account metrics (live-only mode)
+  const unrealizedPnl = liveAccount ? parseFloat(liveAccount.totalUnrealizedProfit) : 0;
+  const totalBalance = liveAccount ? parseFloat(liveAccount.totalWalletBalance || '0') + unrealizedPnl : 0;
   
-  const totalBalance = isLiveMode 
-    ? (liveAccount ? parseFloat(liveAccount.totalWalletBalance || '0') + unrealizedPnl : 0)
-    : (paperSession?.currentBalance || 0);
-  
-  // Calculate available balance accounting for margin in use
+  // Calculate available balance
   const leverage = activeStrategy?.leverage || 1;
-  const paperMarginInUse = paperSession ? (paperSession.totalExposure / leverage) : 0;
-  const availableBalance = isLiveMode 
-    ? (liveAccount ? parseFloat(liveAccount.availableBalance) : 0)
-    : (paperSession ? paperSession.currentBalance - paperMarginInUse : 0);
+  const availableBalance = liveAccount ? parseFloat(liveAccount.availableBalance) : 0;
 
-  // Calculate margin in use and exposure
-  const marginInUse = isLiveMode 
-    ? (liveAccount ? parseFloat(liveAccount.totalInitialMargin || '0') : 0)
-    : paperMarginInUse;
-  
-  const totalExposure = isLiveMode 
-    ? (marginInUse * leverage)
-    : (paperSession?.totalExposure || 0);
+  // Calculate margin in use and exposure (live-only mode)
+  const marginInUse = liveAccount ? parseFloat(liveAccount.totalInitialMargin || '0') : 0;
+  const totalExposure = marginInUse * leverage;
 
   // Calculate percentages
   const unrealizedPnlPercent = totalBalance > 0 ? (unrealizedPnl / totalBalance) * 100 : 0;
   
   // For realized P&L percentage, use starting balance
-  const startingBalance = isLiveMode 
-    ? totalBalance - displayPerformance.totalRealizedPnl - unrealizedPnl
-    : (paperSession?.startingBalance || 0);
+  const startingBalance = totalBalance - displayPerformance.totalRealizedPnl - unrealizedPnl;
   const realizedPnlPercent = startingBalance > 0 ? (displayPerformance.totalRealizedPnl / startingBalance) * 100 : 0;
 
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
-            Account Performance
-          </CardTitle>
-          {isLiveMode && (
-            <Badge 
-              variant="default" 
-              className="bg-[rgb(190,242,100)] text-black hover:bg-[rgb(190,242,100)] font-semibold"
-              data-testid="badge-live-mode-performance"
-            >
-              LIVE MODE
-            </Badge>
-          )}
-        </div>
+        <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+          Account Performance
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
         {/* Main Balance Section with Risk Bar */}
