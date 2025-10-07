@@ -43,7 +43,7 @@ Preferred communication style: Simple, everyday language.
 ### Data Storage
 - **Database**: PostgreSQL with Neon serverless hosting (ALWAYS uses Neon, never local storage).
 - **Configuration**: Uses `NEON_DATABASE_URL` environment variable exclusively.
-- **Schema**: Dedicated tables for liquidations, strategies, positions, fills, sessions, and snapshots with indexing.
+- **Schema**: 10 core tables - liquidations, strategies, trade_sessions, positions, fills, orders, strategy_changes, strategy_snapshots, user_settings, users. The sessions table (required for Replit Auth) remains empty. All tables use indexing for optimal performance.
 - **Connection**: Connection pooling with `@neondatabase/serverless` HTTP driver.
 - **Migrations**: Drizzle Kit.
 - **Data Retention**: Liquidation data automatically retained for 30 days only; older data deleted every 5 minutes. Trading data (positions, fills, sessions) is permanently preserved through archiving (never deleted).
