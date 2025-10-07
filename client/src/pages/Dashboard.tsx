@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import ConnectionStatus from "@/components/ConnectionStatus";
 import LiveLiquidationsSidebar from "@/components/LiveLiquidationsSidebar";
@@ -18,7 +18,7 @@ import { Settings2, Pause, Play, AlertTriangle, BarChart3, Menu, BookOpen } from
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { useWebSocketData } from "@/hooks/useWebSocketData";
+import { useStrategyData } from "@/hooks/use-strategy-data";
 
 interface Liquidation {
   id: string;
@@ -53,20 +53,21 @@ export default function Dashboard() {
   // Track last viewed strategy to persist selection when pausing
   const [lastViewedStrategyId, setLastViewedStrategyId] = useState<string | null>(null);
 
-  // Connect to WebSocket for real-time updates
-  const { isConnected: wsConnected } = useWebSocketData({
-    enabled: true,
-  });
-
-  // Fetch active strategies (long interval as fallback - WebSocket provides real-time updates)
-  const { data: strategies } = useQuery<any[]>({
-    queryKey: ['/api/strategies'],
-    refetchInterval: 60000, // 60s fallback, WebSocket provides real-time
-  });
+  // Use centralized hook for all strategy-related data (reduces API calls by 10-20x)
+  const {
+    strategies,
+    activeStrategy: baseActiveStrategy,
+    liveAccount,
+    liveAccountError,
+    livePositions,
+    livePositionsError,
+    positionSummary,
+    wsConnected,
+  } = useStrategyData();
 
   // Smart strategy selection: Keep showing the same strategy after pausing
   // Priority: 1) Active strategy, 2) Last viewed strategy, 3) First strategy
-  const activeStrategy = strategies?.find(s => s.isActive) 
+  const activeStrategy = baseActiveStrategy 
     || (lastViewedStrategyId ? strategies?.find(s => s.id === lastViewedStrategyId) : null)
     || strategies?.[0];
     
@@ -76,22 +77,6 @@ export default function Dashboard() {
       setLastViewedStrategyId(activeStrategy.id);
     }
   }, [activeStrategy?.id]);
-
-  // Fetch live account data from Aster DEX (long interval - WebSocket provides real-time)
-  const { data: liveAccount, error: liveAccountError } = useQuery<any>({
-    queryKey: ['/api/live/account'],
-    refetchInterval: 120000, // 2min fallback, WebSocket provides real-time
-    enabled: !!activeStrategy,
-    retry: 2,
-  });
-
-  // Fetch live positions from Aster DEX (long interval - WebSocket provides real-time)
-  const { data: livePositions, error: livePositionsError } = useQuery<any[]>({
-    queryKey: ['/api/live/positions'],
-    refetchInterval: 120000, // 2min fallback, WebSocket provides real-time
-    enabled: !!activeStrategy,
-    retry: 2,
-  });
 
   // Show toast for live data errors
   useEffect(() => {
@@ -113,18 +98,6 @@ export default function Dashboard() {
       });
     }
   }, [livePositionsError]);
-
-  // Fetch position summary for header display (paper trading)
-  const { data: positionSummary } = useQuery<any>({
-    queryKey: ['/api/strategies', activeStrategy?.id, 'positions', 'summary'],
-    queryFn: async () => {
-      const response = await fetch(`/api/strategies/${activeStrategy.id}/positions/summary`);
-      if (!response.ok) return null;
-      return response.json();
-    },
-    enabled: !!activeStrategy?.id,
-    refetchInterval: 30000, // Reduced to 30 seconds to avoid rate limiting (was 1 second)
-  });
 
   // Stop trading mutation
   const stopMutation = useMutation({
