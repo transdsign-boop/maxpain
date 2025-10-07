@@ -2102,6 +2102,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         marginAmount: validatedData.marginAmount,
         tradingMode: validatedData.tradingMode,
         isActive: validatedData.isActive || false,
+        asterApiKey: validatedData.asterApiKey || '',
+        asterApiSecret: validatedData.asterApiSecret || '',
+        bybitApiKey: validatedData.bybitApiKey || '',
+        bybitApiSecret: validatedData.bybitApiSecret || '',
+        hedgeMode: validatedData.hedgeMode,
+        maxOpenPositions: validatedData.maxOpenPositions,
+        maxPortfolioRiskPercent: validatedData.maxPortfolioRiskPercent,
       };
       
       const strategy = await storage.createStrategy(strategyData);
