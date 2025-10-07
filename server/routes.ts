@@ -4151,23 +4151,56 @@ async function connectToUserDataStream() {
         
         // Handle account updates (position/balance changes)
         if (event.e === 'ACCOUNT_UPDATE') {
-          console.log('📊 Account Update:', JSON.stringify(event, null, 2));
+          console.log('📊 Account Update from WebSocket');
           
-          // Clear cache to force fresh data fetch on next request
-          apiCache.delete('live_account');
-          apiCache.delete('live_positions');
+          // Extract balance data from WebSocket update
+          if (event.a?.B) {
+            const balances = event.a.B;
+            const usdtBalance = balances.find((b: any) => b.a === 'USDT');
+            const usdcBalance = balances.find((b: any) => b.a === 'USDC');
+            
+            const balance = usdtBalance ? parseFloat(usdtBalance.wb) : 
+                          (usdcBalance ? parseFloat(usdcBalance.wb) : 0);
+            
+            // Update account cache with WebSocket data (no REST call needed!)
+            const accountData = {
+              feeTier: 0,
+              canTrade: true,
+              canDeposit: true,
+              canWithdraw: true,
+              updateTime: event.E,
+              usdcBalance: balance.toString(),
+              usdtBalance: usdtBalance ? parseFloat(usdtBalance.wb).toString() : '0',
+              assets: balances
+            };
+            setCache('live_account', accountData);
+            console.log('✅ Updated account cache from WebSocket (balance: $' + balance.toFixed(2) + ')');
+          }
           
-          // Broadcast to all connected WebSocket clients
-          // The frontend will refetch the data through existing endpoints
+          // Extract position data from WebSocket update
+          if (event.a?.P) {
+            const positions = event.a.P.map((p: any) => ({
+              symbol: p.s,
+              positionAmt: p.pa,
+              entryPrice: p.ep,
+              unrealizedProfit: p.up,
+              marginType: p.mt,
+              isolatedWallet: p.iw,
+              positionSide: p.ps
+            }));
+            
+            // Update positions cache with WebSocket data (no REST call needed!)
+            setCache('live_positions', positions);
+            console.log('✅ Updated positions cache from WebSocket (' + positions.length + ' positions)');
+          }
         }
         
         // Handle order updates
         else if (event.e === 'ORDER_TRADE_UPDATE') {
           console.log('📋 Order Update:', JSON.stringify(event.o, null, 2));
           
-          // Clear cache to get fresh order data
+          // Clear order cache to get fresh data on next request
           apiCache.delete('live_open_orders');
-          apiCache.delete('live_positions');
         }
         
         // Handle listen key expiration
