@@ -6,13 +6,12 @@ import {
   type Order, type InsertOrder,
   type Fill, type InsertFill,
   type Position, type InsertPosition,
-  type PnlSnapshot, type InsertPnlSnapshot,
   type StrategyChange, type InsertStrategyChange,
   type StrategySnapshot, type InsertStrategySnapshot
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { db } from "./db";
-import { liquidations, users, userSettings, strategies, tradeSessions, orders, fills, positions, pnlSnapshots, strategyChanges, strategySnapshots } from "@shared/schema";
+import { liquidations, users, userSettings, strategies, tradeSessions, orders, fills, positions, strategyChanges, strategySnapshots } from "@shared/schema";
 import { desc, gte, eq, sql as drizzleSql, inArray, and } from "drizzle-orm";
 import { neon } from '@neondatabase/serverless';
 
@@ -138,11 +137,6 @@ export interface IStorage {
   updatePosition(id: string, updates: Partial<InsertPosition>): Promise<Position>;
   closePosition(id: string, closedAt: Date, realizedPnl: number, realizedPnlPercent?: number): Promise<Position>;
   clearPositionsBySession(sessionId: string): Promise<void>;
-
-  // P&L Snapshot operations
-  createPnlSnapshot(snapshot: InsertPnlSnapshot): Promise<PnlSnapshot>;
-  getPnlSnapshots(sessionId: string, limit?: number): Promise<PnlSnapshot[]>;
-  getLatestPnlSnapshot(sessionId: string): Promise<PnlSnapshot | undefined>;
 
   // Strategy Change operations
   recordStrategyChange(change: InsertStrategyChange): Promise<StrategyChange>;
@@ -776,27 +770,6 @@ export class DatabaseStorage implements IStorage {
 
   async clearPositionsBySession(sessionId: string): Promise<void> {
     await db.delete(positions).where(eq(positions.sessionId, sessionId));
-  }
-
-  // P&L Snapshot operations
-  async createPnlSnapshot(snapshot: InsertPnlSnapshot): Promise<PnlSnapshot> {
-    const result = await db.insert(pnlSnapshots).values(snapshot).returning();
-    return result[0];
-  }
-
-  async getPnlSnapshots(sessionId: string, limit: number = 100): Promise<PnlSnapshot[]> {
-    return await db.select().from(pnlSnapshots)
-      .where(eq(pnlSnapshots.sessionId, sessionId))
-      .orderBy(desc(pnlSnapshots.snapshotAt))
-      .limit(limit);
-  }
-
-  async getLatestPnlSnapshot(sessionId: string): Promise<PnlSnapshot | undefined> {
-    const result = await db.select().from(pnlSnapshots)
-      .where(eq(pnlSnapshots.sessionId, sessionId))
-      .orderBy(desc(pnlSnapshots.snapshotAt))
-      .limit(1);
-    return result[0];
   }
 
   // Strategy Change operations

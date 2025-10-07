@@ -3260,23 +3260,6 @@ export class StrategyEngine extends EventEmitter {
     this.emit('liquidation', liquidation);
   }
 
-  // Get strategy performance summary
-  async getStrategyPerformance(strategyId: string) {
-    const session = this.activeSessions.get(strategyId);
-    if (!session) return null;
-
-    const openPositions = await storage.getOpenPositions(session.id);
-    const pnlSnapshots = await storage.getPnlSnapshots(session.id, 10);
-    const recentFills = await storage.getFillsBySession(session.id);
-
-    return {
-      session,
-      openPositions,
-      pnlSnapshots,
-      recentFills: recentFills.slice(0, 10),
-    };
-  }
-
   // Reload a strategy when settings are updated
   async reloadStrategy(strategyId: string) {
     try {
