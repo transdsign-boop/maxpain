@@ -267,6 +267,9 @@ export class StrategyEngine extends EventEmitter {
     this.activeSessions.set(session.id, session);
     console.log(`✅ Strategy registered with session: ${session.id}`);
     
+    // Sync cascade detector with strategy's selected assets
+    await cascadeDetectorService.syncSymbols();
+    
     // Start live data polling for this strategy
     const { liveDataOrchestrator } = await import('./live-data-orchestrator');
     liveDataOrchestrator.startPolling(strategy.id);
