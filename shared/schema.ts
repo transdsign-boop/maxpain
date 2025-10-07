@@ -225,6 +225,40 @@ export const frontendStrategySchema = z.object({
   }, "Account usage must be between 1% and 100%").default("10.0"),
   hedgeMode: z.boolean().default(false),
   isActive: z.boolean().optional().default(false),
+  // DCA (Dollar Cost Averaging) Parameters
+  dcaStartStepPercent: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 0.1 && num <= 10;
+  }, "DCA start step must be between 0.1% and 10%").default("0.4"),
+  dcaSpacingConvexity: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 1.0 && num <= 3.0;
+  }, "DCA spacing convexity must be between 1.0 and 3.0").default("1.2"),
+  dcaSizeGrowth: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 1.0 && num <= 5.0;
+  }, "DCA size growth must be between 1.0 and 5.0").default("1.8"),
+  dcaMaxRiskPercent: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 0.1 && num <= 10;
+  }, "DCA max risk must be between 0.1% and 10%").default("1.0"),
+  dcaVolatilityRef: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 0.1 && num <= 5.0;
+  }, "DCA volatility reference must be between 0.1 and 5.0").default("1.0"),
+  dcaExitCushionMultiplier: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 0.1 && num <= 2.0;
+  }, "DCA exit cushion must be between 0.1 and 2.0").default("0.6"),
+  // RET (Realized Volatility) Thresholds
+  retHighThreshold: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 10 && num <= 100;
+  }, "RET high threshold must be between 10 and 100").default("35.0"),
+  retMediumThreshold: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 5 && num <= 50;
+  }, "RET medium threshold must be between 5 and 50").default("25.0"),
   // Portfolio Risk Management
   maxOpenPositions: z.number().min(0).max(20).default(5), // 0 = unlimited
   maxPortfolioRiskPercent: z.string().refine((val) => {

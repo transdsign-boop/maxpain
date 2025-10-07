@@ -264,6 +264,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
           slippageTolerancePercent: String(s.slippageTolerancePercent),
           liquidationLookbackHours: Number(s.liquidationLookbackHours),
           hedgeMode: Boolean(s.hedgeMode),
+          // DCA Settings
+          dcaStartStepPercent: String(s.dcaStartStepPercent),
+          dcaSpacingConvexity: String(s.dcaSpacingConvexity),
+          dcaSizeGrowth: String(s.dcaSizeGrowth),
+          dcaMaxRiskPercent: String(s.dcaMaxRiskPercent),
+          dcaVolatilityRef: String(s.dcaVolatilityRef),
+          dcaExitCushionMultiplier: String(s.dcaExitCushionMultiplier),
+          // RET Thresholds
+          retHighThreshold: String(s.retHighThreshold),
+          retMediumThreshold: String(s.retMediumThreshold),
+          // Portfolio Risk
+          maxOpenPositions: Number(s.maxOpenPositions),
+          maxPortfolioRiskPercent: String(s.maxPortfolioRiskPercent),
         }))
       };
       
@@ -3051,11 +3064,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Get only ACTIVE (non-archived) sessions for this strategy
       const allSessions = await storage.getSessionsByStrategy(strategyId);
-      console.log(`📊 Total sessions for strategy: ${allSessions.length}`);
-      console.log(`📊 Session active states:`, allSessions.map(s => ({ id: s.id.substring(0, 8), isActive: s.isActive })));
-      
       const activeSessions = allSessions.filter(session => session.isActive);
-      console.log(`✅ Active sessions after filter: ${activeSessions.length}`);
       
       if (activeSessions.length === 0) {
         return res.json([]);
@@ -3105,9 +3114,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         };
       });
       
-      console.log(`📊 Returning ${closedPositionsWithFees.length} closed positions from ${activeSessions.length} active sessions`);
-      
-      // Prevent caching
+      // Prevent caching to ensure fresh data on each request
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Expires', '0');
@@ -3713,9 +3720,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Set this session as active and clear ended_at
       await storage.updateTradeSession(sessionId, {
-        isActive: true,
-        endedAt: null as any
-      });
+        isActive: true
+      } as any);
       
       res.json({ success: true, message: 'Session reactivated' });
     } catch (error) {
