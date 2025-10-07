@@ -18,7 +18,7 @@ export default function LiveModeToggle() {
 
   // Toggle trading mode mutation
   const toggleModeMutation = useMutation({
-    mutationFn: async (newMode: 'live' | 'demo') => {
+    mutationFn: async (newMode: 'live' | 'paper') => {
       if (!activeStrategy) throw new Error('No active strategy');
       
       const updateData: any = {
@@ -38,32 +38,16 @@ export default function LiveModeToggle() {
     onSuccess: (strategy) => {
       queryClient.invalidateQueries({ queryKey: ['/api/strategies'] });
       toast({
-        title: strategy.tradingMode === 'live' ? "Aster DEX Live Trading" : "Bybit Demo Trading",
+        title: strategy.tradingMode === 'live' ? "Live Trading Enabled" : "Paper Trading Enabled",
         description: strategy.tradingMode === 'live' 
-          ? "Real money trades on Aster DEX" 
-          : "Demo trades on Bybit testnet (fake money)",
+          ? "Real trades will now be executed on Aster DEX" 
+          : "All trades are now simulated",
       });
     },
-    onError: (error: any) => {
-      let errorMessage = "Failed to toggle trading mode. Please try again.";
-      
-      if (error?.message) {
-        const match = error.message.match(/400: (.+)/);
-        if (match) {
-          try {
-            const errorData = JSON.parse(match[1]);
-            errorMessage = errorData.details || errorData.error || errorMessage;
-          } catch {
-            errorMessage = match[1];
-          }
-        } else {
-          errorMessage = error.message;
-        }
-      }
-      
+    onError: () => {
       toast({
         title: "Error",
-        description: errorMessage,
+        description: "Failed to toggle trading mode. Please try again.",
         variant: "destructive",
       });
     }
@@ -71,7 +55,7 @@ export default function LiveModeToggle() {
 
   const handleToggle = (checked: boolean) => {
     if (isStrategyRunning) return;
-    toggleModeMutation.mutate(checked ? 'live' : 'demo');
+    toggleModeMutation.mutate(checked ? 'live' : 'paper');
   };
 
   if (!activeStrategy) return null;
@@ -90,7 +74,7 @@ export default function LiveModeToggle() {
           className="text-sm font-medium cursor-pointer hidden md:block"
           data-testid="label-live-mode"
         >
-          {isLiveMode ? "Aster DEX" : "Bybit Demo"}
+          {isLiveMode ? "Live" : "Paper"}
         </Label>
       </div>
     </div>

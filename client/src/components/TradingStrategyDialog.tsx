@@ -40,11 +40,7 @@ interface Strategy {
   maxRetryDurationMs: number;
   priceChaseMode: boolean;
   marginAmount: string;
-  tradingMode: "demo" | "live";
-  bybitApiKey?: string;
-  bybitApiSecret?: string;
-  asterApiKey?: string;
-  asterApiSecret?: string;
+  tradingMode: "paper" | "live";
   hedgeMode: boolean;
   isActive: boolean;
   maxOpenPositions: number;
@@ -82,10 +78,6 @@ const strategyFormSchema = z.object({
     const num = parseFloat(val);
     return !isNaN(num) && num >= 1 && num <= 100;
   }, "Account usage must be between 1% and 100%"),
-  bybitApiKey: z.string().optional(),
-  bybitApiSecret: z.string().optional(),
-  asterApiKey: z.string().optional(),
-  asterApiSecret: z.string().optional(),
   hedgeMode: z.boolean(),
   maxOpenPositions: z.number().min(0).max(20),
   maxPortfolioRiskPercent: z.string().refine((val) => {
@@ -628,10 +620,6 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         maxRetryDurationMs: strategy.maxRetryDurationMs,
         priceChaseMode: strategy.priceChaseMode,
         marginAmount: String(strategy.marginAmount),
-        bybitApiKey: strategy.bybitApiKey || '',
-        bybitApiSecret: strategy.bybitApiSecret || '',
-        asterApiKey: strategy.asterApiKey || '',
-        asterApiSecret: strategy.asterApiSecret || '',
         hedgeMode: strategy.hedgeMode,
         maxOpenPositions: strategy.maxOpenPositions || 5,
         maxPortfolioRiskPercent: String(strategy.maxPortfolioRiskPercent || "15.0"),
@@ -657,7 +645,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
       setActiveStrategy(updatedStrategy);
       toast({
         title: "Strategy Started",
-        description: `${updatedStrategy.tradingMode === 'live' ? 'Aster DEX live' : 'Bybit demo'} trading strategy is now active and monitoring liquidations.`,
+        description: `${updatedStrategy.tradingMode === 'live' ? 'Live' : 'Paper'} trading strategy is now active and monitoring liquidations.`,
       });
       queryClient.invalidateQueries({ queryKey: ['/api/strategies'] });
     },
@@ -718,35 +706,6 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
     }
   });
 
-  // Session management mutations
-  const createNewSessionMutation = useMutation({
-    mutationFn: async (strategyId: string) => {
-      const response = await apiRequest('POST', `/api/strategies/${strategyId}/sessions/new`, {});
-      return await response.json();
-    },
-    onSuccess: (data, strategyId) => {
-      toast({
-        title: "New Session Started",
-        description: data.message || "Fresh trading session created successfully.",
-      });
-      // Invalidate both strategies and sessions queries to refresh UI
-      queryClient.invalidateQueries({ queryKey: ['/api/strategies'] });
-      queryClient.invalidateQueries({ queryKey: [`/api/strategies/${strategyId}/sessions`] });
-    },
-    onError: () => {
-      toast({
-        title: "Error",
-        description: "Failed to start new session. Please try again.",
-        variant: "destructive",
-      });
-    }
-  });
-
-  // Fetch sessions for current strategy
-  const { data: sessions } = useQuery({
-    queryKey: activeStrategy ? [`/api/strategies/${activeStrategy.id}/sessions`] : [],
-    enabled: !!activeStrategy?.id,
-  });
 
   // Test API connection mutation
   const testConnectionMutation = useMutation({
@@ -953,20 +912,16 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         percentileThreshold: strategy.percentileThreshold,
         liquidationLookbackHours: strategy.liquidationLookbackHours,
         maxLayers: strategy.maxLayers,
-        profitTargetPercent: String(strategy.profitTargetPercent),
-        stopLossPercent: String(strategy.stopLossPercent),
+        profitTargetPercent: strategy.profitTargetPercent,
+        stopLossPercent: strategy.stopLossPercent,
         marginMode: strategy.marginMode,
         leverage: strategy.leverage,
         orderDelayMs: strategy.orderDelayMs,
-        slippageTolerancePercent: String(strategy.slippageTolerancePercent),
+        slippageTolerancePercent: strategy.slippageTolerancePercent,
         orderType: strategy.orderType,
         maxRetryDurationMs: strategy.maxRetryDurationMs,
         priceChaseMode: strategy.priceChaseMode,
-        marginAmount: String(strategy.marginAmount),
-        bybitApiKey: strategy.bybitApiKey || '',
-        bybitApiSecret: strategy.bybitApiSecret || '',
-        asterApiKey: strategy.asterApiKey || '',
-        asterApiSecret: strategy.asterApiSecret || '',
+        marginAmount: strategy.marginAmount,
         hedgeMode: strategy.hedgeMode,
         maxOpenPositions: strategy.maxOpenPositions || 5,
         maxPortfolioRiskPercent: String(strategy.maxPortfolioRiskPercent || "15.0"),
@@ -1020,115 +975,6 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         <ScrollArea className="max-h-[calc(90vh-200px)] pr-4">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              
-              {/* Strategy Selection and Management */}
-              <div className="space-y-4 p-4 border rounded-lg bg-muted/20">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex-1">
-                    <Label>Current Strategy</Label>
-                    <Select 
-                      value={activeStrategy?.id || "none"} 
-                      onValueChange={(value) => {
-                        if (value === "none") {
-                          setActiveStrategy(null);
-                          form.reset({
-                            name: "",
-                            selectedAssets: ["BTCUSDT"],
-                            percentileThreshold: 90,
-                            liquidationLookbackHours: 1,
-                            maxLayers: 5,
-                            profitTargetPercent: "3.00",
-                            stopLossPercent: "2.00",
-                            marginMode: "cross",
-                            leverage: 10,
-                            orderDelayMs: 1000,
-                            slippageTolerancePercent: "0.50",
-                            orderType: "market",
-                            maxRetryDurationMs: 30000,
-                            priceChaseMode: false,
-                            marginAmount: "50",
-                            bybitApiKey: "",
-                            bybitApiSecret: "",
-                            asterApiKey: "",
-                            asterApiSecret: "",
-                            hedgeMode: true,
-                            maxOpenPositions: 3,
-                            maxPortfolioRiskPercent: "20",
-                          });
-                        } else {
-                          const strategy = strategies?.find(s => s.id === value);
-                          if (strategy) {
-                            setActiveStrategy(strategy);
-                            form.reset({
-                              name: strategy.name,
-                              selectedAssets: strategy.selectedAssets,
-                              percentileThreshold: strategy.percentileThreshold,
-                              liquidationLookbackHours: strategy.liquidationLookbackHours,
-                              maxLayers: strategy.maxLayers,
-                              profitTargetPercent: strategy.profitTargetPercent,
-                              stopLossPercent: strategy.stopLossPercent,
-                              marginMode: strategy.marginMode,
-                              leverage: strategy.leverage,
-                              orderDelayMs: strategy.orderDelayMs,
-                              slippageTolerancePercent: strategy.slippageTolerancePercent,
-                              orderType: strategy.orderType,
-                              maxRetryDurationMs: strategy.maxRetryDurationMs,
-                              priceChaseMode: strategy.priceChaseMode,
-                              marginAmount: strategy.marginAmount,
-                              bybitApiKey: strategy.bybitApiKey || "",
-                              bybitApiSecret: strategy.bybitApiSecret || "",
-                              asterApiKey: strategy.asterApiKey || "",
-                              asterApiSecret: strategy.asterApiSecret || "",
-                              hedgeMode: strategy.hedgeMode,
-                              maxOpenPositions: strategy.maxOpenPositions,
-                              maxPortfolioRiskPercent: strategy.maxPortfolioRiskPercent,
-                            });
-                          }
-                        }
-                      }}
-                    >
-                      <SelectTrigger className="w-full" data-testid="select-strategy">
-                        <SelectValue placeholder="Select a strategy or create new" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">+ Create New Strategy</SelectItem>
-                        {strategies?.map((strategy) => (
-                          <SelectItem key={strategy.id} value={strategy.id}>
-                            {strategy.name} {strategy.isActive ? "(Active)" : ""}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
-                  {activeStrategy && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        const currentValues = form.getValues();
-                        createStrategyMutation.mutate({
-                          ...currentValues,
-                          name: `${currentValues.name} (Copy)`,
-                        });
-                      }}
-                      disabled={createStrategyMutation.isPending}
-                      data-testid="button-save-as-new"
-                    >
-                      <Download className="w-4 h-4 mr-2" />
-                      Save As New
-                    </Button>
-                  )}
-                </div>
-                
-                {activeStrategy && (
-                  <div className="text-sm text-muted-foreground">
-                    Editing: <span className="font-medium text-foreground">{activeStrategy.name}</span>
-                  </div>
-                )}
-              </div>
-
-              <Separator />
               
               {/* Hedge Mode Toggle */}
               <FormField
@@ -1891,225 +1737,83 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
 
               <Separator />
 
-              {/* Bybit API Credentials (for Demo Mode) */}
-              <Collapsible>
-                <div className="space-y-4">
-                  <CollapsibleTrigger className="w-full">
-                    <div className="flex items-center justify-between cursor-pointer hover-elevate p-3 rounded-md">
-                      <Label className="text-base font-medium flex items-center gap-2 cursor-pointer">
-                        <Shield className="h-4 w-4" />
-                        Bybit Demo Trading API
-                        <ChevronDown className="h-4 w-4" />
-                      </Label>
-                    </div>
-                  </CollapsibleTrigger>
+              {/* API Connection */}
+              <div className="space-y-4">
+                <Label className="text-base font-medium flex items-center gap-2">
+                  <Key className="h-4 w-4" />
+                  API Connection
+                </Label>
+                
+                <div className="space-y-3">
+                  <div className="text-sm text-muted-foreground">
+                    Test your Aster DEX API connection to ensure live trading will work correctly. Your API credentials are securely stored as environment variables.
+                  </div>
                   
-                  <CollapsibleContent>
-                    <div className="space-y-4 pt-2">
-                      <div className="text-sm text-muted-foreground bg-muted/30 p-3 rounded-md">
-                        Demo mode uses Bybit Demo Trading for realistic order execution with simulated funds. Create API keys from your main Bybit account while in "Demo Trading" mode. <a href="https://www.bybit.com/en/help-center/article/FAQ-Demo-Trading" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Learn more</a>
+                  <div className="flex items-center gap-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => testConnectionMutation.mutate()}
+                      disabled={testConnectionMutation.isPending}
+                      data-testid="button-test-api-connection"
+                    >
+                      {testConnectionMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Key className="h-4 w-4 mr-2" />
+                      )}
+                      Test Connection
+                    </Button>
+                    
+                    {apiTestResult && (
+                      <div className="flex items-center gap-2">
+                        {apiTestResult.success ? (
+                          <>
+                            <CheckCircle2 className="h-5 w-5 text-lime-600 dark:text-lime-400" />
+                            <span className="text-sm font-medium text-lime-600 dark:text-lime-400">
+                              Connected
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <XCircle className="h-5 w-5 text-red-700 dark:text-red-500" />
+                            <span className="text-sm font-medium text-red-700 dark:text-red-500">
+                              Failed
+                            </span>
+                          </>
+                        )}
                       </div>
-                      
-                      <FormField
-                        control={form.control}
-                        name="bybitApiKey"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel data-testid="label-bybit-api-key">Bybit API Key</FormLabel>
-                            <FormControl>
-                              <Input
-                                {...field}
-                                type="text"
-                                placeholder={
-                                  (activeStrategy as any)?.hasBybitApiKey
-                                    ? "Already configured - leave blank to keep"
-                                    : "Enter your Bybit demo API key"
-                                }
-                                data-testid="input-bybit-api-key"
-                              />
-                            </FormControl>
-                            <FormDescription>
-                              {(activeStrategy as any)?.hasBybitApiKey 
-                                ? "Key is stored securely - only enter a new value to update"
-                                : "Your Bybit demo API key from your main account"}
-                            </FormDescription>
-                          </FormItem>
-                        )}
-                      />
-                      
-                      <FormField
-                        control={form.control}
-                        name="bybitApiSecret"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel data-testid="label-bybit-api-secret">Bybit API Secret</FormLabel>
-                            <FormControl>
-                              <Input
-                                {...field}
-                                type="password"
-                                placeholder={
-                                  (activeStrategy as any)?.hasBybitApiSecret
-                                    ? "Already configured - leave blank to keep"
-                                    : "Enter your Bybit demo API secret"
-                                }
-                                data-testid="input-bybit-api-secret"
-                              />
-                            </FormControl>
-                            <FormDescription>
-                              {(activeStrategy as any)?.hasBybitApiSecret 
-                                ? "Secret is stored securely - only enter a new value to update"
-                                : "Your Bybit demo API secret (stored securely)"}
-                            </FormDescription>
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-                  </CollapsibleContent>
-                </div>
-              </Collapsible>
-
-              <Separator />
-
-              {/* Aster DEX API Credentials (for Live Mode) */}
-              <Collapsible>
-                <div className="space-y-4">
-                  <CollapsibleTrigger className="w-full">
-                    <div className="flex items-center justify-between cursor-pointer hover-elevate p-3 rounded-md">
-                      <Label className="text-base font-medium flex items-center gap-2 cursor-pointer">
-                        <Key className="h-4 w-4" />
-                        Aster DEX API (Live Mode)
-                        <ChevronDown className="h-4 w-4" />
-                      </Label>
-                    </div>
-                  </CollapsibleTrigger>
+                    )}
+                  </div>
                   
-                  <CollapsibleContent>
-                    <div className="space-y-4 pt-2">
-                      <div className="text-sm text-muted-foreground bg-muted/30 p-3 rounded-md">
-                        Live mode uses Aster DEX for real money trading. Enter your Aster DEX API credentials to enable live trading. If left blank, environment variables will be used.
-                      </div>
-                      
-                      <FormField
-                        control={form.control}
-                        name="asterApiKey"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel data-testid="label-aster-api-key">Aster API Key</FormLabel>
-                            <FormControl>
-                              <Input
-                                {...field}
-                                type="text"
-                                placeholder={
-                                  (activeStrategy as any)?.hasAsterApiKey
-                                    ? "Already configured - leave blank to keep"
-                                    : "Enter your Aster DEX API key"
-                                }
-                                data-testid="input-aster-api-key"
-                              />
-                            </FormControl>
-                            <FormDescription>
-                              {(activeStrategy as any)?.hasAsterApiKey 
-                                ? "Key is stored securely - only enter a new value to update"
-                                : "Your Aster DEX API key for live trading"}
-                            </FormDescription>
-                          </FormItem>
-                        )}
-                      />
-                      
-                      <FormField
-                        control={form.control}
-                        name="asterApiSecret"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel data-testid="label-aster-api-secret">Aster API Secret</FormLabel>
-                            <FormControl>
-                              <Input
-                                {...field}
-                                type="password"
-                                placeholder={
-                                  (activeStrategy as any)?.hasAsterApiSecret
-                                    ? "Already configured - leave blank to keep"
-                                    : "Enter your Aster DEX API secret"
-                                }
-                                data-testid="input-aster-api-secret"
-                              />
-                            </FormControl>
-                            <FormDescription>
-                              {(activeStrategy as any)?.hasAsterApiSecret 
-                                ? "Secret is stored securely - only enter a new value to update"
-                                : "Your Aster DEX API secret (stored securely)"}
-                            </FormDescription>
-                          </FormItem>
-                        )}
-                      />
-                      
-                      <div className="flex items-center gap-3">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => testConnectionMutation.mutate()}
-                          disabled={testConnectionMutation.isPending}
-                          data-testid="button-test-api-connection"
-                        >
-                          {testConnectionMutation.isPending ? (
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          ) : (
-                            <Key className="h-4 w-4 mr-2" />
-                          )}
-                          Test Connection
-                        </Button>
-                        
-                        {apiTestResult && (
-                          <div className="flex items-center gap-2">
-                            {apiTestResult.success ? (
-                              <>
-                                <CheckCircle2 className="h-5 w-5 text-lime-600 dark:text-lime-400" />
-                                <span className="text-sm font-medium text-lime-600 dark:text-lime-400">
-                                  Connected
-                                </span>
-                              </>
-                            ) : (
-                              <>
-                                <XCircle className="h-5 w-5 text-red-700 dark:text-red-500" />
-                                <span className="text-sm font-medium text-red-700 dark:text-red-500">
-                                  Failed
-                                </span>
-                              </>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                      
-                      {apiTestResult && !apiTestResult.success && apiTestResult.message && (
-                        <div className="text-sm text-red-700 dark:text-red-500 bg-red-100 dark:bg-red-950/30 p-3 rounded-md">
-                          {apiTestResult.message}
-                        </div>
-                      )}
-                      
-                      {apiTestResult && apiTestResult.success && apiTestResult.accountInfo && (
-                        <div className="text-sm space-y-1 bg-lime-100 dark:bg-lime-950/30 p-3 rounded-md">
-                          <div className="font-medium text-lime-900 dark:text-lime-100">Account Status:</div>
-                          <div className="grid grid-cols-3 gap-2 text-xs text-lime-800 dark:text-lime-200">
-                            <div>
-                              <span className="font-medium">Trading:</span>{' '}
-                              {apiTestResult.accountInfo.canTrade ? '✓' : '✗'}
-                            </div>
-                            <div>
-                              <span className="font-medium">Deposit:</span>{' '}
-                              {apiTestResult.accountInfo.canDeposit ? '✓' : '✗'}
-                            </div>
-                            <div>
-                              <span className="font-medium">Withdraw:</span>{' '}
-                              {apiTestResult.accountInfo.canWithdraw ? '✓' : '✗'}
-                            </div>
-                          </div>
-                        </div>
-                      )}
+                  {apiTestResult && !apiTestResult.success && apiTestResult.message && (
+                    <div className="text-sm text-red-700 dark:text-red-500 bg-red-100 dark:bg-red-950/30 p-3 rounded-md">
+                      {apiTestResult.message}
                     </div>
-                  </CollapsibleContent>
+                  )}
+                  
+                  {apiTestResult && apiTestResult.success && apiTestResult.accountInfo && (
+                    <div className="text-sm space-y-1 bg-lime-100 dark:bg-lime-950/30 p-3 rounded-md">
+                      <div className="font-medium text-lime-900 dark:text-lime-100">Account Status:</div>
+                      <div className="grid grid-cols-3 gap-2 text-xs text-lime-800 dark:text-lime-200">
+                        <div>
+                          <span className="font-medium">Trading:</span>{' '}
+                          {apiTestResult.accountInfo.canTrade ? '✓' : '✗'}
+                        </div>
+                        <div>
+                          <span className="font-medium">Deposit:</span>{' '}
+                          {apiTestResult.accountInfo.canDeposit ? '✓' : '✗'}
+                        </div>
+                        <div>
+                          <span className="font-medium">Withdraw:</span>{' '}
+                          {apiTestResult.accountInfo.canWithdraw ? '✓' : '✗'}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </Collapsible>
+              </div>
 
             </form>
           </Form>
@@ -2137,51 +1841,6 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
               <Upload className="h-4 w-4 mr-1" />
               Import
             </Button>
-            {activeStrategy && (
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    data-testid="button-new-session"
-                  >
-                    <Play className="h-4 w-4 mr-1" />
-                    New Session
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Start New Trading Session?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      This will end your current session and start fresh with clean logs. Your strategy settings will be preserved, but trade history for the current session will be archived.
-                      {sessions && sessions.length > 0 && (
-                        <div className="mt-2 text-sm">
-                          You have {sessions.length} previous session{sessions.length !== 1 ? 's' : ''} available to view.
-                        </div>
-                      )}
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel data-testid="button-cancel-new-session">Cancel</AlertDialogCancel>
-                    <AlertDialogAction
-                      onClick={() => activeStrategy && createNewSessionMutation.mutate(activeStrategy.id)}
-                      disabled={createNewSessionMutation.isPending}
-                      data-testid="button-confirm-new-session"
-                    >
-                      {createNewSessionMutation.isPending ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                          Starting...
-                        </>
-                      ) : (
-                        'Start New Session'
-                      )}
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            )}
           </div>
 
           <Button

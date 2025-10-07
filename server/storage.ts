@@ -100,10 +100,7 @@ export interface IStorage {
   updateStrategy(id: string, updates: Partial<InsertStrategy>): Promise<Strategy>;
   deleteStrategy(id: string): Promise<void>;
   
-  // Strategy retrieval (no auto-creation)
-  getDefaultStrategy(userId: string): Promise<Strategy | null>;
-  
-  // Singleton strategy and session (DEPRECATED)
+  // Singleton strategy and session
   getOrCreateDefaultStrategy(userId: string): Promise<Strategy>;
   getOrCreateActiveSession(userId: string): Promise<TradeSession>;
   updateSessionBalance(sessionId: string, newBalance: number): Promise<TradeSession>;
@@ -407,30 +404,12 @@ export class DatabaseStorage implements IStorage {
     await sql`DELETE FROM strategies WHERE id = ${id}`;
   }
 
-  // Get the most recent strategy for a user (for API credentials) - NO AUTO-CREATION
-  async getDefaultStrategy(userId: string): Promise<Strategy | null> {
-    const existing = await sql`
-      SELECT * FROM strategies 
-      WHERE user_id = ${userId}
-      ORDER BY created_at DESC
-      LIMIT 1
-    `;
-    
-    if (existing.length > 0) {
-      return convertKeysToCamelCase(existing[0]) as Strategy;
-    }
-    
-    return null;
-  }
-
-  // Singleton strategy and session operations (DEPRECATED - only kept for session management)
+  // Singleton strategy and session operations
   async getOrCreateDefaultStrategy(userId: string): Promise<Strategy> {
-    // Try to get existing strategy for this user (active OR inactive) using raw SQL
-    // We look for ANY strategy, not just active ones, to avoid creating duplicates
+    // Try to get existing active strategy for this user using raw SQL
     const existing = await sql`
       SELECT * FROM strategies 
-      WHERE user_id = ${userId}
-      ORDER BY created_at DESC
+      WHERE user_id = ${userId} AND is_active = true 
       LIMIT 1
     `;
     
@@ -438,7 +417,7 @@ export class DatabaseStorage implements IStorage {
       return convertKeysToCamelCase(existing[0]) as Strategy;
     }
 
-    // Create default strategy ONLY if none exists at all (DEPRECATED - should not be called)
+    // Create default strategy if doesn't exist
     const query = `
       INSERT INTO strategies (
         user_id, name, selected_assets, is_active, trading_mode,

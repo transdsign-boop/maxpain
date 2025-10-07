@@ -4,8 +4,6 @@ import { createHmac } from 'crypto';
 export async function fetchActualFills(params: {
   symbol: string;
   orderId: string;
-  apiKey: string;
-  secretKey: string;
 }): Promise<{
   success: boolean;
   fills?: Array<{
@@ -20,7 +18,10 @@ export async function fetchActualFills(params: {
   error?: string;
 }> {
   try {
-    const { symbol, orderId, apiKey, secretKey } = params;
+    const { symbol, orderId } = params;
+    
+    const apiKey = process.env.ASTER_API_KEY;
+    const secretKey = process.env.ASTER_SECRET_KEY;
     
     if (!apiKey || !secretKey) {
       return { success: false, error: 'API keys not configured' };
