@@ -580,23 +580,18 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
     mutationFn: async (data: StrategyFormData) => {
       if (!activeStrategy) throw new Error('No active strategy to update');
       
-      // TEMPORARILY DISABLED: Snapshot creation causing failures due to API rate limiting
-      // Will re-enable once rate limiting issues are resolved
-      // Create a snapshot of the current configuration before updating
-      // try {
-      //   await apiRequest('POST', `/api/strategies/${activeStrategy.id}/snapshots`, {
-      //     description: `${activeStrategy.name} - Configuration`
-      //   });
-      // } catch (error) {
-      //   console.error('Failed to create snapshot:', error);
-      //   // Continue with update even if snapshot fails
-      // }
-      
       console.log('Sending update request with data:', data);
-      const response = await apiRequest('PUT', `/api/strategies/${activeStrategy.id}`, data);
-      const result = await response.json() as Strategy;
-      console.log('Update response:', result);
-      return result;
+      try {
+        const response = await apiRequest('PUT', `/api/strategies/${activeStrategy.id}`, data);
+        const result = await response.json() as Strategy;
+        console.log('Update response:', result);
+        return result;
+      } catch (err) {
+        console.error('Update failed with error:', err);
+        console.error('Error type:', err?.constructor?.name);
+        console.error('Error message:', err instanceof Error ? err.message : String(err));
+        throw err;
+      }
     },
     onSuccess: async (strategy) => {
       toast({
@@ -634,10 +629,20 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
       });
     },
     onError: (error) => {
-      console.error('Update strategy error:', error);
+      console.error('Update strategy error (full):', error);
+      console.error('Error keys:', Object.keys(error || {}));
+      console.error('Error JSON:', JSON.stringify(error, null, 2));
+      
+      let errorMessage = 'Unknown error';
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      }
+      
       toast({
         title: "Error",
-        description: `Failed to update strategy: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        description: `Failed to update strategy: ${errorMessage}`,
         variant: "destructive",
       });
     }
