@@ -9,7 +9,8 @@ export type WebSocketEventType =
   | 'performance_updated'
   | 'asset_performance_updated'
   | 'strategy_updated'
-  | 'live_snapshot';
+  | 'live_snapshot'
+  | 'order_update';
 
 export interface WebSocketEvent {
   type: WebSocketEventType;
