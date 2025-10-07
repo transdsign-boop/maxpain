@@ -238,35 +238,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // TEMPORARY: Manual position insertion endpoint (for missing ETHUSDT trade)
-  app.post("/api/positions/manual-insert", async (req, res) => {
-    try {
-      const data = req.body;
-      
-      // Use direct SQL to insert position to bypass Drizzle date issues
-      const closedAtValue = data.closedAt || null;
-      const result = await db.execute(sql`
-        INSERT INTO positions (
-          session_id, symbol, side, total_quantity, avg_entry_price, total_cost,
-          unrealized_pnl, realized_pnl, layers_filled, max_layers, last_layer_price,
-          leverage, initial_entry_price, dca_base_size, is_open, opened_at, closed_at, updated_at, total_fees
-        ) VALUES (
-          ${data.sessionId}, ${data.symbol}, ${data.side}, ${data.totalQuantity}, 
-          ${data.avgEntryPrice}, ${data.totalCost}, ${data.unrealizedPnl}, ${data.realizedPnl},
-          ${data.layersFilled}, ${data.maxLayers}, ${data.lastLayerPrice}, ${data.leverage},
-          ${data.initialEntryPrice}, ${data.dcaBaseSize}, ${data.isOpen},
-          ${data.openedAt}::timestamp, ${closedAtValue}::timestamp, ${data.updatedAt}::timestamp, ${data.totalFees}
-        )
-        RETURNING *
-      `);
-      
-      res.json({ success: true, position: result.rows[0] });
-    } catch (error: any) {
-      console.error('❌ Error inserting position:', error);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
   // Export settings and strategy configuration
   app.get("/api/settings/export", async (req, res) => {
     try {
