@@ -308,17 +308,45 @@ export class StrategyEngine extends EventEmitter {
     console.log(`📝 Registering strategy: ${strategy.name} (${strategy.id})`);
     this.activeStrategies.set(strategy.id, strategy);
     
-    // Get or create the singleton session for this user
-    // This ensures there's always exactly one persistent session
-    const session = await storage.getOrCreateActiveSession(strategy.userId);
+    // First try to get an active session for this specific strategy
+    let session = await storage.getActiveTradeSession(strategy.id);
     
-    // Update session mode if strategy trading mode has changed
-    if (session.mode !== strategy.tradingMode) {
-      await storage.updateTradeSession(session.id, {
-        mode: strategy.tradingMode || 'paper',
-      });
-      session.mode = strategy.tradingMode || 'paper';
-      console.log(`🔄 Updated session mode to: ${session.mode}`);
+    if (!session) {
+      // No active session found - try to get the most recent session (even if inactive)
+      const allSessions = await storage.getSessionsByStrategy(strategy.id);
+      const mostRecentSession = allSessions[0]; // Already sorted by startedAt desc
+      
+      if (mostRecentSession && !mostRecentSession.endedAt) {
+        // Found an inactive but not ended session - reactivate it
+        await storage.updateTradeSession(mostRecentSession.id, {
+          isActive: true,
+          mode: strategy.tradingMode || 'paper',
+        });
+        session = { ...mostRecentSession, isActive: true, mode: strategy.tradingMode || 'paper' };
+        console.log(`🔄 Reactivated existing session ${session.id} for strategy ${strategy.id}`);
+      } else {
+        // No reusable session exists - create a new one
+        const exchangeBalance = await storage.getExchangeBalance();
+        const initialBalance = exchangeBalance || "10000.00";
+        
+        session = await storage.createTradeSession({
+          strategyId: strategy.id,
+          mode: strategy.tradingMode || 'paper',
+          startingBalance: initialBalance,
+          currentBalance: initialBalance,
+          isActive: true
+        });
+        console.log(`✅ Created new session ${session.id} for strategy ${strategy.id}`);
+      }
+    } else {
+      // Active session exists - update mode if it changed
+      if (session.mode !== strategy.tradingMode) {
+        await storage.updateTradeSession(session.id, {
+          mode: strategy.tradingMode || 'paper',
+        });
+        session.mode = strategy.tradingMode || 'paper';
+        console.log(`🔄 Updated session mode to: ${session.mode}`);
+      }
     }
     
     // Store by both strategy ID and session ID for easy lookup
