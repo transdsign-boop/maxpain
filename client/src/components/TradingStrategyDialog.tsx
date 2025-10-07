@@ -718,6 +718,35 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
     }
   });
 
+  // Session management mutations
+  const createNewSessionMutation = useMutation({
+    mutationFn: async (strategyId: string) => {
+      const response = await apiRequest('POST', `/api/strategies/${strategyId}/sessions/new`, {});
+      return await response.json();
+    },
+    onSuccess: (data, strategyId) => {
+      toast({
+        title: "New Session Started",
+        description: data.message || "Fresh trading session created successfully.",
+      });
+      // Invalidate both strategies and sessions queries to refresh UI
+      queryClient.invalidateQueries({ queryKey: ['/api/strategies'] });
+      queryClient.invalidateQueries({ queryKey: [`/api/strategies/${strategyId}/sessions`] });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to start new session. Please try again.",
+        variant: "destructive",
+      });
+    }
+  });
+
+  // Fetch sessions for current strategy
+  const { data: sessions } = useQuery({
+    queryKey: activeStrategy ? [`/api/strategies/${activeStrategy.id}/sessions`] : [],
+    enabled: !!activeStrategy?.id,
+  });
 
   // Test API connection mutation
   const testConnectionMutation = useMutation({
@@ -1999,6 +2028,51 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
               <Upload className="h-4 w-4 mr-1" />
               Import
             </Button>
+            {activeStrategy && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    data-testid="button-new-session"
+                  >
+                    <Play className="h-4 w-4 mr-1" />
+                    New Session
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Start New Trading Session?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will end your current session and start fresh with clean logs. Your strategy settings will be preserved, but trade history for the current session will be archived.
+                      {sessions && sessions.length > 0 && (
+                        <div className="mt-2 text-sm">
+                          You have {sessions.length} previous session{sessions.length !== 1 ? 's' : ''} available to view.
+                        </div>
+                      )}
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel data-testid="button-cancel-new-session">Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={() => activeStrategy && createNewSessionMutation.mutate(activeStrategy.id)}
+                      disabled={createNewSessionMutation.isPending}
+                      data-testid="button-confirm-new-session"
+                    >
+                      {createNewSessionMutation.isPending ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                          Starting...
+                        </>
+                      ) : (
+                        'Start New Session'
+                      )}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
           </div>
 
           <Button
