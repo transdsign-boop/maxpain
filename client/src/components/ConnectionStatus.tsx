@@ -11,6 +11,7 @@ interface ApiError {
 }
 
 interface CascadeStatus {
+  symbol: string;
   autoBlock: boolean;
   autoEnabled: boolean;
   reversal_quality: number;
@@ -22,14 +23,7 @@ interface CascadeStatus {
 export default function ConnectionStatus({ isConnected }: ConnectionStatusProps) {
   const [apiConnected, setApiConnected] = useState(true);
   const [latestError, setLatestError] = useState<ApiError | null>(null);
-  const [cascadeStatus, setCascadeStatus] = useState<CascadeStatus>({
-    autoBlock: false,
-    autoEnabled: true,
-    reversal_quality: 0,
-    rq_threshold_adjusted: 1,
-    rq_bucket: 'poor',
-    volatility_regime: 'low'
-  });
+  const [cascadeStatuses, setCascadeStatuses] = useState<CascadeStatus[]>([]);
 
   // Check API connection health and capture errors
   useEffect(() => {
@@ -86,7 +80,9 @@ export default function ConnectionStatus({ isConnected }: ConnectionStatusProps)
       try {
         const message = JSON.parse(event.data);
         if (message.type === 'cascade_status') {
-          setCascadeStatus(message.data);
+          // message.data is now an array of statuses
+          const statuses = Array.isArray(message.data) ? message.data : [message.data];
+          setCascadeStatuses(statuses);
         }
       } catch (error) {
         console.error('Error parsing cascade status:', error);
@@ -98,21 +94,70 @@ export default function ConnectionStatus({ isConnected }: ConnectionStatusProps)
     };
   }, []);
 
-  // Determine if trades are allowed based on cascade and reversal quality
-  const tradesAllowed = !cascadeStatus.autoEnabled || 
-    (!cascadeStatus.autoBlock && cascadeStatus.reversal_quality >= cascadeStatus.rq_threshold_adjusted);
+  // Aggregate multiple asset statuses - show green if ANY asset is ready
+  const aggregateStatus = () => {
+    if (cascadeStatuses.length === 0) {
+      return {
+        tradesAllowed: false,
+        autoEnabled: true,
+        readyAssets: [],
+        blockedAssets: []
+      };
+    }
+
+    const autoEnabled = cascadeStatuses[0]?.autoEnabled ?? true;
+    
+    if (!autoEnabled) {
+      return {
+        tradesAllowed: true,
+        autoEnabled: false,
+        readyAssets: cascadeStatuses.map(s => s.symbol),
+        blockedAssets: []
+      };
+    }
+
+    const readyAssets: string[] = [];
+    const blockedAssets: Array<{symbol: string, reason: string}> = [];
+
+    for (const status of cascadeStatuses) {
+      const isReady = !status.autoBlock && status.reversal_quality >= status.rq_threshold_adjusted;
+      
+      if (isReady) {
+        readyAssets.push(status.symbol);
+      } else {
+        const reason = status.autoBlock 
+          ? 'cascade risk' 
+          : `poor RQ (${status.reversal_quality}/${status.rq_threshold_adjusted})`;
+        blockedAssets.push({ symbol: status.symbol, reason });
+      }
+    }
+
+    return {
+      tradesAllowed: readyAssets.length > 0,
+      autoEnabled,
+      readyAssets,
+      blockedAssets
+    };
+  };
+
+  const { tradesAllowed, autoEnabled, readyAssets, blockedAssets } = aggregateStatus();
   
   const getTradeStatusTitle = () => {
-    if (!cascadeStatus.autoEnabled) {
+    if (!autoEnabled) {
       return "Trade Entry: Auto-gating disabled (all entries allowed)";
     }
-    if (cascadeStatus.autoBlock) {
-      return `Trade Entry: Blocked by cascade risk (high risk)`;
+    
+    if (readyAssets.length === 0) {
+      const reasons = blockedAssets.map(a => `${a.symbol}: ${a.reason}`).join(', ');
+      return `Trade Entry: All assets blocked (${reasons})`;
     }
-    if (cascadeStatus.reversal_quality < cascadeStatus.rq_threshold_adjusted) {
-      return `Trade Entry: Blocked by weak reversal quality (RQ: ${cascadeStatus.reversal_quality}/${cascadeStatus.rq_threshold_adjusted}, ${cascadeStatus.rq_bucket})`;
-    }
-    return `Trade Entry: Allowed (RQ: ${cascadeStatus.reversal_quality}/${cascadeStatus.rq_threshold_adjusted}, ${cascadeStatus.rq_bucket})`;
+    
+    const readyList = readyAssets.join(', ');
+    const blockedList = blockedAssets.length > 0 
+      ? ` | Blocked: ${blockedAssets.map(a => `${a.symbol} (${a.reason})`).join(', ')}`
+      : '';
+    
+    return `Trade Entry: Ready on ${readyList}${blockedList}`;
   };
 
   return (

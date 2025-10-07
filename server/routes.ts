@@ -2436,8 +2436,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Cascade Detector API routes
   app.get("/api/cascade/status", async (req, res) => {
     try {
-      const status = cascadeDetectorService.getCurrentStatus();
-      res.json(status);
+      const statuses = cascadeDetectorService.getAllStatuses();
+      res.json(statuses);
     } catch (error) {
       console.error('Error fetching cascade status:', error);
       res.status(500).json({ error: "Failed to fetch cascade status" });

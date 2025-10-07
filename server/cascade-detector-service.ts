@@ -12,20 +12,36 @@ interface LiquidationInfo {
   dominantSide: 'long' | 'short' | 'neutral';
 }
 
+interface SymbolData {
+  lastPrice: number;
+  priceHistory: PriceSnapshot[];
+  lastOI: number;
+}
+
 class CascadeDetectorService {
-  private detector: CascadeDetector;
+  private detectors: Map<string, CascadeDetector> = new Map();
+  private symbolData: Map<string, SymbolData> = new Map();
   private clients: Set<WebSocket> | null = null;
   private intervalId: NodeJS.Timeout | null = null;
-  
-  private lastPrice: number = 0;
-  private priceHistory: PriceSnapshot[] = [];
-  private lastOI: number = 0;
   
   private liqAccumulator: number = 0;
   private lastLiqReset: number = Date.now();
 
   constructor() {
-    this.detector = new CascadeDetector(true);
+    // Start with default tracking symbols
+    const defaultSymbols = ['ETHUSDT', 'BTCUSDT', 'BNBUSDT', 'SOLUSDT'];
+    defaultSymbols.forEach(symbol => this.addSymbol(symbol));
+  }
+
+  private addSymbol(symbol: string): void {
+    if (!this.detectors.has(symbol)) {
+      this.detectors.set(symbol, new CascadeDetector(symbol, true));
+      this.symbolData.set(symbol, {
+        lastPrice: 0,
+        priceHistory: [],
+        lastOI: 0
+      });
+    }
   }
 
   public setClients(clients: Set<WebSocket>): void {
@@ -52,7 +68,7 @@ class CascadeDetectorService {
     }
   }
 
-  private async getLiqNotionalLastSec(): Promise<LiquidationInfo> {
+  private async getLiqNotionalLastSec(symbol: string): Promise<LiquidationInfo> {
     const now = Date.now();
     const oneSecAgo = new Date(now - 1000);
     
@@ -63,6 +79,9 @@ class CascadeDetectorService {
       let shortNotional = 0;
       
       for (const liq of recentLiqs) {
+        // Filter by symbol
+        if (liq.symbol !== symbol) continue;
+        
         const value = parseFloat(liq.value);
         if (liq.side === 'long') {
           longNotional += value;
@@ -90,37 +109,44 @@ class CascadeDetectorService {
     }
   }
 
-  private async getCurrentPrice(symbol: string = 'ASTERUSDT'): Promise<number> {
+  private async getCurrentPrice(symbol: string): Promise<number> {
+    const data = this.symbolData.get(symbol);
+    const fallback = data?.lastPrice || 0;
+    
     try {
       const response = await fetch(`https://fapi.asterdex.com/fapi/v1/ticker/price?symbol=${symbol}`);
-      if (!response.ok) return this.lastPrice;
+      if (!response.ok) return fallback;
       
-      const data = await response.json();
-      return parseFloat(data.price) || this.lastPrice;
+      const responseData = await response.json();
+      return parseFloat(responseData.price) || fallback;
     } catch (error) {
-      return this.lastPrice;
+      return fallback;
     }
   }
 
-  private async getOpenInterest(symbol: string = 'ASTERUSDT'): Promise<number> {
+  private async getOpenInterest(symbol: string): Promise<number> {
+    const data = this.symbolData.get(symbol);
+    const fallback = data?.lastOI || 0;
+    
     try {
       const response = await fetch(`https://fapi.asterdex.com/fapi/v1/openInterest?symbol=${symbol}`);
-      if (!response.ok) return this.lastOI;
+      if (!response.ok) return fallback;
       
-      const data = await response.json();
-      return parseFloat(data.openInterest) || this.lastOI;
+      const responseData = await response.json();
+      return parseFloat(responseData.openInterest) || fallback;
     } catch (error) {
-      return this.lastOI;
+      return fallback;
     }
   }
 
-  private getReturnAndAlignment(dominantSide: 'long' | 'short' | 'neutral'): { ret1s: number; retSideMatchesLiq: boolean } {
-    if (this.priceHistory.length < 2) {
+  private getReturnAndAlignment(symbol: string, dominantSide: 'long' | 'short' | 'neutral'): { ret1s: number; retSideMatchesLiq: boolean } {
+    const data = this.symbolData.get(symbol);
+    if (!data || data.priceHistory.length < 2) {
       return { ret1s: 0, retSideMatchesLiq: false };
     }
 
-    const now = this.priceHistory[this.priceHistory.length - 1];
-    const prev = this.priceHistory[this.priceHistory.length - 2];
+    const now = data.priceHistory[data.priceHistory.length - 1];
+    const prev = data.priceHistory[data.priceHistory.length - 2];
     
     const ret1s = (now.price - prev.price) / prev.price;
     
@@ -137,45 +163,61 @@ class CascadeDetectorService {
 
   private async tick(): Promise<void> {
     try {
-      const liqInfo = await this.getLiqNotionalLastSec();
-      
-      const currentPrice = await this.getCurrentPrice();
-      this.priceHistory.push({ price: currentPrice, timestamp: Date.now() });
-      if (this.priceHistory.length > 60) {
-        this.priceHistory.shift();
-      }
-      this.lastPrice = currentPrice;
-
-      const { ret1s, retSideMatchesLiq } = this.getReturnAndAlignment(liqInfo.dominantSide);
-
-      const oi = await this.getOpenInterest();
-      this.lastOI = oi;
-
-      // Get RET thresholds from active strategy
+      // Get RET thresholds from active strategy (same for all symbols)
       const strategies = await storage.getAllActiveStrategies();
       const activeStrategy = strategies[0];
       const retHighThreshold = activeStrategy ? parseFloat(activeStrategy.retHighThreshold) : 35;
       const retMediumThreshold = activeStrategy ? parseFloat(activeStrategy.retMediumThreshold) : 25;
 
-      const status = this.detector.ingestTick(liqInfo.notional, ret1s, oi, retSideMatchesLiq, retHighThreshold, retMediumThreshold);
+      const allStatuses = [];
 
-      const csvLog = [
-        new Date().toISOString(),
-        status.score,
-        status.LQ.toFixed(1),
-        status.RET.toFixed(1),
-        status.OI.toFixed(1),
-        status.light,
-        status.autoBlock,
-        status.dOI_1m.toFixed(2),
-        status.dOI_3m.toFixed(2),
-        status.reversal_quality,
-        status.rq_bucket
-      ].join(',');
-      
-      console.log(`📊 Cascade: ${csvLog}`);
+      // Process each tracked symbol
+      for (const [symbol, detector] of Array.from(this.detectors)) {
+        const data = this.symbolData.get(symbol)!;
+        
+        // Get liquidation info for this symbol
+        const liqInfo = await this.getLiqNotionalLastSec(symbol);
+        
+        // Get current price for this symbol
+        const currentPrice = await this.getCurrentPrice(symbol);
+        data.priceHistory.push({ price: currentPrice, timestamp: Date.now() });
+        if (data.priceHistory.length > 60) {
+          data.priceHistory.shift();
+        }
+        data.lastPrice = currentPrice;
 
-      this.broadcast(status);
+        // Calculate return and alignment for this symbol
+        const { ret1s, retSideMatchesLiq } = this.getReturnAndAlignment(symbol, liqInfo.dominantSide);
+
+        // Get open interest for this symbol
+        const oi = await this.getOpenInterest(symbol);
+        data.lastOI = oi;
+
+        // Update detector for this symbol
+        const status = detector.ingestTick(liqInfo.notional, ret1s, oi, retSideMatchesLiq, retHighThreshold, retMediumThreshold);
+
+        allStatuses.push(status);
+
+        const csvLog = [
+          new Date().toISOString(),
+          symbol,
+          status.score,
+          status.LQ.toFixed(1),
+          status.RET.toFixed(1),
+          status.OI.toFixed(1),
+          status.light,
+          status.autoBlock,
+          status.dOI_1m.toFixed(2),
+          status.dOI_3m.toFixed(2),
+          status.reversal_quality,
+          status.rq_bucket
+        ].join(',');
+        
+        console.log(`📊 Cascade [${symbol}]: ${csvLog}`);
+      }
+
+      // Broadcast all statuses
+      this.broadcast(allStatuses);
     } catch (error) {
       console.error('Error in cascade detector tick:', error);
     }
@@ -197,19 +239,36 @@ class CascadeDetectorService {
   }
 
   public setAutoEnabled(enabled: boolean): void {
-    this.detector.setAutoEnabled(enabled);
+    // Set auto-enabled for all detectors
+    this.detectors.forEach(detector => detector.setAutoEnabled(enabled));
   }
 
   public getAutoEnabled(): boolean {
-    return this.detector.getAutoEnabled();
+    // Return auto-enabled status from first detector (all should be same)
+    const first = this.detectors.values().next().value;
+    return first ? first.getAutoEnabled() : true;
   }
 
-  public getCurrentStatus(): any {
-    return this.detector.getCurrentStatus();
+  public getStatus(symbol: string): any {
+    const detector = this.detectors.get(symbol);
+    if (!detector) {
+      // If symbol not tracked, add it and return initial status
+      this.addSymbol(symbol);
+      return this.detectors.get(symbol)!.getCurrentStatus();
+    }
+    return detector.getCurrentStatus();
   }
 
-  public isBlocking(): boolean {
-    const status = this.detector.getCurrentStatus();
+  public getAllStatuses(): any[] {
+    const statuses = [];
+    for (const detector of Array.from(this.detectors.values())) {
+      statuses.push(detector.getCurrentStatus());
+    }
+    return statuses;
+  }
+
+  public isBlocking(symbol: string): boolean {
+    const status = this.getStatus(symbol);
     return status.autoBlock;
   }
 }
