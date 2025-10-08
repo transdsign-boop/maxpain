@@ -51,8 +51,18 @@ export function useWebSocketData(options: UseWebSocketDataOptions = {}) {
             onEvent(wsEvent);
           }
 
-          // Automatically invalidate relevant queries based on event type
+          // Update cache directly from WebSocket events (NO HTTP polling)
           switch (wsEvent.type) {
+            case 'live_snapshot':
+              // Populate cache with live snapshot data from orchestrator
+              if (wsEvent.data?.account) {
+                queryClient.setQueryData(['/api/live/account'], wsEvent.data.account);
+              }
+              if (wsEvent.data?.positions) {
+                queryClient.setQueryData(['/api/live/positions'], wsEvent.data.positions);
+              }
+              break;
+            
             case 'position_opened':
             case 'position_closed':
             case 'position_updated':
@@ -73,8 +83,17 @@ export function useWebSocketData(options: UseWebSocketDataOptions = {}) {
               break;
             
             case 'account_updated':
-              // Invalidate account data
-              queryClient.invalidateQueries({ queryKey: ['/api/live/account'] });
+              // Populate cache with account update
+              if (wsEvent.data) {
+                queryClient.setQueryData(['/api/live/account'], wsEvent.data);
+              }
+              break;
+            
+            case 'position_updated':
+              // Populate cache with position update
+              if (wsEvent.data) {
+                queryClient.setQueryData(['/api/live/positions'], wsEvent.data);
+              }
               break;
             
             case 'performance_updated':
