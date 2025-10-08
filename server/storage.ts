@@ -94,6 +94,7 @@ export interface IStorage {
   // Trading Strategy operations
   createStrategy(strategy: InsertStrategy): Promise<Strategy>;
   getStrategy(id: string): Promise<Strategy | undefined>;
+  getStrategyBySession(sessionId: string): Promise<Strategy | undefined>;
   getStrategiesByUser(userId: string): Promise<Strategy[]>;
   getAllActiveStrategies(): Promise<Strategy[]>;
   updateStrategy(id: string, updates: Partial<InsertStrategy>): Promise<Strategy>;
@@ -342,6 +343,15 @@ export class DatabaseStorage implements IStorage {
 
   async getStrategy(id: string): Promise<Strategy | undefined> {
     const result = await sql`SELECT * FROM strategies WHERE id = ${id}`;
+    return result[0] ? convertKeysToCamelCase(result[0]) as Strategy : undefined;
+  }
+
+  async getStrategyBySession(sessionId: string): Promise<Strategy | undefined> {
+    const result = await sql`
+      SELECT s.* FROM strategies s
+      JOIN trade_sessions ts ON s.id = ts.strategy_id
+      WHERE ts.id = ${sessionId}
+    `;
     return result[0] ? convertKeysToCamelCase(result[0]) as Strategy : undefined;
   }
 

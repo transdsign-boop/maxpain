@@ -1077,6 +1077,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Sync completed trades from exchange to database
+  app.post("/api/sessions/:sessionId/sync-trades", async (req, res) => {
+    try {
+      const { sessionId } = req.params;
+      const { syncCompletedTrades } = await import('./exchange-sync');
+      
+      console.log(`🔄 Syncing completed trades from exchange for session ${sessionId}...`);
+      const result = await syncCompletedTrades(sessionId);
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error });
+      }
+      
+      res.json({ 
+        success: true, 
+        addedCount: result.addedCount,
+        message: `Successfully synced ${result.addedCount} missing position(s) from exchange`
+      });
+    } catch (error: any) {
+      console.error('❌ Error syncing trades:', error);
+      res.status(500).json({ error: `Failed to sync trades: ${error.message}` });
+    }
+  });
+
   // Get consolidated live data snapshot (account + positions + summary)
   app.get("/api/live/snapshot", async (req, res) => {
     try {
