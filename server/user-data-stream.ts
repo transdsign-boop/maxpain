@@ -95,10 +95,14 @@ class UserDataStreamManager {
       const wsUrl = `wss://fstream.asterdex.com/ws/${this.listenKey}`;
       this.ws = new WebSocket(wsUrl);
 
-      this.ws.on('open', () => {
+      this.ws.on('open', async () => {
         console.log('🔌 Connected to Aster DEX user data stream');
         this.isConnected = true;
         this.reconnectAttempts = 0;
+        
+        // Fetch initial account and position data to populate cache
+        await this.fetchInitialData();
+        
         resolve();
       });
 
@@ -126,6 +130,82 @@ class UserDataStreamManager {
         this.ws?.pong();
       });
     });
+  }
+
+  private async fetchInitialData(retries = 3, delayMs = 1000): Promise<void> {
+    if (!this.config) return;
+
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        console.log(`🔄 Fetching initial account/position data via backend proxy (attempt ${attempt}/${retries})...`);
+        
+        // Use backend's signed endpoints (server-to-server on localhost)
+        // These endpoints already handle HMAC-SHA256 signing
+        
+        // Fetch account balance via backend proxy
+        const accountResponse = await fetch('http://localhost:5000/api/live/account');
+        
+        if (!accountResponse.ok) {
+          throw new Error(`Account fetch failed: ${accountResponse.status} ${accountResponse.statusText}`);
+        }
+        
+        const accountData = await accountResponse.json();
+        
+        if (accountData && accountData.totalWalletBalance) {
+          // Convert to balance format expected by orchestrator
+          const balances = [{
+            asset: 'USDT',
+            walletBalance: accountData.totalWalletBalance.toString(),
+            crossWalletBalance: accountData.availableBalance.toString(),
+          }];
+          
+          const { db } = await import('./db');
+          const { strategies } = await import('@shared/schema');
+          const { eq } = await import('drizzle-orm');
+          const activeStrategy = (await db.select().from(strategies).where(eq(strategies.isActive, true)).limit(1))[0];
+          
+          if (activeStrategy) {
+            const { liveDataOrchestrator } = await import('./live-data-orchestrator');
+            liveDataOrchestrator.updateAccountFromWebSocket(activeStrategy.id, balances);
+            console.log(`✅ Initial account data loaded ($${accountData.totalWalletBalance.toFixed(2)})`);
+          }
+        }
+
+        // Fetch positions via backend proxy
+        const positionsResponse = await fetch('http://localhost:5000/api/live/positions');
+        
+        if (!positionsResponse.ok) {
+          throw new Error(`Positions fetch failed: ${positionsResponse.status} ${positionsResponse.statusText}`);
+        }
+        
+        const positions = await positionsResponse.json();
+        
+        const { db } = await import('./db');
+        const { strategies } = await import('@shared/schema');
+        const { eq } = await import('drizzle-orm');
+        const activeStrategy = (await db.select().from(strategies).where(eq(strategies.isActive, true)).limit(1))[0];
+        
+        if (activeStrategy && positions && positions.length > 0) {
+          const { liveDataOrchestrator } = await import('./live-data-orchestrator');
+          // Filter to only non-zero positions
+          const nonZeroPositions = positions.filter((p: any) => parseFloat(p.positionAmt) !== 0);
+          liveDataOrchestrator.updatePositionsFromWebSocket(activeStrategy.id, nonZeroPositions);
+          console.log(`✅ Initial position data loaded (${nonZeroPositions.length} non-zero positions)`);
+        }
+        
+        // Success! Exit retry loop
+        return;
+        
+      } catch (error: any) {
+        const isLastAttempt = attempt === retries;
+        if (isLastAttempt) {
+          console.error(`❌ Failed to fetch initial data after ${retries} attempts:`, error?.message || error);
+        } else {
+          console.log(`⚠️ Attempt ${attempt} failed, retrying in ${delayMs}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
+      }
+    }
   }
 
   private handleMessage(message: any): void {
