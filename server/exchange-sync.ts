@@ -1,5 +1,5 @@
 import { createHmac } from 'crypto';
-import storage from './storage';
+import { storage } from './storage';
 import type { TradeSession } from '@shared/schema';
 
 // Fetch all account trades from Aster DEX within a time range

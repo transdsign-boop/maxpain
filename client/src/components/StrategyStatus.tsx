@@ -1303,44 +1303,8 @@ export function StrategyStatus() {
           </TabsContent>
 
           <TabsContent value="completed" className="mt-3 md:mt-4">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs text-muted-foreground">Showing all completed positions</p>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={async () => {
-                  if (!activeStrategy) return;
-                  try {
-                    const response = await fetch(`/api/sessions/${activeStrategy.id}/sync-trades`, {
-                      method: 'POST',
-                    });
-                    const data = await response.json();
-                    if (data.success) {
-                      queryClient.invalidateQueries({ queryKey: ['/api/positions'] });
-                      toast({
-                        title: "Sync Complete",
-                        description: data.message,
-                      });
-                    } else {
-                      toast({
-                        title: "Sync Failed",
-                        description: data.error || "Failed to sync trades",
-                        variant: "destructive",
-                      });
-                    }
-                  } catch (error) {
-                    toast({
-                      title: "Sync Error",
-                      description: "Failed to sync trades from exchange",
-                      variant: "destructive",
-                    });
-                  }
-                }}
-                data-testid="button-sync-trades"
-              >
-                <RefreshCw className="h-3 w-3 mr-1" />
-                Sync from Exchange
-              </Button>
+            <div className="mb-2">
+              <p className="text-xs text-muted-foreground">Trades automatically sync every minute</p>
             </div>
             {tradeHistory && tradeHistory.filter(item => item.type === 'trade').length > 0 ? (
               <div className="space-y-2 max-h-96 overflow-y-auto overflow-x-hidden pr-2 custom-scrollbar">
