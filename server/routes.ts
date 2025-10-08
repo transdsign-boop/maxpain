@@ -1104,10 +1104,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get live account balance from Aster DEX
   app.get("/api/live/account", async (req, res) => {
     try {
-      // Check cache first to prevent rate limiting (5 minute TTL to avoid rate limits)
-      const cached = getCached<any>('live_account', 300000); // 5 minutes
-      if (cached) {
-        return res.json(cached);
+      // Get active strategy
+      const activeStrategy = await db.query.strategies.findFirst({
+        where: (strategies, { eq }) => eq(strategies.isActive, true)
+      });
+      
+      if (!activeStrategy) {
+        return res.status(404).json({ error: "No active strategy found" });
+      }
+      
+      // Check orchestrator cache first (populated by WebSocket)
+      const snapshot = liveDataOrchestrator.getSnapshot(activeStrategy.id);
+      if (snapshot && snapshot.account) {
+        return res.json(snapshot.account);
       }
 
       const apiKey = process.env.ASTER_API_KEY;
@@ -1302,10 +1311,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get live open positions from Aster DEX
   app.get("/api/live/positions", async (req, res) => {
     try {
-      // Check cache first to prevent rate limiting (5 minute TTL)
-      const cached = getCached<any[]>('live_positions', 300000); // 5 minutes
-      if (cached) {
-        return res.json(cached);
+      // Get active strategy
+      const activeStrategy = await db.query.strategies.findFirst({
+        where: (strategies, { eq }) => eq(strategies.isActive, true)
+      });
+      
+      if (!activeStrategy) {
+        return res.status(404).json({ error: "No active strategy found" });
+      }
+      
+      // Check orchestrator cache first (populated by WebSocket)
+      const snapshot = liveDataOrchestrator.getSnapshot(activeStrategy.id);
+      if (snapshot && snapshot.positions) {
+        return res.json(snapshot.positions);
       }
 
       const apiKey = process.env.ASTER_API_KEY;
