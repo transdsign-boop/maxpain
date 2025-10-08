@@ -271,13 +271,13 @@ export default function PerformanceOverview() {
     const positions = livePositions ? livePositions.filter(p => parseFloat(p.positionAmt) !== 0) : [];
 
     // Calculate total balance for percentage
-    const unrealizedPnl = liveAccount ? parseFloat(liveAccount.totalUnrealizedProfit) : 0;
-    const totalBalance = liveAccount ? parseFloat(liveAccount.totalWalletBalance || '0') + unrealizedPnl : 0;
+    const unrealizedPnl = liveAccount ? (parseFloat(liveAccount.totalUnrealizedProfit) || 0) : 0;
+    const totalBalance = liveAccount ? (parseFloat(liveAccount.totalWalletBalance || '0') || 0) + unrealizedPnl : 0;
 
     const totalPotentialLoss = positions.reduce((sum, position) => {
-      const entryPrice = parseFloat(position.entryPrice);
-      const quantity = Math.abs(parseFloat(position.positionAmt));
-      const isLong = parseFloat(position.positionAmt) > 0;
+      const entryPrice = parseFloat(position.entryPrice) || 0;
+      const quantity = Math.abs(parseFloat(position.positionAmt) || 0);
+      const isLong = (parseFloat(position.positionAmt) || 0) > 0;
       
       const stopLossPrice = isLong 
         ? entryPrice * (1 - stopLossPercent / 100)
@@ -404,23 +404,23 @@ export default function PerformanceOverview() {
   };
 
   // Calculate unified account metrics (live-only mode)
-  const unrealizedPnl = liveAccount ? parseFloat(liveAccount.totalUnrealizedProfit) : 0;
-  const totalBalance = liveAccount ? parseFloat(liveAccount.totalWalletBalance || '0') + unrealizedPnl : 0;
+  const unrealizedPnl = liveAccount ? (parseFloat(liveAccount.totalUnrealizedProfit) || 0) : 0;
+  const totalBalance = liveAccount ? (parseFloat(liveAccount.totalWalletBalance || '0') || 0) + unrealizedPnl : 0;
   
   // Calculate available balance
   const leverage = activeStrategy?.leverage || 1;
-  const availableBalance = liveAccount ? parseFloat(liveAccount.availableBalance) : 0;
+  const availableBalance = liveAccount ? (parseFloat(liveAccount.availableBalance) || 0) : 0;
 
   // Calculate margin in use and exposure (live-only mode)
-  const marginInUse = liveAccount ? parseFloat(liveAccount.totalInitialMargin || '0') : 0;
+  const marginInUse = liveAccount ? (parseFloat(liveAccount.totalInitialMargin || '0') || 0) : 0;
   const totalExposure = marginInUse * leverage;
 
   // Calculate percentages
   const unrealizedPnlPercent = totalBalance > 0 ? (unrealizedPnl / totalBalance) * 100 : 0;
   
   // For realized P&L percentage, use starting balance
-  const startingBalance = totalBalance - displayPerformance.totalRealizedPnl - unrealizedPnl;
-  const realizedPnlPercent = startingBalance > 0 ? (displayPerformance.totalRealizedPnl / startingBalance) * 100 : 0;
+  const startingBalance = totalBalance - (displayPerformance.totalRealizedPnl || 0) - unrealizedPnl;
+  const realizedPnlPercent = startingBalance > 0 ? ((displayPerformance.totalRealizedPnl || 0) / startingBalance) * 100 : 0;
 
   return (
     <Card>
