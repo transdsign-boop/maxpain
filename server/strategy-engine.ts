@@ -15,6 +15,7 @@ import { cascadeDetectorService } from './cascade-detector-service';
 import { calculateNextLayer, calculateATRPercent } from './dca-calculator';
 import { userDataStreamManager } from './user-data-stream';
 import { liveDataOrchestrator } from './live-data-orchestrator';
+import { syncCompletedTrades } from './exchange-sync';
 
 // Aster DEX fee schedule
 const ASTER_MAKER_FEE_PERCENT = 0.01;  // 0.01% for limit orders (adds liquidity) 
@@ -3430,7 +3431,13 @@ export class StrategyEngine extends EventEmitter {
         // 2. Verify all open positions have correct TP/SL orders (self-healing)
         await orderProtectionService.verifyAllPositions(session.id, strategy);
         
-        // 3. Keep data retention active (delete old liquidations)
+        // 3. Sync completed trades from exchange (automatic reconciliation)
+        const syncResult = await syncCompletedTrades(session.id);
+        if (syncResult.success && syncResult.addedCount > 0) {
+          console.log(`  ✓ Synced ${syncResult.addedCount} completed trades from exchange`);
+        }
+        
+        // 4. Keep data retention active (delete old liquidations)
         const deletedCount = await storage.deleteOldLiquidations(30);
         if (deletedCount > 0) {
           console.log(`  ✓ Deleted ${deletedCount} liquidations older than 30 days`);
