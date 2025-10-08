@@ -88,6 +88,7 @@ export function aggregateFills(fills: Array<{
   totalCommission: number;
   totalValue: number;
   isMaker: boolean;
+  timestamp: number;
 } {
   if (fills.length === 0) {
     throw new Error('Cannot aggregate empty fills array');
@@ -97,6 +98,7 @@ export function aggregateFills(fills: Array<{
   let totalValue = 0;
   let totalCommission = 0;
   let makerFills = 0;
+  let latestTimestamp = 0;
 
   for (const fill of fills) {
     const price = parseFloat(fill.price);
@@ -110,6 +112,11 @@ export function aggregateFills(fills: Array<{
     if (fill.maker) {
       makerFills++;
     }
+    
+    // Track the latest timestamp
+    if (fill.time > latestTimestamp) {
+      latestTimestamp = fill.time;
+    }
   }
 
   // Calculate weighted average price
@@ -118,7 +125,7 @@ export function aggregateFills(fills: Array<{
   // Consider it a maker fill if majority are maker fills
   const isMaker = makerFills > fills.length / 2;
 
-  console.log(`📊 Aggregated ${fills.length} fill(s): Avg Price=$${avgPrice.toFixed(6)}, Total Qty=${totalQty.toFixed(4)}, Total Commission=$${totalCommission.toFixed(4)}`);
+  console.log(`📊 Aggregated ${fills.length} fill(s): Avg Price=$${avgPrice.toFixed(6)}, Total Qty=${totalQty.toFixed(4)}, Total Commission=$${totalCommission.toFixed(4)}, Timestamp=${new Date(latestTimestamp).toISOString()}`);
 
   return {
     avgPrice,
@@ -126,5 +133,6 @@ export function aggregateFills(fills: Array<{
     totalCommission,
     totalValue,
     isMaker,
+    timestamp: latestTimestamp,
   };
 }
