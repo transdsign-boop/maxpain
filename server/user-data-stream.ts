@@ -142,13 +142,16 @@ class UserDataStreamManager {
 
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
-        console.log(`🔄 Fetching initial account/position data via backend proxy (attempt ${attempt}/${retries})...`);
+        console.log(`🔄 Fetching initial account/position data via backend (attempt ${attempt}/${retries})...`);
         
-        // Use backend's signed endpoints (server-to-server on localhost)
-        // These endpoints already handle HMAC-SHA256 signing
+        // Construct base URL for server-to-server communication
+        // Use environment variable or default to localhost for development
+        const baseUrl = process.env.REPLIT_DEPLOYMENT_URL 
+          ? `https://${process.env.REPLIT_DEPLOYMENT_URL}`
+          : 'http://localhost:5000';
         
-        // Fetch account balance via backend proxy
-        const accountResponse = await fetch('http://localhost:5000/api/live/account');
+        // Fetch account balance via backend
+        const accountResponse = await fetch(`${baseUrl}/api/live/account`);
         
         if (!accountResponse.ok) {
           throw new Error(`Account fetch failed: ${accountResponse.status} ${accountResponse.statusText}`);
@@ -179,8 +182,8 @@ class UserDataStreamManager {
           }
         }
 
-        // Fetch positions via backend proxy
-        const positionsResponse = await fetch('http://localhost:5000/api/live/positions');
+        // Fetch positions via backend
+        const positionsResponse = await fetch(`${baseUrl}/api/live/positions`);
         
         if (!positionsResponse.ok) {
           throw new Error(`Positions fetch failed: ${positionsResponse.status} ${positionsResponse.statusText}`);
