@@ -1,0 +1,347 @@
+import { createHmac } from 'crypto';
+import storage from './storage';
+import type { TradeSession } from '@shared/schema';
+
+// Fetch all account trades from Aster DEX within a time range
+export async function fetchAccountTrades(params: {
+  symbol?: string;
+  startTime?: number;
+  endTime?: number;
+  limit?: number;
+}): Promise<{
+  success: boolean;
+  trades?: Array<{
+    symbol: string;
+    id: number;
+    orderId: number;
+    side: 'BUY' | 'SELL';
+    price: string;
+    qty: string;
+    realizedPnl: string;
+    marginAsset: string;
+    quoteQty: string;
+    commission: string;
+    commissionAsset: string;
+    time: number;
+    positionSide: 'LONG' | 'SHORT' | 'BOTH';
+    maker: boolean;
+    buyer: boolean;
+  }>;
+  error?: string;
+}> {
+  try {
+    const apiKey = process.env.ASTER_API_KEY;
+    const secretKey = process.env.ASTER_SECRET_KEY;
+    
+    if (!apiKey || !secretKey) {
+      return { success: false, error: 'API keys not configured' };
+    }
+    
+    // Build request parameters
+    const timestamp = Date.now();
+    const queryParams: Record<string, string | number> = {
+      timestamp,
+      recvWindow: 60000,
+      limit: params.limit || 1000, // Max 1000 trades per request
+    };
+    
+    if (params.symbol) {
+      queryParams.symbol = params.symbol;
+    }
+    
+    if (params.startTime) {
+      queryParams.startTime = params.startTime;
+    }
+    
+    if (params.endTime) {
+      queryParams.endTime = params.endTime;
+    }
+    
+    // Create query string (sorted alphabetically)
+    const queryString = Object.entries(queryParams)
+      .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
+      .map(([k, v]) => `${k}=${v}`)
+      .join('&');
+    
+    // Generate signature
+    const signature = createHmac('sha256', secretKey)
+      .update(queryString)
+      .digest('hex');
+    
+    const signedParams = `${queryString}&signature=${signature}`;
+    
+    // Fetch account trades from exchange
+    const response = await fetch(`https://fapi.asterdex.com/fapi/v1/userTrades?${signedParams}`, {
+      method: 'GET',
+      headers: {
+        'X-MBX-APIKEY': apiKey,
+      },
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`❌ Failed to fetch account trades: ${response.status} ${errorText}`);
+      return { success: false, error: `HTTP ${response.status}: ${errorText}` };
+    }
+    
+    const trades = await response.json();
+    console.log(`✅ Fetched ${trades.length} account trades from exchange`);
+    
+    return { success: true, trades };
+  } catch (error) {
+    console.error('❌ Error fetching account trades:', error);
+    return { success: false, error: String(error) };
+  }
+}
+
+// Group trades into positions (entry and exit pairs)
+function groupTradesIntoPositions(trades: Array<{
+  symbol: string;
+  side: 'BUY' | 'SELL';
+  price: string;
+  qty: string;
+  commission: string;
+  time: number;
+  positionSide: 'LONG' | 'SHORT' | 'BOTH';
+  realizedPnl: string;
+}>): Array<{
+  symbol: string;
+  side: 'long' | 'short';
+  entryTrades: typeof trades;
+  exitTrades: typeof trades;
+  openedAt: Date;
+  closedAt: Date;
+  avgEntryPrice: number;
+  avgExitPrice: number;
+  totalQuantity: number;
+  realizedPnl: number;
+  totalFees: number;
+}> {
+  const positions: Array<{
+    symbol: string;
+    side: 'long' | 'short';
+    entryTrades: typeof trades;
+    exitTrades: typeof trades;
+    openedAt: Date;
+    closedAt: Date;
+    avgEntryPrice: number;
+    avgExitPrice: number;
+    totalQuantity: number;
+    realizedPnl: number;
+    totalFees: number;
+  }> = [];
+  
+  // Group by symbol and position side
+  const grouped = new Map<string, typeof trades>();
+  
+  for (const trade of trades) {
+    const positionSide = trade.positionSide === 'LONG' ? 'long' : trade.positionSide === 'SHORT' ? 'short' : 
+                         (trade.side === 'BUY' ? 'long' : 'short');
+    const key = `${trade.symbol}-${positionSide}`;
+    
+    if (!grouped.has(key)) {
+      grouped.set(key, []);
+    }
+    grouped.get(key)!.push(trade);
+  }
+  
+  // Process each group to find entry/exit pairs
+  for (const [key, groupTrades] of grouped) {
+    const [symbol, sideStr] = key.split('-');
+    const side = sideStr as 'long' | 'short';
+    
+    // Sort by time
+    groupTrades.sort((a, b) => a.time - b.time);
+    
+    let entryTrades: typeof trades = [];
+    let exitTrades: typeof trades = [];
+    let netPosition = 0;
+    
+    for (const trade of groupTrades) {
+      const qty = parseFloat(trade.qty);
+      const isEntry = (side === 'long' && trade.side === 'BUY') || (side === 'short' && trade.side === 'SELL');
+      
+      if (isEntry) {
+        entryTrades.push(trade);
+        netPosition += qty;
+      } else {
+        exitTrades.push(trade);
+        netPosition -= qty;
+        
+        // If net position is zero or negative, we have a complete position
+        if (netPosition <= 0) {
+          if (entryTrades.length > 0 && exitTrades.length > 0) {
+            // Calculate averages
+            let entryValue = 0;
+            let entryQty = 0;
+            let exitValue = 0;
+            let exitQty = 0;
+            let totalFees = 0;
+            let totalPnl = 0;
+            
+            for (const et of entryTrades) {
+              const price = parseFloat(et.price);
+              const qty = parseFloat(et.qty);
+              entryValue += price * qty;
+              entryQty += qty;
+              totalFees += parseFloat(et.commission);
+            }
+            
+            for (const xt of exitTrades) {
+              const price = parseFloat(xt.price);
+              const qty = parseFloat(xt.qty);
+              exitValue += price * qty;
+              exitQty += qty;
+              totalFees += parseFloat(xt.commission);
+              totalPnl += parseFloat(xt.realizedPnl);
+            }
+            
+            positions.push({
+              symbol,
+              side,
+              entryTrades: [...entryTrades],
+              exitTrades: [...exitTrades],
+              openedAt: new Date(entryTrades[0].time),
+              closedAt: new Date(exitTrades[exitTrades.length - 1].time),
+              avgEntryPrice: entryValue / entryQty,
+              avgExitPrice: exitValue / exitQty,
+              totalQuantity: Math.min(entryQty, exitQty),
+              realizedPnl: totalPnl,
+              totalFees,
+            });
+          }
+          
+          // Reset for next position
+          entryTrades = [];
+          exitTrades = [];
+          netPosition = 0;
+        }
+      }
+    }
+  }
+  
+  return positions;
+}
+
+// Sync completed trades from exchange to database
+export async function syncCompletedTrades(sessionId: string): Promise<{
+  success: boolean;
+  addedCount: number;
+  error?: string;
+}> {
+  try {
+    const session = await storage.getTradeSession(sessionId);
+    if (!session) {
+      return { success: false, addedCount: 0, error: 'Session not found' };
+    }
+    
+    // Fetch trades from when the session started
+    const startTime = new Date(session.startedAt).getTime();
+    const endTime = session.endedAt ? new Date(session.endedAt).getTime() : Date.now();
+    
+    const result = await fetchAccountTrades({
+      startTime,
+      endTime,
+      limit: 1000,
+    });
+    
+    if (!result.success || !result.trades) {
+      return { success: false, addedCount: 0, error: result.error };
+    }
+    
+    // Filter only trades with realized PnL (indicating a position was closed)
+    const closedTrades = result.trades.filter(trade => parseFloat(trade.realizedPnl) !== 0);
+    
+    console.log(`📊 Found ${closedTrades.length} closed position trades from exchange`);
+    
+    // Group trades into positions
+    const exchangePositions = groupTradesIntoPositions(closedTrades);
+    
+    console.log(`📊 Grouped into ${exchangePositions.length} complete positions`);
+    
+    // Get existing positions from database
+    const existingPositions = await storage.getClosedPositions(sessionId);
+    const existingSymbolTimes = new Set(
+      existingPositions.map(p => `${p.symbol}-${new Date(p.closedAt!).getTime()}`)
+    );
+    
+    let addedCount = 0;
+    
+    // Add missing positions
+    for (const exPos of exchangePositions) {
+      const key = `${exPos.symbol}-${exPos.closedAt.getTime()}`;
+      
+      if (!existingSymbolTimes.has(key)) {
+        console.log(`➕ Adding missing position: ${exPos.symbol} ${exPos.side} closed at ${exPos.closedAt.toISOString()}`);
+        
+        // Create position
+        const notionalValue = exPos.avgEntryPrice * exPos.totalQuantity;
+        const strategy = await storage.getStrategyBySession(sessionId);
+        const leverage = strategy?.leverage || 1;
+        const margin = notionalValue / leverage;
+        
+        const position = await storage.createPosition({
+          sessionId,
+          symbol: exPos.symbol,
+          side: exPos.side,
+          totalQuantity: exPos.totalQuantity.toString(),
+          avgEntryPrice: exPos.avgEntryPrice.toString(),
+          totalCost: margin.toString(),
+          unrealizedPnl: '0',
+          realizedPnl: exPos.realizedPnl.toString(),
+          layersFilled: exPos.entryTrades.length,
+          maxLayers: exPos.entryTrades.length,
+          leverage,
+          isOpen: false,
+          openedAt: exPos.openedAt,
+          closedAt: exPos.closedAt,
+        });
+        
+        // Create fills for entry trades
+        for (let i = 0; i < exPos.entryTrades.length; i++) {
+          const trade = exPos.entryTrades[i];
+          await storage.applyFill({
+            orderId: `sync-entry-${trade.time}-${i}`,
+            sessionId,
+            positionId: position.id,
+            symbol: trade.symbol,
+            side: trade.side.toLowerCase() as 'buy' | 'sell',
+            quantity: trade.qty,
+            price: trade.price,
+            value: (parseFloat(trade.price) * parseFloat(trade.qty)).toString(),
+            fee: trade.commission,
+            layerNumber: i + 1,
+            filledAt: new Date(trade.time),
+          });
+        }
+        
+        // Create fills for exit trades
+        for (let i = 0; i < exPos.exitTrades.length; i++) {
+          const trade = exPos.exitTrades[i];
+          await storage.applyFill({
+            orderId: `sync-exit-${trade.time}-${i}`,
+            sessionId,
+            positionId: position.id,
+            symbol: trade.symbol,
+            side: trade.side.toLowerCase() as 'buy' | 'sell',
+            quantity: trade.qty,
+            price: trade.price,
+            value: (parseFloat(trade.price) * parseFloat(trade.qty)).toString(),
+            fee: trade.commission,
+            layerNumber: 0,
+            filledAt: new Date(trade.time),
+          });
+        }
+        
+        addedCount++;
+      }
+    }
+    
+    console.log(`✅ Sync complete: added ${addedCount} missing positions`);
+    
+    return { success: true, addedCount };
+  } catch (error) {
+    console.error('❌ Error syncing trades:', error);
+    return { success: false, addedCount: 0, error: String(error) };
+  }
+}
