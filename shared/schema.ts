@@ -304,7 +304,8 @@ export type Order = typeof orders.$inferSelect;
 // Schema exports for fills
 export const insertFillSchema = createInsertSchema(fills).omit({
   id: true,
-  filledAt: true,
+}).extend({
+  filledAt: z.union([z.date(), z.string()]).optional(),
 });
 
 export type InsertFill = z.infer<typeof insertFillSchema>;
