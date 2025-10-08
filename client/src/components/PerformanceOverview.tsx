@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, TrendingDown, Target, Award, Activity, LineChart, DollarSign, Percent, ChevronLeft, ChevronRight } from "lucide-react";
+import { TrendingUp, TrendingDown, Target, Award, Activity, LineChart, DollarSign, Percent, ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from "lucide-react";
 import { ComposedChart, Line, Area, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, ReferenceArea, Label } from "recharts";
 import { format } from "date-fns";
 import { useStrategyData } from "@/hooks/use-strategy-data";
@@ -71,9 +71,9 @@ interface AssetPerformance {
 }
 
 export default function PerformanceOverview() {
-  // Pagination state for chart
+  // Pagination and zoom state for chart
   const [chartEndIndex, setChartEndIndex] = useState<number | null>(null);
-  const TRADES_PER_PAGE = 50;
+  const [tradesPerPage, setTradesPerPage] = useState<number>(50);
   
   // Use centralized hook for all strategy-related data (reduces API calls by 10-20x)
   const {
@@ -140,7 +140,7 @@ export default function PerformanceOverview() {
     }
   }, [sourceChartData.length, chartEndIndex, totalTrades]);
   const actualEndIndex = chartEndIndex ?? totalTrades;
-  const startIndex = Math.max(0, actualEndIndex - TRADES_PER_PAGE);
+  const startIndex = Math.max(0, actualEndIndex - tradesPerPage);
   const paginatedSourceData = sourceChartData.slice(startIndex, actualEndIndex);
   const canGoBack = startIndex > 0;
   const canGoForward = actualEndIndex < totalTrades;
@@ -583,36 +583,82 @@ export default function PerformanceOverview() {
 
         {/* Performance Chart */}
         <div className="space-y-3">
-          {/* Chart Navigation Controls */}
-          {totalTrades > TRADES_PER_PAGE && (
-            <div className="flex items-center justify-between px-4">
+          {/* Chart Navigation & Zoom Controls */}
+          <div className="flex items-center justify-between px-4 gap-3">
+            {/* Pagination Controls */}
+            <div className="flex items-center gap-2">
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setChartEndIndex(Math.max(TRADES_PER_PAGE, actualEndIndex - TRADES_PER_PAGE))}
+                onClick={() => setChartEndIndex(Math.max(tradesPerPage, actualEndIndex - tradesPerPage))}
                 disabled={!canGoBack}
                 data-testid="button-chart-previous"
               >
                 <ChevronLeft className="h-4 w-4 mr-1" />
-                Previous {TRADES_PER_PAGE}
+                Prev
               </Button>
               
-              <div className="text-xs text-muted-foreground">
-                Showing trades {startIndex + 1}-{actualEndIndex} of {totalTrades}
+              <div className="text-xs text-muted-foreground whitespace-nowrap">
+                {tradesPerPage >= totalTrades ? (
+                  `All ${totalTrades} trades`
+                ) : (
+                  `${startIndex + 1}-${actualEndIndex} of ${totalTrades}`
+                )}
               </div>
               
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setChartEndIndex(Math.min(totalTrades, actualEndIndex + TRADES_PER_PAGE))}
+                onClick={() => setChartEndIndex(Math.min(totalTrades, actualEndIndex + tradesPerPage))}
                 disabled={!canGoForward}
                 data-testid="button-chart-next"
               >
-                Next {TRADES_PER_PAGE}
+                Next
                 <ChevronRight className="h-4 w-4 ml-1" />
               </Button>
             </div>
-          )}
+
+            {/* Zoom Controls */}
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const newZoom = Math.min(totalTrades, tradesPerPage * 2);
+                  setTradesPerPage(newZoom);
+                  // Adjust view to keep current position centered
+                  const centerTrade = startIndex + Math.floor((actualEndIndex - startIndex) / 2);
+                  const newEnd = Math.min(totalTrades, centerTrade + Math.floor(newZoom / 2));
+                  setChartEndIndex(newEnd);
+                }}
+                disabled={tradesPerPage >= totalTrades}
+                data-testid="button-chart-zoom-out"
+                title="Zoom out (see more trades)"
+              >
+                <ZoomOut className="h-4 w-4 mr-1" />
+                {tradesPerPage >= totalTrades ? 'All' : `${tradesPerPage}→${Math.min(totalTrades, tradesPerPage * 2)}`}
+              </Button>
+              
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const newZoom = Math.max(25, Math.floor(tradesPerPage / 2));
+                  setTradesPerPage(newZoom);
+                  // Adjust view to keep current position centered
+                  const centerTrade = startIndex + Math.floor((actualEndIndex - startIndex) / 2);
+                  const newEnd = Math.min(totalTrades, centerTrade + Math.floor(newZoom / 2));
+                  setChartEndIndex(newEnd);
+                }}
+                disabled={tradesPerPage <= 25}
+                data-testid="button-chart-zoom-in"
+                title="Zoom in (see fewer trades)"
+              >
+                <ZoomIn className="h-4 w-4 mr-1" />
+                {tradesPerPage <= 25 ? 'Min' : `${tradesPerPage}→${Math.max(25, Math.floor(tradesPerPage / 2))}`}
+              </Button>
+            </div>
+          </div>
           
           <div className="relative h-64 md:h-80 -mx-8" style={{
             maskImage: 'linear-gradient(to right, transparent, black 5%, black 95%, transparent)',
