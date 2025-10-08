@@ -65,14 +65,18 @@ export function useWebSocketData(options: UseWebSocketDataOptions = {}) {
             
             case 'position_opened':
             case 'position_closed':
-            case 'position_updated':
-              // Invalidate live positions
-              queryClient.invalidateQueries({ queryKey: ['/api/live/positions'] });
               // Invalidate closed positions if a position closed
               if (wsEvent.type === 'position_closed') {
                 queryClient.invalidateQueries({ queryKey: ['/api/strategies'], predicate: (query) => 
                   query.queryKey[2] === 'positions' && query.queryKey[3] === 'closed'
                 });
+              }
+              break;
+            
+            case 'position_updated':
+              // Populate cache with position update from WebSocket
+              if (wsEvent.data) {
+                queryClient.setQueryData(['/api/live/positions'], wsEvent.data);
               }
               break;
             
@@ -86,13 +90,6 @@ export function useWebSocketData(options: UseWebSocketDataOptions = {}) {
               // Populate cache with account update
               if (wsEvent.data) {
                 queryClient.setQueryData(['/api/live/account'], wsEvent.data);
-              }
-              break;
-            
-            case 'position_updated':
-              // Populate cache with position update
-              if (wsEvent.data) {
-                queryClient.setQueryData(['/api/live/positions'], wsEvent.data);
               }
               break;
             
