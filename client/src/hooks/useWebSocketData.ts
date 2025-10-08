@@ -51,14 +51,19 @@ export function useWebSocketData(options: UseWebSocketDataOptions = {}) {
             onEvent(wsEvent);
           }
 
-          // Automatically invalidate relevant queries based on event type
+          // Automatically update React Query cache based on event type (WebSocket-only, NO HTTP)
           switch (wsEvent.type) {
+            case 'live_snapshot':
+              // Directly set snapshot data in cache (NO HTTP fetch)
+              if (wsEvent.data?.snapshot) {
+                queryClient.setQueryData(['/api/live/snapshot'], wsEvent.data.snapshot);
+              }
+              break;
+            
             case 'position_opened':
             case 'position_closed':
             case 'position_updated':
-              // Invalidate live positions
-              queryClient.invalidateQueries({ queryKey: ['/api/live/positions'] });
-              // Invalidate closed positions if a position closed
+              // Invalidate closed positions if a position closed (these still use HTTP)
               if (wsEvent.type === 'position_closed') {
                 queryClient.invalidateQueries({ queryKey: ['/api/strategies'], predicate: (query) => 
                   query.queryKey[2] === 'positions' && query.queryKey[3] === 'closed'
@@ -67,14 +72,8 @@ export function useWebSocketData(options: UseWebSocketDataOptions = {}) {
               break;
             
             case 'fill_added':
-              // Invalidate position fills
+              // Invalidate position fills (these still use HTTP)
               queryClient.invalidateQueries({ queryKey: ['/api/positions'] });
-              queryClient.invalidateQueries({ queryKey: ['/api/live/position-fills'] });
-              break;
-            
-            case 'account_updated':
-              // Invalidate account data
-              queryClient.invalidateQueries({ queryKey: ['/api/live/account'] });
               break;
             
             case 'performance_updated':
