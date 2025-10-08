@@ -26,17 +26,23 @@ export function useStrategyData() {
   // Live account data - NO HTTP fetching, populated by WebSocket only
   const liveAccountQuery = useQuery<any>({
     queryKey: ['/api/live/account'],
-    queryFn: () => null as any, // No-op queryFn - populated by WebSocket only
-    enabled: false, // Never fetch - WebSocket populates cache
+    queryFn: () => {
+      throw new Error('This query should only be populated by WebSocket events');
+    },
     staleTime: Infinity,
+    gcTime: Infinity,
+    retry: false,
   });
 
   // Live positions data - NO HTTP fetching, populated by WebSocket only
   const livePositionsQuery = useQuery<any[]>({
     queryKey: ['/api/live/positions'],
-    queryFn: () => null as any[], // No-op queryFn - populated by WebSocket only
-    enabled: false, // Never fetch - WebSocket populates cache
+    queryFn: () => {
+      throw new Error('This query should only be populated by WebSocket events');
+    },
     staleTime: Infinity,
+    gcTime: Infinity,
+    retry: false,
   });
 
   // Construct snapshot from individual queries (orchestrator disabled to avoid rate limits)
