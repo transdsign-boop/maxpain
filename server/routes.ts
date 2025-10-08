@@ -3498,6 +3498,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Clean up duplicate positions for a strategy
+  app.post('/api/strategies/:strategyId/cleanup-duplicates', async (req, res) => {
+    try {
+      const { strategyId } = req.params;
+      
+      // Find the active trade session for this strategy
+      const session = await storage.getActiveTradeSession(strategyId);
+      
+      if (!session) {
+        return res.status(404).json({ error: 'No active trade session found for this strategy' });
+      }
+
+      // Get all closed positions
+      const allPositions = await storage.getClosedPositions(session.id);
+      
+      // Find duplicates - positions with same symbol, side, and close time within 5 seconds
+      const duplicatesToDelete: string[] = [];
+      const seen = new Map<string, string>(); // key -> first position ID
+      
+      for (const pos of allPositions) {
+        if (!pos.closedAt) continue;
+        
+        const closedTime = new Date(pos.closedAt).getTime();
+        const qty = parseFloat(pos.totalQuantity);
+        
+        // Find if we already have a similar position
+        let foundDuplicate = false;
+        for (const [key, firstPosId] of Array.from(seen.entries())) {
+          const [seenSymbol, seenSide, seenTime, seenQty] = key.split('|');
+          
+          if (pos.symbol === seenSymbol && pos.side === seenSide) {
+            const timeDiff = Math.abs(closedTime - parseInt(seenTime));
+            const qtyDiff = Math.abs(qty - parseFloat(seenQty)) / parseFloat(seenQty);
+            
+            if (timeDiff < 5000 && qtyDiff < 0.001) {
+              // This is a duplicate - mark for deletion
+              duplicatesToDelete.push(pos.id);
+              foundDuplicate = true;
+              break;
+            }
+          }
+        }
+        
+        // If not a duplicate, remember this position
+        if (!foundDuplicate) {
+          const key = `${pos.symbol}|${pos.side}|${closedTime}|${qty}`;
+          seen.set(key, pos.id);
+        }
+      }
+      
+      // Delete duplicates
+      const { fills } = await import('@shared/schema');
+      for (const posId of duplicatesToDelete) {
+        // Delete fills first (foreign key constraint)
+        await db.delete(fills).where(eq(fills.positionId, posId));
+        
+        // Delete position
+        await db.delete(positions).where(eq(positions.id, posId));
+      }
+      
+      res.json({ 
+        success: true, 
+        deletedCount: duplicatesToDelete.length,
+        message: `Removed ${duplicatesToDelete.length} duplicate positions`
+      });
+    } catch (error) {
+      console.error('Error cleaning up duplicates:', error);
+      res.status(500).json({ error: 'Failed to clean up duplicates' });
+    }
+  });
+
   // Get strategy changes for a session
   app.get('/api/strategies/:strategyId/changes', async (req, res) => {
     try {
