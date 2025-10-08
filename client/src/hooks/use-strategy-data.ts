@@ -24,19 +24,38 @@ export function useStrategyData() {
   const strategies = strategiesQuery.data;
   const activeStrategy = strategies?.find(s => s.isActive);
 
-  // Live snapshot from WebSocket-updated cache (100% WebSocket, ZERO HTTP)
-  // Cache is populated by 'live_snapshot' WebSocket events via setQueryData
-  // NO HTTP fetching - prevents rate limit bans
-  const liveSnapshotQuery = useQuery<any>({
-    queryKey: ['/api/live/snapshot'],
-    queryFn: () => {
-      // No-op function - return current cache data without HTTP fetch
-      const cached = queryClient.getQueryData(['/api/live/snapshot']);
-      return cached || { account: null, positions: [], positionsSummary: null, timestamp: 0, error: null };
-    },
-    enabled: false, // Disable automatic fetching - data comes from WebSocket only
-    initialData: { account: null, positions: [], positionsSummary: null, timestamp: 0, error: null },
+  // Live account data (cached with 5-minute TTL on server)
+  const liveAccountQuery = useQuery<any>({
+    queryKey: ['/api/live/account'],
+    refetchInterval: 60000, // Refetch every minute (server has 5-min cache)
+    staleTime: 30000, // Consider fresh for 30s
+    enabled: !!activeStrategy,
+    retry: 2,
   });
+
+  // Live positions data (cached with 5-minute TTL on server)
+  const livePositionsQuery = useQuery<any[]>({
+    queryKey: ['/api/live/positions'],
+    refetchInterval: 60000, // Refetch every minute (server has 5-min cache)
+    staleTime: 30000, // Consider fresh for 30s
+    enabled: !!activeStrategy,
+    retry: 2,
+  });
+
+  // Construct snapshot from individual queries (orchestrator disabled to avoid rate limits)
+  const liveSnapshotQuery = {
+    data: liveAccountQuery.data && livePositionsQuery.data ? {
+      account: liveAccountQuery.data,
+      positions: livePositionsQuery.data,
+      summary: {
+        totalPositions: livePositionsQuery.data?.length || 0,
+        totalValue: livePositionsQuery.data?.reduce((sum: number, p: any) => 
+          sum + Math.abs(parseFloat(p.positionAmt || 0) * parseFloat(p.markPrice || 0)), 0) || 0,
+      }
+    } : null,
+    isLoading: liveAccountQuery.isLoading || livePositionsQuery.isLoading,
+    error: liveAccountQuery.error || livePositionsQuery.error,
+  };
 
   // Fetch position summary ONCE (30s refetch)
   const positionSummaryQuery = useQuery<any>({
@@ -99,7 +118,7 @@ export function useStrategyData() {
     activeStrategy,
     strategiesLoading: strategiesQuery.isLoading,
 
-    // Live exchange data (from WebSocket-updated orchestrator cache - ZERO POLLING)
+    // Live exchange data (from unified snapshot)
     liveAccount: snapshot?.account,
     liveAccountLoading: liveSnapshotQuery.isLoading,
     liveAccountError: liveSnapshotQuery.error,

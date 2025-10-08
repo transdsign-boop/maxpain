@@ -95,14 +95,10 @@ class UserDataStreamManager {
       const wsUrl = `wss://fstream.asterdex.com/ws/${this.listenKey}`;
       this.ws = new WebSocket(wsUrl);
 
-      this.ws.on('open', async () => {
+      this.ws.on('open', () => {
         console.log('🔌 Connected to Aster DEX user data stream');
         this.isConnected = true;
         this.reconnectAttempts = 0;
-        
-        // Fetch initial account and position data to populate cache
-        await this.fetchInitialData();
-        
         resolve();
       });
 
@@ -130,70 +126,6 @@ class UserDataStreamManager {
         this.ws?.pong();
       });
     });
-  }
-
-  private async fetchInitialData(): Promise<void> {
-    if (!this.config) return;
-
-    try {
-      console.log('🔄 Fetching initial account data...');
-      
-      // Fetch account balance
-      const accountResponse = await fetch(
-        'https://fapi.asterdex.com/fapi/v2/balance',
-        {
-          headers: {
-            'X-MBX-APIKEY': this.config.apiKey,
-          },
-        }
-      );
-
-      if (accountResponse.ok) {
-        const balances = await accountResponse.json();
-        
-        // Update orchestrator cache with initial account data
-        const { db } = await import('./db');
-        const { strategies } = await import('@shared/schema');
-        const { eq } = await import('drizzle-orm');
-        const activeStrategy = (await db.select().from(strategies).where(eq(strategies.isActive, true)).limit(1))[0];
-        
-        if (activeStrategy && balances && balances.length > 0) {
-          const { liveDataOrchestrator } = await import('./live-data-orchestrator');
-          liveDataOrchestrator.updateAccountFromWebSocket(activeStrategy.id, balances);
-          console.log('✅ Initial account data loaded');
-        }
-      }
-
-      // Fetch positions
-      const positionsResponse = await fetch(
-        'https://fapi.asterdex.com/fapi/v2/positionRisk',
-        {
-          headers: {
-            'X-MBX-APIKEY': this.config.apiKey,
-          },
-        }
-      );
-
-      if (positionsResponse.ok) {
-        const positions = await positionsResponse.json();
-        
-        // Update orchestrator cache with initial position data
-        const { db } = await import('./db');
-        const { strategies } = await import('@shared/schema');
-        const { eq } = await import('drizzle-orm');
-        const activeStrategy = (await db.select().from(strategies).where(eq(strategies.isActive, true)).limit(1))[0];
-        
-        if (activeStrategy && positions && positions.length > 0) {
-          const { liveDataOrchestrator } = await import('./live-data-orchestrator');
-          // Filter to only non-zero positions
-          const nonZeroPositions = positions.filter((p: any) => parseFloat(p.positionAmt) !== 0);
-          liveDataOrchestrator.updatePositionsFromWebSocket(activeStrategy.id, nonZeroPositions);
-          console.log(`✅ Initial position data loaded (${nonZeroPositions.length} positions)`);
-        }
-      }
-    } catch (error) {
-      console.error('❌ Error fetching initial data:', error);
-    }
   }
 
   private handleMessage(message: any): void {

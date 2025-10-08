@@ -1181,17 +1181,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Use USDT if available, otherwise USDC, otherwise fall back to availableBalance from top-level response
       const balance = usdtBalance || usdcBalance || parseFloat(data.availableBalance || '0');
       
-      // Normalize response to include fields expected by frontend
+      // Add balance to response
       const result = {
         ...data,
-        // Standardized fields for frontend compatibility
-        totalWalletBalance: data.totalWalletBalance || balance.toString(),
-        totalUnrealizedProfit: data.totalUnrealizedProfit || data.totalCrossUnPnl || '0',
-        availableBalance: data.availableBalance || balance.toString(),
-        totalInitialMargin: data.totalInitialMargin || data.totalPositionInitialMargin || '0',
-        totalMarginBalance: data.totalMarginBalance || data.totalCrossWalletBalance || balance.toString(),
-        // Legacy fields for backwards compatibility
-        usdcBalance: balance.toString(),
+        usdcBalance: balance.toString(), // Keep field name for backwards compatibility
         usdtBalance: usdtBalance.toString()
       };
 
