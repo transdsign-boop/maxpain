@@ -101,7 +101,12 @@ class UserDataStreamManager {
         this.reconnectAttempts = 0;
         
         // Fetch initial account and position data to populate cache
-        await this.fetchInitialData();
+        // Add 3-second initial delay to allow Express server to start
+        setTimeout(() => {
+          this.fetchInitialData().catch(err => {
+            console.error('Failed to fetch initial data:', err);
+          });
+        }, 3000);
         
         resolve();
       });
