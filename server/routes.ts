@@ -2045,33 +2045,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const totalLosses = Math.abs(losingTrades.reduce((sum, pnl) => sum + pnl, 0));
       const profitFactor = totalLosses > 0 ? totalWins / totalLosses : totalWins > 0 ? 999 : 0;
 
-      // Calculate total fees from all fills across all sessions
-      const totalFees = allSessionFills.reduce((sum, fill) => sum + parseFloat(fill.fee || '0'), 0);
-
-      // Calculate total funding costs for all positions across all sessions
+      // Fetch commission and funding costs directly from API
+      let totalFees = 0;
       let totalFundingCost = 0;
       
-      // Fetch funding costs with API credentials
       const apiKey = process.env.ASTER_API_KEY;
       const secretKey = process.env.ASTER_SECRET_KEY;
 
       if (apiKey && secretKey) {
         try {
-          // Get the earliest session start time to fetch all funding fees
+          // Get the earliest session start time
           const sessionStartTimes = allSessions.map(s => new Date(s.startedAt).getTime());
           const earliestStartTime = Math.min(...sessionStartTimes);
 
-          // Fetch funding fee income history from Aster DEX
+          // Fetch COMMISSION from API
           const timestamp = Date.now();
-          const params = `incomeType=FUNDING_FEE&startTime=${earliestStartTime}&limit=1000&timestamp=${timestamp}`;
+          const commissionParams = `incomeType=COMMISSION&startTime=${earliestStartTime}&limit=1000&timestamp=${timestamp}`;
           
-          const signature = crypto
+          const commissionSignature = crypto
             .createHmac('sha256', secretKey)
-            .update(params)
+            .update(commissionParams)
+            .digest('hex');
+
+          const commissionResponse = await fetch(
+            `https://fapi.asterdex.com/fapi/v1/income?${commissionParams}&signature=${commissionSignature}`,
+            {
+              headers: {
+                'X-MBX-APIKEY': apiKey,
+              },
+            }
+          );
+
+          if (commissionResponse.ok) {
+            const commissionData = await commissionResponse.json();
+            
+            // Sum up all commission fees (always negative, so we negate to show as cost)
+            totalFees = commissionData.reduce((sum: number, entry: any) => {
+              const income = parseFloat(entry.income || '0');
+              return sum + income; // Keep negative to show as cost
+            }, 0);
+            
+            console.log(`📊 Calculated total commission from API: $${totalFees.toFixed(2)} from ${commissionData.length} commission entries`);
+          } else {
+            console.warn('⚠️ Failed to fetch commission history:', await commissionResponse.text());
+          }
+
+          // Fetch FUNDING_FEE from API
+          const fundingParams = `incomeType=FUNDING_FEE&startTime=${earliestStartTime}&limit=1000&timestamp=${timestamp}`;
+          
+          const fundingSignature = crypto
+            .createHmac('sha256', secretKey)
+            .update(fundingParams)
             .digest('hex');
 
           const fundingResponse = await fetch(
-            `https://fapi.asterdex.com/fapi/v1/income?${params}&signature=${signature}`,
+            `https://fapi.asterdex.com/fapi/v1/income?${fundingParams}&signature=${fundingSignature}`,
             {
               headers: {
                 'X-MBX-APIKEY': apiKey,
@@ -2083,18 +2111,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const fundingData = await fundingResponse.json();
             
             // Sum up all funding fees (negative means we paid, positive means we received)
-            // We want to show total cost as a positive number
             totalFundingCost = fundingData.reduce((sum: number, entry: any) => {
               const income = parseFloat(entry.income || '0');
-              return sum + Math.abs(income); // Always show as cost (positive)
+              return sum + income; // Keep sign to show cost/income correctly
             }, 0);
             
-            console.log(`📊 Calculated total funding cost: $${totalFundingCost.toFixed(2)} from ${fundingData.length} funding events`);
+            console.log(`📊 Calculated total funding cost from API: $${totalFundingCost.toFixed(2)} from ${fundingData.length} funding events`);
           } else {
             console.warn('⚠️ Failed to fetch funding fee history:', await fundingResponse.text());
           }
         } catch (error) {
-          console.error('❌ Error fetching funding costs:', error);
+          console.error('❌ Error fetching fees from API:', error);
         }
       }
 
