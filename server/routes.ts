@@ -13,6 +13,27 @@ import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySche
 import { db } from "./db";
 import { desc, eq } from "drizzle-orm";
 
+// Helper function to get correct API credentials based on environment
+function getApiCredentials() {
+  const isDeployed = process.env.REPLIT_DEPLOYMENT === '1';
+  
+  if (isDeployed) {
+    // Production: Use main API keys
+    return {
+      apiKey: process.env.ASTER_API_KEY,
+      secretKey: process.env.ASTER_SECRET_KEY,
+      env: 'PRODUCTION'
+    };
+  } else {
+    // Development/Preview: Use dev API keys (fallback to main if not set)
+    return {
+      apiKey: process.env.ASTER_API_KEY_DEV || process.env.ASTER_API_KEY,
+      secretKey: process.env.ASTER_SECRET_KEY_DEV || process.env.ASTER_SECRET_KEY,
+      env: 'DEVELOPMENT'
+    };
+  }
+}
+
 // Fixed liquidation window - always 60 seconds regardless of user input
 const LIQUIDATION_WINDOW_SECONDS = 60;
 
@@ -169,13 +190,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Test API connection
   app.post("/api/settings/test-connection", async (req, res) => {
     try {
-      const apiKey = process.env.ASTER_API_KEY;
-      const secretKey = process.env.ASTER_SECRET_KEY;
+      const { apiKey, secretKey, env } = getApiCredentials();
 
       if (!apiKey || !secretKey) {
         return res.status(400).json({ 
           success: false, 
-          error: "API credentials not configured. Please set ASTER_API_KEY and ASTER_SECRET_KEY in your secrets." 
+          error: `API credentials not configured for ${env}. Please set ${env === 'PRODUCTION' ? 'ASTER_API_KEY and ASTER_SECRET_KEY' : 'ASTER_API_KEY_DEV and ASTER_SECRET_KEY_DEV'} in your secrets.` 
         });
       }
 
@@ -1119,11 +1139,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json(snapshot.account);
       }
 
-      const apiKey = process.env.ASTER_API_KEY;
-      const secretKey = process.env.ASTER_SECRET_KEY;
+      const { apiKey, secretKey } = getApiCredentials();
 
       if (!apiKey || !secretKey) {
-        return res.status(400).json({ error: "Aster DEX API keys not configured. Please set ASTER_API_KEY and ASTER_SECRET_KEY in your environment variables." });
+        return res.status(400).json({ error: "Aster DEX API keys not configured. Please set API credentials in your environment variables." });
       }
 
       // Create signed request to get account information
@@ -1211,7 +1230,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Listen key management for WebSocket user data stream
   app.post("/api/live/listenKey", async (req, res) => {
     try {
-      const apiKey = process.env.ASTER_API_KEY;
+      const { apiKey } = getApiCredentials();
 
       if (!apiKey) {
         return res.status(400).json({ error: "Aster DEX API key not configured" });
@@ -1244,7 +1263,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.put("/api/live/listenKey", async (req, res) => {
     try {
-      const apiKey = process.env.ASTER_API_KEY;
+      const { apiKey } = getApiCredentials();
 
       if (!apiKey) {
         return res.status(400).json({ error: "Aster DEX API key not configured" });
@@ -1277,7 +1296,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/live/listenKey", async (req, res) => {
     try {
-      const apiKey = process.env.ASTER_API_KEY;
+      const { apiKey } = getApiCredentials();
 
       if (!apiKey) {
         return res.status(400).json({ error: "Aster DEX API key not configured" });
@@ -1326,8 +1345,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json(snapshot.positions);
       }
 
-      const apiKey = process.env.ASTER_API_KEY;
-      const secretKey = process.env.ASTER_SECRET_KEY;
+      const { apiKey, secretKey } = getApiCredentials();
 
       if (!apiKey || !secretKey) {
         return res.status(400).json({ error: "Aster DEX API keys not configured" });
@@ -1408,8 +1426,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json(cached);
       }
 
-      const apiKey = process.env.ASTER_API_KEY;
-      const secretKey = process.env.ASTER_SECRET_KEY;
+      const { apiKey, secretKey } = getApiCredentials();
 
       if (!apiKey || !secretKey) {
         return res.status(400).json({ error: "Aster DEX API keys not configured" });
@@ -1460,8 +1477,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // One-time cleanup: Cancel all open TP/SL orders on the exchange
   app.post("/api/live/cleanup-orders", async (req, res) => {
     try {
-      const apiKey = process.env.ASTER_API_KEY;
-      const secretKey = process.env.ASTER_SECRET_KEY;
+      const { apiKey, secretKey } = getApiCredentials();
 
       if (!apiKey || !secretKey) {
         return res.status(400).json({ error: "Aster DEX API keys not configured" });
@@ -1564,8 +1580,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Ensure all open positions have TP/SL orders
   app.post("/api/live/ensure-tpsl", async (req, res) => {
     try {
-      const apiKey = process.env.ASTER_API_KEY;
-      const secretKey = process.env.ASTER_SECRET_KEY;
+      const { apiKey, secretKey } = getApiCredentials();
 
       if (!apiKey || !secretKey) {
         return res.status(400).json({ error: "Aster DEX API keys not configured" });
@@ -1814,8 +1829,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get account trade history from Aster DEX (filtered by live session start time)
   app.get("/api/live/trades", async (req, res) => {
     try {
-      const apiKey = process.env.ASTER_API_KEY;
-      const secretKey = process.env.ASTER_SECRET_KEY;
+      const { apiKey, secretKey } = getApiCredentials();
 
       if (!apiKey || !secretKey) {
         return res.status(400).json({ error: "Aster DEX API keys not configured" });
@@ -2944,8 +2958,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Fetch positions from exchange
-      const apiKey = process.env.ASTER_API_KEY;
-      const secretKey = process.env.ASTER_SECRET_KEY;
+      const { apiKey, secretKey } = getApiCredentials();
 
       if (!apiKey || !secretKey) {
         return res.status(400).json({ error: "Aster DEX API keys not configured" });
