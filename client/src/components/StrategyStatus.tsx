@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { TrendingUp, TrendingDown, DollarSign, Target, Layers, X, ChevronDown, ChevronUp, CheckCircle2, Award } from "lucide-react";
+import { TrendingUp, TrendingDown, DollarSign, Target, Layers, X, ChevronDown, ChevronUp, CheckCircle2, Award, RefreshCw } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -1303,6 +1303,45 @@ export function StrategyStatus() {
           </TabsContent>
 
           <TabsContent value="completed" className="mt-3 md:mt-4">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs text-muted-foreground">Showing all completed positions</p>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={async () => {
+                  if (!activeStrategy) return;
+                  try {
+                    const response = await fetch(`/api/sessions/${activeStrategy.id}/sync-trades`, {
+                      method: 'POST',
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                      queryClient.invalidateQueries({ queryKey: ['/api/positions'] });
+                      toast({
+                        title: "Sync Complete",
+                        description: data.message,
+                      });
+                    } else {
+                      toast({
+                        title: "Sync Failed",
+                        description: data.error || "Failed to sync trades",
+                        variant: "destructive",
+                      });
+                    }
+                  } catch (error) {
+                    toast({
+                      title: "Sync Error",
+                      description: "Failed to sync trades from exchange",
+                      variant: "destructive",
+                    });
+                  }
+                }}
+                data-testid="button-sync-trades"
+              >
+                <RefreshCw className="h-3 w-3 mr-1" />
+                Sync from Exchange
+              </Button>
+            </div>
             {tradeHistory && tradeHistory.filter(item => item.type === 'trade').length > 0 ? (
               <div className="space-y-2 max-h-96 overflow-y-auto overflow-x-hidden pr-2 custom-scrollbar">
                 {tradeHistory
