@@ -1378,8 +1378,8 @@ export class StrategyEngine extends EventEmitter {
             console.log(`💎 Using REAL exchange data (${actualFillsData.length} fill(s)) - Price: $${aggregated.avgPrice.toFixed(6)}, Qty: ${aggregated.totalQty.toFixed(4)}, Fee: $${aggregated.totalCommission.toFixed(4)}`);
             console.log(`📊 Fill type: ${aggregated.isMaker ? 'MAKER' : 'TAKER'}`);
             
-            // Record fill with AGGREGATED exchange data (weighted avg price, total qty, total commission)
-            await this.fillLiveOrder(order, aggregated.avgPrice, aggregated.totalQty, aggregated.totalCommission);
+            // Record fill with AGGREGATED exchange data (weighted avg price, total qty, total commission, timestamp)
+            await this.fillLiveOrder(order, aggregated.avgPrice, aggregated.totalQty, aggregated.totalCommission, aggregated.timestamp);
           } else {
             console.warn(`⚠️ Could not fetch actual fill data after ${maxRetries} attempts, using order price as fallback`);
             // Fallback to order price if we couldn't fetch actual fill
@@ -2743,8 +2743,8 @@ export class StrategyEngine extends EventEmitter {
     // The cooldown protects against rapid order PLACEMENT, not fills
   }
 
-  // Fill a live order using ACTUAL exchange data (price, qty, commission)
-  private async fillLiveOrder(order: Order, actualFillPrice: number, actualFillQty: number, actualCommission: number) {
+  // Fill a live order using ACTUAL exchange data (price, qty, commission, timestamp)
+  private async fillLiveOrder(order: Order, actualFillPrice: number, actualFillQty: number, actualCommission: number, actualTimestamp?: number) {
     // Update order status
     await storage.updateOrderStatus(order.id, 'filled', new Date());
 
@@ -2765,6 +2765,7 @@ export class StrategyEngine extends EventEmitter {
       value: fillValue.toString(),
       fee: actualCommission.toString(), // ✅ ACTUAL commission from exchange
       layerNumber: order.layerNumber,
+      filledAt: actualTimestamp ? new Date(actualTimestamp) : undefined, // ✅ Use exchange timestamp
     });
 
     // Deduct ACTUAL entry fee from session balance
@@ -3059,6 +3060,8 @@ export class StrategyEngine extends EventEmitter {
           retryCount++;
         }
         
+        let actualExitTimestamp: number | undefined;
+        
         if (actualFillsData && actualFillsData.length > 0) {
           // Aggregate multiple fills (handles partial fills correctly)
           const aggregated = aggregateFills(actualFillsData);
@@ -3066,6 +3069,7 @@ export class StrategyEngine extends EventEmitter {
           actualExitPrice = aggregated.avgPrice;
           actualExitQty = aggregated.totalQty;
           actualExitFee = aggregated.totalCommission;
+          actualExitTimestamp = aggregated.timestamp;
           
           console.log(`💎 Using REAL exchange EXIT data (${actualFillsData.length} fill(s)) - Price: $${actualExitPrice.toFixed(6)}, Qty: ${actualExitQty.toFixed(4)}, Fee: $${actualExitFee.toFixed(4)}`);
           console.log(`📊 Exit fill type: ${aggregated.isMaker ? 'MAKER' : 'TAKER'}`);
@@ -3089,6 +3093,7 @@ export class StrategyEngine extends EventEmitter {
         value: actualExitValue.toString(), // ✅ Use actual value
         fee: actualExitFee.toString(), // ✅ Use actual fee
         layerNumber: 0, // Exit trades don't have layers
+        filledAt: actualExitTimestamp ? new Date(actualExitTimestamp) : undefined, // ✅ Use exchange timestamp
       });
 
       // Broadcast trade notification for exit with ACTUAL data
@@ -3102,7 +3107,9 @@ export class StrategyEngine extends EventEmitter {
       });
 
       // Close position in database with dollar P&L and percentage (preserve percentage for display)
-      await storage.closePosition(position.id, new Date(), dollarPnl, realizedPnlPercent);
+      // Use exchange timestamp if available, otherwise use current time
+      const closedAtTimestamp = actualExitTimestamp ? new Date(actualExitTimestamp) : new Date();
+      await storage.closePosition(position.id, closedAtTimestamp, dollarPnl, realizedPnlPercent);
 
       // Always fetch latest session from database (not memory) to update stats
       const latestSession = await storage.getTradeSession(position.sessionId);
