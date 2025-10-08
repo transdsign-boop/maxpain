@@ -116,7 +116,8 @@ class LiveDataOrchestrator {
       for (const livePos of livePositions) {
         const positionValue = Math.abs(parseFloat(livePos.positionAmt || '0')) * parseFloat(livePos.entryPrice || '0');
         totalExposure += positionValue;
-        unrealizedPnl += parseFloat(livePos.unrealizedProfit || '0');
+        // API returns unRealizedProfit (capital R), not unrealizedProfit
+        unrealizedPnl += parseFloat(livePos.unRealizedProfit || livePos.unrealizedProfit || '0');
       }
 
       // Get account balance from cache
