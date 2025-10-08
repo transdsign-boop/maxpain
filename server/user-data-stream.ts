@@ -160,14 +160,20 @@ class UserDataStreamManager {
         const accountData = await accountResponse.json();
         
         if (accountData && accountData.totalWalletBalance !== undefined) {
-          // Convert to balance format expected by orchestrator
+          // Convert to balance format expected by orchestrator - include ALL fields
           const balance = parseFloat(accountData.totalWalletBalance);
           const available = parseFloat(accountData.availableBalance);
+          const unrealized = parseFloat(accountData.totalUnrealizedProfit || '0');
+          const marginBalance = parseFloat(accountData.totalMarginBalance || '0');
+          const initialMargin = parseFloat(accountData.totalInitialMargin || '0');
           
           const balances = [{
             asset: 'USDT',
             walletBalance: balance.toString(),
             crossWalletBalance: available.toString(),
+            unrealizedProfit: unrealized.toString(),
+            marginBalance: marginBalance.toString(),
+            initialMargin: initialMargin.toString(),
           }];
           
           const { db } = await import('./db');

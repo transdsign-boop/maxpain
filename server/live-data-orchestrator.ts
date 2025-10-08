@@ -61,14 +61,24 @@ class LiveDataOrchestrator {
       const snapshot = this.getSnapshot(strategyId);
       const walletBalance = usdtBalance.walletBalance || '0';
       const crossWalletBalance = usdtBalance.crossWalletBalance || '0';
+      const unrealizedProfit = usdtBalance.unrealizedProfit || '0';
+      const marginBalance = usdtBalance.marginBalance || '0';
+      const initialMargin = usdtBalance.initialMargin || '0';
       
-      // Match the HTTP API format exactly
+      // Match the HTTP API format exactly - include ALL fields the frontend expects
       snapshot.account = {
         feeTier: 0,
         canTrade: true,
         canDeposit: true,
         canWithdraw: true,
         updateTime: Date.now(),
+        // Fields used by PerformanceOverview component
+        totalWalletBalance: walletBalance,
+        totalUnrealizedProfit: unrealizedProfit,
+        totalMarginBalance: marginBalance,
+        totalInitialMargin: initialMargin,
+        availableBalance: crossWalletBalance,
+        // Legacy fields for compatibility
         usdcBalance: walletBalance,
         usdtBalance: walletBalance,
         assets: [{
