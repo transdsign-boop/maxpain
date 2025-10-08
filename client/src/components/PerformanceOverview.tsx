@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { TrendingUp, TrendingDown, Target, Award, Activity, LineChart, DollarSign, Percent, ChevronLeft, ChevronRight } from "lucide-react";
 import { ComposedChart, Line, Area, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, ReferenceArea, Label } from "recharts";
 import { format } from "date-fns";
-import { formatInTimeZone } from "date-fns-tz";
 import { useStrategyData } from "@/hooks/use-strategy-data";
 
 interface PerformanceMetrics {
@@ -222,9 +221,9 @@ export default function PerformanceOverview() {
     let startTrade: number | null = null;
     
     chartData.forEach((trade, index) => {
-      // Use LA timezone for date grouping
+      // Use local date for grouping
       const tradeLocalDate = new Date(trade.timestamp);
-      const tradeDate = formatInTimeZone(tradeLocalDate, 'America/Los_Angeles', 'yyyy-MM-dd');
+      const tradeDate = format(tradeLocalDate, 'yyyy-MM-dd');
       
       if (tradeDate !== currentDate) {
         // Save previous group
@@ -235,7 +234,7 @@ export default function PerformanceOverview() {
             endTrade: chartData[index - 1].tradeNumber,
             trades: index - chartData.findIndex(t => {
               const tLocalDate = new Date(t.timestamp);
-              return formatInTimeZone(tLocalDate, 'America/Los_Angeles', 'yyyy-MM-dd') === currentDate;
+              return format(tLocalDate, 'yyyy-MM-dd') === currentDate;
             })
           });
         }
@@ -256,7 +255,7 @@ export default function PerformanceOverview() {
         endTrade: lastTrade.tradeNumber,
         trades: chartData.length - chartData.findIndex(t => {
           const tLocalDate = new Date(t.timestamp);
-          return formatInTimeZone(tLocalDate, 'America/Los_Angeles', 'yyyy-MM-dd') === currentDate;
+          return format(tLocalDate, 'yyyy-MM-dd') === currentDate;
         })
       });
     }
@@ -390,7 +389,7 @@ export default function PerformanceOverview() {
       return (
         <div className="bg-background border border-border rounded-md p-3 shadow-lg">
           <p className="text-sm font-semibold mb-1">Trade #{data.tradeNumber}</p>
-          <p className="text-xs text-muted-foreground mb-2">{formatInTimeZone(new Date(data.timestamp), 'America/Los_Angeles', "MMM d, h:mm a")}</p>
+          <p className="text-xs text-muted-foreground mb-2">{format(new Date(data.timestamp), "MMM d, h:mm a")}</p>
           <p className="text-xs mb-1"><span className="font-medium">{data.symbol}</span> {data.side}</p>
           <p className={`text-sm font-mono font-semibold ${data.pnl >= 0 ? 'text-lime-500' : 'text-red-600'}`}>
             P&L: {data.pnl >= 0 ? '+' : ''}${Math.abs(data.pnl).toFixed(2)}
@@ -406,8 +405,7 @@ export default function PerformanceOverview() {
 
   // Calculate unified account metrics (live-only mode)
   const unrealizedPnl = liveAccount ? (parseFloat(liveAccount.totalUnrealizedProfit) || 0) : 0;
-  const marginBalance = liveAccount ? (parseFloat(liveAccount.totalMarginBalance || '0') || 0) : 0;
-  const totalBalance = marginBalance; // Margin balance = wallet + unrealized (from exchange)
+  const totalBalance = liveAccount ? (parseFloat(liveAccount.totalWalletBalance || '0') || 0) + unrealizedPnl : 0;
   
   // Calculate available balance
   const leverage = activeStrategy?.leverage || 1;
@@ -665,7 +663,7 @@ export default function PerformanceOverview() {
                     stroke={index % 2 === 0 ? 'hsl(var(--accent-border))' : 'transparent'}
                     strokeOpacity={0.3}
                     label={{
-                      value: `${formatInTimeZone(new Date(group.dateTimestamp), 'America/Los_Angeles', 'MMM d')} • ${group.trades} trades`,
+                      value: `${format(new Date(group.dateTimestamp), 'MMM d')} • ${group.trades} trades`,
                       position: 'insideBottom',
                       fill: 'hsl(var(--foreground))',
                       fontSize: 12,
