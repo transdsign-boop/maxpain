@@ -420,13 +420,20 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
     queryKey: ['/api/strategies'],
   });
 
-  // Fetch exchange account balance
-  const { data: exchangeAccount, isLoading: accountLoading } = useQuery<any>({
-    queryKey: ['/api/live/account'],
-    refetchInterval: 45000, // Refresh every 45 seconds
-    staleTime: 15000, // Cache for 15 seconds
-    retry: false, // Don't retry if API keys not configured
+  // Read exchange account balance from WebSocket-populated cache (100% WebSocket, ZERO HTTP)
+  // Cache is populated by 'live_snapshot' WebSocket events - NO HTTP fetching
+  const { data: liveSnapshot, isLoading: accountLoading } = useQuery<any>({
+    queryKey: ['/api/live/snapshot'],
+    queryFn: () => {
+      // No-op function - return current cache data without HTTP fetch
+      const cached = queryClient.getQueryData(['/api/live/snapshot']);
+      return cached || { account: null, positions: [], positionsSummary: null, timestamp: 0, error: null };
+    },
+    enabled: false, // Disable automatic fetching - data comes from WebSocket only
+    initialData: { account: null, positions: [], positionsSummary: null, timestamp: 0, error: null },
   });
+  
+  const exchangeAccount = liveSnapshot?.account;
 
   // Form setup with default values
   const form = useForm<StrategyFormData>({
