@@ -71,11 +71,16 @@ class LiveDataOrchestrator {
       const walletBalance = parseFloat(usdtBalance.walletBalance || '0');
       const availableBalance = parseFloat(usdtBalance.crossWalletBalance || '0');
       
-      // Calculate unrealized profit from positions if we have them
+      // Calculate unrealized profit from positions if we have them (ONLY open positions with non-zero amount)
       let unrealizedProfit = 0;
       if (snapshot.positions && snapshot.positions.length > 0) {
         unrealizedProfit = snapshot.positions.reduce((sum, pos) => {
-          return sum + parseFloat(pos.unrealizedProfit || '0');
+          // Only include positions with non-zero position amount
+          const positionAmt = parseFloat(pos.positionAmt || '0');
+          if (positionAmt !== 0) {
+            return sum + parseFloat(pos.unrealizedProfit || '0');
+          }
+          return sum;
         }, 0);
       }
       
@@ -125,12 +130,23 @@ class LiveDataOrchestrator {
     if (snapshot.account) {
       const walletBalance = parseFloat(snapshot.account.totalWalletBalance || '0');
       
-      // Calculate unrealized profit from updated positions
+      // Calculate unrealized profit from updated positions (ONLY open positions with non-zero amount)
       let unrealizedProfit = 0;
+      const openPositions: any[] = [];
       if (positions && positions.length > 0) {
         unrealizedProfit = positions.reduce((sum, pos) => {
-          return sum + parseFloat(pos.unrealizedProfit || '0');
+          // Only include positions with non-zero position amount
+          const positionAmt = parseFloat(pos.positionAmt || '0');
+          if (positionAmt !== 0) {
+            openPositions.push({ symbol: pos.symbol, amt: positionAmt, unrealized: pos.unrealizedProfit });
+            return sum + parseFloat(pos.unrealizedProfit || '0');
+          }
+          return sum;
         }, 0);
+      }
+      
+      if (openPositions.length > 0) {
+        console.log(`📊 Open positions from WebSocket:`, JSON.stringify(openPositions));
       }
       
       // Recalculate marginBalance with new unrealized P&L
@@ -139,6 +155,8 @@ class LiveDataOrchestrator {
       // Update account fields
       snapshot.account.totalUnrealizedProfit = unrealizedProfit.toString();
       snapshot.account.totalMarginBalance = marginBalance.toString();
+      
+      console.log(`🔄 Recalculated balances from positions: unrealized=$${unrealizedProfit.toFixed(2)}, margin=$${marginBalance.toFixed(2)}`);
     }
     
     this.calculatePositionSummary(strategyId);
