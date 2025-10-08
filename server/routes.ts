@@ -1101,6 +1101,75 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Sync transfers from exchange to database
+  app.post("/api/sync/transfers", async (req, res) => {
+    try {
+      const { syncTransfers } = await import('./exchange-sync');
+      
+      console.log(`🔄 Syncing transfers from exchange...`);
+      const result = await syncTransfers(DEFAULT_USER_ID);
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error });
+      }
+      
+      res.json({ 
+        success: true, 
+        addedCount: result.addedCount,
+        message: `Successfully synced ${result.addedCount} new transfer(s) from exchange`
+      });
+    } catch (error: any) {
+      console.error('❌ Error syncing transfers:', error);
+      res.status(500).json({ error: `Failed to sync transfers: ${error.message}` });
+    }
+  });
+
+  // Sync commissions from exchange to database
+  app.post("/api/sync/commissions", async (req, res) => {
+    try {
+      const { syncCommissions } = await import('./exchange-sync');
+      
+      console.log(`🔄 Syncing commissions from exchange...`);
+      const result = await syncCommissions(DEFAULT_USER_ID);
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error });
+      }
+      
+      res.json({ 
+        success: true, 
+        addedCount: result.addedCount,
+        message: `Successfully synced ${result.addedCount} new commission(s) from exchange`
+      });
+    } catch (error: any) {
+      console.error('❌ Error syncing commissions:', error);
+      res.status(500).json({ error: `Failed to sync commissions: ${error.message}` });
+    }
+  });
+
+  // Sync funding fees from exchange to database
+  app.post("/api/sync/funding-fees", async (req, res) => {
+    try {
+      const { syncFundingFees } = await import('./exchange-sync');
+      
+      console.log(`🔄 Syncing funding fees from exchange...`);
+      const result = await syncFundingFees(DEFAULT_USER_ID);
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error });
+      }
+      
+      res.json({ 
+        success: true, 
+        addedCount: result.addedCount,
+        message: `Successfully synced ${result.addedCount} new funding fee(s) from exchange`
+      });
+    } catch (error: any) {
+      console.error('❌ Error syncing funding fees:', error);
+      res.status(500).json({ error: `Failed to sync funding fees: ${error.message}` });
+    }
+  });
+
   // Get consolidated live data snapshot (account + positions + summary)
   app.get("/api/live/snapshot", async (req, res) => {
     try {
