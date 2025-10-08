@@ -282,7 +282,8 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
   const totalCost = parseFloat(position.totalCost);
   
   // Get leverage first (needed for notional value calculation)
-  const rawLeverage = Number(strategy?.leverage);
+  // Use position's actual exchange leverage, fallback to strategy if not available
+  const rawLeverage = Number((position as any).leverage) || Number(strategy?.leverage);
   const leverage = Number.isFinite(rawLeverage) && rawLeverage > 0 ? rawLeverage : 1;
   
   // Calculate notional value (totalCost stores margin, multiply by leverage for notional)
