@@ -14,32 +14,29 @@ export function useStrategyData() {
   // Connect to WebSocket for real-time updates (single connection shared across app)
   const { isConnected: wsConnected } = useWebSocketData({ enabled: true });
 
-  // Fetch strategies ONCE (60s refetch as fallback)
+  // Fetch strategies ONCE (no polling - WebSocket provides real-time updates)
   const strategiesQuery = useQuery<any[]>({
     queryKey: ['/api/strategies'],
-    refetchInterval: 60000, // 60s fallback, WebSocket provides real-time
-    staleTime: 30000, // Consider data fresh for 30s, prevents reload spam
+    staleTime: Infinity, // Never refetch - WebSocket provides updates
   });
 
   const strategies = strategiesQuery.data;
   const activeStrategy = strategies?.find(s => s.isActive);
 
-  // Live account data (cached with 5-minute TTL on server)
+  // Live account data - NO HTTP fetching, populated by WebSocket only
   const liveAccountQuery = useQuery<any>({
     queryKey: ['/api/live/account'],
-    refetchInterval: 60000, // Refetch every minute (server has 5-min cache)
-    staleTime: 30000, // Consider fresh for 30s
-    enabled: !!activeStrategy,
-    retry: 2,
+    queryFn: () => null as any, // No-op queryFn - populated by WebSocket only
+    enabled: false, // Never fetch - WebSocket populates cache
+    staleTime: Infinity,
   });
 
-  // Live positions data (cached with 5-minute TTL on server)
+  // Live positions data - NO HTTP fetching, populated by WebSocket only
   const livePositionsQuery = useQuery<any[]>({
     queryKey: ['/api/live/positions'],
-    refetchInterval: 60000, // Refetch every minute (server has 5-min cache)
-    staleTime: 30000, // Consider fresh for 30s
-    enabled: !!activeStrategy,
-    retry: 2,
+    queryFn: () => null as any[], // No-op queryFn - populated by WebSocket only
+    enabled: false, // Never fetch - WebSocket populates cache
+    staleTime: Infinity,
   });
 
   // Construct snapshot from individual queries (orchestrator disabled to avoid rate limits)
@@ -57,7 +54,7 @@ export function useStrategyData() {
     error: liveAccountQuery.error || livePositionsQuery.error,
   };
 
-  // Fetch position summary ONCE (30s refetch)
+  // Fetch position summary ONCE (no polling - WebSocket provides updates)
   const positionSummaryQuery = useQuery<any>({
     queryKey: ['/api/strategies', activeStrategy?.id, 'positions', 'summary'],
     queryFn: async () => {
@@ -66,45 +63,39 @@ export function useStrategyData() {
       return response.json();
     },
     enabled: !!activeStrategy?.id,
-    refetchInterval: 30000,
-    staleTime: 20000, // Fresh for 20s
+    staleTime: Infinity, // Never refetch - WebSocket provides updates
   });
 
-  // Fetch strategy changes ONCE (10s refetch for recent changes)
+  // Fetch strategy changes ONCE (no polling - WebSocket provides updates)
   const strategyChangesQuery = useQuery<any[]>({
     queryKey: ['/api/strategies', activeStrategy?.id, 'changes'],
     enabled: !!activeStrategy?.id,
-    refetchInterval: 10000,
-    staleTime: 5000, // Fresh for 5s
+    staleTime: Infinity, // Never refetch - WebSocket provides updates
   });
 
-  // Fetch performance overview ONCE (60s refetch)
+  // Fetch performance overview ONCE (no polling - WebSocket provides updates)
   const performanceQuery = useQuery<any>({
     queryKey: ['/api/performance/overview'],
-    refetchInterval: 60000,
-    staleTime: 30000, // Fresh for 30s
+    staleTime: Infinity, // Never refetch - WebSocket provides updates
   });
 
-  // Fetch chart data ONCE (60s refetch)
+  // Fetch chart data ONCE (no polling - WebSocket provides updates)
   const chartDataQuery = useQuery<any[]>({
     queryKey: ['/api/performance/chart'],
-    refetchInterval: 60000,
-    staleTime: 30000, // Fresh for 30s
+    staleTime: Infinity, // Never refetch - WebSocket provides updates
   });
 
-  // Fetch asset performance ONCE (60s refetch)
+  // Fetch asset performance ONCE (no polling - WebSocket provides updates)
   const assetPerformanceQuery = useQuery<any[]>({
     queryKey: ['/api/analytics/asset-performance'],
-    refetchInterval: 60000,
-    staleTime: 30000, // Fresh for 30s
+    staleTime: Infinity, // Never refetch - WebSocket provides updates
   });
 
-  // Fetch closed positions ONCE (60s refetch)
+  // Fetch closed positions ONCE (no polling - WebSocket provides updates)
   const closedPositionsQuery = useQuery<any[]>({
     queryKey: ['/api/strategies', activeStrategy?.id, 'positions', 'closed'],
     enabled: !!activeStrategy?.id,
-    refetchInterval: 60000,
-    staleTime: 30000, // Fresh for 30s
+    staleTime: Infinity, // Never refetch - WebSocket provides updates
   });
 
   const snapshot = liveSnapshotQuery.data;
