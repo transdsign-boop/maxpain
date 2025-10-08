@@ -1,6 +1,9 @@
 import { createHmac } from 'crypto';
 import { storage } from './storage';
 import type { TradeSession } from '@shared/schema';
+import { db } from './db';
+import { positions } from '@shared/schema';
+import { eq } from 'drizzle-orm';
 
 // Fetch all account trades from Aster DEX within a time range
 export async function fetchAccountTrades(params: {
@@ -131,50 +134,116 @@ function groupTradesIntoPositions(trades: Array<{
     totalFees: number;
   }> = [];
   
-  // Group by symbol - in one-way mode, we need to track both long and short potential positions per symbol
-  const grouped = new Map<string, typeof trades>();
+  // Group by symbol first, then process chronologically to determine position direction
+  const bySymbol = new Map<string, typeof trades>();
   
   for (const trade of trades) {
-    // In one-way mode (BOTH), determine position side from trade sequence and realizedPnl
-    // Opening trades have realizedPnl = 0, closing trades have realizedPnl != 0
-    let positionSide: 'long' | 'short';
-    
-    if (trade.positionSide === 'LONG') {
-      positionSide = 'long';
-    } else if (trade.positionSide === 'SHORT') {
-      positionSide = 'short';
-    } else {
-      // One-way mode: Use trade direction for opening trades, but closing trades need special handling
-      // BUY trades open long or close short
-      // SELL trades close long or open short
-      const hasRealizedPnl = parseFloat(trade.realizedPnl) !== 0;
-      
-      if (hasRealizedPnl) {
-        // Closing trade - opposite of trade direction
-        positionSide = trade.side === 'BUY' ? 'short' : 'long';
-      } else {
-        // Opening trade - same as trade direction
-        positionSide = trade.side === 'BUY' ? 'long' : 'short';
-      }
+    if (!bySymbol.has(trade.symbol)) {
+      bySymbol.set(trade.symbol, []);
     }
-    
-    const key = `${trade.symbol}-${positionSide}`;
-    
-    if (!grouped.has(key)) {
-      grouped.set(key, []);
-    }
-    grouped.get(key)!.push(trade);
+    bySymbol.get(trade.symbol)!.push(trade);
   }
   
+  // Process each symbol's trades chronologically
+  for (const [symbol, symbolTrades] of Array.from(bySymbol.entries())) {
+    // Sort by time
+    symbolTrades.sort((a: typeof trades[0], b: typeof trades[0]) => a.time - b.time);
+    
+    // Track net position (positive = long, negative = short)
+    let netQty = 0;
+    
+    const grouped = new Map<string, typeof trades>();
+    
+    for (const trade of symbolTrades) {
+      const qty = parseFloat(trade.qty);
+      let positionSide: 'long' | 'short';
+      
+      if (trade.positionSide === 'LONG') {
+        positionSide = 'long';
+        netQty += (trade.side === 'BUY' ? qty : -qty);
+      } else if (trade.positionSide === 'SHORT') {
+        positionSide = 'short';
+        netQty += (trade.side === 'SELL' ? -qty : qty);
+      } else {
+        // One-way mode: Determine position side from current net position
+        const oldNetQty = netQty;
+        const qtyDelta = trade.side === 'BUY' ? qty : -qty;
+        const newNetQty = oldNetQty + qtyDelta;
+        
+        // Check if position flips (crosses zero)
+        if ((oldNetQty > 0 && newNetQty < 0) || (oldNetQty < 0 && newNetQty > 0)) {
+          // Position flip! Split the trade into closing + opening parts
+          const closingQty = Math.abs(oldNetQty);
+          const openingQty = Math.abs(newNetQty);
+          const totalQty = closingQty + openingQty;
+          
+          // Proportionally split commission only (realizedPnl already for closed portion)
+          const closingCommission = (parseFloat(trade.commission) * closingQty / totalQty).toString();
+          const openingCommission = (parseFloat(trade.commission) * openingQty / totalQty).toString();
+          
+          // First, add closing part to existing position
+          // Note: trade.realizedPnl is ALREADY for the closed portion, use it fully
+          positionSide = oldNetQty > 0 ? 'long' : 'short';
+          const key1 = `${trade.symbol}-${positionSide}`;
+          if (!grouped.has(key1)) {
+            grouped.set(key1, []);
+          }
+          grouped.get(key1)!.push({
+            ...trade,
+            qty: closingQty.toString(),
+            commission: closingCommission,
+            realizedPnl: trade.realizedPnl, // Full PnL goes to closing leg
+          });
+          
+          // Then, add opening part to opposite position
+          positionSide = newNetQty > 0 ? 'long' : 'short';
+          const key2 = `${trade.symbol}-${positionSide}`;
+          if (!grouped.has(key2)) {
+            grouped.set(key2, []);
+          }
+          grouped.get(key2)!.push({
+            ...trade,
+            qty: openingQty.toString(),
+            commission: openingCommission,
+            realizedPnl: '0', // Opening trade has no realized PnL
+          });
+          
+          netQty = newNetQty;
+          continue; // Skip the normal processing
+        }
+        
+        // Normal case: no flip
+        if (oldNetQty > 0) {
+          // Currently long
+          positionSide = 'long';
+        } else if (oldNetQty < 0) {
+          // Currently short
+          positionSide = 'short';
+        } else {
+          // No position, trade direction determines side
+          positionSide = trade.side === 'BUY' ? 'long' : 'short';
+        }
+        
+        netQty = newNetQty;
+      }
+      
+      const key = `${trade.symbol}-${positionSide}`;
+      
+      if (!grouped.has(key)) {
+        grouped.set(key, []);
+      }
+      grouped.get(key)!.push(trade);
+    }
+  
   // Process each group to find entry/exit pairs
-  for (const [key, groupTrades] of grouped) {
+  for (const [key, groupTrades] of Array.from(grouped.entries())) {
     const [symbol, sideStr] = key.split('-');
     const side = sideStr as 'long' | 'short';
     
     // Sort by time
-    groupTrades.sort((a, b) => a.time - b.time);
+    groupTrades.sort((a: typeof trades[0], b: typeof trades[0]) => a.time - b.time);
     
-    console.log(`  📋 ${key}: ${groupTrades.length} trades (${groupTrades.filter(t => (side === 'long' && t.side === 'BUY') || (side === 'short' && t.side === 'SELL')).length} entries, ${groupTrades.filter(t => (side === 'long' && t.side === 'SELL') || (side === 'short' && t.side === 'BUY')).length} exits)`);
+    console.log(`  📋 ${key}: ${groupTrades.length} trades (${groupTrades.filter((t: typeof trades[0]) => (side === 'long' && t.side === 'BUY') || (side === 'short' && t.side === 'SELL')).length} entries, ${groupTrades.filter((t: typeof trades[0]) => (side === 'long' && t.side === 'SELL') || (side === 'short' && t.side === 'BUY')).length} exits)`);
     
     let entryTrades: typeof trades = [];
     let exitTrades: typeof trades = [];
@@ -282,17 +351,31 @@ export async function syncCompletedTrades(sessionId: string): Promise<{
     
     // Get existing positions from database
     const existingPositions = await storage.getClosedPositions(sessionId);
-    const existingSymbolTimes = new Set(
-      existingPositions.map(p => `${p.symbol}-${new Date(p.closedAt!).getTime()}`)
-    );
     
     let addedCount = 0;
     
     // Add missing positions
     for (const exPos of exchangePositions) {
-      const key = `${exPos.symbol}-${exPos.closedAt.getTime()}`;
+      // Check if a similar position already exists (within 5 seconds of close time)
+      const isDuplicate = existingPositions.some(existing => {
+        if (existing.symbol !== exPos.symbol || existing.side !== exPos.side) {
+          return false;
+        }
+        
+        // Check if closed times are within 5 seconds of each other
+        const existingClosedTime = existing.closedAt ? new Date(existing.closedAt).getTime() : 0;
+        const exPosClosedTime = exPos.closedAt.getTime();
+        const timeDiff = Math.abs(existingClosedTime - exPosClosedTime);
+        
+        // Check if quantities match (within 0.1% tolerance for floating point)
+        const existingQty = parseFloat(existing.totalQuantity);
+        const exPosQty = exPos.totalQuantity;
+        const qtyDiff = Math.abs(existingQty - exPosQty) / exPosQty;
+        
+        return timeDiff < 5000 && qtyDiff < 0.001;
+      });
       
-      if (!existingSymbolTimes.has(key)) {
+      if (!isDuplicate) {
         console.log(`➕ Adding missing position: ${exPos.symbol} ${exPos.side} closed at ${exPos.closedAt.toISOString()}`);
         
         // Create position
@@ -314,9 +397,15 @@ export async function syncCompletedTrades(sessionId: string): Promise<{
           maxLayers: exPos.entryTrades.length,
           leverage,
           isOpen: false,
-          openedAt: exPos.openedAt,
-          closedAt: exPos.closedAt,
         });
+        
+        // Update timestamps to match exchange data (direct DB update since these fields are omitted from InsertPosition)
+        await db.update(positions)
+          .set({ 
+            openedAt: exPos.openedAt,
+            closedAt: exPos.closedAt,
+          })
+          .where(eq(positions.id, position.id));
         
         // Create fills for entry trades
         for (let i = 0; i < exPos.entryTrades.length; i++) {
