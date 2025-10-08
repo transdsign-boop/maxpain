@@ -2054,12 +2054,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (apiKey && secretKey) {
         try {
-          // Use transfer cutoff date: Oct 4, 2025 04:53:55 UTC (the $289.30 transfer timestamp)
-          const TRANSFER_CUTOFF_MS = new Date('2025-10-04T04:53:55Z').getTime();
-
-          // Fetch COMMISSION from API
+          // Fetch COMMISSION from API (all historical data, no cutoff)
           const timestamp = Date.now();
-          const commissionParams = `incomeType=COMMISSION&startTime=${TRANSFER_CUTOFF_MS}&limit=1000&timestamp=${timestamp}`;
+          const commissionParams = `incomeType=COMMISSION&limit=10000&timestamp=${timestamp}`;
           
           const commissionSignature = crypto
             .createHmac('sha256', secretKey)
@@ -2089,8 +2086,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.warn('⚠️ Failed to fetch commission history:', await commissionResponse.text());
           }
 
-          // Fetch FUNDING_FEE from API
-          const fundingParams = `incomeType=FUNDING_FEE&startTime=${TRANSFER_CUTOFF_MS}&limit=1000&timestamp=${timestamp}`;
+          // Fetch FUNDING_FEE from API (all historical data, no cutoff)
+          const fundingParams = `incomeType=FUNDING_FEE&limit=10000&timestamp=${timestamp}`;
           
           const fundingSignature = crypto
             .createHmac('sha256', secretKey)
@@ -2889,15 +2886,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     const strategy = await storage.getStrategy(strategyId);
-    if (!strategy || !strategy.liveSessionStartedAt) {
+    if (!strategy) {
       return;
     }
 
-    const sessionStartTime = new Date(strategy.liveSessionStartedAt).getTime();
-
-    // Fetch fills from exchange
+    // Fetch fills from exchange (all historical data, no cutoff)
     const timestamp = Date.now();
-    const params = `timestamp=${timestamp}&limit=1000&startTime=${sessionStartTime}`;
+    const params = `timestamp=${timestamp}&limit=10000`;
     const signature = crypto
       .createHmac('sha256', secretKey)
       .update(params)
@@ -3627,14 +3622,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const positionSide = parts.pop() || 'BOTH'; // Last part is position side (LONG/SHORT/BOTH)
         const symbol = parts.join('-'); // Rest is symbol (handles symbols with dashes)
         
-        // Get active strategy to find session start time
-        const strategies = await storage.getStrategiesByUser(DEFAULT_USER_ID);
-        const activeStrategy = strategies.find(s => s.isActive);
-        
-        if (!activeStrategy || !activeStrategy.liveSessionStartedAt) {
-          return res.json([]);
-        }
-
         // Fetch actual fills from exchange
         const apiKey = process.env.ASTER_API_KEY;
         const secretKey = process.env.ASTER_SECRET_KEY;
@@ -3643,11 +3630,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({ error: 'Aster DEX API keys not configured' });
         }
 
-        const sessionStartTime = new Date(activeStrategy.liveSessionStartedAt as unknown as string).getTime();
-
-        // Fetch trade history from exchange for this symbol
+        // Fetch trade history from exchange for this symbol (all historical data, no cutoff)
         const timestamp = Date.now();
-        const params = `symbol=${symbol}&timestamp=${timestamp}&limit=1000&startTime=${sessionStartTime}`;
+        const params = `symbol=${symbol}&timestamp=${timestamp}&limit=10000`;
         const signature = crypto
           .createHmac('sha256', secretKey)
           .update(params)

@@ -356,3 +356,73 @@ export const insertStrategySnapshotSchema = createInsertSchema(strategySnapshots
 
 export type InsertStrategySnapshot = z.infer<typeof insertStrategySnapshotSchema>;
 export type StrategySnapshot = typeof strategySnapshots.$inferSelect;
+
+// Transfers (deposits/withdrawals)
+export const transfers = pgTable("transfers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(), // Replit Auth user ID
+  amount: decimal("amount", { precision: 18, scale: 8 }).notNull(),
+  asset: text("asset").notNull().default("USDT"),
+  transactionId: varchar("transaction_id"), // Exchange transaction ID (if available)
+  timestamp: timestamp("timestamp").notNull(), // Exchange timestamp
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("idx_transfers_user_timestamp").on(table.userId, table.timestamp),
+  // Unique constraint on exchange transaction ID when available (NULL transactionIds won't conflict)
+  unique("unique_transfer_txid").on(table.userId, table.transactionId),
+]);
+
+export const insertTransferSchema = createInsertSchema(transfers).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertTransfer = z.infer<typeof insertTransferSchema>;
+export type Transfer = typeof transfers.$inferSelect;
+
+// Commission Fees
+export const commissions = pgTable("commissions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(), // Replit Auth user ID
+  symbol: text("symbol").notNull(), // Trading pair (e.g., "BTCUSDT")
+  amount: decimal("amount", { precision: 18, scale: 8 }).notNull(), // Negative for fees paid
+  asset: text("asset").notNull().default("USDT"),
+  tradeId: varchar("trade_id"), // Exchange trade ID (if available)
+  timestamp: timestamp("timestamp").notNull(), // Exchange timestamp
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("idx_commissions_user_timestamp").on(table.userId, table.timestamp),
+  // Unique constraint on exchange trade ID when available (NULL tradeIds won't conflict)
+  unique("unique_commission_tradeid").on(table.userId, table.tradeId),
+]);
+
+export const insertCommissionSchema = createInsertSchema(commissions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertCommission = z.infer<typeof insertCommissionSchema>;
+export type Commission = typeof commissions.$inferSelect;
+
+// Funding Fees
+export const fundingFees = pgTable("funding_fees", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(), // Replit Auth user ID
+  symbol: text("symbol").notNull(), // Trading pair (e.g., "BTCUSDT")
+  amount: decimal("amount", { precision: 18, scale: 8 }).notNull(), // Negative if paid, positive if received
+  asset: text("asset").notNull().default("USDT"),
+  timestamp: timestamp("timestamp").notNull(), // Exchange timestamp (funding time)
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("idx_funding_fees_user_timestamp").on(table.userId, table.timestamp),
+  // Unique constraint to prevent duplicate funding fees (funding occurs at specific times per symbol)
+  unique("unique_funding_fee").on(table.userId, table.symbol, table.timestamp),
+]);
+
+export const insertFundingFeeSchema = createInsertSchema(fundingFees).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertFundingFee = z.infer<typeof insertFundingFeeSchema>;
+export type FundingFee = typeof fundingFees.$inferSelect;
