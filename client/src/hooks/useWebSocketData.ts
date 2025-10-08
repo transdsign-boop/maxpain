@@ -55,11 +55,12 @@ export function useWebSocketData(options: UseWebSocketDataOptions = {}) {
           switch (wsEvent.type) {
             case 'live_snapshot':
               // Populate cache with live snapshot data from orchestrator
-              if (wsEvent.data?.account) {
-                queryClient.setQueryData(['/api/live/account'], wsEvent.data.account);
+              const snapshot = wsEvent.data?.snapshot;
+              if (snapshot?.account) {
+                queryClient.setQueryData(['/api/live/account'], snapshot.account);
               }
-              if (wsEvent.data?.positions) {
-                queryClient.setQueryData(['/api/live/positions'], wsEvent.data.positions);
+              if (snapshot?.positions) {
+                queryClient.setQueryData(['/api/live/positions'], snapshot.positions);
               }
               break;
             
