@@ -316,7 +316,7 @@ class UserDataStreamManager {
     }
   }
 
-  private async handleOrderUpdate(message: any): Promise<void> {
+  private handleOrderUpdate(message: any): void {
     const orderData = message.o;
     
     if (orderData) {
@@ -351,82 +351,6 @@ class UserDataStreamManager {
         callbackRate: orderData.cr,
         realizedProfit: orderData.rp,
       };
-
-      // CRITICAL FIX: Detect TP/SL executions and close positions in database
-      // When closeAll=true and order is FILLED, this is a TP/SL exit that closed a position
-      if (orderData.cp === true && orderData.X === 'FILLED' && (orderData.x === 'TRADE' || orderData.x === 'NEW')) {
-        console.log(`🎯 TP/SL EXIT DETECTED: ${orderData.s} ${orderData.S} filled (closePosition=true)`);
-        console.log(`   Realized P&L: $${parseFloat(orderData.rp || '0').toFixed(2)}`);
-        console.log(`   Fill Price: $${orderData.ap}, Qty: ${orderData.z}`);
-        
-        // Close the position in the database
-        try {
-          const { db } = await import('./db');
-          const { strategies, positions } = await import('@shared/schema');
-          const { eq, and } = await import('drizzle-orm');
-          const { storage } = await import('./storage');
-          
-          // Get active strategy and session
-          const activeStrategy = await db.query.strategies.findFirst({
-            where: eq(strategies.isActive, true)
-          });
-          
-          if (activeStrategy) {
-            const session = await storage.getActiveTradeSession(activeStrategy.id);
-            
-            if (session) {
-              // Find the position by symbol (open position)
-              const position = await db.query.positions.findFirst({
-                where: and(
-                  eq(positions.sessionId, session.id),
-                  eq(positions.symbol, orderData.s),
-                  eq(positions.isOpen, true)
-                )
-              });
-              
-              if (position) {
-                // Parse realized P&L from exchange (THIS IS THE FIX!)
-                const realizedPnl = parseFloat(orderData.rp || '0');
-                
-                // Calculate percentage P&L for display
-                const totalCost = parseFloat(position.totalCost);
-                const leverage = (position as any).leverage || 1;
-                const notionalValue = totalCost * leverage;
-                const pnlPercent = notionalValue > 0 ? (realizedPnl / notionalValue) * 100 : 0;
-                
-                // Close the position with realized P&L from exchange
-                await storage.closePosition(
-                  position.id,
-                  new Date(orderData.T), // Use order execution time
-                  realizedPnl,
-                  pnlPercent
-                );
-                
-                // Update session stats
-                const newTotalTrades = session.totalTrades + 1;
-                const oldTotalPnl = parseFloat(session.totalPnl);
-                const newTotalPnl = oldTotalPnl + realizedPnl;
-                const oldBalance = parseFloat(session.currentBalance);
-                const newBalance = oldBalance + realizedPnl;
-                
-                await storage.updateTradeSession(session.id, {
-                  totalTrades: newTotalTrades,
-                  totalPnl: newTotalPnl.toString(),
-                  currentBalance: newBalance.toString(),
-                });
-                
-                console.log(`✅ Position ${orderData.s} closed in database`);
-                console.log(`   Realized P&L: $${realizedPnl.toFixed(2)} (${pnlPercent.toFixed(2)}%)`);
-                console.log(`   Session balance: $${oldBalance.toFixed(2)} → $${newBalance.toFixed(2)}`);
-              } else {
-                console.warn(`⚠️ No open position found for ${orderData.s} to close (may already be closed)`);
-              }
-            }
-          }
-        } catch (error) {
-          console.error('❌ Error closing position after TP/SL fill:', error);
-        }
-      }
 
       // Broadcast order update
       wsBroadcaster.broadcast({

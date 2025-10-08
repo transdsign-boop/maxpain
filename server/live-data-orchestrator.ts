@@ -10,11 +10,6 @@ interface LiveSnapshot {
     canDeposit: boolean;
     canWithdraw: boolean;
     updateTime: number;
-    totalWalletBalance: string;
-    totalUnrealizedProfit: string;
-    totalMarginBalance: string;
-    totalInitialMargin: string;
-    availableBalance: string;
     usdcBalance: string;
     usdtBalance: string;
     assets: Array<{
@@ -64,31 +59,11 @@ class LiveDataOrchestrator {
     
     if (usdtBalance) {
       const snapshot = this.getSnapshot(strategyId);
-      
-      // WebSocket ACCOUNT_UPDATE fields:
-      // wb = wallet balance (totalWalletBalance)
-      // cw = cross wallet balance (availableBalance)
-      const walletBalance = parseFloat(usdtBalance.walletBalance || '0');
-      const availableBalance = parseFloat(usdtBalance.crossWalletBalance || '0');
-      
-      // Calculate unrealized profit from positions if we have them (ONLY open positions with non-zero amount)
-      let unrealizedProfit = 0;
-      if (snapshot.positions && snapshot.positions.length > 0) {
-        unrealizedProfit = snapshot.positions.reduce((sum, pos) => {
-          // Only include positions with non-zero position amount
-          const positionAmt = parseFloat(pos.positionAmt || '0');
-          if (positionAmt !== 0) {
-            return sum + parseFloat(pos.unrealizedProfit || '0');
-          }
-          return sum;
-        }, 0);
-      }
-      
-      // Calculate marginBalance = walletBalance + unrealizedProfit
-      const marginBalance = walletBalance + unrealizedProfit;
-      
-      // Calculate initial margin (used margin) = walletBalance - availableBalance
-      const initialMargin = Math.max(0, walletBalance - availableBalance);
+      const walletBalance = usdtBalance.walletBalance || '0';
+      const crossWalletBalance = usdtBalance.crossWalletBalance || '0';
+      const unrealizedProfit = usdtBalance.unrealizedProfit || '0';
+      const marginBalance = usdtBalance.marginBalance || '0';
+      const initialMargin = usdtBalance.initialMargin || '0';
       
       // Match the HTTP API format exactly - include ALL fields the frontend expects
       snapshot.account = {
@@ -98,23 +73,23 @@ class LiveDataOrchestrator {
         canWithdraw: true,
         updateTime: Date.now(),
         // Fields used by PerformanceOverview component
-        totalWalletBalance: walletBalance.toString(),
-        totalUnrealizedProfit: unrealizedProfit.toString(),
-        totalMarginBalance: marginBalance.toString(),
-        totalInitialMargin: initialMargin.toString(),
-        availableBalance: availableBalance.toString(),
+        totalWalletBalance: walletBalance,
+        totalUnrealizedProfit: unrealizedProfit,
+        totalMarginBalance: marginBalance,
+        totalInitialMargin: initialMargin,
+        availableBalance: crossWalletBalance,
         // Legacy fields for compatibility
-        usdcBalance: walletBalance.toString(),
-        usdtBalance: walletBalance.toString(),
+        usdcBalance: walletBalance,
+        usdtBalance: walletBalance,
         assets: [{
           a: 'USDT',
-          wb: walletBalance.toString(),
-          cw: availableBalance.toString(),
+          wb: walletBalance,
+          cw: crossWalletBalance,
           bc: '0'
         }]
       };
       snapshot.timestamp = Date.now();
-      console.log(`✅ Updated account from WebSocket: wallet=$${walletBalance.toFixed(2)}, available=$${availableBalance.toFixed(2)}, unrealized=$${unrealizedProfit.toFixed(2)}, margin=$${marginBalance.toFixed(2)}`);
+      console.log('✅ Updated account cache from WebSocket (balance: $' + parseFloat(walletBalance).toFixed(2) + ')');
       this.broadcastSnapshot(strategyId);
     }
   }
@@ -125,40 +100,6 @@ class LiveDataOrchestrator {
     snapshot.positions = positions;
     snapshot.timestamp = Date.now();
     console.log(`✅ Updated positions cache from WebSocket (${positions.length} positions)`);
-    
-    // Recalculate account balance with new unrealized P&L from positions
-    if (snapshot.account) {
-      const walletBalance = parseFloat(snapshot.account.totalWalletBalance || '0');
-      
-      // Calculate unrealized profit from updated positions (ONLY open positions with non-zero amount)
-      let unrealizedProfit = 0;
-      const openPositions: any[] = [];
-      if (positions && positions.length > 0) {
-        unrealizedProfit = positions.reduce((sum, pos) => {
-          // Only include positions with non-zero position amount
-          const positionAmt = parseFloat(pos.positionAmt || '0');
-          if (positionAmt !== 0) {
-            openPositions.push({ symbol: pos.symbol, amt: positionAmt, unrealized: pos.unrealizedProfit });
-            return sum + parseFloat(pos.unrealizedProfit || '0');
-          }
-          return sum;
-        }, 0);
-      }
-      
-      if (openPositions.length > 0) {
-        console.log(`📊 Open positions from WebSocket:`, JSON.stringify(openPositions));
-      }
-      
-      // Recalculate marginBalance with new unrealized P&L
-      const marginBalance = walletBalance + unrealizedProfit;
-      
-      // Update account fields
-      snapshot.account.totalUnrealizedProfit = unrealizedProfit.toString();
-      snapshot.account.totalMarginBalance = marginBalance.toString();
-      
-      console.log(`🔄 Recalculated balances from positions: unrealized=$${unrealizedProfit.toFixed(2)}, margin=$${marginBalance.toFixed(2)}`);
-    }
-    
     this.calculatePositionSummary(strategyId);
   }
 
@@ -178,8 +119,8 @@ class LiveDataOrchestrator {
         unrealizedPnl += parseFloat(livePos.unrealizedProfit || '0');
       }
 
-      // Get account balance from cache (parse string to number)
-      const currentBalance = parseFloat(snapshot.account?.totalWalletBalance || '0');
+      // Get account balance from cache
+      const currentBalance = snapshot.account?.totalWalletBalance || 0;
       
       // Simple calculation
       const realizedPnl = 0; // Placeholder for now
