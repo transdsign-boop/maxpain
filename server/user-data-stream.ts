@@ -132,7 +132,7 @@ class UserDataStreamManager {
     });
   }
 
-  private async fetchInitialData(retries = 3, delayMs = 1000): Promise<void> {
+  private async fetchInitialData(retries = 7, delayMs = 1500): Promise<void> {
     if (!this.config) return;
 
     for (let attempt = 1; attempt <= retries; attempt++) {
