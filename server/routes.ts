@@ -8,6 +8,7 @@ import { storage } from "./storage";
 import { strategyEngine } from "./strategy-engine";
 import { cascadeDetectorService } from "./cascade-detector-service";
 import { wsBroadcaster } from "./websocket-broadcaster";
+import { liveDataOrchestrator } from "./live-data-orchestrator";
 import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySchema, updateStrategySchema, type Position, type Liquidation, type InsertFill, positions, strategies } from "@shared/schema";
 import { db } from "./db";
 import { desc, eq } from "drizzle-orm";
@@ -2745,9 +2746,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Store connected clients
   const clients = new Set<WebSocket>();
 
-  wss.on('connection', (ws) => {
+  wss.on('connection', async (ws) => {
     console.log('Client connected to WebSocket');
     clients.add(ws);
+    
+    // Send cached snapshot to newly connected client
+    try {
+      const activeStrategies = await db.select().from(strategies).where(eq(strategies.status, 'active')).limit(1);
+      if (activeStrategies.length > 0) {
+        const strategyId = activeStrategies[0].id;
+        const snapshot = liveDataOrchestrator.getSnapshot(strategyId);
+        
+        if (snapshot && snapshot.account) {
+          ws.send(JSON.stringify({
+            type: 'live_snapshot',
+            data: { snapshot },
+            timestamp: Date.now()
+          }));
+          console.log('📤 Sent cached snapshot to new client');
+        }
+      }
+    } catch (error) {
+      console.error('Error sending initial snapshot:', error);
+    }
     
     ws.on('close', () => {
       console.log('Client disconnected from WebSocket');
