@@ -131,12 +131,33 @@ function groupTradesIntoPositions(trades: Array<{
     totalFees: number;
   }> = [];
   
-  // Group by symbol and position side
+  // Group by symbol - in one-way mode, we need to track both long and short potential positions per symbol
   const grouped = new Map<string, typeof trades>();
   
   for (const trade of trades) {
-    const positionSide = trade.positionSide === 'LONG' ? 'long' : trade.positionSide === 'SHORT' ? 'short' : 
-                         (trade.side === 'BUY' ? 'long' : 'short');
+    // In one-way mode (BOTH), determine position side from trade sequence and realizedPnl
+    // Opening trades have realizedPnl = 0, closing trades have realizedPnl != 0
+    let positionSide: 'long' | 'short';
+    
+    if (trade.positionSide === 'LONG') {
+      positionSide = 'long';
+    } else if (trade.positionSide === 'SHORT') {
+      positionSide = 'short';
+    } else {
+      // One-way mode: Use trade direction for opening trades, but closing trades need special handling
+      // BUY trades open long or close short
+      // SELL trades close long or open short
+      const hasRealizedPnl = parseFloat(trade.realizedPnl) !== 0;
+      
+      if (hasRealizedPnl) {
+        // Closing trade - opposite of trade direction
+        positionSide = trade.side === 'BUY' ? 'short' : 'long';
+      } else {
+        // Opening trade - same as trade direction
+        positionSide = trade.side === 'BUY' ? 'long' : 'short';
+      }
+    }
+    
     const key = `${trade.symbol}-${positionSide}`;
     
     if (!grouped.has(key)) {
