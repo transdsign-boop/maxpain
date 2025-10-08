@@ -11,6 +11,7 @@ import { TrendingUp, TrendingDown, DollarSign, Target, Layers, X, ChevronDown, C
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
+import { formatInTimeZone } from "date-fns-tz";
 import { soundNotifications } from "@/lib/soundNotifications";
 import { useStrategyData } from "@/hooks/use-strategy-data";
 
@@ -159,10 +160,10 @@ function CompletedTradeCard({ position, formatCurrency, formatPercentage, getPnl
               Avg Entry: <span className="text-foreground">{formatCurrency(avgEntry)}</span>
             </div>
             <div>
-              Opened: <span className="text-foreground">{format(new Date(position.openedAt), 'MMM d, h:mm a')}</span>
+              Opened: <span className="text-foreground">{formatInTimeZone(new Date(position.openedAt), 'America/Los_Angeles', 'MMM d, h:mm a')}</span>
             </div>
             <div>
-              Closed: <span className="text-foreground">{position.closedAt ? format(new Date(position.closedAt), 'MMM d, h:mm a') : 'N/A'}</span>
+              Closed: <span className="text-foreground">{position.closedAt ? formatInTimeZone(new Date(position.closedAt), 'America/Los_Angeles', 'MMM d, h:mm a') : 'N/A'}</span>
             </div>
             {fills && (
               <>
@@ -208,7 +209,7 @@ function CompletedTradeCard({ position, formatCurrency, formatPercentage, getPnl
                             </span>
                           </div>
                           <div className="text-xs text-muted-foreground/70">
-                            {format(new Date(fill.filledAt), 'MMM d, h:mm a')}
+                            {formatInTimeZone(new Date(fill.filledAt), 'America/Los_Angeles', 'MMM d, h:mm a')}
                           </div>
                         </div>
                       ))}
@@ -233,7 +234,7 @@ function CompletedTradeCard({ position, formatCurrency, formatPercentage, getPnl
                             </span>
                           </div>
                           <div className="text-xs text-muted-foreground/70">
-                            {format(new Date(fill.filledAt), 'MMM d, h:mm a')}
+                            {formatInTimeZone(new Date(fill.filledAt), 'America/Los_Angeles', 'MMM d, h:mm a')}
                           </div>
                         </div>
                       ))}
