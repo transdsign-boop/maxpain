@@ -120,7 +120,7 @@ function groupTradesIntoPositions(trades: Array<{
   realizedPnl: number;
   totalFees: number;
 }> {
-  const positions: Array<{
+  const groupedPositions: Array<{
     symbol: string;
     side: 'long' | 'short';
     entryTrades: typeof trades;
@@ -235,8 +235,8 @@ function groupTradesIntoPositions(trades: Array<{
       grouped.get(key)!.push(trade);
     }
   
-  // Process each group to find entry/exit pairs
-  for (const [key, groupTrades] of Array.from(grouped.entries())) {
+    // Process each group to find entry/exit pairs
+    for (const [key, groupTrades] of Array.from(grouped.entries())) {
     const [symbol, sideStr] = key.split('-');
     const side = sideStr as 'long' | 'short';
     
@@ -288,7 +288,7 @@ function groupTradesIntoPositions(trades: Array<{
               totalPnl += parseFloat(xt.realizedPnl);
             }
             
-            positions.push({
+            groupedPositions.push({
               symbol,
               side,
               entryTrades: [...entryTrades],
@@ -310,9 +310,10 @@ function groupTradesIntoPositions(trades: Array<{
         }
       }
     }
+    }
   }
   
-  return positions;
+  return groupedPositions;
 }
 
 // Sync completed trades from exchange to database
@@ -376,6 +377,17 @@ export async function syncCompletedTrades(sessionId: string): Promise<{
       });
       
       if (!isDuplicate) {
+        // Check if fills already exist for these trades (prevents duplicate position creation)
+        const entryOrderId = `sync-entry-${exPos.entryTrades[0].time}-0`;
+        const existingFill = await storage.getFillsByOrder(entryOrderId);
+        
+        console.log(`🔍 Checking for existing fills: orderId=${entryOrderId}, found=${existingFill.length}`);
+        
+        if (existingFill.length > 0) {
+          console.log(`⏭️ Skipping position - fills already exist for ${exPos.symbol} ${exPos.side} (orderId: ${entryOrderId})`);
+          continue;
+        }
+        
         console.log(`➕ Adding missing position: ${exPos.symbol} ${exPos.side} closed at ${exPos.closedAt.toISOString()}`);
         
         // Create position
