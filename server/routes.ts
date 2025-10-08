@@ -2752,10 +2752,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     // Send cached snapshot to newly connected client
     try {
-      const activeStrategies = await db.select().from(strategies).where(eq(strategies.status, 'active')).limit(1);
-      if (activeStrategies.length > 0) {
-        const strategyId = activeStrategies[0].id;
-        const snapshot = liveDataOrchestrator.getSnapshot(strategyId);
+      const activeStrategy = await db.query.strategies.findFirst({
+        where: (strategies, { eq }) => eq(strategies.isActive, true)
+      });
+      
+      if (activeStrategy) {
+        const snapshot = liveDataOrchestrator.getSnapshot(activeStrategy.id);
         
         if (snapshot && snapshot.account) {
           ws.send(JSON.stringify({
@@ -2763,7 +2765,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             data: { snapshot },
             timestamp: Date.now()
           }));
-          console.log('📤 Sent cached snapshot to new client');
+          console.log('📤 Sent cached snapshot to new client (balance: $' + snapshot.account.usdtBalance + ')');
         }
       }
     } catch (error) {
