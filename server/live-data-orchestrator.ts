@@ -5,14 +5,19 @@ import { eq } from 'drizzle-orm';
 
 interface LiveSnapshot {
   account: {
-    availableBalance: number;
-    totalWalletBalance: number;
-    totalUnrealizedProfit: number;
-    totalMarginBalance: number;
-    totalPositionInitialMargin: number;
+    feeTier: number;
     canTrade: boolean;
+    canDeposit: boolean;
     canWithdraw: boolean;
     updateTime: number;
+    usdcBalance: string;
+    usdtBalance: string;
+    assets: Array<{
+      a: string;
+      wb: string;
+      cw: string;
+      bc: string;
+    }>;
   } | null;
   positions: any[];
   positionsSummary: {
@@ -54,18 +59,27 @@ class LiveDataOrchestrator {
     
     if (usdtBalance) {
       const snapshot = this.getSnapshot(strategyId);
+      const walletBalance = usdtBalance.walletBalance || '0';
+      const crossWalletBalance = usdtBalance.crossWalletBalance || '0';
+      
+      // Match the HTTP API format exactly
       snapshot.account = {
-        availableBalance: parseFloat(usdtBalance.crossWalletBalance || '0'),
-        totalWalletBalance: parseFloat(usdtBalance.walletBalance || '0'),
-        totalUnrealizedProfit: 0,
-        totalMarginBalance: parseFloat(usdtBalance.crossWalletBalance || '0'),
-        totalPositionInitialMargin: 0,
+        feeTier: 0,
         canTrade: true,
+        canDeposit: true,
         canWithdraw: true,
-        updateTime: Date.now()
+        updateTime: Date.now(),
+        usdcBalance: walletBalance,
+        usdtBalance: walletBalance,
+        assets: [{
+          a: 'USDT',
+          wb: walletBalance,
+          cw: crossWalletBalance,
+          bc: '0'
+        }]
       };
       snapshot.timestamp = Date.now();
-      console.log('✅ Updated account cache from WebSocket (balance: $' + snapshot.account.availableBalance.toFixed(2) + ')');
+      console.log('✅ Updated account cache from WebSocket (balance: $' + parseFloat(walletBalance).toFixed(2) + ')');
       this.broadcastSnapshot(strategyId);
     }
   }
