@@ -153,6 +153,8 @@ function groupTradesIntoPositions(trades: Array<{
     // Sort by time
     groupTrades.sort((a, b) => a.time - b.time);
     
+    console.log(`  📋 ${key}: ${groupTrades.length} trades (${groupTrades.filter(t => (side === 'long' && t.side === 'BUY') || (side === 'short' && t.side === 'SELL')).length} entries, ${groupTrades.filter(t => (side === 'long' && t.side === 'SELL') || (side === 'short' && t.side === 'BUY')).length} exits)`);
+    
     let entryTrades: typeof trades = [];
     let exitTrades: typeof trades = [];
     let netPosition = 0;
@@ -249,13 +251,11 @@ export async function syncCompletedTrades(sessionId: string): Promise<{
       return { success: false, addedCount: 0, error: result.error };
     }
     
-    // Filter only trades with realized PnL (indicating a position was closed)
-    const closedTrades = result.trades.filter(trade => parseFloat(trade.realizedPnl) !== 0);
-    
-    console.log(`📊 Found ${closedTrades.length} closed position trades from exchange`);
+    // Use ALL trades (including entry trades with realizedPnl = 0)
+    console.log(`📊 Processing ${result.trades.length} total trades from exchange`);
     
     // Group trades into positions
-    const exchangePositions = groupTradesIntoPositions(closedTrades);
+    const exchangePositions = groupTradesIntoPositions(result.trades);
     
     console.log(`📊 Grouped into ${exchangePositions.length} complete positions`);
     
