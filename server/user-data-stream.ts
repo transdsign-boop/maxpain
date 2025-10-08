@@ -156,12 +156,15 @@ class UserDataStreamManager {
         
         const accountData = await accountResponse.json();
         
-        if (accountData && accountData.totalWalletBalance) {
+        if (accountData && accountData.totalWalletBalance !== undefined) {
           // Convert to balance format expected by orchestrator
+          const balance = parseFloat(accountData.totalWalletBalance);
+          const available = parseFloat(accountData.availableBalance);
+          
           const balances = [{
             asset: 'USDT',
-            walletBalance: accountData.totalWalletBalance.toString(),
-            crossWalletBalance: accountData.availableBalance.toString(),
+            walletBalance: balance.toString(),
+            crossWalletBalance: available.toString(),
           }];
           
           const { db } = await import('./db');
@@ -172,7 +175,7 @@ class UserDataStreamManager {
           if (activeStrategy) {
             const { liveDataOrchestrator } = await import('./live-data-orchestrator');
             liveDataOrchestrator.updateAccountFromWebSocket(activeStrategy.id, balances);
-            console.log(`✅ Initial account data loaded ($${accountData.totalWalletBalance.toFixed(2)})`);
+            console.log(`✅ Initial account data loaded ($${balance.toFixed(2)})`);
           }
         }
 
