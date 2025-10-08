@@ -396,10 +396,10 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
     }
   });
 
-  // Fetch asset performance data (wins/losses)
+  // Fetch asset performance data (wins/losses) - NO polling, WebSocket provides updates
   const { data: performanceData, isLoading: performanceLoading } = useQuery<any[]>({
     queryKey: ['/api/analytics/asset-performance'],
-    refetchInterval: 30000,
+    staleTime: Infinity, // Never refetch - WebSocket provides updates
   });
 
   // Create a map for quick performance lookup
@@ -420,12 +420,15 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
     queryKey: ['/api/strategies'],
   });
 
-  // Fetch exchange account balance
+  // Fetch exchange account balance - NO HTTP polling, populated by WebSocket only
   const { data: exchangeAccount, isLoading: accountLoading } = useQuery<any>({
     queryKey: ['/api/live/account'],
-    refetchInterval: 45000, // Refresh every 45 seconds
-    staleTime: 15000, // Cache for 15 seconds
-    retry: false, // Don't retry if API keys not configured
+    queryFn: () => {
+      throw new Error('This query should only be populated by WebSocket events');
+    },
+    staleTime: Infinity, // Never refetch - WebSocket provides updates
+    gcTime: Infinity,
+    retry: false,
   });
 
   // Form setup with default values
