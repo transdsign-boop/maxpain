@@ -2054,13 +2054,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (apiKey && secretKey) {
         try {
-          // Get the earliest session start time
-          const sessionStartTimes = allSessions.map(s => new Date(s.startedAt).getTime());
-          const earliestStartTime = Math.min(...sessionStartTimes);
+          // Use transfer cutoff date: Oct 4, 2025 04:53:55 UTC (the $289.30 transfer timestamp)
+          const TRANSFER_CUTOFF_MS = new Date('2025-10-04T04:53:55Z').getTime();
 
           // Fetch COMMISSION from API
           const timestamp = Date.now();
-          const commissionParams = `incomeType=COMMISSION&startTime=${earliestStartTime}&limit=1000&timestamp=${timestamp}`;
+          const commissionParams = `incomeType=COMMISSION&startTime=${TRANSFER_CUTOFF_MS}&limit=1000&timestamp=${timestamp}`;
           
           const commissionSignature = crypto
             .createHmac('sha256', secretKey)
@@ -2091,7 +2090,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
 
           // Fetch FUNDING_FEE from API
-          const fundingParams = `incomeType=FUNDING_FEE&startTime=${earliestStartTime}&limit=1000&timestamp=${timestamp}`;
+          const fundingParams = `incomeType=FUNDING_FEE&startTime=${TRANSFER_CUTOFF_MS}&limit=1000&timestamp=${timestamp}`;
           
           const fundingSignature = crypto
             .createHmac('sha256', secretKey)
