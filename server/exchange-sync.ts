@@ -2,7 +2,7 @@ import { createHmac } from 'crypto';
 import { storage } from './storage';
 import type { TradeSession } from '@shared/schema';
 import { db } from './db';
-import { positions } from '@shared/schema';
+import { positions, transfers, commissions, fundingFees } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 
 // Fetch all account trades from Aster DEX within a time range
@@ -464,6 +464,196 @@ export async function syncCompletedTrades(sessionId: string): Promise<{
     return { success: true, addedCount };
   } catch (error) {
     console.error('❌ Error syncing trades:', error);
+    return { success: false, addedCount: 0, error: String(error) };
+  }
+}
+
+// Sync transfers from exchange income API
+export async function syncTransfers(userId: string): Promise<{
+  success: boolean;
+  addedCount: number;
+  error?: string;
+}> {
+  try {
+    const apiKey = process.env.ASTER_API_KEY;
+    const secretKey = process.env.ASTER_SECRET_KEY;
+    
+    if (!apiKey || !secretKey) {
+      return { success: false, addedCount: 0, error: 'API keys not configured' };
+    }
+    
+    // Fetch TRANSFER income from API (all historical data)
+    const timestamp = Date.now();
+    const queryParams = `incomeType=TRANSFER&limit=10000&timestamp=${timestamp}`;
+    
+    const signature = createHmac('sha256', secretKey)
+      .update(queryParams)
+      .digest('hex');
+
+    const response = await fetch(
+      `https://fapi.asterdex.com/fapi/v1/income?${queryParams}&signature=${signature}`,
+      {
+        headers: {
+          'X-MBX-APIKEY': apiKey,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`❌ Failed to fetch transfers: ${response.status} ${errorText}`);
+      return { success: false, addedCount: 0, error: `HTTP ${response.status}: ${errorText}` };
+    }
+
+    const transferData = await response.json();
+    console.log(`📊 Fetched ${transferData.length} transfer events from exchange`);
+    
+    // Batch insert transfers using onConflictDoNothing for idempotency
+    const insertedTransfers = await db.insert(transfers)
+      .values(transferData.map((transfer: any) => ({
+        userId,
+        amount: transfer.income || '0',
+        asset: transfer.asset || 'USDT',
+        transactionId: transfer.tranId || null,
+        timestamp: new Date(transfer.time),
+      })))
+      .onConflictDoNothing()
+      .returning({ id: transfers.id });
+    
+    const addedCount = insertedTransfers.length;
+    
+    console.log(`✅ Synced ${addedCount} new transfers to database`);
+    
+    return { success: true, addedCount };
+  } catch (error) {
+    console.error('❌ Error syncing transfers:', error);
+    return { success: false, addedCount: 0, error: String(error) };
+  }
+}
+
+// Sync commissions from exchange income API
+export async function syncCommissions(userId: string): Promise<{
+  success: boolean;
+  addedCount: number;
+  error?: string;
+}> {
+  try {
+    const apiKey = process.env.ASTER_API_KEY;
+    const secretKey = process.env.ASTER_SECRET_KEY;
+    
+    if (!apiKey || !secretKey) {
+      return { success: false, addedCount: 0, error: 'API keys not configured' };
+    }
+    
+    // Fetch COMMISSION income from API (all historical data)
+    const timestamp = Date.now();
+    const queryParams = `incomeType=COMMISSION&limit=10000&timestamp=${timestamp}`;
+    
+    const signature = createHmac('sha256', secretKey)
+      .update(queryParams)
+      .digest('hex');
+
+    const response = await fetch(
+      `https://fapi.asterdex.com/fapi/v1/income?${queryParams}&signature=${signature}`,
+      {
+        headers: {
+          'X-MBX-APIKEY': apiKey,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`❌ Failed to fetch commissions: ${response.status} ${errorText}`);
+      return { success: false, addedCount: 0, error: `HTTP ${response.status}: ${errorText}` };
+    }
+
+    const commissionData = await response.json();
+    console.log(`📊 Fetched ${commissionData.length} commission events from exchange`);
+    
+    // Batch insert commissions using onConflictDoNothing for idempotency
+    const insertedCommissions = await db.insert(commissions)
+      .values(commissionData.map((comm: any) => ({
+        userId,
+        symbol: comm.symbol || '',
+        amount: comm.income || '0',
+        asset: comm.asset || 'USDT',
+        tradeId: comm.tradeId || null,
+        timestamp: new Date(comm.time),
+      })))
+      .onConflictDoNothing()
+      .returning({ id: commissions.id });
+    
+    const addedCount = insertedCommissions.length;
+    
+    console.log(`✅ Synced ${addedCount} new commissions to database`);
+    
+    return { success: true, addedCount };
+  } catch (error) {
+    console.error('❌ Error syncing commissions:', error);
+    return { success: false, addedCount: 0, error: String(error) };
+  }
+}
+
+// Sync funding fees from exchange income API
+export async function syncFundingFees(userId: string): Promise<{
+  success: boolean;
+  addedCount: number;
+  error?: string;
+}> {
+  try {
+    const apiKey = process.env.ASTER_API_KEY;
+    const secretKey = process.env.ASTER_SECRET_KEY;
+    
+    if (!apiKey || !secretKey) {
+      return { success: false, addedCount: 0, error: 'API keys not configured' };
+    }
+    
+    // Fetch FUNDING_FEE income from API (all historical data)
+    const timestamp = Date.now();
+    const queryParams = `incomeType=FUNDING_FEE&limit=10000&timestamp=${timestamp}`;
+    
+    const signature = createHmac('sha256', secretKey)
+      .update(queryParams)
+      .digest('hex');
+
+    const response = await fetch(
+      `https://fapi.asterdex.com/fapi/v1/income?${queryParams}&signature=${signature}`,
+      {
+        headers: {
+          'X-MBX-APIKEY': apiKey,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`❌ Failed to fetch funding fees: ${response.status} ${errorText}`);
+      return { success: false, addedCount: 0, error: `HTTP ${response.status}: ${errorText}` };
+    }
+
+    const fundingData = await response.json();
+    console.log(`📊 Fetched ${fundingData.length} funding fee events from exchange`);
+    
+    // Batch insert funding fees using onConflictDoNothing for idempotency
+    const insertedFundingFees = await db.insert(fundingFees)
+      .values(fundingData.map((funding: any) => ({
+        userId,
+        symbol: funding.symbol || '',
+        amount: funding.income || '0',
+        asset: funding.asset || 'USDT',
+        timestamp: new Date(funding.time),
+      })))
+      .onConflictDoNothing()
+      .returning({ id: fundingFees.id });
+    
+    const addedCount = insertedFundingFees.length;
+    
+    console.log(`✅ Synced ${addedCount} new funding fees to database`);
+    
+    return { success: true, addedCount };
+  } catch (error) {
+    console.error('❌ Error syncing funding fees:', error);
     return { success: false, addedCount: 0, error: String(error) };
   }
 }

@@ -368,8 +368,8 @@ export const transfers = pgTable("transfers", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => [
   index("idx_transfers_user_timestamp").on(table.userId, table.timestamp),
-  // Unique constraint on exchange transaction ID when available (NULL transactionIds won't conflict)
-  unique("unique_transfer_txid").on(table.userId, table.transactionId),
+  // Composite unique constraint for idempotent syncs (timestamp + amount + asset identifies unique transfer)
+  unique("unique_transfer_composite").on(table.userId, table.timestamp, table.amount, table.asset),
 ]);
 
 export const insertTransferSchema = createInsertSchema(transfers).omit({
@@ -392,8 +392,8 @@ export const commissions = pgTable("commissions", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => [
   index("idx_commissions_user_timestamp").on(table.userId, table.timestamp),
-  // Unique constraint on exchange trade ID when available (NULL tradeIds won't conflict)
-  unique("unique_commission_tradeid").on(table.userId, table.tradeId),
+  // Composite unique constraint for idempotent syncs (symbol + timestamp + amount identifies unique commission)
+  unique("unique_commission_composite").on(table.userId, table.symbol, table.timestamp, table.amount),
 ]);
 
 export const insertCommissionSchema = createInsertSchema(commissions).omit({
