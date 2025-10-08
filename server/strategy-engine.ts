@@ -272,8 +272,12 @@ export class StrategyEngine extends EventEmitter {
     await cascadeDetectorService.syncSymbols();
     
     // Start WebSocket user data stream for real-time account/position updates
+    // IMPORTANT: Only run in deployed environment to avoid listen key conflicts
+    // Aster DEX only allows ONE active user data stream per API key
     const apiKey = process.env.ASTER_API_KEY;
-    if (apiKey) {
+    const isDeployed = process.env.REPLIT_DEPLOYMENT === '1';
+    
+    if (apiKey && isDeployed) {
       try {
         await userDataStreamManager.start({
           apiKey,
@@ -287,10 +291,13 @@ export class StrategyEngine extends EventEmitter {
             console.log('📦 Order updated via WebSocket');
           }
         });
-        console.log('✅ User data stream started for real-time updates');
+        console.log('✅ User data stream started for real-time updates (deployed mode)');
       } catch (error) {
         console.error('⚠️ Failed to start user data stream:', error);
       }
+    } else if (apiKey && !isDeployed) {
+      console.log('⏭️ Skipping user data stream in preview mode (only ONE connection allowed per API key)');
+      console.log('   📱 Use the deployed version for live account/position updates');
     }
   }
 
