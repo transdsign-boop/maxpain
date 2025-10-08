@@ -405,7 +405,8 @@ export default function PerformanceOverview() {
 
   // Calculate unified account metrics (live-only mode)
   const unrealizedPnl = liveAccount ? (parseFloat(liveAccount.totalUnrealizedProfit) || 0) : 0;
-  const totalBalance = liveAccount ? (parseFloat(liveAccount.totalWalletBalance || '0') || 0) + unrealizedPnl : 0;
+  const marginBalance = liveAccount ? (parseFloat(liveAccount.totalMarginBalance || '0') || 0) : 0;
+  const totalBalance = marginBalance; // Margin balance = wallet + unrealized (from exchange)
   
   // Calculate available balance
   const leverage = activeStrategy?.leverage || 1;
