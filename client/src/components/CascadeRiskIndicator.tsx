@@ -70,11 +70,11 @@ export default function CascadeRiskIndicator() {
     // Auto-block if ANY asset is blocked
     const anyAutoBlock = statuses.some(s => s.autoBlock);
 
-    // Determine RQ bucket based on average
+    // Determine RQ bucket based on average (use range checks for floats)
     let rq_bucket: 'poor' | 'ok' | 'good' | 'excellent';
     if (avgRQ <= 1) rq_bucket = 'poor';
-    else if (avgRQ === 2) rq_bucket = 'ok';
-    else if (avgRQ === 3) rq_bucket = 'good';
+    else if (avgRQ <= 2) rq_bucket = 'ok';
+    else if (avgRQ <= 3) rq_bucket = 'good';
     else rq_bucket = 'excellent';
 
     // Determine volatility regime based on average RET
