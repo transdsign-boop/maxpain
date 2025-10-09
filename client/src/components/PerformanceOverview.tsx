@@ -3,9 +3,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { TrendingUp, TrendingDown, Target, Award, Activity, LineChart, DollarSign, Percent, ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { TrendingUp, TrendingDown, Target, Award, Activity, LineChart, DollarSign, Percent, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Calendar as CalendarIcon, X } from "lucide-react";
 import { ComposedChart, Line, Area, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, ReferenceArea, Label } from "recharts";
-import { format } from "date-fns";
+import { format, subDays, startOfDay, endOfDay } from "date-fns";
 import { useStrategyData } from "@/hooks/use-strategy-data";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -74,6 +76,10 @@ interface AssetPerformance {
 }
 
 export default function PerformanceOverview() {
+  // Date range filter state
+  const [dateRange, setDateRange] = useState<{ start: Date | null; end: Date | null }>({ start: null, end: null });
+  const [dateFilterOpen, setDateFilterOpen] = useState(false);
+  
   // Pagination and zoom state for chart
   const [chartEndIndex, setChartEndIndex] = useState<number | null>(null);
   const [tradesPerPage, setTradesPerPage] = useState<number>(50);
@@ -128,7 +134,19 @@ export default function PerformanceOverview() {
   }, [assetPerformance]);
 
   // Use unified chart data for both modes
-  const sourceChartData = rawChartData || [];
+  const rawSourceData = rawChartData || [];
+  
+  // Apply date range filter
+  const sourceChartData = useMemo(() => {
+    if (!dateRange.start && !dateRange.end) return rawSourceData;
+    
+    const startTimestamp = dateRange.start ? startOfDay(dateRange.start).getTime() : 0;
+    const endTimestamp = dateRange.end ? endOfDay(dateRange.end).getTime() : Date.now();
+    
+    return rawSourceData.filter(trade => 
+      trade.timestamp >= startTimestamp && trade.timestamp <= endTimestamp
+    );
+  }, [rawSourceData, dateRange]);
   
   // Calculate pagination
   const totalTrades = sourceChartData.length;
@@ -145,7 +163,16 @@ export default function PerformanceOverview() {
       }
     }
   }, [sourceChartData.length, chartEndIndex, totalTrades]);
-  const actualEndIndex = chartEndIndex ?? totalTrades;
+
+  // Reset pagination when date filter changes
+  useEffect(() => {
+    if (sourceChartData.length > 0) {
+      setChartEndIndex(sourceChartData.length);
+    }
+  }, [dateRange]);
+  
+  // Clamp end index to prevent out-of-bounds slicing
+  const actualEndIndex = Math.min(chartEndIndex ?? totalTrades, totalTrades);
   const startIndex = Math.max(0, actualEndIndex - tradesPerPage);
   const paginatedSourceData = sourceChartData.slice(startIndex, actualEndIndex);
   const canGoBack = startIndex > 0;
@@ -328,28 +355,57 @@ export default function PerformanceOverview() {
   }, [activeStrategy?.maxPortfolioRiskPercent]);
 
   // Use unified performance data (live-only mode)
-  const displayPerformance = performance || {
-    totalTrades: 0,
-    openTrades: 0,
-    closedTrades: 0,
-    winningTrades: 0,
-    losingTrades: 0,
-    winRate: 0,
-    totalRealizedPnl: 0,
-    totalUnrealizedPnl: 0,
-    totalPnl: 0,
-    totalPnlPercent: 0,
-    averageWin: 0,
-    averageLoss: 0,
-    bestTrade: 0,
-    worstTrade: 0,
-    profitFactor: 0,
-    totalFees: 0,
-    fundingCost: 0,
-    averageTradeTimeMs: 0,
-    maxDrawdown: 0,
-    maxDrawdownPercent: 0,
-  };
+  // Recalculate metrics when date filter is active
+  const displayPerformance = useMemo(() => {
+    const basePerformance = performance || {
+      totalTrades: 0,
+      openTrades: 0,
+      closedTrades: 0,
+      winningTrades: 0,
+      losingTrades: 0,
+      winRate: 0,
+      totalRealizedPnl: 0,
+      totalUnrealizedPnl: 0,
+      totalPnl: 0,
+      totalPnlPercent: 0,
+      averageWin: 0,
+      averageLoss: 0,
+      bestTrade: 0,
+      worstTrade: 0,
+      profitFactor: 0,
+      totalFees: 0,
+      fundingCost: 0,
+      averageTradeTimeMs: 0,
+      maxDrawdown: 0,
+      maxDrawdownPercent: 0,
+    };
+
+    // If no date filter, return base performance
+    if (!dateRange.start && !dateRange.end) return basePerformance;
+
+    // Recalculate metrics from filtered chart data
+    const filteredTrades = sourceChartData;
+    const winningTrades = filteredTrades.filter(t => t.pnl > 0);
+    const losingTrades = filteredTrades.filter(t => t.pnl < 0);
+    const totalWins = winningTrades.reduce((sum, t) => sum + t.pnl, 0);
+    const totalLosses = Math.abs(losingTrades.reduce((sum, t) => sum + t.pnl, 0));
+    
+    return {
+      ...basePerformance,
+      totalTrades: filteredTrades.length,
+      closedTrades: filteredTrades.length,
+      winningTrades: winningTrades.length,
+      losingTrades: losingTrades.length,
+      winRate: filteredTrades.length > 0 ? (winningTrades.length / filteredTrades.length) * 100 : 0,
+      totalRealizedPnl: filteredTrades.reduce((sum, t) => sum + t.pnl, 0),
+      totalPnl: filteredTrades.reduce((sum, t) => sum + t.pnl, 0),
+      averageWin: winningTrades.length > 0 ? totalWins / winningTrades.length : 0,
+      averageLoss: losingTrades.length > 0 ? totalLosses / losingTrades.length : 0,
+      bestTrade: filteredTrades.length > 0 ? Math.max(...filteredTrades.map(t => t.pnl)) : 0,
+      worstTrade: filteredTrades.length > 0 ? Math.min(...filteredTrades.map(t => t.pnl)) : 0,
+      profitFactor: totalLosses > 0 ? totalWins / totalLosses : (totalWins > 0 ? 999 : 0),
+    };
+  }, [performance, dateRange, sourceChartData]);
   const displayLoading = isLoading || chartLoading || liveAccountLoading;
   const showLoadingUI = displayLoading || !performance;
 
@@ -695,8 +751,93 @@ export default function PerformanceOverview() {
 
         {/* Performance Chart */}
         <div className="space-y-3">
-          {/* Chart Navigation & Zoom Controls */}
-          <div className="flex items-center justify-between px-4 gap-3">
+          {/* Date Filter & Chart Controls */}
+          <div className="flex items-center justify-between px-4 gap-3 flex-wrap">
+            {/* Date Filter Controls */}
+            <div className="flex items-center gap-2">
+              {/* Preset Date Filters */}
+              <Button
+                variant={!dateRange.start && !dateRange.end ? "default" : "outline"}
+                size="sm"
+                onClick={() => setDateRange({ start: null, end: null })}
+                data-testid="button-filter-all-time"
+              >
+                All Time
+              </Button>
+              <Button
+                variant={(dateRange.start && Math.abs(dateRange.start.getTime() - subDays(new Date(), 7).getTime()) < 86400000) ? "default" : "outline"}
+                size="sm"
+                onClick={() => setDateRange({ start: subDays(new Date(), 7), end: new Date() })}
+                data-testid="button-filter-7days"
+              >
+                Last 7 Days
+              </Button>
+              <Button
+                variant={(dateRange.start && Math.abs(dateRange.start.getTime() - subDays(new Date(), 30).getTime()) < 86400000) ? "default" : "outline"}
+                size="sm"
+                onClick={() => setDateRange({ start: subDays(new Date(), 30), end: new Date() })}
+                data-testid="button-filter-30days"
+              >
+                Last 30 Days
+              </Button>
+              
+              {/* Custom Date Picker */}
+              <Popover open={dateFilterOpen} onOpenChange={setDateFilterOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" data-testid="button-custom-date-filter">
+                    <CalendarIcon className="h-4 w-4 mr-2" />
+                    Custom Range
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-4" align="start">
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">Start Date</label>
+                      <Calendar
+                        mode="single"
+                        selected={dateRange.start || undefined}
+                        onSelect={(date) => setDateRange(prev => ({ ...prev, start: date || null }))}
+                        data-testid="calendar-start-date"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">End Date</label>
+                      <Calendar
+                        mode="single"
+                        selected={dateRange.end || undefined}
+                        onSelect={(date) => setDateRange(prev => ({ ...prev, end: date || null }))}
+                        disabled={(date) => dateRange.start ? date < dateRange.start : false}
+                        data-testid="calendar-end-date"
+                      />
+                    </div>
+                    <Button 
+                      size="sm" 
+                      className="w-full" 
+                      onClick={() => setDateFilterOpen(false)}
+                      data-testid="button-apply-date-filter"
+                    >
+                      Apply
+                    </Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
+              
+              {/* Active Filter Indicator */}
+              {(dateRange.start || dateRange.end) && (
+                <Badge variant="secondary" className="gap-1" data-testid="badge-active-filter">
+                  <CalendarIcon className="h-3 w-3" />
+                  {dateRange.start && format(dateRange.start, 'MMM d')}
+                  {dateRange.start && dateRange.end && ' - '}
+                  {dateRange.end && format(dateRange.end, 'MMM d')}
+                  <X 
+                    className="h-3 w-3 ml-1 cursor-pointer hover:text-destructive" 
+                    onClick={() => setDateRange({ start: null, end: null })}
+                    data-testid="button-clear-date-filter"
+                  />
+                </Badge>
+              )}
+            </div>
+            
             {/* Pagination Controls */}
             <div className="flex items-center gap-2">
               <Button
