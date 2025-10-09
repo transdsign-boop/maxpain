@@ -3020,8 +3020,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Connect to Aster DEX WebSocket and relay data
   connectToAsterDEX(clients);
   
-  // Connect to User Data Stream for real-time position/balance updates
-  connectToUserDataStream();
+  // User Data Stream is now started in server/index.ts using UserDataStreamManager
 
   // Positions API Routes
   app.get('/api/positions/:sessionId', async (req, res) => {
