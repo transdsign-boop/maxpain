@@ -299,24 +299,30 @@ export default function PerformanceOverview() {
   }, [activeStrategy, livePositions, liveAccount]);
 
   // Use unified performance data (live-only mode)
-  const displayPerformance = performance;
+  const displayPerformance = performance || {
+    totalTrades: 0,
+    openTrades: 0,
+    closedTrades: 0,
+    winningTrades: 0,
+    losingTrades: 0,
+    winRate: 0,
+    totalRealizedPnl: 0,
+    totalUnrealizedPnl: 0,
+    totalPnl: 0,
+    totalPnlPercent: 0,
+    averageWin: 0,
+    averageLoss: 0,
+    bestTrade: 0,
+    worstTrade: 0,
+    profitFactor: 0,
+    totalFees: 0,
+    fundingCost: 0,
+    averageTradeTimeMs: 0,
+    maxDrawdown: 0,
+    maxDrawdownPercent: 0,
+  };
   const displayLoading = isLoading || chartLoading || liveAccountLoading;
-
-  if (displayLoading || !displayPerformance) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <LineChart className="h-5 w-5" />
-            Performance Overview
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="text-sm text-muted-foreground">Loading performance metrics...</div>
-        </CardContent>
-      </Card>
-    );
-  }
+  const showLoadingUI = displayLoading || !performance;
 
   const formatCurrency = (value: number) => {
     const sign = value >= 0 ? '+' : '';
@@ -439,10 +445,10 @@ export default function PerformanceOverview() {
   // For realized P&L percentage, use deposited capital
   const realizedPnlPercent = totalDeposited > 0 ? ((displayPerformance.totalRealizedPnl || 0) / totalDeposited) * 100 : 0;
 
-  // Check if there's an error (but don't return early - that breaks hooks order)
+  // Check if there's an error or loading (but don't return early - that breaks hooks order)
   const hasError = performanceError || chartDataError;
 
-  // Render error UI or normal UI based on error state
+  // Render loading, error, or normal UI based on state
   return (
     <Card>
       <CardHeader>
@@ -451,7 +457,9 @@ export default function PerformanceOverview() {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
-        {hasError ? (
+        {showLoadingUI ? (
+          <div className="text-sm text-muted-foreground">Loading performance metrics...</div>
+        ) : hasError ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <div className="text-red-500 mb-4">⚠️ Failed to load performance data</div>
             <p className="text-sm text-muted-foreground mb-4">
