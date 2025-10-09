@@ -101,12 +101,17 @@ Preferred communication style: Simple, everyday language.
   - Completely eliminates API polling to prevent rate limit bans (user-demanded requirement)
   - **Data Flow**: Aster DEX WebSocket → user-data-stream.ts → liveDataOrchestrator.updateAccountFromWebSocket() / updatePositionsFromWebSocket() → WebSocket broadcast → Frontend
 - **Dynamic Cascade Detection**: Cascade detector automatically monitors all user-selected assets from Global Settings. Syncs on startup, strategy registration, and when selectedAssets changes. Automatically clears detectors when strategy is inactive or no assets selected, ensuring real-time monitoring always reflects current configuration.
-- **Cascade Detector Data Sources**: Uses batch API fetching for maximum efficiency:
-  - **Liquidations**: Real-time WebSocket stream (`!forceOrder@arr`) - unchanged
-  - **Prices**: Batch fetch via `/fapi/v1/ticker/price` (single API call for all symbols)
-  - **Open Interest**: Parallel fetch for tracked symbols using Promise.all
-  - **Efficiency**: Reduced from ~38 API calls/sec to ~2 calls/sec (1 price batch + N OI calls in parallel)
-  - **Architecture**: Eliminated WebSocket approach for price/OI (streams don't exist on Aster DEX) in favor of reliable batch API polling at 1-second intervals
+- **🚨 CASCADE DETECTOR - ULTRA-MINIMAL POLLING (DO NOT MODIFY) 🚨**:
+  - **⚠️ CRITICAL**: Polling architecture optimized to prevent rate limit bans - NEVER change without explicit user approval
+  - **Tick Interval**: 10 seconds (configurable via POLL_INTERVAL env var, default: 10000ms)
+  - **Price Updates**: Single batch API call per tick (`/fapi/v1/ticker/price` - all symbols at once)
+  - **Open Interest**: Rotating fetch (3 symbols per tick, configurable via OI_PER_TICK env var)
+  - **OI Cache**: 60-second cache (configurable via OI_MAX_AGE env var) - reuses stale OI to minimize API calls
+  - **Rotation Logic**: Fetches oldest OI snapshots first, ensures all 19 symbols refresh every ~63 seconds
+  - **API Usage**: 4 calls per 10s = ~24 calls/minute (98.5% reduction from previous 1,620 calls/min)
+  - **Liquidations**: Real-time WebSocket stream (`!forceOrder@arr`) - zero API calls
+  - **Architecture Warning**: Code includes explicit "DO NOT MODIFY" warnings - changing this causes rate limit bans
+  - **Monitoring**: OI age displayed in cascade logs (e.g., "OI age: 12s") for staleness tracking
 
 ### Security & Performance
 - End-to-end TypeScript for type safety.
