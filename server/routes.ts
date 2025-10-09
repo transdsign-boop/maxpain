@@ -1987,6 +1987,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // DEBUG: Test endpoint to fetch ALL income types
+  app.get('/api/debug/all-income', async (req, res) => {
+    try {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+      
+      if (!apiKey || !secretKey) {
+        return res.json({ error: 'API keys not configured' });
+      }
+      
+      const timestamp = Date.now();
+      const queryParams = `timestamp=${timestamp}`;
+      
+      const signature = crypto
+        .createHmac('sha256', secretKey)
+        .update(queryParams)
+        .digest('hex');
+
+      const response = await fetch(
+        `https://fapi.asterdex.com/fapi/v1/income?${queryParams}&signature=${signature}`,
+        {
+          headers: { 'X-MBX-APIKEY': apiKey },
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return res.json({ error: `HTTP ${response.status}: ${errorText}` });
+      }
+
+      const allIncome = await response.json();
+      
+      // Group by income type and sum
+      const summary: Record<string, { count: number; total: number }> = {};
+      allIncome.forEach((item: any) => {
+        const type = item.incomeType || 'UNKNOWN';
+        if (!summary[type]) {
+          summary[type] = { count: 0, total: 0 };
+        }
+        summary[type].count++;
+        summary[type].total += parseFloat(item.income || '0');
+      });
+      
+      return res.json({
+        totalRecords: allIncome.length,
+        summary,
+        sampleRecords: allIncome.slice(0, 5),
+      });
+    } catch (error) {
+      return res.json({ error: String(error) });
+    }
+  });
+
   // Get overall trading performance metrics
   app.get("/api/performance/overview", async (req, res) => {
     try {
