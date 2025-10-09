@@ -404,6 +404,17 @@ export default function PerformanceOverview() {
     return null;
   };
 
+  // Calculate total deposited capital (only positive deposits, exclude withdrawals)
+  const { totalDeposited, depositCount } = useMemo(() => {
+    if (!transfers || transfers.length === 0) return { totalDeposited: 0, depositCount: 0 };
+    
+    // Filter to only include deposits (positive amounts)
+    const deposits = transfers.filter(t => parseFloat(t.amount || '0') > 0);
+    const totalDeposited = deposits.reduce((sum, transfer) => sum + parseFloat(transfer.amount || '0'), 0);
+    
+    return { totalDeposited, depositCount: deposits.length };
+  }, [transfers]);
+
   // Calculate unified account metrics (live-only mode)
   const unrealizedPnl = liveAccount ? (parseFloat(liveAccount.totalUnrealizedProfit) || 0) : 0;
   const totalBalance = liveAccount ? (parseFloat(liveAccount.totalWalletBalance || '0') || 0) + unrealizedPnl : 0;
@@ -419,9 +430,12 @@ export default function PerformanceOverview() {
   // Calculate percentages
   const unrealizedPnlPercent = totalBalance > 0 ? (unrealizedPnl / totalBalance) * 100 : 0;
   
-  // For realized P&L percentage, use starting balance
-  const startingBalance = totalBalance - (displayPerformance.totalRealizedPnl || 0) - unrealizedPnl;
-  const realizedPnlPercent = startingBalance > 0 ? ((displayPerformance.totalRealizedPnl || 0) / startingBalance) * 100 : 0;
+  // Calculate true ROI based on deposited capital
+  const totalPnl = (displayPerformance.totalRealizedPnl || 0) + unrealizedPnl;
+  const trueROI = totalDeposited > 0 ? (totalPnl / totalDeposited) * 100 : 0;
+  
+  // For realized P&L percentage, use deposited capital
+  const realizedPnlPercent = totalDeposited > 0 ? ((displayPerformance.totalRealizedPnl || 0) / totalDeposited) * 100 : 0;
 
   return (
     <Card>
@@ -450,11 +464,11 @@ export default function PerformanceOverview() {
             </div>
           </div>
 
-          {/* Available & Realized */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          {/* Available, Deposited & Realized */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
             <div className="space-y-3">
               <div className="text-sm text-muted-foreground uppercase tracking-wider">Available</div>
-              <div className="text-5xl font-mono font-bold" data-testid="text-available-balance">
+              <div className="text-4xl font-mono font-bold" data-testid="text-available-balance">
                 ${availableBalance.toFixed(2)}
               </div>
               <div className="text-sm text-muted-foreground">
@@ -463,12 +477,28 @@ export default function PerformanceOverview() {
             </div>
 
             <div className="space-y-3">
-              <div className="text-sm text-muted-foreground uppercase tracking-wider">Realized P&L</div>
-              <div className={`text-5xl font-mono font-bold ${displayPerformance.totalRealizedPnl >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`} data-testid="text-realized-pnl">
-                {formatCurrency(displayPerformance.totalRealizedPnl)}
+              <div className="flex items-center gap-1.5">
+                <DollarSign className="h-4 w-4 text-muted-foreground" />
+                <div className="text-sm text-muted-foreground uppercase tracking-wider">Total Deposited</div>
+              </div>
+              <div className="text-4xl font-mono font-bold" data-testid="text-total-deposited">
+                ${totalDeposited.toFixed(2)}
               </div>
               <div className="text-sm text-muted-foreground">
-                {realizedPnlPercent >= 0 ? '+' : ''}{realizedPnlPercent.toFixed(2)}% · {displayPerformance.totalTrades} trades
+                {depositCount} {depositCount === 1 ? 'deposit' : 'deposits'}
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="text-sm text-muted-foreground uppercase tracking-wider">Realized P&L</div>
+              <div className={`text-4xl font-mono font-bold ${displayPerformance.totalRealizedPnl >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`} data-testid="text-realized-pnl">
+                {formatCurrency(displayPerformance.totalRealizedPnl)}
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <Percent className="h-3 w-3 text-muted-foreground" />
+                <span className={`font-mono font-semibold ${trueROI >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`} data-testid="text-roi">
+                  ROI: {trueROI >= 0 ? '+' : ''}{trueROI.toFixed(2)}%
+                </span>
               </div>
             </div>
           </div>
