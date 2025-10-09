@@ -484,7 +484,7 @@ export async function syncTransfers(userId: string): Promise<{
     
     // Fetch TRANSFER income from API (all historical data)
     const timestamp = Date.now();
-    const queryParams = `incomeType=TRANSFER&limit=10000&timestamp=${timestamp}`;
+    const queryParams = `incomeType=TRANSFER&timestamp=${timestamp}`;
     
     const signature = createHmac('sha256', secretKey)
       .update(queryParams)
@@ -547,7 +547,7 @@ export async function syncCommissions(userId: string): Promise<{
     
     // Fetch COMMISSION income from API (all historical data)
     const timestamp = Date.now();
-    const queryParams = `incomeType=COMMISSION&limit=10000&timestamp=${timestamp}`;
+    const queryParams = `incomeType=COMMISSION&timestamp=${timestamp}`;
     
     const signature = createHmac('sha256', secretKey)
       .update(queryParams)
@@ -611,7 +611,7 @@ export async function syncFundingFees(userId: string): Promise<{
     
     // Fetch FUNDING_FEE income from API (all historical data)
     const timestamp = Date.now();
-    const queryParams = `incomeType=FUNDING_FEE&limit=10000&timestamp=${timestamp}`;
+    const queryParams = `incomeType=FUNDING_FEE&timestamp=${timestamp}`;
     
     const signature = createHmac('sha256', secretKey)
       .update(queryParams)

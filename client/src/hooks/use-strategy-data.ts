@@ -104,6 +104,12 @@ export function useStrategyData() {
     staleTime: Infinity, // Never refetch - WebSocket provides updates
   });
 
+  // Fetch transfers for chart markers (static historical data)
+  const transfersQuery = useQuery<any[]>({
+    queryKey: ['/api/transfers'],
+    staleTime: 5 * 60 * 1000, // Refresh every 5 minutes
+  });
+
   const snapshot = liveSnapshotQuery.data;
 
   return {
@@ -144,5 +150,9 @@ export function useStrategyData() {
 
     closedPositions: closedPositionsQuery.data,
     closedPositionsLoading: closedPositionsQuery.isLoading,
+
+    // Transfer events for chart markers
+    transfers: transfersQuery.data,
+    transfersLoading: transfersQuery.isLoading,
   };
 }
