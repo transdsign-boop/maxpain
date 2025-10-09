@@ -83,6 +83,7 @@ export default function PerformanceOverview() {
   // Pagination and zoom state for chart
   const [chartEndIndex, setChartEndIndex] = useState<number | null>(null);
   const [tradesPerPage, setTradesPerPage] = useState<number>(50);
+  const [isDateFiltered, setIsDateFiltered] = useState(false);
   
   // Use centralized hook for all strategy-related data (reduces API calls by 10-20x)
   const {
@@ -151,25 +152,43 @@ export default function PerformanceOverview() {
   // Calculate pagination
   const totalTrades = sourceChartData.length;
   
-  // Set initial end index when data loads and update when viewing latest trades
+  // Handle pagination and zoom based on date filter
   useEffect(() => {
-    if (sourceChartData.length > 0) {
-      if (chartEndIndex === null) {
-        // Initial load - show latest trades
+    if (sourceChartData.length === 0) return;
+    
+    const hasFilter = !!(dateRange.start || dateRange.end);
+    setIsDateFiltered(hasFilter);
+    
+    if (hasFilter) {
+      // When date filtered, show all trades in the range (zoom to fit)
+      setChartEndIndex(sourceChartData.length);
+      setTradesPerPage(sourceChartData.length);
+    } else {
+      // When no filter, show last 3 days of trades
+      const threeDaysAgo = Date.now() - (3 * 24 * 60 * 60 * 1000);
+      
+      // Find the index of the first trade within the last 3 days
+      const firstRecentIndex = sourceChartData.findIndex(t => t.timestamp >= threeDaysAgo);
+      
+      if (firstRecentIndex >= 0) {
+        // Show all trades from the first recent trade to the end
+        const recentTradesCount = sourceChartData.length - firstRecentIndex;
         setChartEndIndex(sourceChartData.length);
-      } else if (chartEndIndex === totalTrades && totalTrades < sourceChartData.length) {
-        // User is viewing latest trades and new trades arrived - update to show them
+        setTradesPerPage(recentTradesCount);
+      } else {
+        // No trades in the last 3 days, show last 10 trades as fallback
         setChartEndIndex(sourceChartData.length);
+        setTradesPerPage(Math.min(10, sourceChartData.length));
       }
     }
-  }, [sourceChartData.length, chartEndIndex, totalTrades]);
-
-  // Reset pagination when date filter changes
+  }, [dateRange, sourceChartData.length]);
+  
+  // Update chart when new trades arrive and user is viewing latest
   useEffect(() => {
-    if (sourceChartData.length > 0) {
+    if (sourceChartData.length > 0 && chartEndIndex === totalTrades && totalTrades < sourceChartData.length) {
       setChartEndIndex(sourceChartData.length);
     }
-  }, [dateRange]);
+  }, [sourceChartData.length, chartEndIndex, totalTrades]);
   
   // Clamp end index to prevent out-of-bounds slicing
   const actualEndIndex = Math.min(chartEndIndex ?? totalTrades, totalTrades);
