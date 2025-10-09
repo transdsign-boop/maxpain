@@ -2111,18 +2111,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const totalLosses = Math.abs(losingTrades.reduce((sum, pnl) => sum + pnl, 0));
       const profitFactor = totalLosses > 0 ? totalWins / totalLosses : totalWins > 0 ? 999 : 0;
 
-      // Calculate total fees from fills table (all historical data)
+      // Get total commission fees from exchange API (all historical data)
       let totalFees = 0;
       try {
-        const feeResult = await db.select({
-          totalFees: sql`SUM(CAST(${fills.fee} AS NUMERIC))`.as('total_fees')
-        })
-        .from(fills)
-        .where(eq(fills.sessionId, activeSession.id));
-        
-        totalFees = parseFloat(feeResult[0]?.totalFees || '0');
+        const { getTotalCommissions } = await import('./exchange-sync');
+        const commissionsResult = await getTotalCommissions();
+        if (commissionsResult.success) {
+          totalFees = commissionsResult.total;
+        }
       } catch (error) {
-        console.error('❌ Error calculating total fees from fills:', error);
+        console.error('❌ Error fetching commission fees:', error);
       }
 
       // Get total funding costs from exchange API
