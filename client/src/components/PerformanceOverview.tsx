@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { TrendingUp, TrendingDown, Target, Award, Activity, LineChart, DollarSign, Percent, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Calendar as CalendarIcon, X } from "lucide-react";
+import { TrendingUp, TrendingDown, Target, Award, Activity, LineChart, DollarSign, Percent, Calendar as CalendarIcon, X } from "lucide-react";
 import { ComposedChart, Line, Area, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, ReferenceArea, Label } from "recharts";
 import { format, subDays, startOfDay, endOfDay } from "date-fns";
 import { useStrategyData } from "@/hooks/use-strategy-data";
@@ -159,28 +159,9 @@ export default function PerformanceOverview() {
     const hasFilter = !!(dateRange.start || dateRange.end);
     setIsDateFiltered(hasFilter);
     
-    if (hasFilter) {
-      // When date filtered, show all trades in the range (zoom to fit)
-      setChartEndIndex(sourceChartData.length);
-      setTradesPerPage(sourceChartData.length);
-    } else {
-      // When no filter, show last 3 days of trades
-      const threeDaysAgo = Date.now() - (3 * 24 * 60 * 60 * 1000);
-      
-      // Find the index of the first trade within the last 3 days
-      const firstRecentIndex = sourceChartData.findIndex(t => t.timestamp >= threeDaysAgo);
-      
-      if (firstRecentIndex >= 0) {
-        // Show all trades from the first recent trade to the end
-        const recentTradesCount = sourceChartData.length - firstRecentIndex;
-        setChartEndIndex(sourceChartData.length);
-        setTradesPerPage(recentTradesCount);
-      } else {
-        // No trades in the last 3 days, show last 10 trades as fallback
-        setChartEndIndex(sourceChartData.length);
-        setTradesPerPage(Math.min(10, sourceChartData.length));
-      }
-    }
+    // Always show all trades in the range (zoom to fit)
+    setChartEndIndex(sourceChartData.length);
+    setTradesPerPage(sourceChartData.length);
   }, [dateRange, sourceChartData.length]);
   
   // Update chart when new trades arrive and user is viewing latest
@@ -773,7 +754,7 @@ export default function PerformanceOverview() {
           {/* Date Filter & Chart Controls */}
           <div className="flex items-center justify-between px-4 gap-3 flex-wrap">
             {/* Date Filter Controls */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               {/* Preset Date Filters */}
               <Button
                 variant={!dateRange.start && !dateRange.end ? "default" : "outline"}
@@ -782,6 +763,22 @@ export default function PerformanceOverview() {
                 data-testid="button-filter-all-time"
               >
                 All Time
+              </Button>
+              <Button
+                variant={(dateRange.start && Math.abs(dateRange.start.getTime() - subDays(new Date(), 1).getTime()) < 86400000) ? "default" : "outline"}
+                size="sm"
+                onClick={() => setDateRange({ start: subDays(new Date(), 1), end: new Date() })}
+                data-testid="button-filter-1day"
+              >
+                Last 1 Day
+              </Button>
+              <Button
+                variant={(dateRange.start && Math.abs(dateRange.start.getTime() - subDays(new Date(), 3).getTime()) < 86400000) ? "default" : "outline"}
+                size="sm"
+                onClick={() => setDateRange({ start: subDays(new Date(), 3), end: new Date() })}
+                data-testid="button-filter-3days"
+              >
+                Last 3 Days
               </Button>
               <Button
                 variant={(dateRange.start && Math.abs(dateRange.start.getTime() - subDays(new Date(), 7).getTime()) < 86400000) ? "default" : "outline"}
@@ -855,80 +852,6 @@ export default function PerformanceOverview() {
                   />
                 </Badge>
               )}
-            </div>
-            
-            {/* Pagination Controls */}
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setChartEndIndex(Math.max(tradesPerPage, actualEndIndex - tradesPerPage))}
-                disabled={!canGoBack}
-                data-testid="button-chart-previous"
-              >
-                <ChevronLeft className="h-4 w-4 mr-1" />
-                Prev
-              </Button>
-              
-              <div className="text-xs text-muted-foreground whitespace-nowrap">
-                {tradesPerPage >= totalTrades ? (
-                  `All ${totalTrades} trades`
-                ) : (
-                  `${startIndex + 1}-${actualEndIndex} of ${totalTrades}`
-                )}
-              </div>
-              
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setChartEndIndex(Math.min(totalTrades, actualEndIndex + tradesPerPage))}
-                disabled={!canGoForward}
-                data-testid="button-chart-next"
-              >
-                Next
-                <ChevronRight className="h-4 w-4 ml-1" />
-              </Button>
-            </div>
-
-            {/* Zoom Controls */}
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  const newZoom = Math.min(totalTrades, tradesPerPage * 2);
-                  setTradesPerPage(newZoom);
-                  // Adjust view to keep current position centered
-                  const centerTrade = startIndex + Math.floor((actualEndIndex - startIndex) / 2);
-                  const newEnd = Math.min(totalTrades, centerTrade + Math.floor(newZoom / 2));
-                  setChartEndIndex(newEnd);
-                }}
-                disabled={tradesPerPage >= totalTrades}
-                data-testid="button-chart-zoom-out"
-                title="Zoom out (see more trades)"
-              >
-                <ZoomOut className="h-4 w-4 mr-1" />
-                {tradesPerPage >= totalTrades ? 'All' : `${tradesPerPage}→${Math.min(totalTrades, tradesPerPage * 2)}`}
-              </Button>
-              
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  const newZoom = Math.max(25, Math.floor(tradesPerPage / 2));
-                  setTradesPerPage(newZoom);
-                  // Adjust view to keep current position centered
-                  const centerTrade = startIndex + Math.floor((actualEndIndex - startIndex) / 2);
-                  const newEnd = Math.min(totalTrades, centerTrade + Math.floor(newZoom / 2));
-                  setChartEndIndex(newEnd);
-                }}
-                disabled={tradesPerPage <= 25}
-                data-testid="button-chart-zoom-in"
-                title="Zoom in (see fewer trades)"
-              >
-                <ZoomIn className="h-4 w-4 mr-1" />
-                {tradesPerPage <= 25 ? 'Min' : `${tradesPerPage}→${Math.max(25, Math.floor(tradesPerPage / 2))}`}
-              </Button>
             </div>
           </div>
           
