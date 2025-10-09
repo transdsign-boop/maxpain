@@ -427,13 +427,13 @@ export default function PerformanceOverview() {
   const unrealizedPnl = liveAccount ? (parseFloat(liveAccount.totalUnrealizedProfit) || 0) : 0;
   const totalBalance = liveAccount ? (parseFloat(liveAccount.totalWalletBalance || '0') || 0) + unrealizedPnl : 0;
   
-  // Calculate available balance
-  const leverage = activeStrategy?.leverage || 1;
-  const availableBalance = liveAccount ? (parseFloat(liveAccount.availableBalance) || 0) : 0;
-
   // Calculate margin in use and exposure (live-only mode)
   const marginInUse = liveAccount ? (parseFloat(liveAccount.totalInitialMargin || '0') || 0) : 0;
+  const leverage = activeStrategy?.leverage || 1;
   const totalExposure = marginInUse * leverage;
+  
+  // Calculate available balance for new positions (Total Balance - Margin Already In Use)
+  const availableBalance = totalBalance - marginInUse;
 
   // Calculate percentages
   const unrealizedPnlPercent = totalBalance > 0 ? (unrealizedPnl / totalBalance) * 100 : 0;
