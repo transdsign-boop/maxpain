@@ -70,6 +70,27 @@ interface AssetPerformance {
   totalTrades: number;
 }
 
+// Custom tooltip component for chart (moved outside main component to prevent re-renders)
+const CustomTooltip = ({ active, payload }: any) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    return (
+      <div className="bg-background border border-border rounded-md p-3 shadow-lg">
+        <p className="text-sm font-semibold mb-1">Trade #{data.tradeNumber}</p>
+        <p className="text-xs text-muted-foreground mb-2">{format(new Date(data.timestamp), "MMM d, h:mm a")}</p>
+        <p className="text-xs mb-1"><span className="font-medium">{data.symbol}</span> {data.side}</p>
+        <p className={`text-sm font-mono font-semibold ${data.pnl >= 0 ? 'text-lime-500' : 'text-red-600'}`}>
+          P&L: {data.pnl >= 0 ? '+' : ''}${Math.abs(data.pnl).toFixed(2)}
+        </p>
+        <p className={`text-sm font-mono font-semibold ${data.cumulativePnl >= 0 ? 'text-lime-500' : 'text-red-600'}`}>
+          Cumulative: {data.cumulativePnl >= 0 ? '+' : ''}${Math.abs(data.cumulativePnl).toFixed(2)}
+        </p>
+      </div>
+    );
+  }
+  return null;
+};
+
 export default function PerformanceOverview() {
   // Pagination and zoom state for chart
   const [chartEndIndex, setChartEndIndex] = useState<number | null>(null);
@@ -394,26 +415,6 @@ export default function PerformanceOverview() {
     
     return { totalDeposited, depositCount: deposits.length };
   }, [transfers]);
-
-  const CustomTooltip = ({ active, payload }: any) => {
-    if (active && payload && payload.length) {
-      const data = payload[0].payload;
-      return (
-        <div className="bg-background border border-border rounded-md p-3 shadow-lg">
-          <p className="text-sm font-semibold mb-1">Trade #{data.tradeNumber}</p>
-          <p className="text-xs text-muted-foreground mb-2">{format(new Date(data.timestamp), "MMM d, h:mm a")}</p>
-          <p className="text-xs mb-1"><span className="font-medium">{data.symbol}</span> {data.side}</p>
-          <p className={`text-sm font-mono font-semibold ${data.pnl >= 0 ? 'text-lime-500' : 'text-red-600'}`}>
-            P&L: {data.pnl >= 0 ? '+' : ''}${Math.abs(data.pnl).toFixed(2)}
-          </p>
-          <p className={`text-sm font-mono font-semibold ${data.cumulativePnl >= 0 ? 'text-lime-500' : 'text-red-600'}`}>
-            Cumulative: {data.cumulativePnl >= 0 ? '+' : ''}${Math.abs(data.cumulativePnl).toFixed(2)}
-          </p>
-        </div>
-      );
-    }
-    return null;
-  };
 
   // Calculate unified account metrics (live-only mode)
   const unrealizedPnl = liveAccount ? (parseFloat(liveAccount.totalUnrealizedProfit) || 0) : 0;
