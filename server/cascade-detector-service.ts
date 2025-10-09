@@ -168,8 +168,8 @@ class CascadeDetectorService {
   }
 
   private async tick(): Promise<void> {
-    // Skip if previous tick is still processing (prevents overlapping executions)
-    if (this.isProcessing) {
+    // Skip if service is stopped or previous tick is still processing
+    if (!this.intervalId || this.isProcessing) {
       return;
     }
 
