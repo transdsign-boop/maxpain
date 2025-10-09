@@ -9,9 +9,9 @@ import { strategyEngine } from "./strategy-engine";
 import { cascadeDetectorService } from "./cascade-detector-service";
 import { wsBroadcaster } from "./websocket-broadcaster";
 import { liveDataOrchestrator } from "./live-data-orchestrator";
-import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySchema, updateStrategySchema, type Position, type Liquidation, type InsertFill, positions, strategies, transfers } from "@shared/schema";
+import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySchema, updateStrategySchema, type Position, type Liquidation, type InsertFill, positions, strategies, transfers, fills } from "@shared/schema";
 import { db } from "./db";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 
 // Fixed liquidation window - always 60 seconds regardless of user input
 const LIQUIDATION_WINDOW_SECONDS = 60;
@@ -2090,26 +2090,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const totalLosses = Math.abs(losingTrades.reduce((sum, pnl) => sum + pnl, 0));
       const profitFactor = totalLosses > 0 ? totalWins / totalLosses : totalWins > 0 ? 999 : 0;
 
-      // Get total fees and funding costs (just the totals, not individual records)
+      // Calculate total fees from fills table (all historical data)
       let totalFees = 0;
-      let totalFundingCost = 0;
-      
       try {
-        const { getTotalCommissions, getTotalFundingFees } = await import('./exchange-sync');
+        const feeResult = await db.select({
+          totalFees: sql`SUM(CAST(${fills.fee} AS NUMERIC))`.as('total_fees')
+        })
+        .from(fills)
+        .where(eq(fills.sessionId, activeSession.id));
         
-        // Get total commissions
-        const commissionResult = await getTotalCommissions();
-        if (commissionResult.success) {
-          totalFees = commissionResult.total;
-        }
-        
-        // Get total funding fees
+        totalFees = parseFloat(feeResult[0]?.totalFees || '0');
+      } catch (error) {
+        console.error('❌ Error calculating total fees from fills:', error);
+      }
+
+      // Get total funding costs from exchange API
+      let totalFundingCost = 0;
+      try {
+        const { getTotalFundingFees } = await import('./exchange-sync');
         const fundingResult = await getTotalFundingFees();
         if (fundingResult.success) {
           totalFundingCost = fundingResult.total;
         }
       } catch (error) {
-        console.error('❌ Error fetching fee totals:', error);
+        console.error('❌ Error fetching funding fees:', error);
       }
 
       // Calculate average trade time from closed positions (in milliseconds)
