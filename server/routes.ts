@@ -507,6 +507,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "symbols array required" });
       }
 
+      // Create cache key from sorted symbols list (order-independent)
+      const sortedSymbols = [...symbols].sort().join(',');
+      const cacheKey = `liquidity_batch:${sortedSymbols}`;
+      
+      // Check cache first (15 second TTL to prevent rate limiting)
+      const cached = getCached<any[]>(cacheKey, 15000);
+      if (cached) {
+        console.log(`✅ Cache hit for liquidity batch (${symbols.length} symbols)`);
+        return res.json(cached);
+      }
+
+      console.log(`🔄 Cache miss, fetching liquidity for ${symbols.length} symbols from exchange`);
+
       const liquidityData = await Promise.all(
         symbols.map(async (symbol) => {
           try {
@@ -652,6 +665,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         })
       );
+
+      // Cache the result for 15 seconds to prevent rate limiting
+      setCache(cacheKey, liquidityData);
+      console.log(`✅ Cached liquidity batch for ${symbols.length} symbols (15s TTL)`);
 
       res.json(liquidityData);
     } catch (error) {
