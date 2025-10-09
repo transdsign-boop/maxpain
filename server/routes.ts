@@ -2092,15 +2092,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const openPositions = allPositions.filter(p => p.isOpen === true);
       const closedPositions = allPositions.filter(p => p.isOpen === false);
       
-      // CRITICAL: realizedPnl is ALREADY in DOLLARS (not percentage!)
+      // Get OFFICIAL realized P&L from exchange income API (not calculated from trades)
+      // IMPORTANT: Only fetch P&L from trades made by the bot (from first position timestamp)
+      let totalRealizedPnl = 0;
+      try {
+        // Find the timestamp of the first position to use as startTime
+        const firstPosition = allPositions.length > 0 
+          ? allPositions.sort((a, b) => new Date(a.entryTime).getTime() - new Date(b.entryTime).getTime())[0]
+          : null;
+        
+        const startTime = firstPosition ? new Date(firstPosition.entryTime).getTime() : undefined;
+        
+        if (startTime) {
+          console.log(`📊 Fetching official realized P&L from exchange (since ${new Date(startTime).toISOString()})...`);
+          const { fetchRealizedPnl } = await import('./exchange-sync');
+          const pnlResult = await fetchRealizedPnl({ startTime });
+          console.log(`📊 Realized P&L result: ${JSON.stringify(pnlResult)}`);
+          if (pnlResult.success) {
+            totalRealizedPnl = pnlResult.total;
+            console.log(`✅ Using official exchange P&L: $${totalRealizedPnl.toFixed(2)}`);
+          } else {
+            console.error(`❌ Failed to fetch realized P&L: ${pnlResult.error}`);
+          }
+        } else {
+          console.log('⚠️ No positions found, P&L will be 0');
+        }
+      } catch (error) {
+        console.error('❌ Error fetching realized P&L from exchange:', error);
+      }
+      
+      // For win/loss statistics, still use position-level P&L
       const closedPnlDollars = closedPositions.map(p => {
         return parseFloat(p.realizedPnl || '0');
       });
       
       const winningTrades = closedPnlDollars.filter(pnl => pnl > 0);
       const losingTrades = closedPnlDollars.filter(pnl => pnl < 0);
-      
-      const totalRealizedPnl = closedPnlDollars.reduce((sum, pnl) => sum + pnl, 0);
       
       // Convert unrealized P&L percentages to dollar amounts for open positions
       // CRITICAL: totalCost stores MARGIN, multiply by leverage to get notional value
