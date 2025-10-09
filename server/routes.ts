@@ -511,8 +511,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const sortedSymbols = [...symbols].sort().join(',');
       const cacheKey = `liquidity_batch:${sortedSymbols}`;
       
-      // Check cache first (15 second TTL to prevent rate limiting)
-      const cached = getCached<any[]>(cacheKey, 15000);
+      // Check cache first (20 second TTL to prevent rate limiting)
+      const cached = getCached<any[]>(cacheKey, 20000);
       if (cached) {
         console.log(`✅ Cache hit for liquidity batch (${symbols.length} symbols)`);
         return res.json(cached);
@@ -666,9 +666,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         })
       );
 
-      // Cache the result for 15 seconds to prevent rate limiting
+      // Cache the result for 20 seconds to prevent rate limiting
       setCache(cacheKey, liquidityData);
-      console.log(`✅ Cached liquidity batch for ${symbols.length} symbols (15s TTL)`);
+      console.log(`✅ Cached liquidity batch for ${symbols.length} symbols (20s TTL)`);
 
       res.json(liquidityData);
     } catch (error) {
