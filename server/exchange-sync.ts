@@ -328,8 +328,9 @@ export async function syncCompletedTrades(sessionId: string): Promise<{
       return { success: false, addedCount: 0, error: 'Session not found' };
     }
     
-    // Fetch trades from when the session started
-    const startTime = new Date(session.startedAt).getTime();
+    // Fetch ALL historical trades from exchange (starting from Jan 1, 2024)
+    // This ensures we capture all trades, even those before the session started
+    const startTime = new Date('2024-01-01').getTime(); // Fetch from beginning of 2024
     const endTime = session.endedAt ? new Date(session.endedAt).getTime() : Date.now();
     
     const result = await fetchAccountTrades({
