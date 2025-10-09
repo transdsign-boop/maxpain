@@ -541,6 +541,7 @@ export async function syncTransfers(userId: string): Promise<{
 }
 
 // Get total commission fees (just the sum, no individual records)
+// Implements pagination to fetch ALL historical data
 export async function getTotalCommissions(): Promise<{
   success: boolean;
   total: number;
@@ -554,29 +555,51 @@ export async function getTotalCommissions(): Promise<{
       return { success: false, total: 0, error: 'API keys not configured' };
     }
     
-    const timestamp = Date.now();
-    const queryParams = `incomeType=COMMISSION&timestamp=${timestamp}`;
+    let allRecords: any[] = [];
+    let currentEndTime = Date.now();
+    const limit = 1000; // Max limit per request
     
-    const signature = createHmac('sha256', secretKey)
-      .update(queryParams)
-      .digest('hex');
+    // Paginate backwards from now to beginning of time
+    while (true) {
+      const timestamp = Date.now();
+      const queryParams = `incomeType=COMMISSION&startTime=0&endTime=${currentEndTime}&limit=${limit}&timestamp=${timestamp}`;
+      
+      const signature = createHmac('sha256', secretKey)
+        .update(queryParams)
+        .digest('hex');
 
-    const response = await fetch(
-      `https://fapi.asterdex.com/fapi/v1/income?${queryParams}&signature=${signature}`,
-      {
-        headers: {
-          'X-MBX-APIKEY': apiKey,
-        },
+      const response = await fetch(
+        `https://fapi.asterdex.com/fapi/v1/income?${queryParams}&signature=${signature}`,
+        {
+          headers: {
+            'X-MBX-APIKEY': apiKey,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return { success: false, total: 0, error: `HTTP ${response.status}: ${errorText}` };
       }
-    );
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      return { success: false, total: 0, error: `HTTP ${response.status}: ${errorText}` };
+      const batch = await response.json();
+      
+      if (batch.length === 0) {
+        break; // No more records
+      }
+      
+      allRecords.push(...batch);
+      
+      // If we got fewer records than the limit, we've reached the end
+      if (batch.length < limit) {
+        break;
+      }
+      
+      // Move endTime to the oldest record's timestamp minus 1ms for next batch
+      currentEndTime = batch[batch.length - 1].time - 1;
     }
 
-    const commissionData = await response.json();
-    const total = commissionData.reduce((sum: number, item: any) => sum + Math.abs(parseFloat(item.income || '0')), 0);
+    const total = allRecords.reduce((sum: number, item: any) => sum + Math.abs(parseFloat(item.income || '0')), 0);
     
     return { success: true, total };
   } catch (error) {
@@ -585,6 +608,7 @@ export async function getTotalCommissions(): Promise<{
 }
 
 // Get total funding fees (just the sum, no individual records)
+// Implements pagination to fetch ALL historical data
 export async function getTotalFundingFees(): Promise<{
   success: boolean;
   total: number;
@@ -598,29 +622,51 @@ export async function getTotalFundingFees(): Promise<{
       return { success: false, total: 0, error: 'API keys not configured' };
     }
     
-    const timestamp = Date.now();
-    const queryParams = `incomeType=FUNDING_FEE&timestamp=${timestamp}`;
+    let allRecords: any[] = [];
+    let currentEndTime = Date.now();
+    const limit = 1000; // Max limit per request
     
-    const signature = createHmac('sha256', secretKey)
-      .update(queryParams)
-      .digest('hex');
+    // Paginate backwards from now to beginning of time
+    while (true) {
+      const timestamp = Date.now();
+      const queryParams = `incomeType=FUNDING_FEE&startTime=0&endTime=${currentEndTime}&limit=${limit}&timestamp=${timestamp}`;
+      
+      const signature = createHmac('sha256', secretKey)
+        .update(queryParams)
+        .digest('hex');
 
-    const response = await fetch(
-      `https://fapi.asterdex.com/fapi/v1/income?${queryParams}&signature=${signature}`,
-      {
-        headers: {
-          'X-MBX-APIKEY': apiKey,
-        },
+      const response = await fetch(
+        `https://fapi.asterdex.com/fapi/v1/income?${queryParams}&signature=${signature}`,
+        {
+          headers: {
+            'X-MBX-APIKEY': apiKey,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return { success: false, total: 0, error: `HTTP ${response.status}: ${errorText}` };
       }
-    );
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      return { success: false, total: 0, error: `HTTP ${response.status}: ${errorText}` };
+      const batch = await response.json();
+      
+      if (batch.length === 0) {
+        break; // No more records
+      }
+      
+      allRecords.push(...batch);
+      
+      // If we got fewer records than the limit, we've reached the end
+      if (batch.length < limit) {
+        break;
+      }
+      
+      // Move endTime to the oldest record's timestamp minus 1ms for next batch
+      currentEndTime = batch[batch.length - 1].time - 1;
     }
 
-    const fundingData = await response.json();
-    const total = fundingData.reduce((sum: number, item: any) => sum + parseFloat(item.income || '0'), 0);
+    const total = allRecords.reduce((sum: number, item: any) => sum + parseFloat(item.income || '0'), 0);
     
     return { success: true, total };
   } catch (error) {
