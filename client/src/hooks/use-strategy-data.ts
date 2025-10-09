@@ -23,26 +23,38 @@ export function useStrategyData() {
   const strategies = strategiesQuery.data;
   const activeStrategy = strategies?.find(s => s.isActive);
 
-  // Live account data - NO HTTP fetching, populated by WebSocket only
+  // Live account data - Fetch once, then rely on WebSocket updates
   const liveAccountQuery = useQuery<any>({
     queryKey: ['/api/live/account'],
-    queryFn: () => {
-      throw new Error('This query should only be populated by WebSocket events');
+    queryFn: async () => {
+      // Fallback HTTP fetch if WebSocket hasn't populated the cache yet
+      const response = await fetch('/api/live/snapshot');
+      if (!response.ok) return null;
+      const data = await response.json();
+      return data?.snapshot?.account || null;
     },
     staleTime: Infinity,
     gcTime: Infinity,
-    retry: false,
+    retry: 1,
+    refetchOnMount: false, // Only fetch on initial mount
+    refetchOnWindowFocus: false, // WebSocket handles updates
   });
 
-  // Live positions data - NO HTTP fetching, populated by WebSocket only
+  // Live positions data - Fetch once, then rely on WebSocket updates
   const livePositionsQuery = useQuery<any[]>({
     queryKey: ['/api/live/positions'],
-    queryFn: () => {
-      throw new Error('This query should only be populated by WebSocket events');
+    queryFn: async () => {
+      // Fallback HTTP fetch if WebSocket hasn't populated the cache yet
+      const response = await fetch('/api/live/snapshot');
+      if (!response.ok) return [];
+      const data = await response.json();
+      return data?.snapshot?.positions || [];
     },
     staleTime: Infinity,
     gcTime: Infinity,
-    retry: false,
+    retry: 1,
+    refetchOnMount: false, // Only fetch on initial mount
+    refetchOnWindowFocus: false, // WebSocket handles updates
   });
 
   // Construct snapshot from individual queries (orchestrator disabled to avoid rate limits)
