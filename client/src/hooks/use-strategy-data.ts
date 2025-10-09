@@ -141,18 +141,23 @@ export function useStrategyData() {
     // Performance data
     performance: performanceQuery.data,
     performanceLoading: performanceQuery.isLoading,
+    performanceError: performanceQuery.error,
 
     chartData: chartDataQuery.data,
     chartDataLoading: chartDataQuery.isLoading,
+    chartDataError: chartDataQuery.error,
 
     assetPerformance: assetPerformanceQuery.data,
     assetPerformanceLoading: assetPerformanceQuery.isLoading,
+    assetPerformanceError: assetPerformanceQuery.error,
 
     closedPositions: closedPositionsQuery.data,
     closedPositionsLoading: closedPositionsQuery.isLoading,
+    closedPositionsError: closedPositionsQuery.error,
 
     // Transfer events for chart markers
     transfers: transfersQuery.data,
     transfersLoading: transfersQuery.isLoading,
+    transfersError: transfersQuery.error,
   };
 }
