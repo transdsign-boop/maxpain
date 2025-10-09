@@ -82,13 +82,43 @@ export default function PerformanceOverview() {
     liveAccountLoading,
     performance,
     performanceLoading: isLoading,
+    performanceError,
     chartData: rawChartData,
     chartDataLoading: chartLoading,
+    chartDataError,
     assetPerformance,
     livePositions,
     strategyChanges,
     transfers,
   } = useStrategyData();
+
+  // Show error state if critical data failed to load
+  if (performanceError || chartDataError) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+            Account Performance
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <div className="text-red-500 mb-4">⚠️ Failed to load performance data</div>
+            <p className="text-sm text-muted-foreground mb-4">
+              {performanceError ? "Performance metrics unavailable" : "Chart data unavailable"}
+            </p>
+            <Button 
+              onClick={() => window.location.reload()} 
+              variant="outline"
+              size="sm"
+            >
+              Reload Page
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   // Calculate top 3 performing assets by total P&L (only from closed positions)
   const top3Assets = useMemo(() => {
