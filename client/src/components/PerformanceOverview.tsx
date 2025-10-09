@@ -9,7 +9,7 @@ import { TrendingUp, TrendingDown, Target, Award, Activity, LineChart, DollarSig
 import { ComposedChart, Line, Area, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, ReferenceArea, Label } from "recharts";
 import { format, subDays, startOfDay, endOfDay } from "date-fns";
 import { useStrategyData } from "@/hooks/use-strategy-data";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
 interface PerformanceMetrics {
@@ -100,9 +100,49 @@ export default function PerformanceOverview() {
     livePositions,
     strategyChanges,
     transfers,
-    commissions,
-    fundingFees,
   } = useStrategyData();
+
+  // Fetch commissions and funding fees with date range filtering
+  const commissionsQuery = useQuery<{ records: any[]; total: number }>({
+    queryKey: ['/api/commissions', dateRange.start?.getTime(), dateRange.end?.getTime()],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (dateRange.start) {
+        params.append('startTime', startOfDay(dateRange.start).getTime().toString());
+      }
+      if (dateRange.end) {
+        params.append('endTime', endOfDay(dateRange.end).getTime().toString());
+      }
+      const queryString = params.toString();
+      const url = `/api/commissions${queryString ? `?${queryString}` : ''}`;
+      const response = await fetch(url);
+      if (!response.ok) throw new Error('Failed to fetch commissions');
+      return response.json();
+    },
+    staleTime: 30 * 1000, // 30 seconds
+  });
+
+  const fundingFeesQuery = useQuery<{ records: any[]; total: number }>({
+    queryKey: ['/api/funding-fees', dateRange.start?.getTime(), dateRange.end?.getTime()],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (dateRange.start) {
+        params.append('startTime', startOfDay(dateRange.start).getTime().toString());
+      }
+      if (dateRange.end) {
+        params.append('endTime', endOfDay(dateRange.end).getTime().toString());
+      }
+      const queryString = params.toString();
+      const url = `/api/funding-fees${queryString ? `?${queryString}` : ''}`;
+      const response = await fetch(url);
+      if (!response.ok) throw new Error('Failed to fetch funding fees');
+      return response.json();
+    },
+    staleTime: 30 * 1000, // 30 seconds
+  });
+
+  const commissions = commissionsQuery.data;
+  const fundingFees = fundingFeesQuery.data;
 
   // Calculate top 3 performing assets by total P&L (only from closed positions)
   const top3Assets = useMemo(() => {
@@ -382,27 +422,14 @@ export default function PerformanceOverview() {
       maxDrawdownPercent: 0,
     };
 
-    // Calculate date range boundaries (All Time if no filter)
-    const startTimestamp = dateRange.start ? startOfDay(dateRange.start).getTime() : 0;
-    const endTimestamp = dateRange.end ? endOfDay(dateRange.end).getTime() : Date.now();
-
-    // Filter and sum commissions by date range (from exchange API records)
+    // Sum commissions and funding fees (already filtered by date range from API)
     const commissionRecords = commissions?.records || [];
-    const filteredCommissions = commissionRecords.filter((c: any) => {
-      const timestamp = c.time; // Exchange API uses 'time' field in milliseconds
-      return timestamp >= startTimestamp && timestamp <= endTimestamp;
-    });
-    const totalCommissions = filteredCommissions.reduce((sum: number, c: any) => 
+    const totalCommissions = commissionRecords.reduce((sum: number, c: any) => 
       sum + Math.abs(parseFloat(c.income || '0')), 0
     );
 
-    // Filter and sum funding fees by date range (from exchange API records)
     const fundingFeeRecords = fundingFees?.records || [];
-    const filteredFundingFees = fundingFeeRecords.filter((f: any) => {
-      const timestamp = f.time; // Exchange API uses 'time' field in milliseconds
-      return timestamp >= startTimestamp && timestamp <= endTimestamp;
-    });
-    const totalFundingFees = filteredFundingFees.reduce((sum: number, f: any) => 
+    const totalFundingFees = fundingFeeRecords.reduce((sum: number, f: any) => 
       sum + parseFloat(f.income || '0'), 0
     );
 
