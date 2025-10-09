@@ -90,6 +90,13 @@ export async function fetchAccountTrades(params: {
     const trades = await response.json();
     console.log(`✅ Fetched ${trades.length} account trades from exchange`);
     
+    // Log sample trade for debugging
+    if (trades.length > 0) {
+      console.log('📋 Sample trade:', JSON.stringify(trades[0], null, 2));
+    } else {
+      console.log('⚠️ No trades returned from exchange API');
+    }
+    
     return { success: true, trades };
   } catch (error) {
     console.error('❌ Error fetching account trades:', error);
@@ -328,20 +335,38 @@ export async function syncCompletedTrades(sessionId: string): Promise<{
       return { success: false, addedCount: 0, error: 'Session not found' };
     }
     
-    // Fetch ALL historical trades from exchange (starting from Jan 1, 2024)
-    // This ensures we capture all trades, even those before the session started
-    const startTime = new Date('2024-01-01').getTime(); // Fetch from beginning of 2024
+    // Fetch ALL historical trades from exchange (starting from Oct 2, 2025)
+    // Exchange API has 7-day max interval, so we need to fetch in chunks
+    const startTime = new Date('2025-10-02').getTime(); // First transfer date
     const endTime = session.endedAt ? new Date(session.endedAt).getTime() : Date.now();
     
-    const result = await fetchAccountTrades({
-      startTime,
-      endTime,
-      limit: 1000,
-    });
+    console.log(`🔄 Fetching trades from ${new Date(startTime).toISOString()} to ${new Date(endTime).toISOString()}`);
     
-    if (!result.success || !result.trades) {
-      return { success: false, addedCount: 0, error: result.error };
+    // Fetch in 7-day chunks due to API limitation
+    const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
+    let allTrades: any[] = [];
+    let currentStart = startTime;
+    
+    while (currentStart < endTime) {
+      const currentEnd = Math.min(currentStart + SEVEN_DAYS, endTime);
+      
+      console.log(`📥 Fetching chunk: ${new Date(currentStart).toISOString()} to ${new Date(currentEnd).toISOString()}`);
+      
+      const result = await fetchAccountTrades({
+        startTime: currentStart,
+        endTime: currentEnd,
+        limit: 1000,
+      });
+      
+      if (!result.success || !result.trades) {
+        return { success: false, addedCount: 0, error: result.error };
+      }
+      
+      allTrades = allTrades.concat(result.trades);
+      currentStart = currentEnd + 1; // Move to next chunk (add 1ms to avoid overlap)
     }
+    
+    console.log(`✅ Fetched ${allTrades.length} total trades across all chunks`);
     
     // Use ALL trades (including entry trades with realizedPnl = 0)
     console.log(`📊 Processing ${result.trades.length} total trades from exchange`);
