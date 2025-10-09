@@ -61,11 +61,13 @@ export default function CascadeRiskIndicator() {
     const avgRQ = statuses.reduce((sum, s) => sum + s.reversal_quality, 0) / statuses.length;
     const avgMedianLiq = statuses.reduce((sum, s) => sum + s.medianLiq, 0) / statuses.length;
 
-    // Determine worst light (highest risk)
-    const lightPriority = { green: 0, yellow: 1, orange: 2, red: 3 };
-    const worstLight = statuses.reduce((worst, s) => 
-      lightPriority[s.light] > lightPriority[worst] ? s.light : worst
-    , 'green' as 'green' | 'yellow' | 'orange' | 'red');
+    // Calculate aggregated light based on average score (consistent with displayed score)
+    const roundedScore = Math.round(avgScore);
+    let aggregatedLight: 'green' | 'yellow' | 'orange' | 'red';
+    if (roundedScore === 0) aggregatedLight = 'green';
+    else if (roundedScore <= 2) aggregatedLight = 'yellow';
+    else if (roundedScore <= 4) aggregatedLight = 'orange';
+    else aggregatedLight = 'red';
 
     // Auto-block if ANY asset is blocked
     const anyAutoBlock = statuses.some(s => s.autoBlock);
@@ -97,7 +99,7 @@ export default function CascadeRiskIndicator() {
       LQ: avgLQ,
       RET: avgRET,
       OI: avgOI,
-      light: worstLight,
+      light: aggregatedLight,
       autoBlock: anyAutoBlock,
       autoEnabled: statuses[0]?.autoEnabled ?? true,
       medianLiq: avgMedianLiq,
