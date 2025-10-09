@@ -3013,11 +3013,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Connect WebSocket broadcaster for real-time event broadcasting
   wsBroadcaster.setClients(clients);
   
-  // Initialize cascade detector service - DISABLED to prevent API rate limiting
-  // Aster DEX has no WebSocket for price/OI data, forcing us to poll APIs
-  // Even with batching, 26+ symbols = 27 API calls/sec = rate limit ban
-  // cascadeDetectorService.setClients(clients);
-  // await cascadeDetectorService.start();
+  // Initialize cascade detector service with ULTRA-MINIMAL POLLING
+  // ⚠️ Uses rotating OI fetch + batch prices = ~24 API calls/min (vs 1,620/min before)
+  // DO NOT change polling config without user permission!
+  cascadeDetectorService.setClients(clients);
+  await cascadeDetectorService.start();
   
   // Connect to Aster DEX WebSocket and relay data
   connectToAsterDEX(clients);
