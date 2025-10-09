@@ -101,6 +101,12 @@ Preferred communication style: Simple, everyday language.
   - Completely eliminates API polling to prevent rate limit bans (user-demanded requirement)
   - **Data Flow**: Aster DEX WebSocket → user-data-stream.ts → liveDataOrchestrator.updateAccountFromWebSocket() / updatePositionsFromWebSocket() → WebSocket broadcast → Frontend
 - **Dynamic Cascade Detection**: Cascade detector automatically monitors all user-selected assets from Global Settings. Syncs on startup, strategy registration, and when selectedAssets changes. Automatically clears detectors when strategy is inactive or no assets selected, ensuring real-time monitoring always reflects current configuration.
+- **Cascade Detector Data Sources**: Uses batch API fetching for maximum efficiency:
+  - **Liquidations**: Real-time WebSocket stream (`!forceOrder@arr`) - unchanged
+  - **Prices**: Batch fetch via `/fapi/v1/ticker/price` (single API call for all symbols)
+  - **Open Interest**: Parallel fetch for tracked symbols using Promise.all
+  - **Efficiency**: Reduced from ~38 API calls/sec to ~2 calls/sec (1 price batch + N OI calls in parallel)
+  - **Architecture**: Eliminated WebSocket approach for price/OI (streams don't exist on Aster DEX) in favor of reliable batch API polling at 1-second intervals
 
 ### Security & Performance
 - End-to-end TypeScript for type safety.
