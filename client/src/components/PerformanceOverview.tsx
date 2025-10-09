@@ -775,35 +775,34 @@ export default function PerformanceOverview() {
                   return null;
                 })}
 
-                {/* Vertical markers for transfer events (deposits) */}
-                {transfers?.map((transfer) => {
+                {/* Vertical markers for transfer events (deposits only) */}
+                {transfers?.filter(t => parseFloat(t.amount || '0') > 0).map((transfer) => {
+                  if (!chartData || chartData.length === 0) return null;
+                  
                   const transferTime = new Date(transfer.timestamp).getTime();
                   let tradeIndex = chartData.findIndex(trade => trade.timestamp >= transferTime);
                   
-                  if (tradeIndex === -1 && chartData.length > 0) {
+                  if (tradeIndex === -1) {
                     tradeIndex = chartData.length - 1;
                   }
                   
-                  if (tradeIndex >= 0) {
-                    const amount = parseFloat(transfer.amount || '0');
-                    return (
-                      <ReferenceLine
-                        key={transfer.id}
-                        x={chartData[tradeIndex].tradeNumber}
-                        yAxisId="left"
-                        stroke="rgb(34, 197, 94)"
-                        strokeWidth={2}
-                        label={{
-                          value: `+$${amount.toFixed(2)}`,
-                          position: 'top',
-                          fill: 'rgb(34, 197, 94)',
-                          fontSize: 11,
-                          fontWeight: 600,
-                        }}
-                      />
-                    );
-                  }
-                  return null;
+                  const amount = parseFloat(transfer.amount || '0');
+                  return (
+                    <ReferenceLine
+                      key={transfer.id}
+                      x={chartData[tradeIndex].tradeNumber}
+                      yAxisId="left"
+                      stroke="rgb(34, 197, 94)"
+                      strokeWidth={2}
+                      label={{
+                        value: `+$${amount.toFixed(2)}`,
+                        position: 'top',
+                        fill: 'rgb(34, 197, 94)',
+                        fontSize: 11,
+                        fontWeight: 600,
+                      }}
+                    />
+                  );
                 })}
                 <defs>
                   <linearGradient id="positivePnlGradient" x1="0" y1="0" x2="0" y2="1">
