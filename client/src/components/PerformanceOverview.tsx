@@ -382,20 +382,10 @@ export default function PerformanceOverview() {
       maxDrawdownPercent: 0,
     };
 
-    // If no date filter, return base performance
-    if (!dateRange.start && !dateRange.end) return basePerformance;
-
-    // Calculate date range boundaries
+    // Calculate date range boundaries (All Time if no filter)
     const startTimestamp = dateRange.start ? startOfDay(dateRange.start).getTime() : 0;
     const endTimestamp = dateRange.end ? endOfDay(dateRange.end).getTime() : Date.now();
 
-    // Recalculate metrics from filtered chart data
-    const filteredTrades = sourceChartData;
-    const winningTrades = filteredTrades.filter(t => t.pnl > 0);
-    const losingTrades = filteredTrades.filter(t => t.pnl < 0);
-    const totalWins = winningTrades.reduce((sum, t) => sum + t.pnl, 0);
-    const totalLosses = Math.abs(losingTrades.reduce((sum, t) => sum + t.pnl, 0));
-    
     // Filter and sum commissions by date range (from exchange API records)
     const commissionRecords = commissions?.records || [];
     const filteredCommissions = commissionRecords.filter((c: any) => {
@@ -415,6 +405,22 @@ export default function PerformanceOverview() {
     const totalFundingFees = filteredFundingFees.reduce((sum: number, f: any) => 
       sum + parseFloat(f.income || '0'), 0
     );
+
+    // If no date filter, return base performance with calculated fees
+    if (!dateRange.start && !dateRange.end) {
+      return {
+        ...basePerformance,
+        totalFees: totalCommissions,
+        fundingCost: totalFundingFees,
+      };
+    }
+
+    // Recalculate metrics from filtered chart data
+    const filteredTrades = sourceChartData;
+    const winningTrades = filteredTrades.filter(t => t.pnl > 0);
+    const losingTrades = filteredTrades.filter(t => t.pnl < 0);
+    const totalWins = winningTrades.reduce((sum, t) => sum + t.pnl, 0);
+    const totalLosses = Math.abs(losingTrades.reduce((sum, t) => sum + t.pnl, 0));
     
     return {
       ...basePerformance,
