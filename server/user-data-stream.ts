@@ -146,10 +146,8 @@ class UserDataStreamManager {
         
         // Construct base URL for server-to-server communication
         // Use environment variable or default to localhost for development
-        const isDeployed = process.env.REPLIT_DEPLOYMENT === '1';
-        const deployedDomain = process.env.REPLIT_DOMAINS?.split(',')[0];
-        const baseUrl = isDeployed && deployedDomain
-          ? `https://${deployedDomain}`
+        const baseUrl = process.env.REPLIT_DEPLOYMENT_URL 
+          ? `https://${process.env.REPLIT_DEPLOYMENT_URL}`
           : 'http://localhost:5000';
         
         // Fetch account balance via backend
@@ -299,11 +297,9 @@ class UserDataStreamManager {
           positionSide: p.ps,
         }));
 
-        // Update orchestrator cache from WebSocket (filter to non-zero positions)
+        // Update orchestrator cache from WebSocket
         if (activeStrategy) {
-          const nonZeroPositions = positions.filter((p: any) => parseFloat(p.positionAmt) !== 0);
-          console.log(`[WS] Filtered positions: ${positions.length} total → ${nonZeroPositions.length} non-zero`);
-          liveDataOrchestrator.updatePositionsFromWebSocket(activeStrategy.id, nonZeroPositions);
+          liveDataOrchestrator.updatePositionsFromWebSocket(activeStrategy.id, positions);
         }
 
         // Broadcast position update
