@@ -374,7 +374,7 @@ export default function PerformanceOverview() {
   const updateRiskMutation = useMutation({
     mutationFn: async (newRisk: number) => {
       if (!activeStrategy) return;
-      const response = await apiRequest('POST', `/api/strategies/${activeStrategy.id}`, {
+      const response = await apiRequest('PUT', `/api/strategies/${activeStrategy.id}`, {
         maxPortfolioRiskPercent: newRisk.toFixed(2)
       });
       return await response.json();
