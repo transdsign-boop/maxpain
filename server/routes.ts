@@ -9,7 +9,7 @@ import { strategyEngine } from "./strategy-engine";
 import { cascadeDetectorService } from "./cascade-detector-service";
 import { wsBroadcaster } from "./websocket-broadcaster";
 import { liveDataOrchestrator } from "./live-data-orchestrator";
-import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySchema, updateStrategySchema, type Position, type Liquidation, type InsertFill, positions, strategies, transfers, fills } from "@shared/schema";
+import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySchema, updateStrategySchema, type Position, type Liquidation, type InsertFill, positions, strategies, transfers, fills, fundingFees } from "@shared/schema";
 import { db } from "./db";
 import { desc, eq, sql } from "drizzle-orm";
 
@@ -1143,6 +1143,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error('❌ Error fetching transfers:', error);
       res.status(500).json({ error: `Failed to fetch transfers: ${error.message}` });
+    }
+  });
+
+  // Get funding fees count and data
+  app.get("/api/funding-fees", async (req, res) => {
+    try {
+      const userFundingFees = await db.query.fundingFees.findMany({
+        where: eq(fundingFees.userId, DEFAULT_USER_ID),
+        orderBy: (fundingFees, { desc }) => [desc(fundingFees.timestamp)],
+      });
+      
+      const totalAmount = userFundingFees.reduce((sum, fee) => sum + parseFloat(fee.amount), 0);
+      
+      res.json({
+        count: userFundingFees.length,
+        totalAmount: totalAmount.toFixed(2),
+        fees: userFundingFees,
+      });
+    } catch (error: any) {
+      console.error('❌ Error fetching funding fees:', error);
+      res.status(500).json({ error: `Failed to fetch funding fees: ${error.message}` });
     }
   });
 
