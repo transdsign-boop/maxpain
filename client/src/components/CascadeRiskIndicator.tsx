@@ -29,24 +29,88 @@ export default function CascadeRiskIndicator() {
   const [statuses, setStatuses] = useState<CascadeStatus[]>([]);
   const { toast } = useToast();
 
-  // Use the first status as the primary display (or could aggregate later)
-  const status = statuses[0] || {
-    symbol: 'N/A',
-    score: 0,
-    LQ: 0,
-    RET: 0,
-    OI: 0,
-    light: 'green' as const,
-    autoBlock: false,
-    autoEnabled: true,
-    medianLiq: 0,
-    dOI_1m: 0,
-    dOI_3m: 0,
-    reversal_quality: 0,
-    rq_bucket: 'poor' as const,
-    volatility_regime: 'low' as const,
-    rq_threshold_adjusted: 1
+  // Aggregate metrics across all assets for overall market view
+  const getAggregatedStatus = (): CascadeStatus => {
+    if (statuses.length === 0) {
+      return {
+        symbol: 'ALL',
+        score: 0,
+        LQ: 0,
+        RET: 0,
+        OI: 0,
+        light: 'green' as const,
+        autoBlock: false,
+        autoEnabled: true,
+        medianLiq: 0,
+        dOI_1m: 0,
+        dOI_3m: 0,
+        reversal_quality: 0,
+        rq_bucket: 'poor' as const,
+        volatility_regime: 'low' as const,
+        rq_threshold_adjusted: 1
+      };
+    }
+
+    // Calculate averages
+    const avgScore = statuses.reduce((sum, s) => sum + s.score, 0) / statuses.length;
+    const avgLQ = statuses.reduce((sum, s) => sum + s.LQ, 0) / statuses.length;
+    const avgRET = statuses.reduce((sum, s) => sum + s.RET, 0) / statuses.length;
+    const avgOI = statuses.reduce((sum, s) => sum + s.OI, 0) / statuses.length;
+    const avgDOI1m = statuses.reduce((sum, s) => sum + s.dOI_1m, 0) / statuses.length;
+    const avgDOI3m = statuses.reduce((sum, s) => sum + s.dOI_3m, 0) / statuses.length;
+    const avgRQ = statuses.reduce((sum, s) => sum + s.reversal_quality, 0) / statuses.length;
+    const avgMedianLiq = statuses.reduce((sum, s) => sum + s.medianLiq, 0) / statuses.length;
+
+    // Determine worst light (highest risk)
+    const lightPriority = { green: 0, yellow: 1, orange: 2, red: 3 };
+    const worstLight = statuses.reduce((worst, s) => 
+      lightPriority[s.light] > lightPriority[worst] ? s.light : worst
+    , 'green' as 'green' | 'yellow' | 'orange' | 'red');
+
+    // Auto-block if ANY asset is blocked
+    const anyAutoBlock = statuses.some(s => s.autoBlock);
+
+    // Determine RQ bucket based on average
+    let rq_bucket: 'poor' | 'ok' | 'good' | 'excellent';
+    if (avgRQ <= 1) rq_bucket = 'poor';
+    else if (avgRQ === 2) rq_bucket = 'ok';
+    else if (avgRQ === 3) rq_bucket = 'good';
+    else rq_bucket = 'excellent';
+
+    // Determine volatility regime based on average RET
+    let volatility_regime: 'low' | 'medium' | 'high';
+    let rq_threshold_adjusted: number;
+    if (avgRET >= 35) {
+      volatility_regime = 'high';
+      rq_threshold_adjusted = 3;
+    } else if (avgRET >= 25) {
+      volatility_regime = 'medium';
+      rq_threshold_adjusted = 2;
+    } else {
+      volatility_regime = 'low';
+      rq_threshold_adjusted = 0;
+    }
+
+    return {
+      symbol: 'ALL',
+      score: Math.round(avgScore),
+      LQ: avgLQ,
+      RET: avgRET,
+      OI: avgOI,
+      light: worstLight,
+      autoBlock: anyAutoBlock,
+      autoEnabled: statuses[0]?.autoEnabled ?? true,
+      medianLiq: avgMedianLiq,
+      dOI_1m: avgDOI1m,
+      dOI_3m: avgDOI3m,
+      reversal_quality: Math.round(avgRQ),
+      rq_bucket,
+      volatility_regime,
+      rq_threshold_adjusted
+    };
   };
+
+  const status = getAggregatedStatus();
 
   useEffect(() => {
     const ws = new WebSocket(
