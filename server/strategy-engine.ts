@@ -56,7 +56,6 @@ export class StrategyEngine extends EventEmitter {
   private isRunning = false;
   private orderMonitorInterval?: NodeJS.Timeout;
   private cleanupInterval?: NodeJS.Timeout;
-  private pollingInterval?: NodeJS.Timeout; // For preview mode polling
   private wsClients: Set<any> = new Set(); // WebSocket clients for broadcasting trade notifications
   private staleLimitOrderSeconds: number = 180; // 3 minutes default timeout for limit orders
   private recoveryAttempts: Map<string, number> = new Map(); // Track cooldown for auto-repair attempts
@@ -275,13 +274,10 @@ export class StrategyEngine extends EventEmitter {
     await cascadeDetectorService.syncSymbols();
     
     // Start WebSocket user data stream for real-time account/position updates
-    // IMPORTANT: Only run in deployed environment to avoid listen key conflicts
-    // Aster DEX only allows ONE active user data stream per API key
+    // Both development and deployed versions now use WebSocket (identical behavior)
     const apiKey = process.env.ASTER_API_KEY;
-    const secretKey = process.env.ASTER_SECRET_KEY;
-    const isDeployed = process.env.REPLIT_DEPLOYMENT === '1';
     
-    if (apiKey && isDeployed) {
+    if (apiKey) {
       try {
         await userDataStreamManager.start({
           apiKey,
@@ -295,57 +291,10 @@ export class StrategyEngine extends EventEmitter {
             console.log('📦 Order updated via WebSocket');
           }
         });
-        console.log('✅ User data stream started for real-time updates (deployed mode)');
+        console.log('✅ User data stream started for real-time updates (WebSocket mode)');
       } catch (error) {
         console.error('⚠️ Failed to start user data stream:', error);
       }
-    } else if (apiKey && secretKey && !isDeployed) {
-      // Preview mode: Use polling instead of WebSocket (5-second intervals)
-      console.log('🔄 Starting polling mode for preview (5-second intervals)');
-      console.log('   📱 Deployed version uses WebSocket for real-time updates');
-      
-      // Poll account and positions every 5 seconds
-      this.pollingInterval = setInterval(async () => {
-        try {
-          const timestamp = Date.now();
-          
-          // Fetch account data
-          const accountParams = `timestamp=${timestamp}`;
-          const accountSignature = createHmac('sha256', secretKey)
-            .update(accountParams)
-            .digest('hex');
-          
-          const accountResponse = await fetch(
-            `https://fapi.asterdex.com/fapi/v2/account?${accountParams}&signature=${accountSignature}`,
-            { headers: { 'X-MBX-APIKEY': apiKey } }
-          );
-          
-          if (accountResponse.ok) {
-            const accountData = await accountResponse.json();
-            liveDataOrchestrator.updateAccountFromWebSocket(strategy.id, accountData.assets || []);
-          }
-          
-          // Fetch position data
-          const positionParams = `timestamp=${timestamp}`;
-          const positionSignature = createHmac('sha256', secretKey)
-            .update(positionParams)
-            .digest('hex');
-          
-          const positionResponse = await fetch(
-            `https://fapi.asterdex.com/fapi/v2/positionRisk?${positionParams}&signature=${positionSignature}`,
-            { headers: { 'X-MBX-APIKEY': apiKey } }
-          );
-          
-          if (positionResponse.ok) {
-            const positionData = await positionResponse.json();
-            liveDataOrchestrator.updatePositionsFromWebSocket(strategy.id, positionData);
-          }
-        } catch (error) {
-          console.error('⚠️ Polling error:', error);
-        }
-      }, 5000); // 5 seconds
-      
-      console.log('✅ Polling started for account/position updates (preview mode)');
     }
   }
 
@@ -359,13 +308,6 @@ export class StrategyEngine extends EventEmitter {
       console.log('✅ User data stream stopped');
     } catch (error) {
       console.error('⚠️ Error stopping user data stream:', error);
-    }
-    
-    // Stop polling interval if running (preview mode)
-    if (this.pollingInterval) {
-      clearInterval(this.pollingInterval);
-      this.pollingInterval = undefined;
-      console.log('✅ Polling stopped');
     }
     
     // CRITICAL: Capture session BEFORE removing from maps
