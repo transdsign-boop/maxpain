@@ -65,6 +65,7 @@ export default function ConnectionStatus({ isConnected }: ConnectionStatusProps)
   // Listen for global API errors from other components
   useEffect(() => {
     const handleApiError = (event: CustomEvent) => {
+      setApiConnected(false); // Turn API light red when errors occur
       setLatestError({
         message: event.detail.message || 'Unknown API error',
         timestamp: new Date()
