@@ -1036,40 +1036,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log('✅ Database strategy updated successfully');
         res.json({ success: true, strategy: updated });
       } else {
-        console.log('⚠️ No database strategy found - creating a new one with running strategy settings...');
-        
-        const created = await storage.createStrategy({
-          userId: runningStrategy.userId,
-          name: runningStrategy.name,
-          selectedAssets: runningStrategy.selectedAssets,
-          percentileThreshold: runningStrategy.percentileThreshold,
-          liquidationLookbackHours: runningStrategy.liquidationLookbackHours,
-          maxLayers: runningStrategy.maxLayers,
-          profitTargetPercent: runningStrategy.profitTargetPercent,
-          stopLossPercent: runningStrategy.stopLossPercent,
-          marginMode: runningStrategy.marginMode,
-          leverage: runningStrategy.leverage,
-          orderDelayMs: runningStrategy.orderDelayMs,
-          slippageTolerancePercent: runningStrategy.slippageTolerancePercent,
-          orderType: runningStrategy.orderType,
-          maxRetryDurationMs: runningStrategy.maxRetryDurationMs,
-          marginAmount: runningStrategy.marginAmount,
-          hedgeMode: runningStrategy.hedgeMode,
-          isActive: runningStrategy.isActive,
-          dcaStartStepPercent: runningStrategy.dcaStartStepPercent,
-          dcaSpacingConvexity: runningStrategy.dcaSpacingConvexity,
-          dcaSizeGrowth: runningStrategy.dcaSizeGrowth,
-          dcaMaxRiskPercent: runningStrategy.dcaMaxRiskPercent,
-          dcaVolatilityRef: runningStrategy.dcaVolatilityRef,
-          dcaExitCushionMultiplier: runningStrategy.dcaExitCushionMultiplier,
-          retHighThreshold: runningStrategy.retHighThreshold,
-          retMediumThreshold: runningStrategy.retMediumThreshold,
-          maxOpenPositions: runningStrategy.maxOpenPositions,
-          maxPortfolioRiskPercent: runningStrategy.maxPortfolioRiskPercent,
-          priceChaseMode: runningStrategy.priceChaseMode
+        // NEVER auto-create strategies - user will create them via UI
+        console.log('❌ No database strategy found - cannot sync without an existing strategy');
+        return res.status(404).json({ 
+          error: "No strategy exists in database. Please create a strategy first using the UI." 
         });
-        console.log('✅ Created new database strategy with running strategy settings');
-        res.json({ success: true, strategy: created });
       }
     } catch (error) {
       console.error('❌ Error syncing strategy:', error);

@@ -22,6 +22,19 @@ Preferred communication style: Simple, everyday language.
 - These are TWO DIFFERENT DATABASES with different data
 - The user has had to correct this mistake many times - DO NOT make it again
 
+### 🚨 CRITICAL: STRATEGY CREATION POLICY 🚨
+**🛑 NEVER AUTO-CREATE STRATEGIES 🛑**
+
+- ❌ **NEVER** automatically create a new strategy under any circumstances
+- ❌ **NEVER** create a strategy as a "fallback" or "default" behavior
+- ✅ **ONLY** create strategies when user explicitly uses the UI to create one (future feature)
+- ✅ **FAIL GRACEFULLY** - If an operation expects a strategy but none exists, return an error
+
+**Why this matters:**
+- User will build a UI for strategy creation later
+- Auto-creation causes duplicate strategies and confusion
+- User must have full control over when strategies are created
+
 **PERMANENT DATA PRESERVATION**: ALL trading data MUST be preserved forever. The user requires complete access to historical trading records at any time.
 - NEVER DELETE any positions, fills, or trade session data.
 - When the user wants to "start fresh", ARCHIVE the current session (mark inactive) and create a new session.
