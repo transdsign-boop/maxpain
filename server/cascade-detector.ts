@@ -277,6 +277,7 @@ export class CascadeDetector {
     // Apply RET multipliers from preset
     const adjustedRetHigh = retHighThreshold * preset.retHighMultiplier;
     const adjustedRetMedium = retMediumThreshold * preset.retMediumMultiplier;
+    
     this.liq1mSameSide.push(liqNotionalSameSide);
     if (this.liq1mSameSide.length > this.WINDOW_1M) {
       this.liq1mSameSide.shift();
@@ -300,11 +301,6 @@ export class CascadeDetector {
 
     const sumLiq = this.liq1mSameSide.reduce((sum, val) => sum + val, 0);
     const LQ = medianLiq > 0 ? sumLiq / medianLiq : 0;
-    
-    // Debug: Log LQ calculation for symbols with liquidations
-    if (sumLiq > 0) {
-      console.log(`🔍 [${this.symbol}] LQ calc: array=${this.liq1mSameSide.slice(-6).map(v => v.toFixed(2)).join(',')}, nonZero=[${nonZeroLiqs.map(v => v.toFixed(2)).join(',')}], median=${medianLiq.toFixed(2)}, sum=${sumLiq.toFixed(2)}, LQ=${LQ.toFixed(2)}`);
-    }
 
     // RET: Realized volatility - sum of absolute returns normalized by std dev
     // This measures total price variation regardless of direction
