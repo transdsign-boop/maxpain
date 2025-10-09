@@ -714,8 +714,9 @@ export async function getTotalFundingFees(): Promise<{
   return { success: result.success, total: result.total, error: result.error };
 }
 
-// Fetch realized P&L from exchange income API
-// This is the OFFICIAL P&L calculation from the exchange, not summed from trades
+// Fetch realized P&L from exchange Transaction History
+// This matches exactly how the Portfolio Overview calculates P&L
+// Uses /fapi/v1/userTrades and sums the realizedPnl field from all trades
 export async function fetchRealizedPnl(params: {
   startTime?: number;
   endTime?: number;
@@ -732,22 +733,35 @@ export async function fetchRealizedPnl(params: {
       return { success: false, total: 0, error: 'API keys not configured' };
     }
     
-    let allRecords: any[] = [];
-    let currentEndTime = params.endTime || Date.now();
-    const startTime = params.startTime || 0;
-    const limit = 1000; // Max limit per request
+    let allTrades: any[] = [];
+    let fromId: number | undefined = undefined;
+    const limit = 1000;
     
-    // Paginate backwards from endTime to startTime
+    // Paginate through all trades using fromId
     while (true) {
       const timestamp = Date.now();
-      const queryParams = `incomeType=REALIZED_PNL&startTime=${startTime}&endTime=${currentEndTime}&limit=${limit}&timestamp=${timestamp}`;
+      const queryParamsObj: Record<string, string | number> = {
+        timestamp,
+        recvWindow: 60000,
+        limit
+      };
+      
+      if (fromId !== undefined) {
+        queryParamsObj.fromId = fromId;
+      }
+      
+      // Create sorted query string for signature
+      const queryString = Object.entries(queryParamsObj)
+        .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
+        .map(([k, v]) => `${k}=${v}`)
+        .join('&');
       
       const signature = createHmac('sha256', secretKey)
-        .update(queryParams)
+        .update(queryString)
         .digest('hex');
 
       const response = await fetch(
-        `https://fapi.asterdex.com/fapi/v1/income?${queryParams}&signature=${signature}`,
+        `https://fapi.asterdex.com/fapi/v1/userTrades?${queryString}&signature=${signature}`,
         {
           headers: {
             'X-MBX-APIKEY': apiKey,
@@ -763,35 +777,43 @@ export async function fetchRealizedPnl(params: {
       const batch = await response.json();
       
       if (batch.length === 0) {
-        break; // No more records
+        break;
       }
       
-      allRecords.push(...batch);
+      allTrades.push(...batch);
       
-      // If we got fewer records than the limit, we've reached the end
       if (batch.length < limit) {
         break;
       }
       
-      // Move endTime to the oldest record's timestamp minus 1ms for next batch
-      currentEndTime = batch[batch.length - 1].time - 1;
-      
-      // Stop if we've gone past startTime
-      if (currentEndTime <= startTime) {
-        break;
-      }
+      // Use last trade's ID + 1 for next batch
+      fromId = batch[batch.length - 1].id + 1;
     }
 
-    // Sum all realized P&L values (income field contains the P&L)
-    const total = allRecords.reduce((sum: number, item: any) => sum + parseFloat(item.income || '0'), 0);
+    // Filter by time range if specified
+    let filteredTrades = allTrades;
+    if (params.startTime || params.endTime) {
+      const start = params.startTime || 0;
+      const end = params.endTime || Date.now();
+      filteredTrades = allTrades.filter(trade => {
+        const tradeTime = trade.time || 0;
+        return tradeTime >= start && tradeTime <= end;
+      });
+    }
+
+    // Sum realized P&L from all trades (this matches Portfolio Overview calculation)
+    const total = filteredTrades.reduce((sum: number, trade: any) => {
+      return sum + parseFloat(trade.realizedPnl || '0');
+    }, 0);
     
-    console.log(`✅ Fetched official realized P&L from exchange: $${total.toFixed(2)} (${allRecords.length} records)`);
+    console.log(`✅ Fetched realized P&L from Transaction History: $${total.toFixed(2)} (${filteredTrades.length} trades)`);
     
     // Debug: Show breakdown of P&L by symbol
     const bySymbol: Record<string, number> = {};
-    allRecords.forEach(item => {
-      const symbol = item.symbol || 'UNKNOWN';
-      bySymbol[symbol] = (bySymbol[symbol] || 0) + parseFloat(item.income || '0');
+    filteredTrades.forEach(trade => {
+      const symbol = trade.symbol || 'UNKNOWN';
+      const pnl = parseFloat(trade.realizedPnl || '0');
+      bySymbol[symbol] = (bySymbol[symbol] || 0) + pnl;
     });
     console.log('📊 P&L breakdown by symbol:', Object.entries(bySymbol)
       .sort((a, b) => b[1] - a[1])
