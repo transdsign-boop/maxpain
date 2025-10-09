@@ -51,11 +51,12 @@ Preferred communication style: Simple, everyday language.
 ### Data Storage
 - **Database**: PostgreSQL with Neon serverless hosting (ALWAYS uses Neon, never local storage).
 - **Configuration**: Uses `NEON_DATABASE_URL` environment variable exclusively.
-- **Schema**: 10 core tables - liquidations, strategies, trade_sessions, positions, fills, orders, strategy_changes, strategy_snapshots, user_settings, users. The sessions table (required for Replit Auth) remains empty. All tables use indexing for optimal performance.
+- **Schema**: 13 core tables - liquidations, strategies, trade_sessions, positions, fills, orders, strategy_changes, strategy_snapshots, user_settings, users, transfers, commissions, funding_fees. The sessions table (required for Replit Auth) remains empty. All tables use indexing for optimal performance.
 - **Connection**: Connection pooling with `@neondatabase/serverless` HTTP driver.
 - **Migrations**: Drizzle Kit.
-- **Data Retention**: Liquidation data automatically retained for 30 days only; older data deleted every 5 minutes. Trading data (positions, fills, sessions) is permanently preserved through archiving (never deleted).
+- **Data Retention**: Liquidation data automatically retained for 30 days only; older data deleted every 5 minutes. Trading data (positions, fills, sessions) and financial records (transfers, commissions, funding fees) are permanently preserved through archiving (never deleted).
 - **Important**: All runtime operations use the Neon database. The app never uses local database storage.
+- **Historical Financial Tracking**: Complete tracking of all transfer events (deposits/withdrawals), commission fees, and funding fees with idempotent sync endpoints using composite unique constraints. Sync endpoints use batched inserts with onConflictDoNothing() and returning() for accurate insert counts.
 
 ### Real-time Data Features
 - Live WebSocket connection to Aster DEX for real-time liquidation streaming.
@@ -87,6 +88,7 @@ Preferred communication style: Simple, everyday language.
 - **DCA System**: Integrated Dollar Cost Averaging (DCA) system with ATR-based volatility scaling, convex level spacing, exponential size growth, liquidation-aware risk management, and automatic take profit/stop loss calculation. Uses a SQL wrapper to bypass Drizzle ORM caching issues for DCA parameter management. All DCA parameters are accessible in the Global Settings dialog under "DCA Settings (Advanced)".
 - **Data Integrity**: Idempotency protection for orders. Atomic cooldown system for entries/layers to prevent duplicate orders. ALL trading data (positions, fills, sessions) is permanently preserved in the database - deletion functionality has been removed to comply with data preservation requirements.
 - **Position Display**: Displays only live exchange positions fetched from Aster DEX API, ensuring accurate real-time position tracking.
+- **Performance Metrics**: Comprehensive performance tracking including total deposited capital (deposits only, excluding withdrawals), accurate ROI calculation (Total P&L / Total Deposited * 100), transfer markers on performance chart (green vertical lines showing deposit amounts), and detailed fee tracking (commissions and funding fees).
 
 ## External Dependencies
 
