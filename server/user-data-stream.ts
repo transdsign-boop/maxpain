@@ -299,9 +299,11 @@ class UserDataStreamManager {
           positionSide: p.ps,
         }));
 
-        // Update orchestrator cache from WebSocket
+        // Update orchestrator cache from WebSocket (filter to non-zero positions)
         if (activeStrategy) {
-          liveDataOrchestrator.updatePositionsFromWebSocket(activeStrategy.id, positions);
+          const nonZeroPositions = positions.filter((p: any) => parseFloat(p.positionAmt) !== 0);
+          console.log(`[WS] Filtered positions: ${positions.length} total → ${nonZeroPositions.length} non-zero`);
+          liveDataOrchestrator.updatePositionsFromWebSocket(activeStrategy.id, nonZeroPositions);
         }
 
         // Broadcast position update

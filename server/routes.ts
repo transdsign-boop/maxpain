@@ -1433,7 +1433,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Check orchestrator cache first (populated by WebSocket)
       const snapshot = liveDataOrchestrator.getSnapshot(activeStrategy.id);
-      if (snapshot && snapshot.positions) {
+      console.log(`[DEBUG /api/live/positions] Strategy ID: ${activeStrategy.id}, Positions in cache: ${snapshot?.positions?.length || 0}`);
+      
+      if (snapshot && snapshot.positions && snapshot.positions.length > 0) {
+        console.log(`[DEBUG] Returning ${snapshot.positions.length} positions from cache`);
         return res.json(snapshot.positions);
       }
 
