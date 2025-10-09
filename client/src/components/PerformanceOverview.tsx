@@ -771,7 +771,7 @@ export default function PerformanceOverview() {
                     strokeOpacity={0.3}
                     label={{
                       value: `${format(new Date(group.dateTimestamp), 'MMM d')} • ${group.trades} trades`,
-                      position: 'insideBottom',
+                      position: 'insideTop',
                       fill: 'hsl(var(--foreground))',
                       fontSize: 12,
                       fontWeight: 600,
@@ -824,11 +824,11 @@ export default function PerformanceOverview() {
                         strokeWidth={2}
                         label={{
                           value: `+$${amount.toFixed(2)}`,
-                          position: 'insideBottom',
+                          position: 'center',
                           fill: 'rgb(34, 197, 94)',
                           fontSize: 11,
                           fontWeight: 600,
-                          offset: 10,
+                          angle: -90,
                         }}
                       />
                     );
