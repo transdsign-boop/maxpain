@@ -9,7 +9,7 @@ import { strategyEngine } from "./strategy-engine";
 import { cascadeDetectorService } from "./cascade-detector-service";
 import { wsBroadcaster } from "./websocket-broadcaster";
 import { liveDataOrchestrator } from "./live-data-orchestrator";
-import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySchema, updateStrategySchema, type Position, type Liquidation, type InsertFill, positions, strategies, transfers, fills, fundingFees } from "@shared/schema";
+import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySchema, updateStrategySchema, type Position, type Liquidation, type InsertFill, positions, strategies, transfers, fills, fundingFees, commissions } from "@shared/schema";
 import { db } from "./db";
 import { desc, eq, sql } from "drizzle-orm";
 
@@ -1143,6 +1143,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error('❌ Error fetching transfers:', error);
       res.status(500).json({ error: `Failed to fetch transfers: ${error.message}` });
+    }
+  });
+
+  // Get all commissions for current user
+  app.get("/api/commissions", async (req, res) => {
+    try {
+      const userCommissions = await db.query.commissions.findMany({
+        where: eq(commissions.userId, DEFAULT_USER_ID),
+        orderBy: (commissions, { asc }) => [asc(commissions.timestamp)],
+      });
+      
+      res.json(userCommissions);
+    } catch (error: any) {
+      console.error('❌ Error fetching commissions:', error);
+      res.status(500).json({ error: `Failed to fetch commissions: ${error.message}` });
     }
   });
 
