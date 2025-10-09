@@ -146,8 +146,10 @@ class UserDataStreamManager {
         
         // Construct base URL for server-to-server communication
         // Use environment variable or default to localhost for development
-        const baseUrl = process.env.REPLIT_DEPLOYMENT_URL 
-          ? `https://${process.env.REPLIT_DEPLOYMENT_URL}`
+        const isDeployed = process.env.REPLIT_DEPLOYMENT === '1';
+        const deployedDomain = process.env.REPLIT_DOMAINS?.split(',')[0];
+        const baseUrl = isDeployed && deployedDomain
+          ? `https://${deployedDomain}`
           : 'http://localhost:5000';
         
         // Fetch account balance via backend
