@@ -92,34 +92,6 @@ export default function PerformanceOverview() {
     transfers,
   } = useStrategyData();
 
-  // Show error state if critical data failed to load
-  if (performanceError || chartDataError) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
-            Account Performance
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <div className="text-red-500 mb-4">⚠️ Failed to load performance data</div>
-            <p className="text-sm text-muted-foreground mb-4">
-              {performanceError ? "Performance metrics unavailable" : "Chart data unavailable"}
-            </p>
-            <Button 
-              onClick={() => window.location.reload()} 
-              variant="outline"
-              size="sm"
-            >
-              Reload Page
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-
   // Calculate top 3 performing assets by total P&L (only from closed positions)
   const top3Assets = useMemo(() => {
     if (!assetPerformance || assetPerformance.length === 0) return [];
@@ -467,6 +439,10 @@ export default function PerformanceOverview() {
   // For realized P&L percentage, use deposited capital
   const realizedPnlPercent = totalDeposited > 0 ? ((displayPerformance.totalRealizedPnl || 0) / totalDeposited) * 100 : 0;
 
+  // Check if there's an error (but don't return early - that breaks hooks order)
+  const hasError = performanceError || chartDataError;
+
+  // Render error UI or normal UI based on error state
   return (
     <Card>
       <CardHeader>
@@ -475,6 +451,22 @@ export default function PerformanceOverview() {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
+        {hasError ? (
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <div className="text-red-500 mb-4">⚠️ Failed to load performance data</div>
+            <p className="text-sm text-muted-foreground mb-4">
+              {performanceError ? "Performance metrics unavailable" : "Chart data unavailable"}
+            </p>
+            <Button 
+              onClick={() => window.location.reload()} 
+              variant="outline"
+              size="sm"
+            >
+              Reload Page
+            </Button>
+          </div>
+        ) : (
+          <>
         {/* Main Balance Section with Risk Bar */}
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_2fr_auto] gap-6">
           {/* Total Balance - Prominent */}
@@ -1025,6 +1017,8 @@ export default function PerformanceOverview() {
             </div>
           </div>
         </div>
+        </>
+        )}
       </CardContent>
     </Card>
   );
