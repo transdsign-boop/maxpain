@@ -848,7 +848,7 @@ export default function PerformanceOverview() {
                           fontSize: 11,
                           fontWeight: 600,
                           angle: -90,
-                          offset: 25,
+                          dx: -20,
                         }}
                       />
                     );
