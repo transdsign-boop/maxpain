@@ -22,9 +22,16 @@ Preferred communication style: Simple, everyday language.
 - These are TWO DIFFERENT DATABASES with different data
 - The user has had to correct this mistake many times - DO NOT make it again
 
-### 📊 COMMISSION & FUNDING FEE DATA
-**Commissions and funding fees are fetched directly from the exchange API, NOT stored in the database**
+### 📊 REALIZED P&L, COMMISSION & FUNDING FEE DATA
+**All financial metrics are fetched directly from the exchange API, NOT stored in the database**
 
+**Realized P&L Source:**
+- ✅ Uses `/fapi/v1/income` endpoint with `incomeType=REALIZED_PNL` filter
+- ✅ Matches exactly how Aster DEX Portfolio Overview calculates P&L
+- ✅ Fetches all historical records with proper pagination (startTime=0 for all-time data)
+- ⚠️ **IMPORTANT**: The `incomeType` filter is required - fetching without it returns incorrect data
+
+**Commissions and Funding Fees:**
 - ✅ `/api/commissions?startTime=X&endTime=Y` - Fetches commission data from exchange with optional date range filters
 - ✅ `/api/funding-fees?startTime=X&endTime=Y` - Fetches funding fee data from exchange with optional date range filters
 - 📍 Data is retrieved in real-time from Aster DEX `/fapi/v1/income` endpoint
