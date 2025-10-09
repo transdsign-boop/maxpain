@@ -2,7 +2,7 @@ import { createHmac } from 'crypto';
 import { storage } from './storage';
 import type { TradeSession } from '@shared/schema';
 import { db } from './db';
-import { positions, transfers, commissions, fundingFees } from '@shared/schema';
+import { positions, transfers } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 
 // Fetch all account trades from Aster DEX within a time range
@@ -540,10 +540,13 @@ export async function syncTransfers(userId: string): Promise<{
   }
 }
 
-// Get total commission fees (just the sum, no individual records)
-// Implements pagination to fetch ALL historical data
-export async function getTotalCommissions(): Promise<{
+// Fetch commission fees from exchange with optional date range
+export async function fetchCommissions(params: {
+  startTime?: number;
+  endTime?: number;
+}): Promise<{
   success: boolean;
+  records: any[];
   total: number;
   error?: string;
 }> {
@@ -552,17 +555,18 @@ export async function getTotalCommissions(): Promise<{
     const secretKey = process.env.ASTER_SECRET_KEY;
     
     if (!apiKey || !secretKey) {
-      return { success: false, total: 0, error: 'API keys not configured' };
+      return { success: false, records: [], total: 0, error: 'API keys not configured' };
     }
     
     let allRecords: any[] = [];
-    let currentEndTime = Date.now();
+    let currentEndTime = params.endTime || Date.now();
+    const startTime = params.startTime || 0;
     const limit = 1000; // Max limit per request
     
-    // Paginate backwards from now to beginning of time
+    // Paginate backwards from endTime to startTime
     while (true) {
       const timestamp = Date.now();
-      const queryParams = `incomeType=COMMISSION&startTime=0&endTime=${currentEndTime}&limit=${limit}&timestamp=${timestamp}`;
+      const queryParams = `incomeType=COMMISSION&startTime=${startTime}&endTime=${currentEndTime}&limit=${limit}&timestamp=${timestamp}`;
       
       const signature = createHmac('sha256', secretKey)
         .update(queryParams)
@@ -579,7 +583,7 @@ export async function getTotalCommissions(): Promise<{
 
       if (!response.ok) {
         const errorText = await response.text();
-        return { success: false, total: 0, error: `HTTP ${response.status}: ${errorText}` };
+        return { success: false, records: [], total: 0, error: `HTTP ${response.status}: ${errorText}` };
       }
 
       const batch = await response.json();
@@ -597,13 +601,105 @@ export async function getTotalCommissions(): Promise<{
       
       // Move endTime to the oldest record's timestamp minus 1ms for next batch
       currentEndTime = batch[batch.length - 1].time - 1;
+      
+      // Stop if we've gone past startTime
+      if (currentEndTime <= startTime) {
+        break;
+      }
     }
 
     const total = allRecords.reduce((sum: number, item: any) => sum + Math.abs(parseFloat(item.income || '0')), 0);
     
-    return { success: true, total };
+    return { success: true, records: allRecords, total };
   } catch (error) {
-    return { success: false, total: 0, error: String(error) };
+    return { success: false, records: [], total: 0, error: String(error) };
+  }
+}
+
+// Get total commission fees (just the sum, no individual records)
+// Implements pagination to fetch ALL historical data
+export async function getTotalCommissions(): Promise<{
+  success: boolean;
+  total: number;
+  error?: string;
+}> {
+  const result = await fetchCommissions({});
+  return { success: result.success, total: result.total, error: result.error };
+}
+
+// Fetch funding fees from exchange with optional date range
+export async function fetchFundingFees(params: {
+  startTime?: number;
+  endTime?: number;
+}): Promise<{
+  success: boolean;
+  records: any[];
+  total: number;
+  error?: string;
+}> {
+  try {
+    const apiKey = process.env.ASTER_API_KEY;
+    const secretKey = process.env.ASTER_SECRET_KEY;
+    
+    if (!apiKey || !secretKey) {
+      return { success: false, records: [], total: 0, error: 'API keys not configured' };
+    }
+    
+    let allRecords: any[] = [];
+    let currentEndTime = params.endTime || Date.now();
+    const startTime = params.startTime || 0;
+    const limit = 1000; // Max limit per request
+    
+    // Paginate backwards from endTime to startTime
+    while (true) {
+      const timestamp = Date.now();
+      const queryParams = `incomeType=FUNDING_FEE&startTime=${startTime}&endTime=${currentEndTime}&limit=${limit}&timestamp=${timestamp}`;
+      
+      const signature = createHmac('sha256', secretKey)
+        .update(queryParams)
+        .digest('hex');
+
+      const response = await fetch(
+        `https://fapi.asterdex.com/fapi/v1/income?${queryParams}&signature=${signature}`,
+        {
+          headers: {
+            'X-MBX-APIKEY': apiKey,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return { success: false, records: [], total: 0, error: `HTTP ${response.status}: ${errorText}` };
+      }
+
+      const batch = await response.json();
+      
+      if (batch.length === 0) {
+        break; // No more records
+      }
+      
+      allRecords.push(...batch);
+      
+      // If we got fewer records than the limit, we've reached the end
+      if (batch.length < limit) {
+        break;
+      }
+      
+      // Move endTime to the oldest record's timestamp minus 1ms for next batch
+      currentEndTime = batch[batch.length - 1].time - 1;
+      
+      // Stop if we've gone past startTime
+      if (currentEndTime <= startTime) {
+        break;
+      }
+    }
+
+    const total = allRecords.reduce((sum: number, item: any) => sum + parseFloat(item.income || '0'), 0);
+    
+    return { success: true, records: allRecords, total };
+  } catch (error) {
+    return { success: false, records: [], total: 0, error: String(error) };
   }
 }
 
@@ -614,62 +710,6 @@ export async function getTotalFundingFees(): Promise<{
   total: number;
   error?: string;
 }> {
-  try {
-    const apiKey = process.env.ASTER_API_KEY;
-    const secretKey = process.env.ASTER_SECRET_KEY;
-    
-    if (!apiKey || !secretKey) {
-      return { success: false, total: 0, error: 'API keys not configured' };
-    }
-    
-    let allRecords: any[] = [];
-    let currentEndTime = Date.now();
-    const limit = 1000; // Max limit per request
-    
-    // Paginate backwards from now to beginning of time
-    while (true) {
-      const timestamp = Date.now();
-      const queryParams = `incomeType=FUNDING_FEE&startTime=0&endTime=${currentEndTime}&limit=${limit}&timestamp=${timestamp}`;
-      
-      const signature = createHmac('sha256', secretKey)
-        .update(queryParams)
-        .digest('hex');
-
-      const response = await fetch(
-        `https://fapi.asterdex.com/fapi/v1/income?${queryParams}&signature=${signature}`,
-        {
-          headers: {
-            'X-MBX-APIKEY': apiKey,
-          },
-        }
-      );
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        return { success: false, total: 0, error: `HTTP ${response.status}: ${errorText}` };
-      }
-
-      const batch = await response.json();
-      
-      if (batch.length === 0) {
-        break; // No more records
-      }
-      
-      allRecords.push(...batch);
-      
-      // If we got fewer records than the limit, we've reached the end
-      if (batch.length < limit) {
-        break;
-      }
-      
-      // Move endTime to the oldest record's timestamp minus 1ms for next batch
-      currentEndTime = batch[batch.length - 1].time - 1;
-    }
-
-    const total = allRecords.reduce((sum: number, item: any) => sum + parseFloat(item.income || '0'), 0);
-    
-    return { success: true, total };
-  } catch (error) {
-    return { success: false, total: 0, error: String(error) };
-  }
+  const result = await fetchFundingFees({});
+  return { success: result.success, total: result.total, error: result.error };
 }

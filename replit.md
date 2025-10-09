@@ -22,6 +22,15 @@ Preferred communication style: Simple, everyday language.
 - These are TWO DIFFERENT DATABASES with different data
 - The user has had to correct this mistake many times - DO NOT make it again
 
+### 📊 COMMISSION & FUNDING FEE DATA
+**Commissions and funding fees are fetched directly from the exchange API, NOT stored in the database**
+
+- ✅ `/api/commissions?startTime=X&endTime=Y` - Fetches commission data from exchange with optional date range filters
+- ✅ `/api/funding-fees?startTime=X&endTime=Y` - Fetches funding fee data from exchange with optional date range filters
+- 📍 Data is retrieved in real-time from Aster DEX `/fapi/v1/income` endpoint
+- 📍 Supports pagination (1000 records per batch) for complete historical data
+- 📍 Frontend filters this data by selected date range for accurate metrics calculation
+
 ### 🚨 CRITICAL: STRATEGY CREATION POLICY 🚨
 **🛑 NEVER AUTO-CREATE STRATEGIES 🛑**
 
