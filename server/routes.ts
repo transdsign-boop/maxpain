@@ -3471,6 +3471,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
               isOpen: true,
               openedAt: positionFills.length > 0 ? positionFills[0].filledAt.toISOString() : new Date().toISOString(),
               fills: positionFills, // Include only fills from current position instance
+              layersFilled: positionFills.length, // Number of entry layers filled
+              maxLayers: strategy.maxLayers, // Maximum layers from strategy
             };
           });
 
