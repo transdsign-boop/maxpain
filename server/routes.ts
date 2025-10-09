@@ -9,7 +9,7 @@ import { strategyEngine } from "./strategy-engine";
 import { cascadeDetectorService } from "./cascade-detector-service";
 import { wsBroadcaster } from "./websocket-broadcaster";
 import { liveDataOrchestrator } from "./live-data-orchestrator";
-import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySchema, updateStrategySchema, type Position, type Liquidation, type InsertFill, positions, strategies } from "@shared/schema";
+import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySchema, updateStrategySchema, type Position, type Liquidation, type InsertFill, positions, strategies, transfers } from "@shared/schema";
 import { db } from "./db";
 import { desc, eq } from "drizzle-orm";
 
@@ -1167,6 +1167,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error('❌ Error syncing funding fees:', error);
       res.status(500).json({ error: `Failed to sync funding fees: ${error.message}` });
+    }
+  });
+
+  // Get all transfers for current user
+  app.get("/api/transfers", async (req, res) => {
+    try {
+      const userTransfers = await db.query.transfers.findMany({
+        where: eq(transfers.userId, DEFAULT_USER_ID),
+        orderBy: (transfers, { asc }) => [asc(transfers.timestamp)],
+      });
+      
+      res.json(userTransfers);
+    } catch (error: any) {
+      console.error('❌ Error fetching transfers:', error);
+      res.status(500).json({ error: `Failed to fetch transfers: ${error.message}` });
     }
   });
 
