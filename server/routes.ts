@@ -3020,7 +3020,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Connect to Aster DEX WebSocket and relay data
   connectToAsterDEX(clients);
   
-  // User Data Stream is now started in server/index.ts using UserDataStreamManager
+  // Connect to User Data Stream for real-time account/position updates
+  connectToUserDataStream();
 
   // Positions API Routes
   app.get('/api/positions/:sessionId', async (req, res) => {
@@ -4677,7 +4678,7 @@ async function getOrCreateListenKey(): Promise<string | null> {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('❌ Failed to create listen key:', errorText);
+      console.error(`❌ Failed to create listen key (HTTP ${response.status}):`, errorText || '(empty response)');
       return null;
     }
 
