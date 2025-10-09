@@ -2116,18 +2116,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         allSessionFills.push(...sessionFills);
       }
 
-      // Get OFFICIAL realized P&L directly from exchange income API
+      // Get OFFICIAL realized P&L directly from exchange income API (all-time)
       // This happens BEFORE checking positions so we always get accurate P&L
-      console.log('📊 Fetching realized P&L from exchange...');
+      console.log('📊 Fetching realized P&L from exchange (all-time)...');
       let totalRealizedPnl = 0;
       try {
         const { fetchRealizedPnl } = await import('./exchange-sync');
         console.log('📊 fetchRealizedPnl imported successfully');
+        
         const pnlResult = await fetchRealizedPnl({});
+        
         console.log('📊 fetchRealizedPnl result:', JSON.stringify(pnlResult));
         if (pnlResult.success) {
           totalRealizedPnl = pnlResult.total;
-          console.log(`✅ Official exchange P&L: $${totalRealizedPnl.toFixed(2)}`);
+          console.log(`✅ Official exchange P&L (all-time): $${totalRealizedPnl.toFixed(2)}`);
         } else {
           console.error(`❌ Failed to fetch realized P&L: ${pnlResult.error}`);
         }

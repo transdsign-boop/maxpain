@@ -787,6 +787,18 @@ export async function fetchRealizedPnl(params: {
     
     console.log(`✅ Fetched official realized P&L from exchange: $${total.toFixed(2)} (${allRecords.length} records)`);
     
+    // Debug: Show breakdown of P&L by symbol
+    const bySymbol: Record<string, number> = {};
+    allRecords.forEach(item => {
+      const symbol = item.symbol || 'UNKNOWN';
+      bySymbol[symbol] = (bySymbol[symbol] || 0) + parseFloat(item.income || '0');
+    });
+    console.log('📊 P&L breakdown by symbol:', Object.entries(bySymbol)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([sym, pnl]) => `${sym}: $${pnl.toFixed(2)}`)
+      .join(', '));
+    
     return { success: true, total };
   } catch (error) {
     console.error('❌ Error fetching realized P&L:', error);
