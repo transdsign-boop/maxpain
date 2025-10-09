@@ -269,7 +269,16 @@ class CascadeDetectorService {
         }
       }
       
-      return { notional: totalNotional, dominantSide };
+      // Return same-side notional (dominant side only, not total)
+      const sameSideNotional = dominantSide === 'long' ? longNotional : 
+                                dominantSide === 'short' ? shortNotional : 0;
+      
+      // Debug logging for LQ calculation
+      if (sameSideNotional > 0) {
+        console.log(`🔍 [${symbol}] Liq window: long=$${longNotional.toFixed(2)}, short=$${shortNotional.toFixed(2)}, total=$${totalNotional.toFixed(2)}, dominant=${dominantSide}, returning=$${sameSideNotional.toFixed(2)}`);
+      }
+      
+      return { notional: sameSideNotional, dominantSide };
     } catch (error) {
       console.error('Error fetching liquidations:', error);
       return { notional: 0, dominantSide: 'neutral' };
