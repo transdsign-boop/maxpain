@@ -411,16 +411,32 @@ export class DatabaseStorage implements IStorage {
   // Singleton strategy and session operations
   async getOrCreateDefaultStrategy(userId: string): Promise<Strategy> {
     // Try to get existing active strategy for this user using raw SQL
+    // Order by created_at ASC to always get the oldest (first created) strategy
     const existing = await sql`
       SELECT * FROM strategies 
       WHERE user_id = ${userId} AND is_active = true 
+      ORDER BY created_at ASC
       LIMIT 1
     `;
     
+    console.log(`[getOrCreateDefaultStrategy] Found ${existing.length} existing strategies for user ${userId}`);
+    
     if (existing.length > 0) {
-      return convertKeysToCamelCase(existing[0]) as Strategy;
+      const strategy = convertKeysToCamelCase(existing[0]) as Strategy;
+      console.log(`[getOrCreateDefaultStrategy] Using existing strategy: ${strategy.id} (oldest)`);
+      
+      // Clean up any duplicate strategies (keep only the oldest)
+      await sql`
+        DELETE FROM strategies 
+        WHERE user_id = ${userId} 
+        AND is_active = true 
+        AND id != ${strategy.id}
+      `;
+      
+      return strategy;
     }
 
+    console.log(`[getOrCreateDefaultStrategy] No existing strategy found, creating new one...`);
     // Create default strategy if doesn't exist
     const query = `
       INSERT INTO strategies (
@@ -701,6 +717,7 @@ export class DatabaseStorage implements IStorage {
   // Position operations
   async createPosition(position: InsertPosition): Promise<Position> {
     const result = await db.insert(positions).values(position).returning();
+    console.log(`✅ Position created in database: ${position.symbol} ${position.side} (session: ${position.sessionId})`);
     return result[0];
   }
 
@@ -733,9 +750,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getOpenPositions(sessionId: string): Promise<Position[]> {
-    return await db.select().from(positions)
+    const result = await db.select().from(positions)
       .where(and(eq(positions.sessionId, sessionId), eq(positions.isOpen, true)))
       .orderBy(desc(positions.openedAt));
+    console.log(`[getOpenPositions] Found ${result.length} open positions for session ${sessionId}`);
+    return result;
   }
 
   async getClosedPositions(sessionId: string): Promise<Position[]> {
