@@ -303,7 +303,10 @@ export class CascadeDetector {
     // This measures total price variation regardless of direction
     // Properly normalized to work across all asset classes (stocks, crypto, forex, etc.)
     const sumRet = this.ret1m.reduce((sum, val) => sum + Math.abs(val), 0);
-    const RET = retSigma > 0 ? sumRet / retSigma : 0;
+    // Minimum threshold to prevent division by extremely small numbers in very quiet markets
+    // 0.00001 ≈ 0.001% stddev - below this, volatility is considered negligible
+    const MIN_SIGMA = 0.00001;
+    const RET = retSigma > MIN_SIGMA ? sumRet / retSigma : 0;
 
     let OI = 0;
     if (this.oi5m.length >= 2) {
