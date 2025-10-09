@@ -758,10 +758,10 @@ export default function PerformanceOverview() {
                 <ReferenceLine yAxisId="left" y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
                 <ReferenceLine yAxisId="right" y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
                 
-                {/* Day grouping blocks */}
+                {/* Day grouping blocks - date labels at top */}
                 {dayGroups.map((group, index) => (
                   <ReferenceArea
-                    key={`day-${group.dateTimestamp}`}
+                    key={`day-date-${group.dateTimestamp}`}
                     x1={group.startTrade}
                     x2={group.endTrade}
                     yAxisId="left"
@@ -770,11 +770,30 @@ export default function PerformanceOverview() {
                     stroke={index % 2 === 0 ? 'hsl(var(--accent-border))' : 'transparent'}
                     strokeOpacity={0.3}
                     label={{
-                      value: `${format(new Date(group.dateTimestamp), 'MMM d')} • ${group.trades} trades`,
+                      value: format(new Date(group.dateTimestamp), 'MMM d'),
                       position: 'insideTop',
                       fill: 'hsl(var(--foreground))',
                       fontSize: 12,
                       fontWeight: 600,
+                      offset: 10
+                    }}
+                  />
+                ))}
+                
+                {/* Day grouping blocks - trade count at bottom */}
+                {dayGroups.map((group) => (
+                  <ReferenceArea
+                    key={`day-count-${group.dateTimestamp}`}
+                    x1={group.startTrade}
+                    x2={group.endTrade}
+                    yAxisId="left"
+                    fill="transparent"
+                    label={{
+                      value: `${group.trades} trades`,
+                      position: 'insideBottom',
+                      fill: 'hsl(var(--muted-foreground))',
+                      fontSize: 11,
+                      fontWeight: 500,
                       offset: 10
                     }}
                   />
@@ -829,6 +848,7 @@ export default function PerformanceOverview() {
                           fontSize: 11,
                           fontWeight: 600,
                           angle: -90,
+                          offset: 15,
                         }}
                       />
                     );
