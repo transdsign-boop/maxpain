@@ -100,6 +100,8 @@ export default function PerformanceOverview() {
     livePositions,
     strategyChanges,
     transfers,
+    commissions,
+    fundingFees,
   } = useStrategyData();
 
   // Calculate top 3 performing assets by total P&L (only from closed positions)
@@ -383,12 +385,34 @@ export default function PerformanceOverview() {
     // If no date filter, return base performance
     if (!dateRange.start && !dateRange.end) return basePerformance;
 
+    // Calculate date range boundaries
+    const startTimestamp = dateRange.start ? startOfDay(dateRange.start).getTime() : 0;
+    const endTimestamp = dateRange.end ? endOfDay(dateRange.end).getTime() : Date.now();
+
     // Recalculate metrics from filtered chart data
     const filteredTrades = sourceChartData;
     const winningTrades = filteredTrades.filter(t => t.pnl > 0);
     const losingTrades = filteredTrades.filter(t => t.pnl < 0);
     const totalWins = winningTrades.reduce((sum, t) => sum + t.pnl, 0);
     const totalLosses = Math.abs(losingTrades.reduce((sum, t) => sum + t.pnl, 0));
+    
+    // Filter and sum commissions by date range
+    const filteredCommissions = (commissions || []).filter((c: any) => {
+      const timestamp = new Date(c.timestamp).getTime();
+      return timestamp >= startTimestamp && timestamp <= endTimestamp;
+    });
+    const totalCommissions = filteredCommissions.reduce((sum: number, c: any) => 
+      sum + Math.abs(parseFloat(c.amount)), 0
+    );
+
+    // Filter and sum funding fees by date range
+    const filteredFundingFees = (fundingFees || []).filter((f: any) => {
+      const timestamp = new Date(f.timestamp).getTime();
+      return timestamp >= startTimestamp && timestamp <= endTimestamp;
+    });
+    const totalFundingFees = filteredFundingFees.reduce((sum: number, f: any) => 
+      sum + parseFloat(f.amount), 0
+    );
     
     return {
       ...basePerformance,
@@ -404,8 +428,10 @@ export default function PerformanceOverview() {
       bestTrade: filteredTrades.length > 0 ? Math.max(...filteredTrades.map(t => t.pnl)) : 0,
       worstTrade: filteredTrades.length > 0 ? Math.min(...filteredTrades.map(t => t.pnl)) : 0,
       profitFactor: totalLosses > 0 ? totalWins / totalLosses : (totalWins > 0 ? 999 : 0),
+      totalFees: totalCommissions,
+      fundingCost: totalFundingFees,
     };
-  }, [performance, dateRange, sourceChartData]);
+  }, [performance, dateRange, sourceChartData, commissions, fundingFees]);
   const displayLoading = isLoading || chartLoading || liveAccountLoading;
   const showLoadingUI = displayLoading || !performance;
 

@@ -110,6 +110,19 @@ export function useStrategyData() {
     staleTime: 5 * 60 * 1000, // Refresh every 5 minutes
   });
 
+  // Fetch commissions for fee calculation (historical data)
+  const commissionsQuery = useQuery<any[]>({
+    queryKey: ['/api/commissions'],
+    staleTime: 5 * 60 * 1000, // Refresh every 5 minutes
+  });
+
+  // Fetch funding fees for fee calculation (historical data)
+  const fundingFeesQuery = useQuery<any>({
+    queryKey: ['/api/funding-fees'],
+    staleTime: 5 * 60 * 1000, // Refresh every 5 minutes
+    select: (data) => data?.fees || [], // Extract fees array from response
+  });
+
   const snapshot = liveSnapshotQuery.data;
 
   return {
@@ -159,5 +172,14 @@ export function useStrategyData() {
     transfers: transfersQuery.data,
     transfersLoading: transfersQuery.isLoading,
     transfersError: transfersQuery.error,
+
+    // Commission and funding fee data for filtered calculations
+    commissions: commissionsQuery.data,
+    commissionsLoading: commissionsQuery.isLoading,
+    commissionsError: commissionsQuery.error,
+
+    fundingFees: fundingFeesQuery.data,
+    fundingFeesLoading: fundingFeesQuery.isLoading,
+    fundingFeesError: fundingFeesQuery.error,
   };
 }
