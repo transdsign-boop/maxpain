@@ -9,7 +9,7 @@ import { strategyEngine } from "./strategy-engine";
 import { cascadeDetectorService } from "./cascade-detector-service";
 import { wsBroadcaster } from "./websocket-broadcaster";
 import { liveDataOrchestrator } from "./live-data-orchestrator";
-import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySchema, updateStrategySchema, type Position, type Liquidation, type InsertFill, positions, strategies, transfers, fills, fundingFees, commissions } from "@shared/schema";
+import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySchema, updateStrategySchema, type Position, type Liquidation, type InsertFill, positions, strategies, transfers, fills } from "@shared/schema";
 import { db } from "./db";
 import { desc, eq, sql } from "drizzle-orm";
 
@@ -1146,39 +1146,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get all commissions for current user
+  // Get commissions from exchange with optional date range
   app.get("/api/commissions", async (req, res) => {
     try {
-      const userCommissions = await db.query.commissions.findMany({
-        where: eq(commissions.userId, DEFAULT_USER_ID),
-        orderBy: (commissions, { asc }) => [asc(commissions.timestamp)],
-      });
+      const { fetchCommissions } = await import('./exchange-sync');
       
-      res.json(userCommissions);
+      const startTime = req.query.startTime ? parseInt(req.query.startTime as string) : undefined;
+      const endTime = req.query.endTime ? parseInt(req.query.endTime as string) : undefined;
+      
+      const result = await fetchCommissions({ startTime, endTime });
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error, records: [], total: 0 });
+      }
+      
+      res.json({ records: result.records, total: result.total });
     } catch (error: any) {
       console.error('❌ Error fetching commissions:', error);
-      res.status(500).json({ error: `Failed to fetch commissions: ${error.message}` });
+      res.status(500).json({ error: `Failed to fetch commissions: ${error.message}`, records: [], total: 0 });
     }
   });
 
-  // Get funding fees count and data
+  // Get funding fees from exchange with optional date range
   app.get("/api/funding-fees", async (req, res) => {
     try {
-      const userFundingFees = await db.query.fundingFees.findMany({
-        where: eq(fundingFees.userId, DEFAULT_USER_ID),
-        orderBy: (fundingFees, { desc }) => [desc(fundingFees.timestamp)],
-      });
+      const { fetchFundingFees } = await import('./exchange-sync');
       
-      const totalAmount = userFundingFees.reduce((sum, fee) => sum + parseFloat(fee.amount), 0);
+      const startTime = req.query.startTime ? parseInt(req.query.startTime as string) : undefined;
+      const endTime = req.query.endTime ? parseInt(req.query.endTime as string) : undefined;
       
-      res.json({
-        count: userFundingFees.length,
-        totalAmount: totalAmount.toFixed(2),
-        fees: userFundingFees,
-      });
+      const result = await fetchFundingFees({ startTime, endTime });
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error, records: [], total: 0 });
+      }
+      
+      res.json({ records: result.records, total: result.total });
     } catch (error: any) {
       console.error('❌ Error fetching funding fees:', error);
-      res.status(500).json({ error: `Failed to fetch funding fees: ${error.message}` });
+      res.status(500).json({ error: `Failed to fetch funding fees: ${error.message}`, records: [], total: 0 });
     }
   });
 

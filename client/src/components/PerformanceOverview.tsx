@@ -396,22 +396,24 @@ export default function PerformanceOverview() {
     const totalWins = winningTrades.reduce((sum, t) => sum + t.pnl, 0);
     const totalLosses = Math.abs(losingTrades.reduce((sum, t) => sum + t.pnl, 0));
     
-    // Filter and sum commissions by date range
-    const filteredCommissions = (commissions || []).filter((c: any) => {
-      const timestamp = new Date(c.timestamp).getTime();
+    // Filter and sum commissions by date range (from exchange API records)
+    const commissionRecords = commissions?.records || [];
+    const filteredCommissions = commissionRecords.filter((c: any) => {
+      const timestamp = c.time; // Exchange API uses 'time' field in milliseconds
       return timestamp >= startTimestamp && timestamp <= endTimestamp;
     });
     const totalCommissions = filteredCommissions.reduce((sum: number, c: any) => 
-      sum + Math.abs(parseFloat(c.amount)), 0
+      sum + Math.abs(parseFloat(c.income || '0')), 0
     );
 
-    // Filter and sum funding fees by date range
-    const filteredFundingFees = (fundingFees || []).filter((f: any) => {
-      const timestamp = new Date(f.timestamp).getTime();
+    // Filter and sum funding fees by date range (from exchange API records)
+    const fundingFeeRecords = fundingFees?.records || [];
+    const filteredFundingFees = fundingFeeRecords.filter((f: any) => {
+      const timestamp = f.time; // Exchange API uses 'time' field in milliseconds
       return timestamp >= startTimestamp && timestamp <= endTimestamp;
     });
     const totalFundingFees = filteredFundingFees.reduce((sum: number, f: any) => 
-      sum + parseFloat(f.amount), 0
+      sum + parseFloat(f.income || '0'), 0
     );
     
     return {

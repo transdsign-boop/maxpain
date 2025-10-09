@@ -110,17 +110,16 @@ export function useStrategyData() {
     staleTime: 5 * 60 * 1000, // Refresh every 5 minutes
   });
 
-  // Fetch commissions for fee calculation (historical data)
-  const commissionsQuery = useQuery<any[]>({
+  // Fetch commissions for fee calculation (fetched from exchange API, not database)
+  const commissionsQuery = useQuery<{ records: any[]; total: number }>({
     queryKey: ['/api/commissions'],
     staleTime: 5 * 60 * 1000, // Refresh every 5 minutes
   });
 
-  // Fetch funding fees for fee calculation (historical data)
-  const fundingFeesQuery = useQuery<any>({
+  // Fetch funding fees for fee calculation (fetched from exchange API, not database)
+  const fundingFeesQuery = useQuery<{ records: any[]; total: number }>({
     queryKey: ['/api/funding-fees'],
     staleTime: 5 * 60 * 1000, // Refresh every 5 minutes
-    select: (data) => data?.fees || [], // Extract fees array from response
   });
 
   const snapshot = liveSnapshotQuery.data;
