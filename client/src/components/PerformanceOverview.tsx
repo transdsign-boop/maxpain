@@ -824,10 +824,11 @@ export default function PerformanceOverview() {
                         strokeWidth={2}
                         label={{
                           value: `+$${amount.toFixed(2)}`,
-                          position: 'bottom',
+                          position: 'insideBottom',
                           fill: 'rgb(34, 197, 94)',
                           fontSize: 11,
                           fontWeight: 600,
+                          offset: 10,
                         }}
                       />
                     );
