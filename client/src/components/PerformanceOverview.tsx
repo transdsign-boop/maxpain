@@ -2,10 +2,13 @@ import { useMemo, useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Slider } from "@/components/ui/slider";
 import { TrendingUp, TrendingDown, Target, Award, Activity, LineChart, DollarSign, Percent, ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from "lucide-react";
 import { ComposedChart, Line, Area, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, ReferenceArea, Label } from "recharts";
 import { format } from "date-fns";
 import { useStrategyData } from "@/hooks/use-strategy-data";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 interface PerformanceMetrics {
   totalTrades: number;
@@ -298,6 +301,32 @@ export default function PerformanceOverview() {
     return { totalRisk: totalPotentialLoss, riskPercentage: riskPct };
   }, [activeStrategy, livePositions, liveAccount]);
 
+  // Mutation to update max portfolio risk
+  const updateRiskMutation = useMutation({
+    mutationFn: async (newRisk: number) => {
+      if (!activeStrategy) return;
+      const response = await apiRequest('POST', `/api/strategies/${activeStrategy.id}`, {
+        maxPortfolioRiskPercent: newRisk.toFixed(2)
+      });
+      return await response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/strategies'] });
+    },
+  });
+
+  // Local state for slider (to avoid updating on every drag)
+  const [localRiskLimit, setLocalRiskLimit] = useState<number>(
+    activeStrategy ? parseFloat(activeStrategy.maxPortfolioRiskPercent) : 15
+  );
+
+  // Update local state when strategy changes
+  useEffect(() => {
+    if (activeStrategy) {
+      setLocalRiskLimit(parseFloat(activeStrategy.maxPortfolioRiskPercent));
+    }
+  }, [activeStrategy?.maxPortfolioRiskPercent]);
+
   // Use unified performance data (live-only mode)
   const displayPerformance = performance || {
     totalTrades: 0,
@@ -569,6 +598,28 @@ export default function PerformanceOverview() {
                 </div>
                 <div className="text-[10px] text-muted-foreground">
                   if all SL hit
+                </div>
+              </div>
+              
+              {/* Risk Limit Slider */}
+              <div className="mt-4 w-32 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-muted-foreground">Max Risk</span>
+                  <span className="text-xs font-mono font-semibold">{localRiskLimit.toFixed(1)}%</span>
+                </div>
+                <Slider
+                  value={[localRiskLimit]}
+                  onValueChange={(value) => setLocalRiskLimit(value[0])}
+                  onValueCommit={(value) => updateRiskMutation.mutate(value[0])}
+                  min={1}
+                  max={50}
+                  step={0.5}
+                  className="cursor-pointer"
+                  data-testid="slider-max-risk"
+                />
+                <div className="flex justify-between text-[9px] text-muted-foreground">
+                  <span>1%</span>
+                  <span>50%</span>
                 </div>
               </div>
             </div>
