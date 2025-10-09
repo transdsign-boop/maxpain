@@ -2948,6 +2948,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post("/api/cascade/stop", async (req, res) => {
+    try {
+      cascadeDetectorService.stop();
+      
+      res.json({ 
+        success: true, 
+        message: "Cascade detector stopped successfully"
+      });
+    } catch (error) {
+      console.error('Error stopping cascade detector:', error);
+      res.status(500).json({ error: "Failed to stop cascade detector" });
+    }
+  });
+
   const httpServer = createServer(app);
 
   // WebSocket server for real-time liquidation updates
