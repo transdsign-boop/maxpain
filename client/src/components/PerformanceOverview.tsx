@@ -70,27 +70,6 @@ interface AssetPerformance {
   totalTrades: number;
 }
 
-// Custom tooltip component for chart (moved outside main component to prevent re-renders)
-const CustomTooltip = ({ active, payload }: any) => {
-  if (active && payload && payload.length) {
-    const data = payload[0].payload;
-    return (
-      <div className="bg-background border border-border rounded-md p-3 shadow-lg">
-        <p className="text-sm font-semibold mb-1">Trade #{data.tradeNumber}</p>
-        <p className="text-xs text-muted-foreground mb-2">{format(new Date(data.timestamp), "MMM d, h:mm a")}</p>
-        <p className="text-xs mb-1"><span className="font-medium">{data.symbol}</span> {data.side}</p>
-        <p className={`text-sm font-mono font-semibold ${data.pnl >= 0 ? 'text-lime-500' : 'text-red-600'}`}>
-          P&L: {data.pnl >= 0 ? '+' : ''}${Math.abs(data.pnl).toFixed(2)}
-        </p>
-        <p className={`text-sm font-mono font-semibold ${data.cumulativePnl >= 0 ? 'text-lime-500' : 'text-red-600'}`}>
-          Cumulative: {data.cumulativePnl >= 0 ? '+' : ''}${Math.abs(data.cumulativePnl).toFixed(2)}
-        </p>
-      </div>
-    );
-  }
-  return null;
-};
-
 export default function PerformanceOverview() {
   // Pagination and zoom state for chart
   const [chartEndIndex, setChartEndIndex] = useState<number | null>(null);
@@ -404,6 +383,26 @@ export default function PerformanceOverview() {
   const unifiedDomain = calculateUnifiedDomain();
   const pnlDomain = unifiedDomain;
   const cumulativePnlDomain = unifiedDomain;
+
+  const CustomTooltip = ({ active, payload }: any) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      return (
+        <div className="bg-background border border-border rounded-md p-3 shadow-lg">
+          <p className="text-sm font-semibold mb-1">Trade #{data.tradeNumber}</p>
+          <p className="text-xs text-muted-foreground mb-2">{format(new Date(data.timestamp), "MMM d, h:mm a")}</p>
+          <p className="text-xs mb-1"><span className="font-medium">{data.symbol}</span> {data.side}</p>
+          <p className={`text-sm font-mono font-semibold ${data.pnl >= 0 ? 'text-lime-500' : 'text-red-600'}`}>
+            P&L: {data.pnl >= 0 ? '+' : ''}${Math.abs(data.pnl).toFixed(2)}
+          </p>
+          <p className={`text-sm font-mono font-semibold ${data.cumulativePnl >= 0 ? 'text-lime-500' : 'text-red-600'}`}>
+            Cumulative: {data.cumulativePnl >= 0 ? '+' : ''}${Math.abs(data.cumulativePnl).toFixed(2)}
+          </p>
+        </div>
+      );
+    }
+    return null;
+  };
 
   // Calculate total deposited capital (only positive deposits, exclude withdrawals)
   const { totalDeposited, depositCount } = useMemo(() => {
@@ -775,34 +774,35 @@ export default function PerformanceOverview() {
                   return null;
                 })}
 
-                {/* Vertical markers for transfer events (deposits only) */}
-                {transfers?.filter(t => parseFloat(t.amount || '0') > 0).map((transfer) => {
-                  if (!chartData || chartData.length === 0) return null;
-                  
+                {/* Vertical markers for transfer events (deposits) */}
+                {transfers?.map((transfer) => {
                   const transferTime = new Date(transfer.timestamp).getTime();
                   let tradeIndex = chartData.findIndex(trade => trade.timestamp >= transferTime);
                   
-                  if (tradeIndex === -1) {
+                  if (tradeIndex === -1 && chartData.length > 0) {
                     tradeIndex = chartData.length - 1;
                   }
                   
-                  const amount = parseFloat(transfer.amount || '0');
-                  return (
-                    <ReferenceLine
-                      key={transfer.id}
-                      x={chartData[tradeIndex].tradeNumber}
-                      yAxisId="left"
-                      stroke="rgb(34, 197, 94)"
-                      strokeWidth={2}
-                      label={{
-                        value: `+$${amount.toFixed(2)}`,
-                        position: 'top',
-                        fill: 'rgb(34, 197, 94)',
-                        fontSize: 11,
-                        fontWeight: 600,
-                      }}
-                    />
-                  );
+                  if (tradeIndex >= 0) {
+                    const amount = parseFloat(transfer.amount || '0');
+                    return (
+                      <ReferenceLine
+                        key={transfer.id}
+                        x={chartData[tradeIndex].tradeNumber}
+                        yAxisId="left"
+                        stroke="rgb(34, 197, 94)"
+                        strokeWidth={2}
+                        label={{
+                          value: `+$${amount.toFixed(2)}`,
+                          position: 'top',
+                          fill: 'rgb(34, 197, 94)',
+                          fontSize: 11,
+                          fontWeight: 600,
+                        }}
+                      />
+                    );
+                  }
+                  return null;
                 })}
                 <defs>
                   <linearGradient id="positivePnlGradient" x1="0" y1="0" x2="0" y2="1">
