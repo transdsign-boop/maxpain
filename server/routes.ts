@@ -1124,49 +1124,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Sync commissions from exchange to database
-  app.post("/api/sync/commissions", async (req, res) => {
+  // Get total commissions (just the sum)
+  app.get("/api/fees/commissions/total", async (req, res) => {
     try {
-      const { syncCommissions } = await import('./exchange-sync');
+      const { getTotalCommissions } = await import('./exchange-sync');
       
-      console.log(`🔄 Syncing commissions from exchange...`);
-      const result = await syncCommissions(DEFAULT_USER_ID);
+      const result = await getTotalCommissions();
       
       if (!result.success) {
-        return res.status(500).json({ error: result.error });
+        return res.status(500).json({ error: result.error, total: 0 });
       }
       
-      res.json({ 
-        success: true, 
-        addedCount: result.addedCount,
-        message: `Successfully synced ${result.addedCount} new commission(s) from exchange`
-      });
+      res.json({ total: result.total });
     } catch (error: any) {
-      console.error('❌ Error syncing commissions:', error);
-      res.status(500).json({ error: `Failed to sync commissions: ${error.message}` });
+      console.error('❌ Error fetching total commissions:', error);
+      res.status(500).json({ error: `Failed to fetch commissions: ${error.message}`, total: 0 });
     }
   });
 
-  // Sync funding fees from exchange to database
-  app.post("/api/sync/funding-fees", async (req, res) => {
+  // Get total funding fees (just the sum)
+  app.get("/api/fees/funding/total", async (req, res) => {
     try {
-      const { syncFundingFees } = await import('./exchange-sync');
+      const { getTotalFundingFees } = await import('./exchange-sync');
       
-      console.log(`🔄 Syncing funding fees from exchange...`);
-      const result = await syncFundingFees(DEFAULT_USER_ID);
+      const result = await getTotalFundingFees();
       
       if (!result.success) {
-        return res.status(500).json({ error: result.error });
+        return res.status(500).json({ error: result.error, total: 0 });
       }
       
-      res.json({ 
-        success: true, 
-        addedCount: result.addedCount,
-        message: `Successfully synced ${result.addedCount} new funding fee(s) from exchange`
-      });
+      res.json({ total: result.total });
     } catch (error: any) {
-      console.error('❌ Error syncing funding fees:', error);
-      res.status(500).json({ error: `Failed to sync funding fees: ${error.message}` });
+      console.error('❌ Error fetching total funding fees:', error);
+      res.status(500).json({ error: `Failed to fetch funding fees: ${error.message}`, total: 0 });
     }
   });
 
@@ -2129,80 +2119,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const totalLosses = Math.abs(losingTrades.reduce((sum, pnl) => sum + pnl, 0));
       const profitFactor = totalLosses > 0 ? totalWins / totalLosses : totalWins > 0 ? 999 : 0;
 
-      // Fetch commission and funding costs directly from API
+      // Get total fees and funding costs (just the totals, not individual records)
       let totalFees = 0;
       let totalFundingCost = 0;
       
-      const apiKey = process.env.ASTER_API_KEY;
-      const secretKey = process.env.ASTER_SECRET_KEY;
-
-      if (apiKey && secretKey) {
-        try {
-          // Fetch COMMISSION from API (all historical data, no cutoff)
-          const timestamp = Date.now();
-          const commissionParams = `incomeType=COMMISSION&limit=10000&timestamp=${timestamp}`;
-          
-          const commissionSignature = crypto
-            .createHmac('sha256', secretKey)
-            .update(commissionParams)
-            .digest('hex');
-
-          const commissionResponse = await fetch(
-            `https://fapi.asterdex.com/fapi/v1/income?${commissionParams}&signature=${commissionSignature}`,
-            {
-              headers: {
-                'X-MBX-APIKEY': apiKey,
-              },
-            }
-          );
-
-          if (commissionResponse.ok) {
-            const commissionData = await commissionResponse.json();
-            
-            // Sum up all commission fees (always negative, so we negate to show as cost)
-            totalFees = commissionData.reduce((sum: number, entry: any) => {
-              const income = parseFloat(entry.income || '0');
-              return sum + income; // Keep negative to show as cost
-            }, 0);
-            
-            console.log(`📊 Calculated total commission from API: $${totalFees.toFixed(2)} from ${commissionData.length} commission entries`);
-          } else {
-            console.warn('⚠️ Failed to fetch commission history:', await commissionResponse.text());
-          }
-
-          // Fetch FUNDING_FEE from API (all historical data, no cutoff)
-          const fundingParams = `incomeType=FUNDING_FEE&limit=10000&timestamp=${timestamp}`;
-          
-          const fundingSignature = crypto
-            .createHmac('sha256', secretKey)
-            .update(fundingParams)
-            .digest('hex');
-
-          const fundingResponse = await fetch(
-            `https://fapi.asterdex.com/fapi/v1/income?${fundingParams}&signature=${fundingSignature}`,
-            {
-              headers: {
-                'X-MBX-APIKEY': apiKey,
-              },
-            }
-          );
-
-          if (fundingResponse.ok) {
-            const fundingData = await fundingResponse.json();
-            
-            // Sum up all funding fees (negative means we paid, positive means we received)
-            totalFundingCost = fundingData.reduce((sum: number, entry: any) => {
-              const income = parseFloat(entry.income || '0');
-              return sum + income; // Keep sign to show cost/income correctly
-            }, 0);
-            
-            console.log(`📊 Calculated total funding cost from API: $${totalFundingCost.toFixed(2)} from ${fundingData.length} funding events`);
-          } else {
-            console.warn('⚠️ Failed to fetch funding fee history:', await fundingResponse.text());
-          }
-        } catch (error) {
-          console.error('❌ Error fetching fees from API:', error);
+      try {
+        const { getTotalCommissions, getTotalFundingFees } = await import('./exchange-sync');
+        
+        // Get total commissions
+        const commissionResult = await getTotalCommissions();
+        if (commissionResult.success) {
+          totalFees = commissionResult.total;
         }
+        
+        // Get total funding fees
+        const fundingResult = await getTotalFundingFees();
+        if (fundingResult.success) {
+          totalFundingCost = fundingResult.total;
+        }
+      } catch (error) {
+        console.error('❌ Error fetching fee totals:', error);
       }
 
       // Calculate average trade time from closed positions (in milliseconds)

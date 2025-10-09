@@ -531,10 +531,10 @@ export async function syncTransfers(userId: string): Promise<{
   }
 }
 
-// Sync commissions from exchange income API
-export async function syncCommissions(userId: string): Promise<{
+// Get total commission fees (just the sum, no individual records)
+export async function getTotalCommissions(): Promise<{
   success: boolean;
-  addedCount: number;
+  total: number;
   error?: string;
 }> {
   try {
@@ -542,10 +542,9 @@ export async function syncCommissions(userId: string): Promise<{
     const secretKey = process.env.ASTER_SECRET_KEY;
     
     if (!apiKey || !secretKey) {
-      return { success: false, addedCount: 0, error: 'API keys not configured' };
+      return { success: false, total: 0, error: 'API keys not configured' };
     }
     
-    // Fetch COMMISSION income from API (all historical data)
     const timestamp = Date.now();
     const queryParams = `incomeType=COMMISSION&timestamp=${timestamp}`;
     
@@ -564,41 +563,22 @@ export async function syncCommissions(userId: string): Promise<{
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`❌ Failed to fetch commissions: ${response.status} ${errorText}`);
-      return { success: false, addedCount: 0, error: `HTTP ${response.status}: ${errorText}` };
+      return { success: false, total: 0, error: `HTTP ${response.status}: ${errorText}` };
     }
 
     const commissionData = await response.json();
-    console.log(`📊 Fetched ${commissionData.length} commission events from exchange`);
+    const total = commissionData.reduce((sum: number, item: any) => sum + Math.abs(parseFloat(item.income || '0')), 0);
     
-    // Batch insert commissions using onConflictDoNothing for idempotency
-    const insertedCommissions = await db.insert(commissions)
-      .values(commissionData.map((comm: any) => ({
-        userId,
-        symbol: comm.symbol || '',
-        amount: comm.income || '0',
-        asset: comm.asset || 'USDT',
-        tradeId: comm.tradeId || null,
-        timestamp: new Date(comm.time),
-      })))
-      .onConflictDoNothing()
-      .returning({ id: commissions.id });
-    
-    const addedCount = insertedCommissions.length;
-    
-    console.log(`✅ Synced ${addedCount} new commissions to database`);
-    
-    return { success: true, addedCount };
+    return { success: true, total };
   } catch (error) {
-    console.error('❌ Error syncing commissions:', error);
-    return { success: false, addedCount: 0, error: String(error) };
+    return { success: false, total: 0, error: String(error) };
   }
 }
 
-// Sync funding fees from exchange income API
-export async function syncFundingFees(userId: string): Promise<{
+// Get total funding fees (just the sum, no individual records)
+export async function getTotalFundingFees(): Promise<{
   success: boolean;
-  addedCount: number;
+  total: number;
   error?: string;
 }> {
   try {
@@ -606,10 +586,9 @@ export async function syncFundingFees(userId: string): Promise<{
     const secretKey = process.env.ASTER_SECRET_KEY;
     
     if (!apiKey || !secretKey) {
-      return { success: false, addedCount: 0, error: 'API keys not configured' };
+      return { success: false, total: 0, error: 'API keys not configured' };
     }
     
-    // Fetch FUNDING_FEE income from API (all historical data)
     const timestamp = Date.now();
     const queryParams = `incomeType=FUNDING_FEE&timestamp=${timestamp}`;
     
@@ -628,32 +607,14 @@ export async function syncFundingFees(userId: string): Promise<{
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`❌ Failed to fetch funding fees: ${response.status} ${errorText}`);
-      return { success: false, addedCount: 0, error: `HTTP ${response.status}: ${errorText}` };
+      return { success: false, total: 0, error: `HTTP ${response.status}: ${errorText}` };
     }
 
     const fundingData = await response.json();
-    console.log(`📊 Fetched ${fundingData.length} funding fee events from exchange`);
+    const total = fundingData.reduce((sum: number, item: any) => sum + parseFloat(item.income || '0'), 0);
     
-    // Batch insert funding fees using onConflictDoNothing for idempotency
-    const insertedFundingFees = await db.insert(fundingFees)
-      .values(fundingData.map((funding: any) => ({
-        userId,
-        symbol: funding.symbol || '',
-        amount: funding.income || '0',
-        asset: funding.asset || 'USDT',
-        timestamp: new Date(funding.time),
-      })))
-      .onConflictDoNothing()
-      .returning({ id: fundingFees.id });
-    
-    const addedCount = insertedFundingFees.length;
-    
-    console.log(`✅ Synced ${addedCount} new funding fees to database`);
-    
-    return { success: true, addedCount };
+    return { success: true, total };
   } catch (error) {
-    console.error('❌ Error syncing funding fees:', error);
-    return { success: false, addedCount: 0, error: String(error) };
+    return { success: false, total: 0, error: String(error) };
   }
 }
