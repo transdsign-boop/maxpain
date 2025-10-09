@@ -44,20 +44,6 @@ app.use((req, res, next) => {
   
   const server = await registerRoutes(app);
 
-  // Start User Data Stream for real-time account/position updates
-  const apiKey = process.env.ASTER_API_KEY;
-  if (apiKey) {
-    const { userDataStreamManager } = await import('./user-data-stream');
-    try {
-      await userDataStreamManager.start({ apiKey });
-      console.log('✅ User Data Stream initialized successfully');
-    } catch (error) {
-      console.error('❌ Failed to start User Data Stream:', error);
-    }
-  } else {
-    console.warn('⚠️ ASTER_API_KEY not set - User Data Stream disabled');
-  }
-
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
