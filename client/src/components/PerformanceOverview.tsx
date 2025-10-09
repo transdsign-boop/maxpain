@@ -384,6 +384,17 @@ export default function PerformanceOverview() {
   const pnlDomain = unifiedDomain;
   const cumulativePnlDomain = unifiedDomain;
 
+  // Calculate total deposited capital (only positive deposits, exclude withdrawals)
+  const { totalDeposited, depositCount } = useMemo(() => {
+    if (!transfers || transfers.length === 0) return { totalDeposited: 0, depositCount: 0 };
+    
+    // Filter to only include deposits (positive amounts)
+    const deposits = transfers.filter(t => parseFloat(t.amount || '0') > 0);
+    const totalDeposited = deposits.reduce((sum, transfer) => sum + parseFloat(transfer.amount || '0'), 0);
+    
+    return { totalDeposited, depositCount: deposits.length };
+  }, [transfers]);
+
   const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
@@ -403,17 +414,6 @@ export default function PerformanceOverview() {
     }
     return null;
   };
-
-  // Calculate total deposited capital (only positive deposits, exclude withdrawals)
-  const { totalDeposited, depositCount } = useMemo(() => {
-    if (!transfers || transfers.length === 0) return { totalDeposited: 0, depositCount: 0 };
-    
-    // Filter to only include deposits (positive amounts)
-    const deposits = transfers.filter(t => parseFloat(t.amount || '0') > 0);
-    const totalDeposited = deposits.reduce((sum, transfer) => sum + parseFloat(transfer.amount || '0'), 0);
-    
-    return { totalDeposited, depositCount: deposits.length };
-  }, [transfers]);
 
   // Calculate unified account metrics (live-only mode)
   const unrealizedPnl = liveAccount ? (parseFloat(liveAccount.totalUnrealizedProfit) || 0) : 0;
