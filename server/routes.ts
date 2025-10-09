@@ -2082,6 +2082,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error('❌ Error fetching realized P&L from exchange:', error);
       }
 
+      // Get LIVE positions from exchange to calculate unrealized P&L
+      let livePositions: any[] = [];
+      try {
+        const apiKey = process.env.ASTER_API_KEY;
+        const secretKey = process.env.ASTER_SECRET_KEY;
+        
+        if (!apiKey || !secretKey) {
+          console.error('❌ API keys not configured for live positions');
+        } else {
+          // Create signed request
+          const timestamp = Date.now();
+          const params = `timestamp=${timestamp}`;
+          const signature = crypto
+            .createHmac('sha256', secretKey)
+            .update(params)
+            .digest('hex');
+
+          const response = await fetch(
+            `https://fapi.asterdex.com/fapi/v2/positionRisk?${params}&signature=${signature}`,
+            {
+              headers: { 'X-MBX-APIKEY': apiKey },
+            }
+          );
+          
+          if (response.ok) {
+            const allPositions = await response.json();
+            // Filter for non-zero positions only
+            livePositions = allPositions.filter((p: any) => parseFloat(p.positionAmt) !== 0);
+            console.log(`📊 Found ${livePositions.length} live open positions on exchange`);
+          } else {
+            const errorText = await response.text();
+            console.error(`❌ Failed to fetch live positions: ${response.status} ${errorText}`);
+          }
+        }
+      } catch (error) {
+        console.error('❌ Error fetching live positions from exchange:', error);
+      }
+
       if (!allPositions || allPositions.length === 0) {
         return res.json({
           totalTrades: 0,
@@ -2119,36 +2157,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const winningTrades = closedPnlDollars.filter(pnl => pnl > 0);
       const losingTrades = closedPnlDollars.filter(pnl => pnl < 0);
       
-      // Convert unrealized P&L percentages to dollar amounts for open positions
-      // CRITICAL: totalCost stores MARGIN, multiply by leverage to get notional value
-      const totalUnrealizedPnl = openPositions.reduce((sum, p) => {
-        const pnlPercent = parseFloat(p.unrealizedPnl || '0');
-        const totalCost = parseFloat(p.totalCost || '0');
-        const leverage = (p as any).leverage || 1;
-        const notionalValue = totalCost * leverage;
-        const pnlDollar = (pnlPercent / 100) * notionalValue;
-        return sum + pnlDollar;
+      // Calculate unrealized P&L from LIVE exchange positions (not database positions)
+      // Use the official unRealizedProfit field from exchange API (note: capital R and P)
+      const totalUnrealizedPnl = livePositions.reduce((sum, p) => {
+        const unrealizedProfit = parseFloat(p.unRealizedProfit || '0');
+        console.log(`  📊 ${p.symbol} ${p.positionSide}: unrealized P&L = $${unrealizedProfit.toFixed(2)}`);
+        return sum + unrealizedProfit;
       }, 0);
+      console.log(`📊 Total unrealized P&L from ${livePositions.length} live positions: $${totalUnrealizedPnl.toFixed(2)}`);
       
-      const totalPnl = totalRealizedPnl + totalUnrealizedPnl;
-      
-      const winRate = closedPositions.length > 0 ? (winningTrades.length / closedPositions.length) * 100 : 0;
-      
-      const averageWin = winningTrades.length > 0
-        ? winningTrades.reduce((sum, pnl) => sum + pnl, 0) / winningTrades.length
-        : 0;
-      
-      const averageLoss = losingTrades.length > 0
-        ? losingTrades.reduce((sum, pnl) => sum + pnl, 0) / losingTrades.length
-        : 0;
-      
-      const bestTrade = closedPnlDollars.length > 0 ? Math.max(...closedPnlDollars) : 0;
-      const worstTrade = closedPnlDollars.length > 0 ? Math.min(...closedPnlDollars) : 0;
-      
-      const totalWins = winningTrades.reduce((sum, pnl) => sum + pnl, 0);
-      const totalLosses = Math.abs(losingTrades.reduce((sum, pnl) => sum + pnl, 0));
-      const profitFactor = totalLosses > 0 ? totalWins / totalLosses : totalWins > 0 ? 999 : 0;
-
       // Get total commission fees from exchange API (all historical data)
       let totalFees = 0;
       try {
@@ -2172,6 +2189,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (error) {
         console.error('❌ Error fetching funding fees:', error);
       }
+      
+      // CRITICAL: Total P&L = Realized P&L + Unrealized P&L - Commission Fees - Funding Costs
+      const totalPnl = totalRealizedPnl + totalUnrealizedPnl - totalFees - totalFundingCost;
+      console.log(`💰 P&L Breakdown: Realized=$${totalRealizedPnl.toFixed(2)}, Unrealized=$${totalUnrealizedPnl.toFixed(2)}, Fees=$${totalFees.toFixed(2)}, Funding=$${totalFundingCost.toFixed(2)}, Total=$${totalPnl.toFixed(2)}`);
+      
+      const winRate = closedPositions.length > 0 ? (winningTrades.length / closedPositions.length) * 100 : 0;
+      
+      const averageWin = winningTrades.length > 0
+        ? winningTrades.reduce((sum, pnl) => sum + pnl, 0) / winningTrades.length
+        : 0;
+      
+      const averageLoss = losingTrades.length > 0
+        ? losingTrades.reduce((sum, pnl) => sum + pnl, 0) / losingTrades.length
+        : 0;
+      
+      const bestTrade = closedPnlDollars.length > 0 ? Math.max(...closedPnlDollars) : 0;
+      const worstTrade = closedPnlDollars.length > 0 ? Math.min(...closedPnlDollars) : 0;
+      
+      const totalWins = winningTrades.reduce((sum, pnl) => sum + pnl, 0);
+      const totalLosses = Math.abs(losingTrades.reduce((sum, pnl) => sum + pnl, 0));
+      const profitFactor = totalLosses > 0 ? totalWins / totalLosses : totalWins > 0 ? 999 : 0;
 
       // Calculate average trade time from closed positions (in milliseconds)
       const tradeTimesMs = closedPositions
@@ -2215,7 +2253,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json({
         totalTrades: allPositions.length, // Total trades includes both open and closed positions
-        openTrades: openPositions.length,
+        openTrades: livePositions.length, // Use live positions from exchange, not database
         closedTrades: closedPositions.length,
         winningTrades: winningTrades.length,
         losingTrades: losingTrades.length,
