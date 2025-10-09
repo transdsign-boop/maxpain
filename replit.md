@@ -99,7 +99,6 @@ Preferred communication style: Simple, everyday language.
   - All live account/position data flows exclusively through WebSocket events (ACCOUNT_UPDATE, ORDER_TRADE_UPDATE)
   - Single `/api/live/snapshot` endpoint serves in-memory cache that's continuously refreshed by WebSocket events
   - Completely eliminates API polling to prevent rate limit bans (user-demanded requirement)
-  - **Both development and deployed versions use identical WebSocket architecture** - no polling in any environment
   - **Data Flow**: Aster DEX WebSocket → user-data-stream.ts → liveDataOrchestrator.updateAccountFromWebSocket() / updatePositionsFromWebSocket() → WebSocket broadcast → Frontend
 - **Dynamic Cascade Detection**: Cascade detector automatically monitors all user-selected assets from Global Settings. Syncs on startup, strategy registration, and when selectedAssets changes. Automatically clears detectors when strategy is inactive or no assets selected, ensuring real-time monitoring always reflects current configuration.
 
