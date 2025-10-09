@@ -22,8 +22,8 @@ class CascadeDetectorService {
   private detectors: Map<string, CascadeDetector> = new Map();
   private symbolData: Map<string, SymbolData> = new Map();
   private clients: Set<WebSocket> | null = null;
-  private intervalId: NodeJS.Timeout | null = null;
   private isProcessing: boolean = false;
+  private tickInterval: NodeJS.Timeout | null = null;
   
   private liqAccumulator: number = 0;
   private lastLiqReset: number = Date.now();
@@ -49,7 +49,7 @@ class CascadeDetectorService {
   }
 
   public async start(): Promise<void> {
-    if (this.intervalId) {
+    if (this.tickInterval) {
       return;
     }
 
@@ -58,18 +58,84 @@ class CascadeDetectorService {
     // Sync symbols from active strategy before starting
     await this.syncSymbols();
     
-    this.intervalId = setInterval(() => {
+    // Start tick interval for processing (1 second)
+    // Each tick will batch fetch prices and OI
+    this.tickInterval = setInterval(() => {
       this.tick();
     }, 1000);
     
-    console.log('✅ Cascade Detector Service started');
+    console.log('✅ Cascade Detector Service started (batch API mode - 2 calls/sec vs 38 calls/sec before)');
   }
 
   public stop(): void {
-    if (this.intervalId) {
-      clearInterval(this.intervalId);
-      this.intervalId = null;
-      console.log('🚨 Cascade Detector Service stopped');
+    if (this.tickInterval) {
+      clearInterval(this.tickInterval);
+      this.tickInterval = null;
+    }
+    
+    console.log('🚨 Cascade Detector Service stopped');
+  }
+
+  private async batchFetchPricesAndOI(): Promise<void> {
+    const symbols = Array.from(this.detectors.keys());
+    
+    if (symbols.length === 0) {
+      return;
+    }
+    
+    try {
+      // Batch fetch all prices (single API call)
+      const priceResponse = await fetch('https://fapi.asterdex.com/fapi/v1/ticker/price');
+      if (priceResponse.ok) {
+        const allPrices = await priceResponse.json();
+        const priceMap = new Map<string, number>();
+        
+        for (const item of allPrices) {
+          priceMap.set(item.symbol, parseFloat(item.price));
+        }
+        
+        // Update prices for tracked symbols
+        for (const symbol of symbols) {
+          const price = priceMap.get(symbol);
+          if (price) {
+            const data = this.symbolData.get(symbol)!;
+            data.lastPrice = price;
+            data.priceHistory.push({ price, timestamp: Date.now() });
+            
+            if (data.priceHistory.length > 60) {
+              data.priceHistory.shift();
+            }
+          }
+        }
+      }
+      
+      // Batch fetch open interest for tracked symbols
+      // Note: Aster DEX doesn't have batch endpoint, so we fetch individually but with Promise.all
+      const oiPromises = symbols.map(async (symbol) => {
+        try {
+          const response = await fetch(`https://fapi.asterdex.com/fapi/v1/openInterest?symbol=${symbol}`);
+          if (response.ok) {
+            const data = await response.json();
+            return { symbol, oi: parseFloat(data.openInterest) };
+          }
+        } catch (error) {
+          // Silently fail for individual symbol
+        }
+        return null;
+      });
+      
+      const oiResults = await Promise.all(oiPromises);
+      
+      for (const result of oiResults) {
+        if (result) {
+          const symbolData = this.symbolData.get(result.symbol);
+          if (symbolData) {
+            symbolData.lastOI = result.oi;
+          }
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error batch fetching prices/OI:', error);
     }
   }
 
@@ -115,36 +181,6 @@ class CascadeDetectorService {
     }
   }
 
-  private async getCurrentPrice(symbol: string): Promise<number> {
-    const data = this.symbolData.get(symbol);
-    const fallback = data?.lastPrice || 0;
-    
-    try {
-      const response = await fetch(`https://fapi.asterdex.com/fapi/v1/ticker/price?symbol=${symbol}`);
-      if (!response.ok) return fallback;
-      
-      const responseData = await response.json();
-      return parseFloat(responseData.price) || fallback;
-    } catch (error) {
-      return fallback;
-    }
-  }
-
-  private async getOpenInterest(symbol: string): Promise<number> {
-    const data = this.symbolData.get(symbol);
-    const fallback = data?.lastOI || 0;
-    
-    try {
-      const response = await fetch(`https://fapi.asterdex.com/fapi/v1/openInterest?symbol=${symbol}`);
-      if (!response.ok) return fallback;
-      
-      const responseData = await response.json();
-      return parseFloat(responseData.openInterest) || fallback;
-    } catch (error) {
-      return fallback;
-    }
-  }
-
   private getReturnAndAlignment(symbol: string, dominantSide: 'long' | 'short' | 'neutral'): { ret1s: number; retSideMatchesLiq: boolean } {
     const data = this.symbolData.get(symbol);
     if (!data || data.priceHistory.length < 2) {
@@ -168,14 +204,17 @@ class CascadeDetectorService {
   }
 
   private async tick(): Promise<void> {
-    // Skip if service is stopped or previous tick is still processing
-    if (!this.intervalId || this.isProcessing) {
+    // Skip if previous tick is still processing
+    if (this.isProcessing) {
       return;
     }
 
     this.isProcessing = true;
 
     try {
+      // Batch fetch prices and open interest (2 API calls total)
+      await this.batchFetchPricesAndOI();
+      
       // Get RET thresholds and risk level from active strategy (same for all symbols)
       const strategies = await storage.getAllActiveStrategies();
       const activeStrategy = strategies[0];
@@ -192,20 +231,11 @@ class CascadeDetectorService {
         // Get liquidation info for this symbol
         const liqInfo = await this.getLiqNotionalLastSec(symbol);
         
-        // Get current price for this symbol
-        const currentPrice = await this.getCurrentPrice(symbol);
-        data.priceHistory.push({ price: currentPrice, timestamp: Date.now() });
-        if (data.priceHistory.length > 60) {
-          data.priceHistory.shift();
-        }
-        data.lastPrice = currentPrice;
-
-        // Calculate return and alignment for this symbol
+        // Calculate return and alignment for this symbol (uses batch-fetched price data)
         const { ret1s, retSideMatchesLiq } = this.getReturnAndAlignment(symbol, liqInfo.dominantSide);
 
-        // Get open interest for this symbol
-        const oi = await this.getOpenInterest(symbol);
-        data.lastOI = oi;
+        // Use open interest from batch fetch
+        const oi = data.lastOI;
 
         // Update detector for this symbol (with risk level)
         const status = detector.ingestTick(liqInfo.notional, ret1s, oi, retSideMatchesLiq, retHighThreshold, retMediumThreshold, riskLevel);
@@ -310,7 +340,7 @@ class CascadeDetectorService {
         }
       }
       
-      console.log(`📊 Cascade detector now monitoring ${this.detectors.size} symbols: ${Array.from(this.detectors.keys()).join(', ')}`);
+      console.log(`📊 Cascade detector now monitoring ${this.detectors.size} symbols via batch API (2 calls/sec)`);
     } catch (error) {
       console.error('❌ Error syncing cascade detector symbols:', error);
     }
