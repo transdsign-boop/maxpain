@@ -472,7 +472,9 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
 
   // Fetch real liquidity data for symbols with account balance for recommendations
   const { data: liquidityData, isLoading: liquidityLoading } = useQuery({
-    queryKey: ['/api/analytics/liquidity/batch', symbols?.map((s: any) => s.symbol), tradeSize, currentBalance],
+    // Only use symbols in queryKey to prevent refetching on every form value change
+    // Server-side caching handles the actual data freshness
+    queryKey: ['/api/analytics/liquidity/batch', symbols?.map((s: any) => s.symbol).sort().join(',')],
     enabled: !!symbols && symbols.length > 0,
     queryFn: async () => {
       if (!symbols || symbols.length === 0) return [];
@@ -484,7 +486,9 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
       });
       return await response.json();
     },
-    staleTime: 30000, // Cache for 30 seconds
+    staleTime: 60000, // Cache for 60 seconds (server also caches for 15s)
+    refetchOnWindowFocus: false, // Prevent refetching when window gets focus
+    refetchOnMount: false, // Prevent refetching on component mount if data exists
   });
 
   // Create liquidity lookup map
