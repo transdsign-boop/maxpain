@@ -3798,12 +3798,98 @@ export async function registerRoutes(app: Express): Promise<Server> {
         };
       });
       
+      // Consolidate positions: Group by symbol+side and merge positions closed within 30 seconds of each other
+      // This treats multiple layer entries/exits as a single trade
+      const consolidatedPositions: any[] = [];
+      const positionGroups = new Map<string, any[]>();
+      
+      // Group positions by symbol and side
+      for (const position of closedPositionsWithFees) {
+        const key = `${position.symbol}-${position.side}`;
+        if (!positionGroups.has(key)) {
+          positionGroups.set(key, []);
+        }
+        positionGroups.get(key)!.push(position);
+      }
+      
+      // For each group, merge positions that opened OR closed within 5 seconds
+      // This consolidates DCA layers that were entered/exited as part of the same trade
+      for (const [key, positions] of positionGroups) {
+        // Sort by open time first (layers often open together)
+        positions.sort((a, b) => new Date(a.openedAt).getTime() - new Date(b.openedAt).getTime());
+        
+        let currentGroup: any[] = [];
+        
+        for (const position of positions) {
+          if (currentGroup.length === 0) {
+            currentGroup.push(position);
+          } else {
+            const lastOpenTime = new Date(currentGroup[currentGroup.length - 1].openedAt).getTime();
+            const currentOpenTime = new Date(position.openedAt).getTime();
+            const lastCloseTime = new Date(currentGroup[currentGroup.length - 1].closedAt).getTime();
+            const currentCloseTime = new Date(position.closedAt).getTime();
+            
+            // If opened within 5 seconds OR closed within 5 seconds, they're part of the same trade
+            const openedTogether = currentOpenTime - lastOpenTime <= 5000;
+            const closedTogether = Math.abs(currentCloseTime - lastCloseTime) <= 5000;
+            
+            if (openedTogether || closedTogether) {
+              currentGroup.push(position);
+            } else {
+              // Consolidate the current group and start a new one
+              consolidatedPositions.push(mergePositionGroup(currentGroup));
+              currentGroup = [position];
+            }
+          }
+        }
+        
+        // Consolidate remaining group
+        if (currentGroup.length > 0) {
+          consolidatedPositions.push(mergePositionGroup(currentGroup));
+        }
+      }
+      
+      // Helper function to merge a group of positions into one consolidated position
+      function mergePositionGroup(group: any[]) {
+        if (group.length === 1) return group[0];
+        
+        const totalQuantity = group.reduce((sum, p) => sum + parseFloat(p.totalQuantity || '0'), 0);
+        const totalCost = group.reduce((sum, p) => sum + parseFloat(p.totalCost || '0'), 0);
+        const totalRealizedPnl = group.reduce((sum, p) => sum + parseFloat(p.realizedPnl || '0'), 0);
+        const totalUnrealizedPnl = group.reduce((sum, p) => sum + parseFloat(p.unrealizedPnl || '0'), 0);
+        const totalFees = group.reduce((sum, p) => sum + parseFloat(p.totalFees || '0'), 0);
+        const totalLayersFilled = group.reduce((sum, p) => sum + (p.layersFilled || 1), 0);
+        
+        // Weighted average entry price
+        const avgEntryPrice = totalCost > 0 
+          ? group.reduce((sum, p) => sum + parseFloat(p.avgEntryPrice || '0') * parseFloat(p.totalCost || '0'), 0) / totalCost
+          : parseFloat(group[0].avgEntryPrice || '0');
+        
+        return {
+          ...group[0], // Use first position as base
+          id: group.map(p => p.id).join(','), // Combine IDs for reference
+          totalQuantity: totalQuantity.toFixed(8),
+          avgEntryPrice: avgEntryPrice.toFixed(8),
+          totalCost: totalCost.toFixed(8),
+          realizedPnl: totalRealizedPnl.toFixed(8),
+          unrealizedPnl: totalUnrealizedPnl.toFixed(8),
+          totalFees: totalFees.toFixed(4),
+          layersFilled: totalLayersFilled,
+          openedAt: group[0].openedAt, // Earliest open time
+          closedAt: group[group.length - 1].closedAt, // Latest close time
+          consolidatedCount: group.length, // Track how many positions were merged
+        };
+      }
+      
+      // Sort consolidated positions by close time (most recent first)
+      consolidatedPositions.sort((a, b) => new Date(b.closedAt).getTime() - new Date(a.closedAt).getTime());
+      
       // Prevent caching to ensure fresh data on each request
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Expires', '0');
       
-      res.json(closedPositionsWithFees);
+      res.json(consolidatedPositions);
     } catch (error) {
       console.error('Error fetching closed positions:', error);
       res.status(500).json({ error: 'Failed to fetch closed positions' });
