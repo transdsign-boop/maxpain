@@ -272,7 +272,8 @@ export async function calculateNextLayer(
   initialEntryPrice: number,
   storedQ1: number | null, // q1 from initial calculation - ensures consistent sizing
   apiKey?: string,
-  secretKey?: string
+  secretKey?: string,
+  maxRiskOverride?: number  // Optional override for max risk % (uses remaining portfolio budget)
 ): Promise<{ price: number; quantity: number; level: number } | null> {
   // Check if we've reached max layers
   if (currentLayer >= strategy.maxLayers) {
@@ -347,7 +348,7 @@ export async function calculateNextLayer(
     currentBalance,
     leverage,
     atrPercent,
-  });
+  }, maxRiskOverride);
   
   // Get the next level's price and quantity
   const nextLevel = dcaResult.levels[nextLayer - 1];
