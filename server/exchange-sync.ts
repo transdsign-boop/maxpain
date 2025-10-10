@@ -785,19 +785,17 @@ export async function fetchRealizedPnl(params: {
     
     console.log(`✅ Fetched realized P&L from income API: $${total.toFixed(2)} (${allRecords.length} records)`);
     
-    // Debug: Show breakdown of P&L by symbol (all symbols)
+    // Debug: Show breakdown of P&L by symbol
     const bySymbol: Record<string, number> = {};
     allRecords.forEach(item => {
       const symbol = item.symbol || 'UNKNOWN';
       bySymbol[symbol] = (bySymbol[symbol] || 0) + parseFloat(item.income || '0');
     });
-    const sortedSymbols = Object.entries(bySymbol)
-      .sort((a, b) => b[1] - a[1]);
-    
-    console.log('📊 P&L breakdown by symbol (ALL):');
-    sortedSymbols.forEach(([sym, pnl]) => {
-      console.log(`  ${sym}: $${pnl.toFixed(2)}`);
-    });
+    console.log('📊 P&L breakdown by symbol:', Object.entries(bySymbol)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([sym, pnl]) => `${sym}: $${pnl.toFixed(2)}`)
+      .join(', '));
     
     return { success: true, total };
   } catch (error) {
