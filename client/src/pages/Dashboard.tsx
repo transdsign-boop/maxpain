@@ -5,6 +5,7 @@ import ConnectionStatus from "@/components/ConnectionStatus";
 import LiveLiquidationsSidebar from "@/components/LiveLiquidationsSidebar";
 import PerformanceOverview from "@/components/PerformanceOverview";
 import TradingStrategyDialog from "@/components/TradingStrategyDialog";
+import TradeErrorsDialog from "@/components/TradeErrorsDialog";
 import { StrategyStatus } from "@/components/StrategyStatus";
 import CascadeRiskIndicator from "@/components/CascadeRiskIndicator";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -14,7 +15,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Settings2, Pause, Play, AlertTriangle, BarChart3, Menu, BookOpen } from "lucide-react";
+import { Settings2, Pause, Play, AlertTriangle, BarChart3, Menu, BookOpen, AlertCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -42,6 +43,9 @@ export default function Dashboard() {
   
   // Trading strategy dialog state
   const [isStrategyDialogOpen, setIsStrategyDialogOpen] = useState(false);
+  
+  // Trade errors dialog state
+  const [isTradeErrorsDialogOpen, setIsTradeErrorsDialogOpen] = useState(false);
   
   // Emergency stop dialog state
   const [isEmergencyStopDialogOpen, setIsEmergencyStopDialogOpen] = useState(false);
@@ -511,6 +515,17 @@ export default function Dashboard() {
               </Button>
             </Link>
             
+            {/* Trade Errors Button */}
+            <Button 
+              variant="outline" 
+              size="icon"
+              onClick={() => setIsTradeErrorsDialogOpen(true)}
+              data-testid="button-trade-errors"
+              title="View Trade Entry Errors"
+            >
+              <AlertCircle className="h-4 w-4" />
+            </Button>
+            
             {/* Trading Strategy Button */}
             <Button 
               variant="default" 
@@ -680,6 +695,12 @@ export default function Dashboard() {
       <TradingStrategyDialog
         open={isStrategyDialogOpen}
         onOpenChange={setIsStrategyDialogOpen}
+      />
+
+      {/* Trade Errors Dialog */}
+      <TradeErrorsDialog
+        open={isTradeErrorsDialogOpen}
+        onOpenChange={setIsTradeErrorsDialogOpen}
       />
 
       {/* Emergency Stop Dialog */}

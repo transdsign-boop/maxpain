@@ -426,3 +426,30 @@ export const insertFundingFeeSchema = createInsertSchema(fundingFees).omit({
 
 export type InsertFundingFee = z.infer<typeof insertFundingFeeSchema>;
 export type FundingFee = typeof fundingFees.$inferSelect;
+
+// Trade Entry Errors - logs failed trade attempts for debugging
+export const tradeEntryErrors = pgTable("trade_entry_errors", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  strategyId: varchar("strategy_id"), // References strategies.id (optional if strategy deleted)
+  symbol: text("symbol").notNull(),
+  side: text("side").notNull(), // "long" or "short"
+  attemptType: text("attempt_type").notNull(), // "entry" or "layer"
+  reason: text("reason").notNull(), // "risk_limit", "aggregate_filter", "leverage_error", "api_error", etc.
+  errorDetails: text("error_details"), // Full error message or JSON details
+  liquidationValue: decimal("liquidation_value", { precision: 18, scale: 8 }), // Size of liquidation that triggered attempt
+  strategySettings: jsonb("strategy_settings"), // Snapshot of strategy config at time of error
+  timestamp: timestamp("timestamp").notNull().defaultNow(),
+}, (table) => [
+  index("idx_trade_errors_user_time").on(table.userId, table.timestamp),
+  index("idx_trade_errors_symbol").on(table.symbol),
+  index("idx_trade_errors_reason").on(table.reason),
+]);
+
+export const insertTradeEntryErrorSchema = createInsertSchema(tradeEntryErrors).omit({
+  id: true,
+  timestamp: true,
+});
+
+export type InsertTradeEntryError = z.infer<typeof insertTradeEntryErrorSchema>;
+export type TradeEntryError = typeof tradeEntryErrors.$inferSelect;
