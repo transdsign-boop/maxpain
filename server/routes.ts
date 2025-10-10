@@ -3823,7 +3823,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         // Fetch trade history from exchange for this symbol (all historical data, no cutoff)
         const timestamp = Date.now();
-        const params = `symbol=${symbol}&timestamp=${timestamp}&limit=10000`;
+        const params = `symbol=${symbol}&timestamp=${timestamp}&limit=1000`;
         const signature = crypto
           .createHmac('sha256', secretKey)
           .update(params)
