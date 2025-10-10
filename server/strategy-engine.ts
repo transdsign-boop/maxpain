@@ -724,10 +724,29 @@ export class StrategyEngine extends EventEmitter {
         currentBalance = exchangeBalance;
       }
       
+      const maxRiskPercent = parseFloat(strategy.maxPortfolioRiskPercent);
+      const remainingRiskPercent = maxRiskPercent - portfolioRisk.riskPercentage;
+      
+      // Check if there's any remaining risk budget (with 0.05% minimum threshold)
+      if (remainingRiskPercent < 0.05) {
+        console.log(`🚫 PORTFOLIO RISK LIMIT (Layer): No remaining risk budget (current: ${portfolioRisk.riskPercentage.toFixed(1)}%, max: ${maxRiskPercent}%, remaining: ${remainingRiskPercent.toFixed(2)}%)`);
+        return false;
+      }
+      
       // Import DCA function
       const { calculateNextLayer } = await import('./dca-calculator');
+      const { getStrategyWithDCA } = await import('./dca-sql');
       
-      // Calculate the next layer parameters
+      // Fetch DCA parameters to get strategy's max layer risk
+      const strategyWithDCA = await getStrategyWithDCA(strategy.id);
+      const strategyMaxLayerRisk = strategyWithDCA?.dca_max_risk_percent ? parseFloat(String(strategyWithDCA.dca_max_risk_percent)) : 10.0;
+      
+      // Determine effective max risk for this layer
+      const effectiveMaxRisk = Math.min(strategyMaxLayerRisk, remainingRiskPercent);
+      
+      console.log(`💰 Layer Risk Budget: current=${portfolioRisk.riskPercentage.toFixed(1)}%, max=${maxRiskPercent}%, remaining=${remainingRiskPercent.toFixed(1)}%, effective=${effectiveMaxRisk.toFixed(1)}% (${effectiveMaxRisk < strategyMaxLayerRisk ? 'SCALED DOWN' : 'normal'})`);
+      
+      // Calculate the next layer parameters with risk override if needed
       const nextLayerResult = await calculateNextLayer(
         strategy,
         currentBalance,
@@ -738,7 +757,8 @@ export class StrategyEngine extends EventEmitter {
         parseFloat(position.initialEntryPrice || position.avgEntryPrice),
         position.dcaBaseSize ? parseFloat(position.dcaBaseSize) : null,
         process.env.ASTER_API_KEY,
-        process.env.ASTER_SECRET_KEY
+        process.env.ASTER_SECRET_KEY,
+        effectiveMaxRisk < strategyMaxLayerRisk ? effectiveMaxRisk : undefined
       );
       
       if (!nextLayerResult) {
@@ -767,11 +787,13 @@ export class StrategyEngine extends EventEmitter {
         throw new Error(`Invalid layer risk calculation: layerRisk=${layerRiskPercent}, projected=${projectedRiskPercentage}`);
       }
       
-      const maxRiskPercent = parseFloat(strategy.maxPortfolioRiskPercent);
-      if (projectedRiskPercentage > maxRiskPercent) {
-        console.log(`🚫 PORTFOLIO RISK LIMIT (Layer): New layer would push total risk to ${projectedRiskPercentage.toFixed(1)}% (current: ${portfolioRisk.riskPercentage.toFixed(1)}% + layer: ${layerRiskPercent.toFixed(1)}%) > max ${maxRiskPercent}%`);
+      // Final safety check: ensure projected risk doesn't exceed max (account for float precision)
+      if (projectedRiskPercentage > maxRiskPercent + 0.01) { // Allow 0.01% tolerance for float precision
+        console.log(`🚫 PORTFOLIO RISK LIMIT (Layer): Projected risk still exceeds max after scaling (projected: ${projectedRiskPercentage.toFixed(1)}% > max: ${maxRiskPercent}%)`);
         return false;
       }
+      
+      console.log(`✅ Layer risk check passed: projected=${projectedRiskPercentage.toFixed(1)}% ≤ max=${maxRiskPercent}%`);
       
       layerRiskCheckPassed = true;
     } catch (error) {
@@ -781,14 +803,15 @@ export class StrategyEngine extends EventEmitter {
         const session = await storage.getTradeSession(position.sessionId);
         if (session) {
           const portfolioRisk = await this.calculatePortfolioRisk(strategy, session);
-          const dcaMaxRiskPercent = parseFloat(strategy.dcaMaxRiskPercent || "1.0");
-          const layerRiskEstimate = dcaMaxRiskPercent * 0.5;
-          const projectedRiskPercentage = portfolioRisk.riskPercentage + layerRiskEstimate;
           const maxRiskPercent = parseFloat(strategy.maxPortfolioRiskPercent);
-          if (projectedRiskPercentage > maxRiskPercent) {
-            console.log(`🚫 PORTFOLIO RISK LIMIT (Layer/Fallback): Risk ${projectedRiskPercentage.toFixed(1)}% > max ${maxRiskPercent}%`);
+          const remainingRiskPercent = maxRiskPercent - portfolioRisk.riskPercentage;
+          
+          if (remainingRiskPercent < 0.05) {
+            console.log(`🚫 PORTFOLIO RISK LIMIT (Layer/Fallback): No remaining risk budget (remaining: ${remainingRiskPercent.toFixed(2)}%)`);
             return false;
           }
+          
+          console.log(`✅ Layer risk check passed (Fallback): remaining budget ${remainingRiskPercent.toFixed(1)}% available`);
           layerRiskCheckPassed = true; // Fallback check passed
         }
       } catch (fallbackError) {
