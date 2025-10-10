@@ -385,6 +385,8 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
   const [isStrategyRunning, setIsStrategyRunning] = useState(false);
   const [apiTestResult, setApiTestResult] = useState<{ success: boolean; message: string; accountInfo?: any } | null>(null);
   const [assetSortMode, setAssetSortMode] = useState<"liquidations" | "liquidity" | "alphabetical">("liquidations");
+  const [atrData, setAtrData] = useState<Record<string, number>>({});
+  const [atrLoading, setAtrLoading] = useState(false);
 
   // Fetch available symbols from Aster DEX
   const { data: symbols, isLoading: symbolsLoading } = useQuery({
@@ -787,6 +789,59 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
     }
   });
 
+  // Fetch ATR data for selected symbols to display current TP
+  const fetchAtrData = async (symbols: string[]) => {
+    if (symbols.length === 0) {
+      setAtrData({});
+      return;
+    }
+
+    setAtrLoading(true);
+    try {
+      const response = await apiRequest('POST', '/api/atr/current', { symbols });
+      const data = await response.json();
+      setAtrData(data);
+    } catch (error) {
+      console.error('Failed to fetch ATR data:', error);
+      setAtrData({});
+    } finally {
+      setAtrLoading(false);
+    }
+  };
+
+  // Calculate dynamic TP based on ATR (same formula as backend)
+  const calculateDynamicTp = (symbol: string): number | null => {
+    const atr = atrData[symbol];
+    if (!atr) return null;
+
+    const adaptiveTpEnabled = form.watch('adaptiveTpEnabled');
+    const baseTp = parseFloat(form.watch('profitTargetPercent'));
+    const multiplier = parseFloat(form.watch('tpAtrMultiplier'));
+    const minTp = parseFloat(form.watch('minTpPercent'));
+    const maxTp = parseFloat(form.watch('maxTpPercent'));
+
+    if (!adaptiveTpEnabled) return baseTp;
+
+    const referenceATR = 1.0; // 1.0% = mid-range volatility baseline
+    const scaleFactor = (atr / referenceATR) * multiplier;
+    const dynamicTp = baseTp * scaleFactor;
+    const clampedTp = Math.max(minTp, Math.min(maxTp, dynamicTp));
+
+    return clampedTp;
+  };
+
+  // Effect to fetch ATR when selected assets or adaptive TP settings change
+  useEffect(() => {
+    const selectedAssets = form.watch('selectedAssets');
+    const adaptiveTpEnabled = form.watch('adaptiveTpEnabled');
+    
+    if (open && selectedAssets.length > 0 && adaptiveTpEnabled) {
+      fetchAtrData(selectedAssets);
+    } else if (!adaptiveTpEnabled) {
+      setAtrData({});
+    }
+  }, [open, form.watch('selectedAssets'), form.watch('adaptiveTpEnabled'), form.watch('tpAtrMultiplier'), form.watch('minTpPercent'), form.watch('maxTpPercent')]);
+
   // Export settings handler
   const handleExportSettings = async () => {
     try {
@@ -1095,9 +1150,25 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                             className="border rounded-md p-2 space-y-2"
                           >
                             <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
                                 <span className="font-medium text-sm">{asset.symbol}</span>
                                 <span className="text-xs text-muted-foreground">({asset.liquidationCount})</span>
+                                {(() => {
+                                  const dynamicTp = calculateDynamicTp(asset.symbol);
+                                  const adaptiveTpEnabled = form.watch('adaptiveTpEnabled');
+                                  if (adaptiveTpEnabled && dynamicTp !== null) {
+                                    return (
+                                      <Badge 
+                                        variant="outline" 
+                                        className="text-[10px] px-1 py-0 h-4 bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20"
+                                        data-testid={`badge-tp-${asset.symbol}`}
+                                      >
+                                        TP: {dynamicTp.toFixed(2)}%
+                                      </Badge>
+                                    );
+                                  }
+                                  return null;
+                                })()}
                               </div>
                               <Checkbox
                                 data-testid={`checkbox-asset-${asset.symbol}`}
