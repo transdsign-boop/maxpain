@@ -803,3 +803,95 @@ export async function fetchRealizedPnl(params: {
     return { success: false, total: 0, error: String(error) };
   }
 }
+
+// Fetch individual realized P&L events from exchange
+// Returns all P&L events with details (symbol, income, timestamp, tradeId)
+export async function fetchRealizedPnlEvents(params: {
+  startTime?: number;
+  endTime?: number;
+}): Promise<{
+  success: boolean;
+  events: Array<{
+    symbol: string;
+    income: string;
+    asset: string;
+    time: number;
+    tradeId: string;
+    incomeType: string;
+  }>;
+  total: number;
+  count: number;
+  error?: string;
+}> {
+  try {
+    const apiKey = process.env.ASTER_API_KEY;
+    const secretKey = process.env.ASTER_SECRET_KEY;
+    
+    if (!apiKey || !secretKey) {
+      return { success: false, events: [], total: 0, count: 0, error: 'API keys not configured' };
+    }
+    
+    let allRecords: any[] = [];
+    let currentEndTime = params.endTime || Date.now();
+    const startTime = params.startTime || 0;
+    const limit = 1000;
+    
+    // Paginate backwards from endTime to startTime
+    while (true) {
+      const timestamp = Date.now();
+      const queryParams = `incomeType=REALIZED_PNL&startTime=${startTime}&endTime=${currentEndTime}&limit=${limit}&timestamp=${timestamp}`;
+      
+      const signature = createHmac('sha256', secretKey)
+        .update(queryParams)
+        .digest('hex');
+
+      const response = await fetch(
+        `https://fapi.asterdex.com/fapi/v1/income?${queryParams}&signature=${signature}`,
+        {
+          headers: {
+            'X-MBX-APIKEY': apiKey,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return { success: false, events: [], total: 0, count: 0, error: `HTTP ${response.status}: ${errorText}` };
+      }
+
+      const batch = await response.json();
+      
+      if (batch.length === 0) {
+        break;
+      }
+      
+      allRecords.push(...batch);
+      
+      if (batch.length < limit) {
+        break;
+      }
+      
+      // Move endTime to the oldest record's timestamp minus 1ms for next batch
+      currentEndTime = batch[batch.length - 1].time - 1;
+      
+      if (currentEndTime <= startTime) {
+        break;
+      }
+    }
+
+    // Sum all realized P&L values
+    const total = allRecords.reduce((sum: number, item: any) => sum + parseFloat(item.income || '0'), 0);
+    
+    console.log(`✅ Fetched ${allRecords.length} realized P&L events from income API: Total=$${total.toFixed(2)}`);
+    
+    return { 
+      success: true, 
+      events: allRecords,
+      total,
+      count: allRecords.length
+    };
+  } catch (error) {
+    console.error('❌ Error fetching realized P&L events:', error);
+    return { success: false, events: [], total: 0, count: 0, error: String(error) };
+  }
+}

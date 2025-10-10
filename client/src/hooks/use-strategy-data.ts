@@ -116,6 +116,17 @@ export function useStrategyData() {
     staleTime: Infinity, // Never refetch - WebSocket provides updates
   });
 
+  // Fetch realized P&L events from exchange (actual closed trades - source of truth)
+  const realizedPnlEventsQuery = useQuery<{ events: any[]; total: number; count: number }>({
+    queryKey: ['/api/realized-pnl-events'],
+    queryFn: async () => {
+      const response = await fetch('/api/realized-pnl-events');
+      if (!response.ok) return { events: [], total: 0, count: 0 };
+      return response.json();
+    },
+    staleTime: 5 * 60 * 1000, // Refresh every 5 minutes
+  });
+
   // Fetch transfers for chart markers (static historical data)
   const transfersQuery = useQuery<any[]>({
     queryKey: ['/api/transfers'],
@@ -178,6 +189,13 @@ export function useStrategyData() {
     closedPositions: closedPositionsQuery.data,
     closedPositionsLoading: closedPositionsQuery.isLoading,
     closedPositionsError: closedPositionsQuery.error,
+
+    // Realized P&L events from exchange (actual closed trades)
+    realizedPnlEvents: realizedPnlEventsQuery.data?.events || [],
+    realizedPnlTotal: realizedPnlEventsQuery.data?.total || 0,
+    realizedPnlCount: realizedPnlEventsQuery.data?.count || 0,
+    realizedPnlLoading: realizedPnlEventsQuery.isLoading,
+    realizedPnlError: realizedPnlEventsQuery.error,
 
     // Transfer events for chart markers
     transfers: transfersQuery.data,

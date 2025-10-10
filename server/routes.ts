@@ -4817,6 +4817,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get realized P&L events from exchange (actual closed trades)
+  app.get('/api/realized-pnl-events', async (req, res) => {
+    try {
+      const { fetchRealizedPnlEvents } = await import('./exchange-sync');
+      
+      const { startTime, endTime } = req.query;
+      
+      const params: { startTime?: number; endTime?: number } = {};
+      
+      if (startTime) {
+        const timestamp = parseInt(startTime as string);
+        if (isNaN(timestamp)) {
+          return res.status(400).json({ error: 'Invalid startTime parameter' });
+        }
+        params.startTime = timestamp;
+      }
+      
+      if (endTime) {
+        const timestamp = parseInt(endTime as string);
+        if (isNaN(timestamp)) {
+          return res.status(400).json({ error: 'Invalid endTime parameter' });
+        }
+        params.endTime = timestamp;
+      }
+
+      const result = await fetchRealizedPnlEvents(params);
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error || 'Failed to fetch P&L events' });
+      }
+      
+      res.json({
+        success: true,
+        events: result.events,
+        total: result.total,
+        count: result.count
+      });
+    } catch (error) {
+      console.error('Error fetching realized P&L events:', error);
+      res.status(500).json({ error: 'Failed to fetch realized P&L events' });
+    }
+  });
+
   return httpServer;
 }
 
