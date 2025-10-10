@@ -1448,10 +1448,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "No active strategy found" });
       }
       
-      // Check orchestrator cache first (populated by WebSocket)
-      const snapshot = liveDataOrchestrator.getSnapshot(activeStrategy.id);
-      if (snapshot && snapshot.positions) {
-        return res.json(snapshot.positions);
+      // Check if fresh data requested (bypass cache for initial startup)
+      const fresh = req.query.fresh === 'true';
+      
+      // Check orchestrator cache first (populated by WebSocket) - only if not requesting fresh data
+      if (!fresh) {
+        const snapshot = liveDataOrchestrator.getSnapshot(activeStrategy.id);
+        if (snapshot && snapshot.positions && snapshot.positions.length > 0) {
+          console.log(`📦 Returning ${snapshot.positions.length} cached positions`);
+          return res.json(snapshot.positions);
+        }
+      } else {
+        console.log('🔄 Fresh position data requested, bypassing cache');
       }
 
       const apiKey = process.env.ASTER_API_KEY;
@@ -1480,7 +1488,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('Failed to fetch Aster DEX positions:', errorText);
+        console.error(`❌ Failed to fetch Aster DEX positions (${response.status}):`, errorText);
         // If rate limited, try to return stale cache
         if (response.status === 429) {
           const staleCache = apiCache.get('live_positions');
@@ -1493,8 +1501,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const data = await response.json();
+      console.log(`📥 Received ${data.length} total positions from Aster DEX API`);
+      
       // Filter out positions with zero quantity
       const openPositions = data.filter((pos: any) => parseFloat(pos.positionAmt) !== 0);
+      console.log(`✅ Filtered to ${openPositions.length} non-zero positions`);
 
       // Cache the result
       setCache('live_positions', openPositions);
