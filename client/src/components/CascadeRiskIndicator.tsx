@@ -127,9 +127,14 @@ export default function CascadeRiskIndicator() {
       try {
         const message = JSON.parse(event.data);
         if (message.type === 'cascade_status') {
-          // message.data is now an array of statuses
-          const data = Array.isArray(message.data) ? message.data : [message.data];
-          setStatuses(data);
+          // New format: { symbols: [...], aggregate: {...} }
+          if (message.data.symbols && Array.isArray(message.data.symbols)) {
+            setStatuses(message.data.symbols);
+          } else {
+            // Fallback for old format
+            const data = Array.isArray(message.data) ? message.data : [message.data];
+            setStatuses(data);
+          }
         }
       } catch (error) {
         console.error('Error parsing cascade status:', error);
