@@ -117,10 +117,11 @@ export function useStrategyData() {
   });
 
   // Fetch realized P&L events from exchange (actual closed trades - source of truth)
-  const realizedPnlEventsQuery = useQuery<{ events: any[]; total: number; count: number }>({
+  // Starting from October 1st, 2025 (timestamp: 1759276800000)
+  const realizedPnlEventsQuery = useQuery<{ events: any[]; total: number; count: number; dateRange?: any }>({
     queryKey: ['/api/realized-pnl-events'],
     queryFn: async () => {
-      const response = await fetch('/api/realized-pnl-events');
+      const response = await fetch('/api/realized-pnl-events?startTime=1759276800000');
       if (!response.ok) return { events: [], total: 0, count: 0 };
       return response.json();
     },
