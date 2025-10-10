@@ -2068,6 +2068,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Recalculate realized P&L for all closed positions (fixes legacy bug)
+  app.post("/api/positions/recalculate-pnl", async (req, res) => {
+    try {
+      // Get all sessions for the default user
+      const allSessions = await storage.getAllTradeSessions(DEFAULT_USER_ID);
+      let updatedCount = 0;
+      
+      for (const session of allSessions) {
+        const closedPositions = await storage.getClosedPositions(session.id);
+        
+        for (const position of closedPositions) {
+          // Recalculate P&L using correct formula
+          const realizedPnlPercent = parseFloat(position.unrealizedPnl || '0'); // Percentage is stored here
+          const avgEntryPrice = parseFloat(position.avgEntryPrice);
+          const totalQuantity = parseFloat(position.totalQuantity);
+          const positionSize = avgEntryPrice * totalQuantity; // Actual position size (no leverage)
+          const correctRealizedPnlDollar = (realizedPnlPercent / 100) * positionSize;
+          
+          const currentRealizedPnl = parseFloat(position.realizedPnl || '0');
+          
+          // Only update if the value is different
+          if (Math.abs(correctRealizedPnlDollar - currentRealizedPnl) > 0.001) {
+            console.log(`🔧 Fixing P&L for ${position.symbol} ${position.side}: $${currentRealizedPnl.toFixed(2)} → $${correctRealizedPnlDollar.toFixed(2)} (${realizedPnlPercent.toFixed(2)}%)`);
+            await storage.closePosition(position.id, new Date(position.closedAt!), correctRealizedPnlDollar, realizedPnlPercent);
+            updatedCount++;
+          }
+        }
+      }
+      
+      console.log(`✅ Recalculated P&L for ${updatedCount} closed positions`);
+      res.json({ success: true, updatedCount });
+    } catch (error) {
+      console.error('Error recalculating P&L:', error);
+      res.status(500).json({ error: 'Failed to recalculate P&L' });
+    }
+  });
+
   // Get overall trading performance metrics
   app.get("/api/performance/overview", async (req, res) => {
     try {
@@ -3299,11 +3336,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
               }
               
               // Convert percentage to dollar amount
-              // CRITICAL: totalCost stores MARGIN, multiply by leverage to get notional value
-              const totalCost = parseFloat(dbPos.totalCost);
-              const leverage = (dbPos as any).leverage || 1;
-              const notionalValue = totalCost * leverage;
-              const realizedPnlDollar = (realizedPnlPercent / 100) * notionalValue;
+              // CRITICAL FIX: P&L is based on (Price × Quantity), NOT leveraged notional value
+              // Realized P&L = P&L% × (Entry Price × Total Quantity)
+              const avgEntryPrice = parseFloat(dbPos.avgEntryPrice);
+              const totalQuantity = parseFloat(dbPos.totalQuantity);
+              const positionSize = avgEntryPrice * totalQuantity; // Actual position size (no leverage)
+              const realizedPnlDollar = (realizedPnlPercent / 100) * positionSize;
               
               console.log(`🔒 Closing database position ${dbPos.symbol} ${dbPos.side} with ${realizedPnlPercent.toFixed(2)}% P&L ($${realizedPnlDollar.toFixed(2)}) (closed on exchange)`);
               
