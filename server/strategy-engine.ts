@@ -2026,8 +2026,17 @@ export class StrategyEngine extends EventEmitter {
         return null;
       }
       
-      // Extract max leverage from leverage brackets
-      const maxLeverage = symbolInfo.leverageBrackets?.[0]?.initialLeverage || null;
+      // Calculate max leverage from requiredMarginPercent
+      // Formula: max_leverage = 1 / (requiredMarginPercent / 100)
+      // Example: requiredMarginPercent = "5.0000" → max leverage = 1 / 0.05 = 20x
+      const requiredMarginPercent = parseFloat(symbolInfo.requiredMarginPercent || "0");
+      
+      if (requiredMarginPercent === 0) {
+        console.error(`❌ Invalid requiredMarginPercent for ${symbol}`);
+        return null;
+      }
+      
+      const maxLeverage = Math.floor(1 / (requiredMarginPercent / 100));
       return maxLeverage;
     } catch (error) {
       console.error(`❌ Error fetching max leverage for ${symbol}:`, error);
