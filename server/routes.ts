@@ -3258,6 +3258,94 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   }
 
+  // DEBUG: Manual risk calculation endpoint
+  app.get('/api/strategies/:strategyId/risk-debug', async (req, res) => {
+    try {
+      const { strategyId } = req.params;
+      const strategy = await storage.getStrategy(strategyId);
+      if (!strategy) {
+        return res.status(404).json({ error: 'Strategy not found' });
+      }
+
+      const session = await storage.getActiveTradeSession(strategyId);
+      if (!session) {
+        return res.status(404).json({ error: 'No active session' });
+      }
+
+      const openPositions = await storage.getOpenPositions(session.id);
+      const stopLossPercent = parseFloat(strategy.stopLossPercent);
+      
+      let currentBalance = parseFloat(session.currentBalance);
+      
+      // Try to get exchange balance
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+      let exchangeBalance = null;
+
+      try {
+        const timestamp = Date.now();
+        const queryString = `timestamp=${timestamp}`;
+        const signature = crypto.createHmac('sha256', secretKey!).update(queryString).digest('hex');
+
+        const accountResponse = await fetch(
+          `https://fapi.asterdex.com/fapi/v2/account?${queryString}&signature=${signature}`,
+          { headers: { 'X-MBX-APIKEY': apiKey! } }
+        );
+
+        if (accountResponse.ok) {
+          const data = await accountResponse.json();
+          exchangeBalance = parseFloat(data.availableBalance || '0');
+        }
+      } catch (error) {
+        console.error('Failed to fetch exchange balance for debug:', error);
+      }
+
+      const positionDetails = openPositions.map(position => {
+        const entryPrice = parseFloat(position.avgEntryPrice);
+        const quantity = Math.abs(parseFloat(position.totalQuantity));
+        const isLong = position.side === 'long';
+        
+        const stopLossPrice = isLong 
+          ? entryPrice * (1 - stopLossPercent / 100)
+          : entryPrice * (1 + stopLossPercent / 100);
+        
+        const lossPerUnit = isLong 
+          ? entryPrice - stopLossPrice
+          : stopLossPrice - entryPrice;
+        
+        const positionLoss = lossPerUnit * quantity;
+        
+        return {
+          id: position.id,
+          symbol: position.symbol,
+          side: position.side,
+          quantity: quantity.toFixed(8),
+          avgEntryPrice: entryPrice.toFixed(4),
+          stopLossPrice: stopLossPrice.toFixed(4),
+          lossPerUnit: lossPerUnit.toFixed(4),
+          totalLoss: positionLoss.toFixed(2)
+        };
+      });
+
+      const totalPotentialLoss = positionDetails.reduce((sum, p) => sum + parseFloat(p.totalLoss), 0);
+
+      res.json({
+        openPositionCount: openPositions.length,
+        stopLossPercent: stopLossPercent,
+        sessionBalance: parseFloat(session.currentBalance).toFixed(2),
+        exchangeBalance: exchangeBalance ? exchangeBalance.toFixed(2) : null,
+        usedBalance: exchangeBalance || currentBalance,
+        positions: positionDetails,
+        totalPotentialLoss: totalPotentialLoss.toFixed(2),
+        riskPercentageWithSession: ((totalPotentialLoss / currentBalance) * 100).toFixed(1),
+        riskPercentageWithExchange: exchangeBalance ? ((totalPotentialLoss / exchangeBalance) * 100).toFixed(1) : null
+      });
+    } catch (error) {
+      console.error('Error in risk debug:', error);
+      res.status(500).json({ error: 'Failed to calculate risk' });
+    }
+  });
+
   // Get position summary by strategy ID (finds active trade session automatically)
   app.get('/api/strategies/:strategyId/positions/summary', async (req, res) => {
     try {

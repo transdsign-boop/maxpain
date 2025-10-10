@@ -113,11 +113,13 @@ export interface StrategyWithDCA extends Strategy {
  * 
  * @param strategy - The trading strategy configuration (with DCA fields)
  * @param config - DCA configuration (entry price, side, balance, etc.)
+ * @param maxRiskOverride - Optional override for max risk % (uses remaining portfolio budget)
  * @returns Complete DCA calculation with levels, sizes, and risk metrics
  */
 export function calculateDCALevels(
   strategy: StrategyWithDCA,
-  config: DCAConfig
+  config: DCAConfig,
+  maxRiskOverride?: number
 ): DCAResult {
   const { entryPrice, side, currentBalance, leverage, atrPercent } = config;
   
@@ -125,13 +127,14 @@ export function calculateDCALevels(
   const delta1 = parseFloat(strategy.dcaStartStepPercent.toString()); // Δ1: Starting step %
   const p = parseFloat(strategy.dcaSpacingConvexity.toString()); // p: Spacing convexity
   const g = parseFloat(strategy.dcaSizeGrowth.toString()); // g: Size growth ratio
-  const Rmax = parseFloat(strategy.dcaMaxRiskPercent.toString()); // Rmax: Max risk %
+  const strategyRmax = parseFloat(strategy.dcaMaxRiskPercent.toString()); // Strategy's max risk %
+  const Rmax = maxRiskOverride ?? strategyRmax; // Use override if provided, otherwise use strategy value
   const Vref = parseFloat(strategy.dcaVolatilityRef.toString()); // Vref: Reference volatility %
   const N = strategy.maxLayers; // Number of layers
   const stopLossPercent = parseFloat(strategy.stopLossPercent.toString());
   
   console.log(`\n📐 Calculating DCA levels for ${side.toUpperCase()} at $${entryPrice}`);
-  console.log(`   Parameters: Δ1=${delta1}%, p=${p}, g=${g}, Rmax=${Rmax}%, N=${N}`);
+  console.log(`   Parameters: Δ1=${delta1}%, p=${p}, g=${g}, Rmax=${Rmax}%${maxRiskOverride ? ' (OVERRIDE)' : ''}, N=${N}`);
   console.log(`   Volatility: ATR=${atrPercent.toFixed(2)}%, Vref=${Vref}%`);
   
   // Step 1: Calculate volatility-scaled, widening level distances
