@@ -22,11 +22,12 @@ interface OISnapshot {
 }
 
 interface RiskPreset {
-  oiPenaltyThreshold: number;    // OI increase % that triggers penalty
-  lqHighThreshold: number;       // Multiplier for high quality liquidations
-  lqMediumThreshold: number;     // Multiplier for medium quality liquidations
-  retHighMultiplier: number;     // Multiplier for retHighThreshold (e.g., 0.8 = 20% lower)
-  retMediumMultiplier: number;   // Multiplier for retMediumThreshold
+  oiPenaltyThreshold: number;    // OI increase % that triggers penalty in RQ scoring
+  retHighMultiplier: number;     // Multiplier for retHighThreshold (kept for compatibility)
+  retMediumMultiplier: number;   // Multiplier for retMediumThreshold (kept for compatibility)
+  rqThresholdLow: number;        // RQ threshold for low volatility regime
+  rqThresholdMedium: number;     // RQ threshold for medium volatility regime
+  rqThresholdHigh: number;       // RQ threshold for high volatility regime
 }
 
 export class CascadeDetector {
@@ -72,45 +73,50 @@ export class CascadeDetector {
    */
   static getRiskPreset(riskLevel: number): RiskPreset {
     switch (riskLevel) {
-      case 1: // Very Conservative
+      case 1: // Very Conservative - HIGHER thresholds (stricter)
         return {
           oiPenaltyThreshold: 0.1,    // Penalize even tiny OI increases
-          lqHighThreshold: 8,         // Need 8x median for +2 points
-          lqMediumThreshold: 6,       // Need 6x median for +1 point
-          retHighMultiplier: 1.1,     // 10% higher RET thresholds
-          retMediumMultiplier: 1.2,   // 20% higher
+          retHighMultiplier: 1.0,     // No adjustment
+          retMediumMultiplier: 1.0,   // No adjustment
+          rqThresholdLow: 1,          // Low vol: require RQ ≥ 1 (instead of 0)
+          rqThresholdMedium: 3,       // Med vol: require RQ ≥ 3 (instead of 2)
+          rqThresholdHigh: 4,         // High vol: require RQ ≥ 4 (instead of 3)
         };
       case 2: // Conservative
         return {
           oiPenaltyThreshold: 0.2,
-          lqHighThreshold: 7,
-          lqMediumThreshold: 5,
-          retHighMultiplier: 1.05,
-          retMediumMultiplier: 1.1,
+          retHighMultiplier: 1.0,
+          retMediumMultiplier: 1.0,
+          rqThresholdLow: 0,          // Low vol: require RQ ≥ 0
+          rqThresholdMedium: 2.5,     // Med vol: require RQ ≥ 2.5
+          rqThresholdHigh: 3.5,       // High vol: require RQ ≥ 3.5
         };
       case 3: // Balanced (default)
         return {
           oiPenaltyThreshold: 0.5,    // Tolerate small OI increases
-          lqHighThreshold: 6,         // Original thresholds
-          lqMediumThreshold: 4,
-          retHighMultiplier: 1.0,     // Original RET thresholds
-          retMediumMultiplier: 1.0,
+          retHighMultiplier: 1.0,     // No adjustment
+          retMediumMultiplier: 1.0,   // No adjustment
+          rqThresholdLow: 0,          // Low vol: require RQ ≥ 0
+          rqThresholdMedium: 2,       // Med vol: require RQ ≥ 2
+          rqThresholdHigh: 3,         // High vol: require RQ ≥ 3
         };
       case 4: // Aggressive
         return {
           oiPenaltyThreshold: 1.0,
-          lqHighThreshold: 5,
-          lqMediumThreshold: 3,
-          retHighMultiplier: 0.9,     // 10% lower RET thresholds
-          retMediumMultiplier: 0.85,  // 15% lower
+          retHighMultiplier: 1.0,
+          retMediumMultiplier: 1.0,
+          rqThresholdLow: 0,          // Low vol: require RQ ≥ 0
+          rqThresholdMedium: 1.5,     // Med vol: require RQ ≥ 1.5 (easier)
+          rqThresholdHigh: 2.5,       // High vol: require RQ ≥ 2.5 (easier)
         };
-      case 5: // Very Aggressive
+      case 5: // Very Aggressive - LOWER thresholds (more trades)
         return {
           oiPenaltyThreshold: 2.0,    // Almost never penalize OI increases
-          lqHighThreshold: 4,
-          lqMediumThreshold: 2,
-          retHighMultiplier: 0.8,     // 20% lower RET thresholds
-          retMediumMultiplier: 0.7,   // 30% lower
+          retHighMultiplier: 1.0,     // No adjustment
+          retMediumMultiplier: 1.0,   // No adjustment
+          rqThresholdLow: 0,          // Low vol: require RQ ≥ 0
+          rqThresholdMedium: 1,       // Med vol: require RQ ≥ 1 (very lenient)
+          rqThresholdHigh: 2,         // High vol: require RQ ≥ 2 (lenient)
         };
       default:
         return CascadeDetector.getRiskPreset(3); // Default to balanced
@@ -208,18 +214,20 @@ export class CascadeDetector {
   ): { reversal_quality: number; rq_bucket: 'poor' | 'ok' | 'good' | 'excellent' } {
     let score = 0;
     
-    // Liquidation Quality scoring (thresholds from risk preset)
-    if (LQ >= preset.lqHighThreshold) score += 2;
-    else if (LQ >= preset.lqMediumThreshold) score += 1;
+    // Liquidation Quality scoring (FIXED ideal thresholds for crypto)
+    // LQ = 6x median = strong liquidation cluster (+2 points)
+    // LQ = 4x median = moderate liquidation cluster (+1 point)
+    if (LQ >= 6) score += 2;
+    else if (LQ >= 4) score += 1;
     
-    // Volatility scoring (user-configurable threshold)
+    // Volatility scoring (fixed threshold for crypto)
     if (RET >= retMediumThreshold) score += 1;
     
-    // Open Interest scoring (fixed drop thresholds)
+    // Open Interest scoring (fixed drop thresholds - ideal for crypto)
     if (dOI_1m <= -1.0 || dOI_3m <= -1.5) score += 2;
     else if (dOI_1m <= -0.5 || dOI_3m <= -1.0) score += 1;
     
-    // Penalty for increasing OI beyond preset threshold (not a reversal)
+    // Penalty for increasing OI (use preset's penalty threshold)
     if (dOI_1m > preset.oiPenaltyThreshold && dOI_3m > preset.oiPenaltyThreshold) score -= 2;
     
     score = Math.max(0, score);
@@ -236,27 +244,28 @@ export class CascadeDetector {
   private calculateVolatilityRegime(
     RET: number,
     retHighThreshold: number = 35,
-    retMediumThreshold: number = 25
+    retMediumThreshold: number = 25,
+    preset: RiskPreset
   ): { volatility_regime: 'low' | 'medium' | 'high'; rq_threshold_adjusted: number } {
     // Use RET (realized volatility) to determine market regime
     // RET = sum of |returns| / std dev (properly normalized, asset-agnostic)
-    // Thresholds are user-configurable for fine-tuning based on observed market behavior
+    // Thresholds are user-configurable via Entry Selectivity
     
     let volatility_regime: 'low' | 'medium' | 'high';
     let rq_threshold_adjusted: number;
     
     if (RET >= retHighThreshold) {
-      // Extreme volatility: Be highly selective, require excellent quality
+      // Extreme volatility: Use high threshold from preset
       volatility_regime = 'high';
-      rq_threshold_adjusted = 3; // Require "good" quality
+      rq_threshold_adjusted = preset.rqThresholdHigh;
     } else if (RET >= retMediumThreshold) {
-      // Elevated volatility: Moderate selectivity
+      // Elevated volatility: Use medium threshold from preset
       volatility_regime = 'medium';
-      rq_threshold_adjusted = 2; // Require "ok" quality
+      rq_threshold_adjusted = preset.rqThresholdMedium;
     } else {
-      // Normal/low volatility: Less selective, allow any quality
+      // Normal/low volatility: Use low threshold from preset
       volatility_regime = 'low';
-      rq_threshold_adjusted = 0; // No quality requirement in low volatility
+      rq_threshold_adjusted = preset.rqThresholdLow;
     }
     
     return { volatility_regime, rq_threshold_adjusted };
@@ -380,7 +389,7 @@ export class CascadeDetector {
     const autoBlock = this.autoEnabled && (this.currentLight === 'orange' || this.currentLight === 'red');
 
     const { reversal_quality, rq_bucket } = this.calculateReversalQuality(LQ, RET, dOI_1m, dOI_3m, adjustedRetMedium, preset);
-    const { volatility_regime, rq_threshold_adjusted } = this.calculateVolatilityRegime(RET, adjustedRetHigh, adjustedRetMedium);
+    const { volatility_regime, rq_threshold_adjusted } = this.calculateVolatilityRegime(RET, adjustedRetHigh, adjustedRetMedium, preset);
 
     // Store calculated values for getCurrentStatus()
     this.lastLQ = parseFloat(LQ.toFixed(1));
