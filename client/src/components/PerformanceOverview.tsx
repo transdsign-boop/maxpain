@@ -100,6 +100,10 @@ export default function PerformanceOverview() {
     livePositions,
     strategyChanges,
     transfers,
+    realizedPnlEvents,
+    realizedPnlTotal,
+    realizedPnlCount,
+    realizedPnlLoading,
   } = useStrategyData();
 
   // Fetch commissions and funding fees with date range filtering
@@ -433,40 +437,43 @@ export default function PerformanceOverview() {
       sum + parseFloat(f.income || '0'), 0
     );
 
-    // If no date filter, return base performance with calculated fees
-    if (!dateRange.start && !dateRange.end) {
-      return {
-        ...basePerformance,
-        totalFees: totalCommissions,
-        fundingCost: totalFundingFees,
-      };
+    // Use realized P&L events from exchange as source of truth for trade counts
+    // Filter by date range if active
+    let filteredPnlEvents = realizedPnlEvents || [];
+    if (dateRange.start || dateRange.end) {
+      const startTimestamp = dateRange.start ? startOfDay(dateRange.start).getTime() : 0;
+      const endTimestamp = dateRange.end ? endOfDay(dateRange.end).getTime() : Date.now();
+      
+      filteredPnlEvents = filteredPnlEvents.filter(event => 
+        event.time >= startTimestamp && event.time <= endTimestamp
+      );
     }
 
-    // Recalculate metrics from filtered chart data
-    const filteredTrades = sourceChartData;
-    const winningTrades = filteredTrades.filter(t => t.pnl > 0);
-    const losingTrades = filteredTrades.filter(t => t.pnl < 0);
-    const totalWins = winningTrades.reduce((sum, t) => sum + t.pnl, 0);
-    const totalLosses = Math.abs(losingTrades.reduce((sum, t) => sum + t.pnl, 0));
+    // Calculate metrics from realized P&L events
+    const winningTrades = filteredPnlEvents.filter(e => parseFloat(e.income) > 0);
+    const losingTrades = filteredPnlEvents.filter(e => parseFloat(e.income) < 0);
+    const totalWins = winningTrades.reduce((sum, e) => sum + parseFloat(e.income || '0'), 0);
+    const totalLosses = Math.abs(losingTrades.reduce((sum, e) => sum + parseFloat(e.income || '0'), 0));
+    const totalRealizedPnl = filteredPnlEvents.reduce((sum, e) => sum + parseFloat(e.income || '0'), 0);
     
     return {
       ...basePerformance,
-      totalTrades: filteredTrades.length,
-      closedTrades: filteredTrades.length,
+      totalTrades: filteredPnlEvents.length,
+      closedTrades: filteredPnlEvents.length,
       winningTrades: winningTrades.length,
       losingTrades: losingTrades.length,
-      winRate: filteredTrades.length > 0 ? (winningTrades.length / filteredTrades.length) * 100 : 0,
-      totalRealizedPnl: filteredTrades.reduce((sum, t) => sum + t.pnl, 0),
-      totalPnl: filteredTrades.reduce((sum, t) => sum + t.pnl, 0),
+      winRate: filteredPnlEvents.length > 0 ? (winningTrades.length / filteredPnlEvents.length) * 100 : 0,
+      totalRealizedPnl: totalRealizedPnl,
+      totalPnl: totalRealizedPnl,
       averageWin: winningTrades.length > 0 ? totalWins / winningTrades.length : 0,
       averageLoss: losingTrades.length > 0 ? totalLosses / losingTrades.length : 0,
-      bestTrade: filteredTrades.length > 0 ? Math.max(...filteredTrades.map(t => t.pnl)) : 0,
-      worstTrade: filteredTrades.length > 0 ? Math.min(...filteredTrades.map(t => t.pnl)) : 0,
+      bestTrade: filteredPnlEvents.length > 0 ? Math.max(...filteredPnlEvents.map(e => parseFloat(e.income || '0'))) : 0,
+      worstTrade: filteredPnlEvents.length > 0 ? Math.min(...filteredPnlEvents.map(e => parseFloat(e.income || '0'))) : 0,
       profitFactor: totalLosses > 0 ? totalWins / totalLosses : (totalWins > 0 ? 999 : 0),
       totalFees: totalCommissions,
       fundingCost: totalFundingFees,
     };
-  }, [performance, dateRange, sourceChartData, commissions, fundingFees]);
+  }, [performance, dateRange, realizedPnlEvents, commissions, fundingFees]);
   const displayLoading = isLoading || chartLoading || liveAccountLoading;
   const showLoadingUI = displayLoading || !performance;
 
