@@ -2007,8 +2007,36 @@ export class StrategyEngine extends EventEmitter {
     }
   }
 
-  // Set leverage for a symbol on Aster DEX
-  private async setLeverage(symbol: string, leverage: number): Promise<boolean> {
+  // Get symbol's maximum allowed leverage from exchange
+  private async getSymbolMaxLeverage(symbol: string): Promise<number | null> {
+    try {
+      // Fetch symbol info from exchange info endpoint (public, no auth needed)
+      const response = await fetch('https://fapi.asterdex.com/fapi/v1/exchangeInfo');
+      
+      if (!response.ok) {
+        console.error(`❌ Failed to fetch exchange info: ${response.status}`);
+        return null;
+      }
+      
+      const data = await response.json();
+      const symbolInfo = data.symbols?.find((s: any) => s.symbol === symbol);
+      
+      if (!symbolInfo) {
+        console.error(`❌ Symbol ${symbol} not found in exchange info`);
+        return null;
+      }
+      
+      // Extract max leverage from leverage brackets
+      const maxLeverage = symbolInfo.leverageBrackets?.[0]?.initialLeverage || null;
+      return maxLeverage;
+    } catch (error) {
+      console.error(`❌ Error fetching max leverage for ${symbol}:`, error);
+      return null;
+    }
+  }
+
+  // Set leverage for a symbol on Aster DEX with automatic adjustment
+  private async setLeverage(symbol: string, requestedLeverage: number): Promise<boolean> {
     try {
       const apiKey = process.env.ASTER_API_KEY;
       const secretKey = process.env.ASTER_SECRET_KEY;
@@ -2016,6 +2044,17 @@ export class StrategyEngine extends EventEmitter {
       if (!apiKey || !secretKey) {
         console.error('❌ Aster DEX API keys not configured');
         return false;
+      }
+      
+      // Get symbol's maximum allowed leverage
+      const maxLeverage = await this.getSymbolMaxLeverage(symbol);
+      
+      // Use the lower of requested leverage or symbol's max leverage
+      let leverage = requestedLeverage;
+      if (maxLeverage !== null && requestedLeverage > maxLeverage) {
+        console.log(`⚠️ ${symbol} max leverage is ${maxLeverage}x (requested ${requestedLeverage}x)`);
+        console.log(`📉 Auto-adjusting to ${maxLeverage}x (never increase beyond settings)`);
+        leverage = maxLeverage;
       }
       
       const timestamp = Date.now();
