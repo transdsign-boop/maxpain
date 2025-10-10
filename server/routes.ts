@@ -4852,7 +4852,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         success: true,
         events: result.events,
         total: result.total,
-        count: result.count
+        count: result.count,
+        dateRange: result.dateRange
       });
     } catch (error) {
       console.error('Error fetching realized P&L events:', error);
