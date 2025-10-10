@@ -188,8 +188,8 @@ class UserDataStreamManager {
           }
         }
 
-        // Fetch positions via backend
-        const positionsResponse = await fetch(`${baseUrl}/api/live/positions`);
+        // Fetch positions via backend - use fresh=true to bypass cache during startup
+        const positionsResponse = await fetch(`${baseUrl}/api/live/positions?fresh=true`);
         
         if (!positionsResponse.ok) {
           throw new Error(`Positions fetch failed: ${positionsResponse.status} ${positionsResponse.statusText}`);
@@ -207,7 +207,9 @@ class UserDataStreamManager {
           // Filter to only non-zero positions
           const nonZeroPositions = positions.filter((p: any) => parseFloat(p.positionAmt) !== 0);
           liveDataOrchestrator.updatePositionsFromWebSocket(activeStrategy.id, nonZeroPositions);
-          console.log(`✅ Initial position data loaded (${nonZeroPositions.length} non-zero positions)`);
+          console.log(`✅ Initial position data loaded from API (${nonZeroPositions.length} non-zero positions)`);
+        } else if (activeStrategy) {
+          console.log('⚠️ No active positions found on exchange');
         }
         
         // Success! Exit retry loop
