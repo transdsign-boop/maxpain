@@ -2098,10 +2098,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
+      // Get OFFICIAL realized P&L directly from exchange income API (all-time)
+      // MUST happen BEFORE session check so we get accurate P&L even without active session
+      console.log('📊 Fetching realized P&L from exchange (all-time)...');
+      let totalRealizedPnl = 0;
+      try {
+        const { fetchRealizedPnl } = await import('./exchange-sync');
+        console.log('📊 fetchRealizedPnl imported successfully');
+        
+        const pnlResult = await fetchRealizedPnl({});
+        
+        console.log('📊 fetchRealizedPnl result:', JSON.stringify(pnlResult));
+        if (pnlResult.success) {
+          totalRealizedPnl = pnlResult.total;
+          console.log(`✅ Official exchange P&L (all-time): $${totalRealizedPnl.toFixed(2)}`);
+        } else {
+          console.error(`❌ Failed to fetch realized P&L: ${pnlResult.error}`);
+        }
+      } catch (error) {
+        console.error('❌ Error fetching realized P&L from exchange:', error);
+      }
+
       // Get the active session for this strategy
       const activeSession = await storage.getActiveTradeSession(activeStrategy.id);
 
-      // If no active session, return zeros
+      // If no active session, return with real exchange P&L (not zeros!)
       if (!activeSession) {
         const responseData = {
           totalTrades: 0,
@@ -2110,9 +2131,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           winningTrades: 0,
           losingTrades: 0,
           winRate: 0,
-          totalRealizedPnl: 0,
+          totalRealizedPnl,
           totalUnrealizedPnl: 0,
-          totalPnl: 0,
+          totalPnl: totalRealizedPnl,
           totalPnlPercent: 0,
           averageWin: 0,
           averageLoss: 0,
@@ -2142,27 +2163,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const sessionFills = await storage.getFillsBySession(session.id);
         allPositions.push(...sessionPositions);
         allSessionFills.push(...sessionFills);
-      }
-
-      // Get OFFICIAL realized P&L directly from exchange income API (all-time)
-      // This happens BEFORE checking positions so we always get accurate P&L
-      console.log('📊 Fetching realized P&L from exchange (all-time)...');
-      let totalRealizedPnl = 0;
-      try {
-        const { fetchRealizedPnl } = await import('./exchange-sync');
-        console.log('📊 fetchRealizedPnl imported successfully');
-        
-        const pnlResult = await fetchRealizedPnl({});
-        
-        console.log('📊 fetchRealizedPnl result:', JSON.stringify(pnlResult));
-        if (pnlResult.success) {
-          totalRealizedPnl = pnlResult.total;
-          console.log(`✅ Official exchange P&L (all-time): $${totalRealizedPnl.toFixed(2)}`);
-        } else {
-          console.error(`❌ Failed to fetch realized P&L: ${pnlResult.error}`);
-        }
-      } catch (error) {
-        console.error('❌ Error fetching realized P&L from exchange:', error);
       }
 
       // Get LIVE positions from exchange to calculate unrealized P&L
