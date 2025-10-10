@@ -557,6 +557,15 @@ export class StrategyEngine extends EventEmitter {
         currentBalance = exchangeBalance;
       }
       
+      const maxRiskPercent = parseFloat(strategy.maxPortfolioRiskPercent);
+      const remainingRiskPercent = maxRiskPercent - portfolioRisk.riskPercentage;
+      
+      // Check if there's any remaining risk budget (with 0.05% minimum threshold)
+      if (remainingRiskPercent < 0.05) {
+        console.log(`🚫 PORTFOLIO RISK LIMIT: No remaining risk budget (current: ${portfolioRisk.riskPercentage.toFixed(1)}%, max: ${maxRiskPercent}%, remaining: ${remainingRiskPercent.toFixed(2)}%)`);
+        return false;
+      }
+      
       // Import DCA functions
       const { calculateDCALevels, calculateATRPercent } = await import('./dca-calculator');
       const { getStrategyWithDCA } = await import('./dca-sql');
@@ -581,14 +590,20 @@ export class StrategyEngine extends EventEmitter {
       
       const atrPercent = await calculateATRPercent(liquidation.symbol, 10, process.env.ASTER_API_KEY, process.env.ASTER_SECRET_KEY);
       
-      // Calculate DCA levels for prospective entry
+      // Determine effective max risk: use remaining budget if less than strategy setting
+      const strategyMaxRisk = parseFloat(fullStrategy.dcaMaxRiskPercent);
+      const effectiveMaxRisk = Math.min(strategyMaxRisk, remainingRiskPercent);
+      
+      console.log(`💰 Risk Budget: current=${portfolioRisk.riskPercentage.toFixed(1)}%, max=${maxRiskPercent}%, remaining=${remainingRiskPercent.toFixed(1)}%, effective=${effectiveMaxRisk.toFixed(1)}% (${effectiveMaxRisk < strategyMaxRisk ? 'SCALED DOWN' : 'normal'})`);
+      
+      // Calculate DCA levels for prospective entry with risk override if needed
       const dcaResult = calculateDCALevels(fullStrategy, {
         entryPrice: price,
         side: positionSide as 'long' | 'short',
         currentBalance,
         leverage: strategy.leverage,
         atrPercent,
-      });
+      }, effectiveMaxRisk < strategyMaxRisk ? effectiveMaxRisk : undefined);
       
       // Get total risk from DCA calculation (this is the max risk across all layers)
       const newPositionRiskDollars = dcaResult.totalRiskDollars;
@@ -600,24 +615,26 @@ export class StrategyEngine extends EventEmitter {
         throw new Error(`Invalid risk calculation: newRisk=${newPositionRiskPercent}, projected=${projectedRiskPercentage}`);
       }
       
-      // Check if adding this new position would exceed max portfolio risk
-      const maxRiskPercent = parseFloat(strategy.maxPortfolioRiskPercent);
-      if (projectedRiskPercentage > maxRiskPercent) {
-        console.log(`🚫 PORTFOLIO RISK LIMIT: New entry would push total risk to ${projectedRiskPercentage.toFixed(1)}% (current: ${portfolioRisk.riskPercentage.toFixed(1)}% + new: ${newPositionRiskPercent.toFixed(1)}%) > max ${maxRiskPercent}%`);
+      // Final safety check: ensure projected risk doesn't exceed max (account for float precision)
+      if (projectedRiskPercentage > maxRiskPercent + 0.01) { // Allow 0.01% tolerance for float precision
+        console.log(`🚫 PORTFOLIO RISK LIMIT: Projected risk still exceeds max after scaling (projected: ${projectedRiskPercentage.toFixed(1)}% > max: ${maxRiskPercent}%)`);
         return false;
       }
       
+      console.log(`✅ Risk check passed: projected=${projectedRiskPercentage.toFixed(1)}% ≤ max=${maxRiskPercent}%`);
       riskCheckPassed = true;
     } catch (error) {
       console.error('⚠️ Error calculating projected risk, using conservative fallback:', error);
       // MANDATORY fallback check - always enforce risk limit even if DCA calculation fails
-      const dcaMaxRiskPercent = parseFloat(strategy.dcaMaxRiskPercent || "1.0");
-      const projectedRiskPercentage = portfolioRisk.riskPercentage + dcaMaxRiskPercent;
       const maxRiskPercent = parseFloat(strategy.maxPortfolioRiskPercent);
-      if (projectedRiskPercentage > maxRiskPercent) {
-        console.log(`🚫 PORTFOLIO RISK LIMIT (Fallback): New entry would push total risk to ${projectedRiskPercentage.toFixed(1)}% > max ${maxRiskPercent}%`);
+      const remainingRiskPercent = maxRiskPercent - portfolioRisk.riskPercentage;
+      
+      if (remainingRiskPercent < 0.05) {
+        console.log(`🚫 PORTFOLIO RISK LIMIT (Fallback): No remaining risk budget (remaining: ${remainingRiskPercent.toFixed(2)}%)`);
         return false;
       }
+      
+      console.log(`✅ Risk check passed (Fallback): remaining budget ${remainingRiskPercent.toFixed(1)}% available`);
       riskCheckPassed = true; // Fallback check passed
     }
     
