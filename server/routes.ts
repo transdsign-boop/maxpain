@@ -3294,7 +3294,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         if (accountResponse.ok) {
           const data = await accountResponse.json();
-          exchangeBalance = parseFloat(data.availableBalance || '0');
+          // Use totalWalletBalance (total account equity) not availableBalance
+          exchangeBalance = parseFloat(data.totalWalletBalance || '0');
         }
       } catch (error) {
         console.error('Failed to fetch exchange balance for debug:', error);
