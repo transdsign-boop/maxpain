@@ -135,14 +135,26 @@ export function useStrategyData() {
   });
 
   // Fetch commissions for fee calculation (fetched from exchange API, not database)
+  // Starting from October 1st, 2025 (timestamp: 1759276800000)
   const commissionsQuery = useQuery<{ records: any[]; total: number }>({
     queryKey: ['/api/commissions'],
+    queryFn: async () => {
+      const response = await fetch('/api/commissions?startTime=1759276800000');
+      if (!response.ok) return { records: [], total: 0 };
+      return response.json();
+    },
     staleTime: 5 * 60 * 1000, // Refresh every 5 minutes
   });
 
   // Fetch funding fees for fee calculation (fetched from exchange API, not database)
+  // Starting from October 1st, 2025 (timestamp: 1759276800000)
   const fundingFeesQuery = useQuery<{ records: any[]; total: number }>({
     queryKey: ['/api/funding-fees'],
+    queryFn: async () => {
+      const response = await fetch('/api/funding-fees?startTime=1759276800000');
+      if (!response.ok) return { records: [], total: 0 };
+      return response.json();
+    },
     staleTime: 5 * 60 * 1000, // Refresh every 5 minutes
   });
 
