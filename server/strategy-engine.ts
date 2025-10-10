@@ -888,6 +888,12 @@ export class StrategyEngine extends EventEmitter {
       // Count open positions
       const openPositionCount = openPositions.length;
       
+      // DEBUG: Log what positions we're calculating risk for
+      console.log(`🔍 Portfolio Risk Calculation: Found ${openPositionCount} open positions`);
+      openPositions.forEach(pos => {
+        console.log(`   - ${pos.symbol} ${pos.side}: qty=${pos.totalQuantity}, avgPrice=${pos.avgEntryPrice}, id=${pos.id}`);
+      });
+      
       // If no positions, return zero risk
       if (openPositionCount === 0) {
         return { openPositionCount: 0, riskPercentage: 0, totalRisk: 0 };
@@ -904,6 +910,8 @@ export class StrategyEngine extends EventEmitter {
         console.warn('⚠️ Invalid account balance for risk calculation');
         return { openPositionCount, riskPercentage: 0, totalRisk: 0 };
       }
+      
+      console.log(`   Balance: $${currentBalance.toFixed(2)}, SL%: ${strategy.stopLossPercent}%`);
       
       // Calculate stop loss percentage from strategy
       const stopLossPercent = parseFloat(strategy.stopLossPercent);
@@ -926,11 +934,13 @@ export class StrategyEngine extends EventEmitter {
         
         // Calculate total position loss
         const positionLoss = lossPerUnit * quantity;
+        console.log(`   ${position.symbol}: lossPerUnit=$${lossPerUnit.toFixed(4)}, totalLoss=$${positionLoss.toFixed(2)}`);
         return sum + positionLoss;
       }, 0);
       
       // Calculate risk as percentage of account balance
       const riskPercentage = (totalPotentialLoss / currentBalance) * 100;
+      console.log(`   💰 Total Risk: $${totalPotentialLoss.toFixed(2)} = ${riskPercentage.toFixed(1)}% of balance`);
       
       return { 
         openPositionCount, 
