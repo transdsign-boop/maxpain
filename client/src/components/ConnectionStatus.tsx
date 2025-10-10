@@ -25,10 +25,24 @@ interface CascadeStatus {
   volatility_regime: 'low' | 'medium' | 'high';
 }
 
+interface AggregateStatus {
+  avgReversalQuality: number;
+  avgRqThreshold: number;
+  avgVolatilityRET: number;
+  avgScore: number;
+  blockAll: boolean;
+  autoEnabled: boolean;
+  symbolCount: number;
+  criticalSymbols: string[];
+  volatilityRegime: 'low' | 'medium' | 'high';
+  reason?: string;
+}
+
 export default function ConnectionStatus({ isConnected }: ConnectionStatusProps) {
   const [apiConnected, setApiConnected] = useState(true);
   const [latestError, setLatestError] = useState<ApiError | null>(null);
   const [cascadeStatuses, setCascadeStatuses] = useState<CascadeStatus[]>([]);
+  const [aggregateStatus, setAggregateStatus] = useState<AggregateStatus | null>(null);
 
   // Check API connection health and capture errors
   useEffect(() => {
@@ -86,9 +100,15 @@ export default function ConnectionStatus({ isConnected }: ConnectionStatusProps)
       try {
         const message = JSON.parse(event.data);
         if (message.type === 'cascade_status') {
-          // message.data is now an array of statuses
-          const statuses = Array.isArray(message.data) ? message.data : [message.data];
-          setCascadeStatuses(statuses);
+          // New format: { symbols: [...], aggregate: {...} }
+          if (message.data.symbols && message.data.aggregate) {
+            setCascadeStatuses(message.data.symbols);
+            setAggregateStatus(message.data.aggregate);
+          } else {
+            // Fallback for old format
+            const statuses = Array.isArray(message.data) ? message.data : [message.data];
+            setCascadeStatuses(statuses);
+          }
         }
       } catch (error) {
         console.error('Error parsing cascade status:', error);
@@ -100,70 +120,24 @@ export default function ConnectionStatus({ isConnected }: ConnectionStatusProps)
     };
   }, []);
 
-  // Aggregate multiple asset statuses - show green if ANY asset is ready
-  const aggregateStatus = () => {
-    if (cascadeStatuses.length === 0) {
-      return {
-        tradesAllowed: false,
-        autoEnabled: true,
-        readyAssets: [],
-        blockedAssets: []
-      };
-    }
-
-    const autoEnabled = cascadeStatuses[0]?.autoEnabled ?? true;
-    
-    if (!autoEnabled) {
-      return {
-        tradesAllowed: true,
-        autoEnabled: false,
-        readyAssets: cascadeStatuses.map(s => s.symbol),
-        blockedAssets: []
-      };
-    }
-
-    const readyAssets: string[] = [];
-    const blockedAssets: Array<{symbol: string, reason: string}> = [];
-
-    for (const status of cascadeStatuses) {
-      const isReady = !status.autoBlock && status.reversal_quality >= status.rq_threshold_adjusted;
-      
-      if (isReady) {
-        readyAssets.push(status.symbol);
-      } else {
-        const reason = status.autoBlock 
-          ? 'cascade risk' 
-          : `poor RQ (${status.reversal_quality}/${status.rq_threshold_adjusted})`;
-        blockedAssets.push({ symbol: status.symbol, reason });
-      }
-    }
-
-    return {
-      tradesAllowed: readyAssets.length > 0,
-      autoEnabled,
-      readyAssets,
-      blockedAssets
-    };
-  };
-
-  const { tradesAllowed, autoEnabled, readyAssets, blockedAssets } = aggregateStatus();
+  // Use aggregate status from WebSocket (all-or-none blocking)
+  const tradesAllowed = aggregateStatus ? !aggregateStatus.blockAll : false;
+  const autoEnabled = aggregateStatus?.autoEnabled ?? true;
   
   const getTradeStatusTitle = () => {
+    if (!aggregateStatus) {
+      return "Trade Entry: Waiting for cascade data...";
+    }
+    
     if (!autoEnabled) {
       return "Trade Entry: Auto-gating disabled (all entries allowed)";
     }
     
-    if (readyAssets.length === 0) {
-      const reasons = blockedAssets.map(a => `${a.symbol}: ${a.reason}`).join(', ');
-      return `Trade Entry: All assets blocked (${reasons})`;
+    if (aggregateStatus.blockAll) {
+      return `Trade Entry: ALL TRADES BLOCKED - ${aggregateStatus.reason || 'Aggregate quality too low'}`;
     }
     
-    const readyList = readyAssets.join(', ');
-    const blockedList = blockedAssets.length > 0 
-      ? ` | Blocked: ${blockedAssets.map(a => `${a.symbol} (${a.reason})`).join(', ')}`
-      : '';
-    
-    return `Trade Entry: Ready on ${readyList}${blockedList}`;
+    return `Trade Entry: ALL TRADES ALLOWED - Aggregate quality sufficient`;
   };
 
   return (
@@ -233,28 +207,34 @@ export default function ConnectionStatus({ isConnected }: ConnectionStatusProps)
           </TooltipTrigger>
           <TooltipContent side="bottom" className="max-w-sm">
             <div className="space-y-1">
-              <p className="font-medium">{getTradeStatusTitle().split(':')[0]}:</p>
-              {!autoEnabled && (
+              <p className="font-medium">Trade Entry:</p>
+              {!aggregateStatus && (
+                <p className="text-xs text-muted-foreground">Waiting for cascade data...</p>
+              )}
+              {!autoEnabled && aggregateStatus && (
                 <p className="text-xs text-muted-foreground">Auto-gating disabled - all entries allowed</p>
               )}
-              {autoEnabled && readyAssets.length > 0 && (
+              {autoEnabled && aggregateStatus && !aggregateStatus.blockAll && (
                 <div className="text-xs">
-                  <p className="text-lime-600 dark:text-lime-400">✓ Ready: {readyAssets.join(', ')}</p>
-                  {blockedAssets.length > 0 && (
-                    <p className="text-orange-600 dark:text-orange-400 mt-0.5">
-                      ✗ Blocked: {blockedAssets.map(a => `${a.symbol} (${a.reason})`).join(', ')}
-                    </p>
-                  )}
+                  <p className="text-lime-600 dark:text-lime-400">✓ ALL TRADES ALLOWED</p>
+                  <div className="mt-1 text-muted-foreground space-y-0.5">
+                    <p>Aggregate RQ: {aggregateStatus.avgReversalQuality.toFixed(1)}/{aggregateStatus.avgRqThreshold.toFixed(1)}</p>
+                    <p>Volatility: {aggregateStatus.volatilityRegime.toUpperCase()} (RET: {aggregateStatus.avgVolatilityRET.toFixed(1)})</p>
+                    <p>Symbols monitored: {aggregateStatus.symbolCount}</p>
+                  </div>
                 </div>
               )}
-              {autoEnabled && readyAssets.length === 0 && (
+              {autoEnabled && aggregateStatus && aggregateStatus.blockAll && (
                 <div className="text-xs text-red-600 dark:text-red-400">
-                  ✗ All assets blocked:
-                  <ul className="mt-0.5 ml-4 list-disc">
-                    {blockedAssets.map(a => (
-                      <li key={a.symbol}>{a.symbol}: {a.reason}</li>
-                    ))}
-                  </ul>
+                  <p>✗ ALL TRADES BLOCKED</p>
+                  <div className="mt-1 space-y-0.5">
+                    <p>Reason: {aggregateStatus.reason}</p>
+                    <p className="text-muted-foreground">Aggregate RQ: {aggregateStatus.avgReversalQuality.toFixed(1)}/{aggregateStatus.avgRqThreshold.toFixed(1)}</p>
+                    <p className="text-muted-foreground">Volatility: {aggregateStatus.volatilityRegime.toUpperCase()}</p>
+                    {aggregateStatus.criticalSymbols.length > 0 && (
+                      <p className="text-orange-600 dark:text-orange-400">Critical: {aggregateStatus.criticalSymbols.join(', ')}</p>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
