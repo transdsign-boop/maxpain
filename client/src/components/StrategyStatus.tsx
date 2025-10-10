@@ -83,6 +83,17 @@ interface CompletedTradeCardProps {
   isHedge?: boolean;
 }
 
+interface RealizedPnlEventCardProps {
+  event: {
+    symbol: string;
+    income: string;
+    time: number;
+    tradeId: string;
+  };
+  formatCurrency: (value: number) => string;
+  getPnlColor: (pnl: number) => string;
+}
+
 interface AssetPerformance {
   symbol: string;
   totalPnl: number;
@@ -248,6 +259,36 @@ function CompletedTradeCard({ position, formatCurrency, formatPercentage, getPnl
         </CollapsibleContent>
       </div>
     </Collapsible>
+  );
+}
+
+// Simplified card for realized P&L events from exchange
+function RealizedPnlEventCard({ event, formatCurrency, getPnlColor }: RealizedPnlEventCardProps) {
+  const pnl = parseFloat(event.income);
+  
+  return (
+    <div className="rounded-lg border bg-card hover-elevate p-4" data-testid={`pnl-event-${event.tradeId}`}>
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <span className="font-semibold text-sm">{event.symbol}</span>
+          <Badge variant="outline" className="text-xs">
+            Closed Trade
+          </Badge>
+        </div>
+        <div className={`text-sm font-semibold ${getPnlColor(pnl)}`}>
+          {pnl >= 0 ? '+' : ''}{formatCurrency(pnl)}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        <div>
+          Closed: <span className="text-foreground">{format(new Date(event.time), 'MMM d, h:mm a')}</span>
+        </div>
+        <div>
+          Trade ID: <span className="text-foreground font-mono text-xs">{event.tradeId}</span>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -752,6 +793,9 @@ export function StrategyStatus() {
     livePositionsLoading: isLoading,
     livePositionsError: error,
     closedPositions,
+    realizedPnlEvents,
+    realizedPnlCount,
+    realizedPnlLoading,
     strategyChanges,
     assetPerformance,
   } = useStrategyData();
@@ -1264,10 +1308,10 @@ export function StrategyStatus() {
               )}
             </TabsTrigger>
             <TabsTrigger value="completed" data-testid="tab-completed-positions">
-              Completed Positions
-              {closedPositions && closedPositions.length > 0 && (
+              Completed Trades
+              {realizedPnlCount > 0 && (
                 <Badge variant="secondary" className="ml-2 text-xs">
-                  {closedPositions.length}
+                  {realizedPnlCount}
                 </Badge>
               )}
             </TabsTrigger>
@@ -1304,20 +1348,31 @@ export function StrategyStatus() {
 
           <TabsContent value="completed" className="mt-3 md:mt-4">
             <div className="mb-2">
-              <p className="text-xs text-muted-foreground">Trades automatically sync every minute</p>
+              <p className="text-xs text-muted-foreground">
+                Showing {realizedPnlCount} realized P&L events from exchange (source of truth)
+              </p>
             </div>
-            {tradeHistory && tradeHistory.filter(item => item.type === 'trade').length > 0 ? (
+            {realizedPnlLoading ? (
+              <div className="text-center py-6">
+                <p className="text-sm text-muted-foreground">Loading completed trades...</p>
+              </div>
+            ) : realizedPnlEvents && realizedPnlEvents.length > 0 ? (
               <div className="space-y-2 max-h-96 overflow-y-auto overflow-x-hidden pr-2 custom-scrollbar">
-                {tradeHistory
-                  .filter(item => item.type === 'trade')
-                  .map((item) => (
-                    <CompletedTradeCard key={item.data.id} position={item.data} formatCurrency={formatCurrency} formatPercentage={formatPercentage} getPnlColor={getPnlColor} isHedge={closedHedgePositions.get(item.data.id) || false} />
+                {realizedPnlEvents
+                  .sort((a: any, b: any) => b.time - a.time)
+                  .map((event: any) => (
+                    <RealizedPnlEventCard 
+                      key={event.tradeId} 
+                      event={event} 
+                      formatCurrency={formatCurrency} 
+                      getPnlColor={getPnlColor} 
+                    />
                   ))}
               </div>
             ) : (
               <div className="text-center py-6">
                 <CheckCircle2 className="h-8 w-8 mx-auto text-muted-foreground/50 mb-2" />
-                <p className="text-sm text-muted-foreground">No completed positions yet</p>
+                <p className="text-sm text-muted-foreground">No completed trades yet</p>
               </div>
             )}
           </TabsContent>
