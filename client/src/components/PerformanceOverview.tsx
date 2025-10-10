@@ -107,18 +107,24 @@ export default function PerformanceOverview() {
   } = useStrategyData();
 
   // Fetch commissions and funding fees with date range filtering
+  // Always enforce Oct 1st start date (1759276800000) as minimum
   const commissionsQuery = useQuery<{ records: any[]; total: number }>({
     queryKey: ['/api/commissions', dateRange.start?.getTime(), dateRange.end?.getTime()],
     queryFn: async () => {
       const params = new URLSearchParams();
-      if (dateRange.start) {
-        params.append('startTime', startOfDay(dateRange.start).getTime().toString());
-      }
+      // Use Oct 1st as minimum start time
+      const minStartTime = 1759276800000;
+      const effectiveStartTime = dateRange.start 
+        ? Math.max(startOfDay(dateRange.start).getTime(), minStartTime)
+        : minStartTime;
+      
+      params.append('startTime', effectiveStartTime.toString());
+      
       if (dateRange.end) {
         params.append('endTime', endOfDay(dateRange.end).getTime().toString());
       }
-      const queryString = params.toString();
-      const url = `/api/commissions${queryString ? `?${queryString}` : ''}`;
+      
+      const url = `/api/commissions?${params.toString()}`;
       const response = await fetch(url);
       if (!response.ok) throw new Error('Failed to fetch commissions');
       return response.json();
@@ -130,14 +136,19 @@ export default function PerformanceOverview() {
     queryKey: ['/api/funding-fees', dateRange.start?.getTime(), dateRange.end?.getTime()],
     queryFn: async () => {
       const params = new URLSearchParams();
-      if (dateRange.start) {
-        params.append('startTime', startOfDay(dateRange.start).getTime().toString());
-      }
+      // Use Oct 1st as minimum start time
+      const minStartTime = 1759276800000;
+      const effectiveStartTime = dateRange.start 
+        ? Math.max(startOfDay(dateRange.start).getTime(), minStartTime)
+        : minStartTime;
+      
+      params.append('startTime', effectiveStartTime.toString());
+      
       if (dateRange.end) {
         params.append('endTime', endOfDay(dateRange.end).getTime().toString());
       }
-      const queryString = params.toString();
-      const url = `/api/funding-fees${queryString ? `?${queryString}` : ''}`;
+      
+      const url = `/api/funding-fees?${params.toString()}`;
       const response = await fetch(url);
       if (!response.ok) throw new Error('Failed to fetch funding fees');
       return response.json();
@@ -180,8 +191,27 @@ export default function PerformanceOverview() {
       .slice(0, 3);
   }, [assetPerformance]);
 
-  // Use unified chart data for both modes
-  const rawSourceData = rawChartData || [];
+  // Convert realized P&L events to chart data format
+  const rawSourceData = useMemo(() => {
+    if (!realizedPnlEvents || realizedPnlEvents.length === 0) return [];
+    
+    let cumulativePnl = 0;
+    return realizedPnlEvents.map((event, index) => {
+      const pnl = parseFloat(event.income || '0');
+      cumulativePnl += pnl;
+      
+      return {
+        tradeNumber: index + 1,
+        timestamp: event.time,
+        symbol: event.symbol,
+        side: pnl > 0 ? 'long' : 'short', // Inferred from P&L direction
+        pnl: pnl,
+        cumulativePnl: cumulativePnl,
+        entryPrice: 0, // Not available from P&L events
+        quantity: 0, // Not available from P&L events
+      };
+    });
+  }, [realizedPnlEvents]);
   
   // Apply date range filter
   const sourceChartData = useMemo(() => {
