@@ -729,14 +729,14 @@ export default function PerformanceOverview() {
                   onValueChange={(value) => setLocalRiskLimit(value[0])}
                   onValueCommit={(value) => updateRiskMutation.mutate(value[0])}
                   min={1}
-                  max={50}
+                  max={100}
                   step={0.5}
                   className="cursor-pointer"
                   data-testid="slider-max-risk"
                 />
                 <div className="flex justify-between text-[9px] text-muted-foreground">
                   <span>1%</span>
-                  <span>50%</span>
+                  <span>100%</span>
                 </div>
               </div>
             </div>
