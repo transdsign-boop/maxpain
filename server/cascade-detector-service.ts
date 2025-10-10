@@ -487,6 +487,99 @@ class CascadeDetectorService {
   }
 
   /**
+   * Get aggregate status across all monitored symbols
+   * Returns average metrics and whether ALL trades should be blocked
+   */
+  public getAggregateStatus(): {
+    avgReversalQuality: number;
+    avgRqThreshold: number;
+    avgVolatilityRET: number;
+    avgScore: number;
+    blockAll: boolean;
+    autoEnabled: boolean;
+    symbolCount: number;
+    criticalSymbols: string[]; // Symbols with red/orange lights
+    volatilityRegime: 'low' | 'medium' | 'high';
+    reason?: string;
+  } {
+    const statuses = this.getAllStatuses();
+    
+    if (statuses.length === 0) {
+      return {
+        avgReversalQuality: 0,
+        avgRqThreshold: 0,
+        avgVolatilityRET: 0,
+        avgScore: 0,
+        blockAll: false,
+        autoEnabled: this.getAutoEnabled(),
+        symbolCount: 0,
+        criticalSymbols: [],
+        volatilityRegime: 'low',
+        reason: 'No symbols monitored'
+      };
+    }
+    
+    // Calculate averages
+    const totalRQ = statuses.reduce((sum, s) => sum + s.reversal_quality, 0);
+    const totalThreshold = statuses.reduce((sum, s) => sum + s.rq_threshold_adjusted, 0);
+    const totalRET = statuses.reduce((sum, s) => sum + s.RET, 0);
+    const totalScore = statuses.reduce((sum, s) => sum + s.score, 0);
+    
+    const avgReversalQuality = totalRQ / statuses.length;
+    const avgRqThreshold = totalThreshold / statuses.length;
+    const avgVolatilityRET = totalRET / statuses.length;
+    const avgScore = totalScore / statuses.length;
+    
+    // Identify critical symbols (red/orange light = autoBlock)
+    const criticalSymbols = statuses
+      .filter(s => s.autoBlock)
+      .map(s => s.symbol);
+    
+    // Determine overall volatility regime based on average RET
+    let volatilityRegime: 'low' | 'medium' | 'high';
+    if (avgVolatilityRET >= 35) {
+      volatilityRegime = 'high';
+    } else if (avgVolatilityRET >= 25) {
+      volatilityRegime = 'medium';
+    } else {
+      volatilityRegime = 'low';
+    }
+    
+    const autoEnabled = this.getAutoEnabled();
+    
+    // Determine if ALL trades should be blocked
+    let blockAll = false;
+    let reason: string | undefined;
+    
+    if (autoEnabled) {
+      // Block ALL if aggregate reversal quality is below aggregate threshold
+      if (avgReversalQuality < avgRqThreshold) {
+        blockAll = true;
+        reason = `Aggregate RQ ${avgReversalQuality.toFixed(1)} < threshold ${avgRqThreshold.toFixed(1)}`;
+      }
+      
+      // Also block ALL if any critical symbols are detected (cascade risk)
+      if (criticalSymbols.length > 0) {
+        blockAll = true;
+        reason = `${criticalSymbols.length} critical symbols: ${criticalSymbols.join(', ')}`;
+      }
+    }
+    
+    return {
+      avgReversalQuality,
+      avgRqThreshold,
+      avgVolatilityRET,
+      avgScore,
+      blockAll,
+      autoEnabled,
+      symbolCount: statuses.length,
+      criticalSymbols,
+      volatilityRegime,
+      reason
+    };
+  }
+
+  /**
    * Get current configuration (for debugging/monitoring)
    */
   public getConfig(): CascadeConfig {
