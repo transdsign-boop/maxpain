@@ -1,0 +1,148 @@
+2025-10-09 16:59:54.04
+4eea7c3d
+User
+📋 XRPUSDT-long: 23 trades (17 entries, 6 exits)
+2025-10-09 16:59:54.04
+4eea7c3d
+User
+📋 XRPUSDT-short: 13 trades (10 entries, 3 exits)
+2025-10-09 16:59:54.04
+4eea7c3d
+User
+📋 APTUSDT-short: 6 trades (4 entries, 2 exits)
+2025-10-09 16:59:54.04
+4eea7c3d
+User
+📋 APTUSDT-long: 13 trades (8 entries, 5 exits)
+2025-10-09 16:59:54.04
+4eea7c3d
+User
+📋 WLFIUSDT-long: 13 trades (10 entries, 3 exits)
+2025-10-09 16:59:54.04
+4eea7c3d
+User
+📊 Grouped into 225 complete positions
+2025-10-09 16:59:54.23
+4eea7c3d
+User
+🔍 Checking for existing fills: orderId=sync-entry-1759475012744-0, found=1
+2025-10-09 16:59:54.23
+4eea7c3d
+User
+⏭️ Skipping position - fills already exist for ASTERUSDT long (orderId: sync-entry-1759475012744-0)
+2025-10-09 16:59:54.26
+4eea7c3d
+User
+🔍 Checking for existing fills: orderId=sync-entry-1759544173121-0, found=1
+2025-10-09 16:59:54.26
+4eea7c3d
+User
+⏭️ Skipping position - fills already exist for ASTERUSDT long (orderId: sync-entry-1759544173121-0)
+2025-10-09 16:59:54.31
+4eea7c3d
+User
+🔍 Checking for existing fills: orderId=sync-entry-1759555401036-0, found=1
+2025-10-09 16:59:54.31
+4eea7c3d
+User
+⏭️ Skipping position - fills already exist for ASTERUSDT long (orderId: sync-entry-1759555401036-0)
+2025-10-09 16:59:54.34
+4eea7c3d
+User
+🔍 Checking for existing fills: orderId=sync-entry-1759468777179-0, found=1
+2025-10-09 16:59:54.34
+4eea7c3d
+User
+⏭️ Skipping position - fills already exist for ASTERUSDT short (orderId: sync-entry-1759468777179-0)
+2025-10-09 16:59:54.38
+4eea7c3d
+User
+🔍 Checking for existing fills: orderId=sync-entry-1759505486030-0, found=1
+2025-10-09 16:59:54.38
+4eea7c3d
+User
+⏭️ Skipping position - fills already exist for ASTERUSDT short (orderId: sync-entry-1759505486030-0)
+2025-10-09 16:59:54.42
+4eea7c3d
+User
+🔍 Checking for existing fills: orderId=sync-entry-1759538073059-0, found=1
+2025-10-09 16:59:54.42
+4eea7c3d
+User
+⏭️ Skipping position - fills already exist for ASTERUSDT short (orderId: sync-entry-1759538073059-0)
+2025-10-09 16:59:54.46
+4eea7c3d
+User
+🔍 Checking for existing fills: orderId=sync-entry-1759538103164-0, found=1
+2025-10-09 16:59:54.46
+4eea7c3d
+User
+⏭️ Skipping position - fills already exist for ASTERUSDT short (orderId: sync-entry-1759538103164-0)
+2025-10-09 16:59:54.50
+4eea7c3d
+User
+🔍 Checking for existing fills: orderId=sync-entry-1759632066287-0, found=1
+2025-10-09 16:59:54.50
+4eea7c3d
+User
+⏭️ Skipping position - fills already exist for HYPEUSDT long (orderId: sync-entry-1759632066287-0)
+2025-10-09 16:59:54.53
+4eea7c3d
+User
+🔍 Checking for existing fills: orderId=sync-entry-1759646390002-0, found=1
+2025-10-09 16:59:54.53
+4eea7c3d
+User
+⏭️ Skipping position - fills already exist for HYPEUSDT long (orderId: sync-entry-1759646390002-0)
+2025-10-09 16:59:54.57
+4eea7c3d
+User
+🔍 Checking for existing fills: orderId=sync-entry-1759466522811-0, found=1
+2025-10-09 16:59:54.57
+4eea7c3d
+User
+⏭️ Skipping position - fills already exist for HYPEUSDT short (orderId: sync-entry-1759466522811-0)
+2025-10-09 16:59:54.61
+4eea7c3d
+User
+🔍 Checking for existing fills: orderId=sync-entry-1759469329027-0, found=1
+2025-10-09 16:59:54.61
+4eea7c3d
+User
+⏭️ Skipping position - fills already exist for HYPEUSDT short (orderId: sync-entry-1759469329027-0)
+2025-10-09 16:59:54.65
+4eea7c3d
+User
+🔍 Checking for existing fills: orderId=sync-entry-1759469760794-0, found=1
+2025-10-09 16:59:54.65
+4eea7c3d
+User
+⏭️ Skipping position - fills already exist for HYPEUSDT short (orderId: sync-entry-1759469760794-0)
+2025-10-09 16:59:54.68
+4eea7c3d
+User
+🔍 Checking for existing fills: orderId=sync-entry-1759475395774-0, found=1
+2025-10-09 16:59:54.68
+4eea7c3d
+User
+⏭️ Skipping position - fills already exist for HYPEUSDT short (orderId: sync-entry-1759475395774-0)
+2025-10-09 16:59:54.72
+4eea7c3d
+User
+🔍 Checking for existing fills: orderId=sync-entry-1759477795342-0, found=1
+2025-10-09 16:59:54.72
+4eea7c3d
+User
+⏭️ Skipping position - fills already exist for HYPEUSDT short (orderId: sync-entry-1759477795342-0)
+2025-10-09 16:59:54.76
+4eea7c3d
+User
+🔍 Checking for existing fills: orderId=sync-entry-1759617699217-0, found=1
+2025-10-09 16:59:54.76
+4eea7c3d
+User
+⏭️ Skipping position - fills already exist for HYPEUSDT short (orderId: sync-entry-1759617699217-0)
+2025-10-09 16:59:54.80
+4eea7c3d
+User
+🔍 Checking for existing fills: orderId=sync-entry-1759620678427-0, found=1

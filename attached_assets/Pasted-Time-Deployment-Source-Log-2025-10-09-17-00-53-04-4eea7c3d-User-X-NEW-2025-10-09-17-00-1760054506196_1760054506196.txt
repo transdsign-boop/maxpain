@@ -1,0 +1,160 @@
+Time
+Deployment
+Source
+Log
+2025-10-09 17:00:53.04
+4eea7c3d
+User
+"X": "NEW",
+2025-10-09 17:00:53.04
+4eea7c3d
+User
+"i": 6026423820,
+2025-10-09 17:00:53.04
+4eea7c3d
+User
+"l": "0",
+2025-10-09 17:00:53.04
+4eea7c3d
+User
+"z": "0",
+2025-10-09 17:00:53.04
+4eea7c3d
+User
+"L": "0",
+2025-10-09 17:00:53.04
+4eea7c3d
+User
+"T": 1760054452982,
+2025-10-09 17:00:53.04
+4eea7c3d
+User
+"t": 0,
+2025-10-09 17:00:53.04
+4eea7c3d
+User
+"b": "0",
+2025-10-09 17:00:53.04
+4eea7c3d
+User
+"a": "1623.3438",
+2025-10-09 17:00:53.04
+4eea7c3d
+User
+"m": false,
+2025-10-09 17:00:53.04
+4eea7c3d
+User
+"R": true,
+2025-10-09 17:00:53.04
+4eea7c3d
+User
+"wt": "CONTRACT_PRICE",
+2025-10-09 17:00:53.04
+4eea7c3d
+User
+"ot": "LIMIT",
+2025-10-09 17:00:53.04
+4eea7c3d
+User
+"ps": "BOTH",
+2025-10-09 17:00:53.04
+4eea7c3d
+User
+"cp": false,
+2025-10-09 17:00:53.04
+4eea7c3d
+User
+"rp": "0",
+2025-10-09 17:00:53.04
+4eea7c3d
+User
+"pP": false,
+2025-10-09 17:00:53.04
+4eea7c3d
+User
+"si": 0,
+2025-10-09 17:00:53.04
+4eea7c3d
+User
+"ss": 0
+2025-10-09 17:00:53.04
+4eea7c3d
+User
+}
+2025-10-09 17:00:53.04
+4eea7c3d
+User
+📦 Order update received
+2025-10-09 17:00:53.04
+4eea7c3d
+User
+📦 Order updated via WebSocket
+2025-10-09 17:00:53.21
+4eea7c3d
+User
+🔍 Checking for existing fills: orderId=sync-entry-1759475012744-0, found=1
+2025-10-09 17:00:53.21
+4eea7c3d
+User
+⏭️ Skipping position - fills already exist for ASTERUSDT long (orderId: sync-entry-1759475012744-0)
+2025-10-09 17:00:53.25
+4eea7c3d
+User
+🔍 Checking for existing fills: orderId=sync-entry-1759544173121-0, found=1
+2025-10-09 17:00:53.25
+4eea7c3d
+User
+⏭️ Skipping position - fills already exist for ASTERUSDT long (orderId: sync-entry-1759544173121-0)
+2025-10-09 17:00:53.28
+4eea7c3d
+User
+🔍 Checking for existing fills: orderId=sync-entry-1759555401036-0, found=1
+2025-10-09 17:00:53.28
+4eea7c3d
+User
+⏭️ Skipping position - fills already exist for ASTERUSDT long (orderId: sync-entry-1759555401036-0)
+2025-10-09 17:00:53.32
+4eea7c3d
+User
+🔍 Checking for existing fills: orderId=sync-entry-1759468777179-0, found=1
+2025-10-09 17:00:53.32
+4eea7c3d
+User
+⏭️ Skipping position - fills already exist for ASTERUSDT short (orderId: sync-entry-1759468777179-0)
+2025-10-09 17:00:53.36
+4eea7c3d
+User
+🔍 Checking for existing fills: orderId=sync-entry-1759505486030-0, found=1
+2025-10-09 17:00:53.36
+4eea7c3d
+User
+⏭️ Skipping position - fills already exist for ASTERUSDT short (orderId: sync-entry-1759505486030-0)
+2025-10-09 17:00:53.39
+4eea7c3d
+User
+🔍 Checking for existing fills: orderId=sync-entry-1759538073059-0, found=1
+2025-10-09 17:00:53.39
+4eea7c3d
+User
+⏭️ Skipping position - fills already exist for ASTERUSDT short (orderId: sync-entry-1759538073059-0)
+2025-10-09 17:00:53.43
+4eea7c3d
+User
+🔍 Checking for existing fills: orderId=sync-entry-1759538103164-0, found=1
+2025-10-09 17:00:53.47
+4eea7c3d
+User
+🔍 Checking for existing fills: orderId=sync-entry-1759632066287-0, found=1
+2025-10-09 17:00:53.47
+4eea7c3d
+User
+⏭️ Skipping position - fills already exist for HYPEUSDT long (orderId: sync-entry-1759632066287-0)
+2025-10-09 17:00:53.47
+4eea7c3d
+User
+"s": "BTCUSDT",
+2025-10-09 17:00:53.47
+4eea7c3d
+User
+"c": "pZns0giLRWBMcfr24qdCvM",
