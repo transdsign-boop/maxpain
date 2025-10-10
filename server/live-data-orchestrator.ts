@@ -97,9 +97,13 @@ class LiveDataOrchestrator {
   // Update positions cache from WebSocket (called by user-data-stream)
   updatePositionsFromWebSocket(strategyId: string, positions: any[]): void {
     const snapshot = this.getSnapshot(strategyId);
-    snapshot.positions = positions;
+    
+    // Filter to keep ONLY open positions (exclude closed positions with positionAmt=0)
+    const openPositions = positions.filter((pos: any) => parseFloat(pos.positionAmt || '0') !== 0);
+    
+    snapshot.positions = openPositions;
     snapshot.timestamp = Date.now();
-    console.log(`✅ Updated positions cache from WebSocket (${positions.length} positions)`);
+    console.log(`✅ Updated positions cache from WebSocket (${positions.length} total, ${openPositions.length} open)`);
     this.calculatePositionSummary(strategyId);
   }
 
