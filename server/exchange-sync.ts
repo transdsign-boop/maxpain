@@ -837,6 +837,7 @@ export async function fetchRealizedPnlEvents(params: {
     const limit = 1000;
     
     // Paginate backwards from endTime to startTime
+    let batchCount = 0;
     while (true) {
       const timestamp = Date.now();
       const queryParams = `incomeType=REALIZED_PNL&startTime=${startTime}&endTime=${currentEndTime}&limit=${limit}&timestamp=${timestamp}`;
@@ -860,21 +861,29 @@ export async function fetchRealizedPnlEvents(params: {
       }
 
       const batch = await response.json();
+      batchCount++;
+      
+      console.log(`📥 P&L Batch ${batchCount}: Fetched ${batch.length} events (startTime=${startTime}, endTime=${currentEndTime})`);
       
       if (batch.length === 0) {
+        console.log(`🛑 Stopping: Empty batch received`);
         break;
       }
       
       allRecords.push(...batch);
       
       if (batch.length < limit) {
+        console.log(`🛑 Stopping: Batch size (${batch.length}) < limit (${limit})`);
         break;
       }
       
       // Move endTime to the oldest record's timestamp minus 1ms for next batch
-      currentEndTime = batch[batch.length - 1].time - 1;
+      const nextEndTime = batch[batch.length - 1].time - 1;
+      console.log(`➡️ Next batch: Moving endTime from ${currentEndTime} to ${nextEndTime}`);
+      currentEndTime = nextEndTime;
       
       if (currentEndTime <= startTime) {
+        console.log(`🛑 Stopping: currentEndTime (${currentEndTime}) <= startTime (${startTime})`);
         break;
       }
     }
@@ -882,13 +891,31 @@ export async function fetchRealizedPnlEvents(params: {
     // Sum all realized P&L values
     const total = allRecords.reduce((sum: number, item: any) => sum + parseFloat(item.income || '0'), 0);
     
+    // Get date range of fetched events
+    // Exchange returns events in ASCENDING order (oldest first)
+    let dateRange = null;
+    if (allRecords.length > 0) {
+      const oldestEvent = allRecords[0]; // First item = oldest
+      const newestEvent = allRecords[allRecords.length - 1]; // Last item = newest
+      dateRange = {
+        oldest: new Date(oldestEvent.time).toISOString(),
+        newest: new Date(newestEvent.time).toISOString(),
+        oldestTimestamp: oldestEvent.time,
+        newestTimestamp: newestEvent.time
+      };
+      console.log(`📅 P&L Date Range: ${dateRange.oldest} to ${dateRange.newest}`);
+      console.log(`   Oldest: ${dateRange.oldest} (timestamp: ${oldestEvent.time})`);
+      console.log(`   Newest: ${dateRange.newest} (timestamp: ${newestEvent.time})`);
+    }
+    
     console.log(`✅ Fetched ${allRecords.length} realized P&L events from income API: Total=$${total.toFixed(2)}`);
     
     return { 
       success: true, 
       events: allRecords,
       total,
-      count: allRecords.length
+      count: allRecords.length,
+      dateRange
     };
   } catch (error) {
     console.error('❌ Error fetching realized P&L events:', error);
