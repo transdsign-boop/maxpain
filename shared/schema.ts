@@ -59,6 +59,11 @@ export const userSettings = pgTable("user_settings", {
   sideFilter: text("side_filter").notNull().default('all'),
   minValue: text("min_value").notNull().default('0'),
   timeRange: text("time_range").notNull().default('1h'),
+  // Volatility-Adaptive Take Profit (default settings for UI)
+  adaptiveTpEnabled: boolean("adaptive_tp_enabled").notNull().default(false),
+  tpAtrMultiplier: decimal("tp_atr_multiplier", { precision: 5, scale: 2 }).notNull().default("1.0"),
+  minTpPercent: decimal("min_tp_percent", { precision: 5, scale: 2 }).notNull().default("0.3"),
+  maxTpPercent: decimal("max_tp_percent", { precision: 5, scale: 2 }).notNull().default("1.2"),
   lastUpdated: timestamp("last_updated").notNull().defaultNow(),
 });
 
@@ -81,6 +86,11 @@ export const strategies = pgTable("strategies", {
   maxLayers: integer("max_layers").notNull().default(5),
   profitTargetPercent: decimal("profit_target_percent", { precision: 5, scale: 2 }).notNull().default("1.0"),
   stopLossPercent: decimal("stop_loss_percent", { precision: 5, scale: 2 }).notNull().default("2.0"), // Stop loss percentage
+  // Volatility-Adaptive Take Profit
+  adaptiveTpEnabled: boolean("adaptive_tp_enabled").notNull().default(false), // Enable volatility-based TP adjustment
+  tpAtrMultiplier: decimal("tp_atr_multiplier", { precision: 5, scale: 2 }).notNull().default("1.0"), // ATR multiplier for TP scaling
+  minTpPercent: decimal("min_tp_percent", { precision: 5, scale: 2 }).notNull().default("0.3"), // Minimum TP cap
+  maxTpPercent: decimal("max_tp_percent", { precision: 5, scale: 2 }).notNull().default("1.2"), // Maximum TP cap
   // Margin and Risk Management
   marginMode: text("margin_mode").notNull().default("cross"), // "cross" or "isolated"
   leverage: integer("leverage").notNull().default(1), // 1-125x leverage
