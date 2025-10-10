@@ -2906,16 +2906,11 @@ export class StrategyEngine extends EventEmitter {
       return;
     }
 
-    // Calculate layersFilled from actual fills in database (not increment - prevents duplicate counting)
-    const sessionFills = await storage.getFillsBySession(position.sessionId);
-    const positionFills = sessionFills.filter((fill: any) => fill.positionId === position.id);
-    const actualLayerCount = new Set(positionFills.map((f: any) => f.layerNumber)).size;
-
     await storage.updatePosition(position.id, {
       totalQuantity: newQuantity.toString(),
       avgEntryPrice: newAvgPrice.toString(), // Weighted average of entry prices
       totalCost: newCost.toString(), // Actual total margin used
-      layersFilled: actualLayerCount, // Derived from actual fills, not incremented
+      layersFilled: position.layersFilled + 1,
       lastLayerPrice: fillPrice.toString(),
     });
   }
