@@ -4764,6 +4764,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get trade entry errors with optional filtering (symbol, reason, date range)
+  app.get('/api/trade-errors', async (req, res) => {
+    try {
+      const { symbol, reason, startTime, endTime, limit } = req.query;
+      
+      const filters: any = {};
+      
+      if (symbol) {
+        filters.symbol = symbol as string;
+      }
+      
+      if (reason) {
+        filters.reason = reason as string;
+      }
+      
+      if (startTime) {
+        const timestamp = parseInt(startTime as string);
+        if (isNaN(timestamp)) {
+          return res.status(400).json({ error: 'Invalid startTime parameter' });
+        }
+        filters.startTime = new Date(timestamp);
+        if (isNaN(filters.startTime.getTime())) {
+          return res.status(400).json({ error: 'Invalid startTime date' });
+        }
+      }
+      
+      if (endTime) {
+        const timestamp = parseInt(endTime as string);
+        if (isNaN(timestamp)) {
+          return res.status(400).json({ error: 'Invalid endTime parameter' });
+        }
+        filters.endTime = new Date(timestamp);
+        if (isNaN(filters.endTime.getTime())) {
+          return res.status(400).json({ error: 'Invalid endTime date' });
+        }
+      }
+      
+      if (limit) {
+        const parsedLimit = parseInt(limit as string);
+        if (isNaN(parsedLimit) || parsedLimit < 1) {
+          return res.status(400).json({ error: 'Invalid limit parameter' });
+        }
+        filters.limit = parsedLimit;
+      }
+
+      const errors = await storage.getTradeEntryErrors(DEFAULT_USER_ID, filters);
+      res.json(errors);
+    } catch (error) {
+      console.error('Error fetching trade entry errors:', error);
+      res.status(500).json({ error: 'Failed to fetch trade entry errors' });
+    }
+  });
+
   return httpServer;
 }
 

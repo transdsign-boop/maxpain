@@ -7,7 +7,8 @@ import {
   type TradeSession, 
   type Position, 
   type Order, 
-  type Fill 
+  type Fill,
+  type InsertTradeEntryError
 } from '@shared/schema';
 import { fetchActualFills, aggregateFills } from './exchange-utils';
 import { orderProtectionService } from './order-protection-service';
@@ -618,6 +619,18 @@ export class StrategyEngine extends EventEmitter {
       // Final safety check: ensure projected risk doesn't exceed max (account for float precision)
       if (projectedRiskPercentage > maxRiskPercent + 0.01) { // Allow 0.01% tolerance for float precision
         console.log(`🚫 PORTFOLIO RISK LIMIT: Projected risk still exceeds max after scaling (projected: ${projectedRiskPercentage.toFixed(1)}% > max: ${maxRiskPercent}%)`);
+        
+        // Log error to database for audit trail
+        await this.logTradeEntryError({
+          strategy,
+          symbol: liquidation.symbol,
+          side: positionSide,
+          attemptType: 'entry',
+          reason: 'risk_limit_exceeded',
+          errorDetails: `Projected risk ${projectedRiskPercentage.toFixed(1)}% exceeds max ${maxRiskPercent}%`,
+          liquidationValue: parseFloat(liquidation.value),
+        });
+        
         return false;
       }
       
@@ -631,6 +644,18 @@ export class StrategyEngine extends EventEmitter {
       
       if (remainingRiskPercent < 0.05) {
         console.log(`🚫 PORTFOLIO RISK LIMIT (Fallback): No remaining risk budget (remaining: ${remainingRiskPercent.toFixed(2)}%)`);
+        
+        // Log error to database for audit trail
+        await this.logTradeEntryError({
+          strategy,
+          symbol: liquidation.symbol,
+          side: positionSide,
+          attemptType: 'entry',
+          reason: 'risk_limit_exceeded',
+          errorDetails: `No remaining risk budget (fallback check): ${remainingRiskPercent.toFixed(2)}%`,
+          liquidationValue: parseFloat(liquidation.value),
+        });
+        
         return false;
       }
       
@@ -652,6 +677,18 @@ export class StrategyEngine extends EventEmitter {
       if (aggregateStatus.blockAll) {
         console.log(`🚫 AGGREGATE RISK GATE [${liquidation.symbol}]: ALL entries blocked - ${aggregateStatus.reason}`);
         console.log(`   📊 Aggregate metrics: RQ ${aggregateStatus.avgReversalQuality.toFixed(1)}/${aggregateStatus.avgRqThreshold.toFixed(1)}, Volatility: ${aggregateStatus.volatilityRegime} (RET: ${aggregateStatus.avgVolatilityRET.toFixed(1)}), Score: ${aggregateStatus.avgScore.toFixed(1)}, Symbols: ${aggregateStatus.symbolCount}`);
+        
+        // Log error to database for audit trail
+        await this.logTradeEntryError({
+          strategy,
+          symbol: liquidation.symbol,
+          side: positionSide,
+          attemptType: 'entry',
+          reason: 'aggregate_filter',
+          errorDetails: `${aggregateStatus.reason} - RQ ${aggregateStatus.avgReversalQuality.toFixed(1)}/${aggregateStatus.avgRqThreshold.toFixed(1)}, Volatility: ${aggregateStatus.volatilityRegime}`,
+          liquidationValue: parseFloat(liquidation.value),
+        });
+        
         return false;
       } else {
         console.log(`✅ AGGREGATE GATE PASSED [${liquidation.symbol}]: Entry allowed - aggregate quality sufficient (RQ: ${aggregateStatus.avgReversalQuality.toFixed(1)}/${aggregateStatus.avgRqThreshold.toFixed(1)}, volatility: ${aggregateStatus.volatilityRegime})`);
@@ -790,6 +827,18 @@ export class StrategyEngine extends EventEmitter {
       // Final safety check: ensure projected risk doesn't exceed max (account for float precision)
       if (projectedRiskPercentage > maxRiskPercent + 0.01) { // Allow 0.01% tolerance for float precision
         console.log(`🚫 PORTFOLIO RISK LIMIT (Layer): Projected risk still exceeds max after scaling (projected: ${projectedRiskPercentage.toFixed(1)}% > max: ${maxRiskPercent}%)`);
+        
+        // Log error to database for audit trail
+        await this.logTradeEntryError({
+          strategy,
+          symbol: liquidation.symbol,
+          side: position.side,
+          attemptType: 'layer',
+          reason: 'risk_limit_exceeded',
+          errorDetails: `Projected risk ${projectedRiskPercentage.toFixed(1)}% exceeds max ${maxRiskPercent}%`,
+          liquidationValue: parseFloat(liquidation.value),
+        });
+        
         return false;
       }
       
@@ -808,6 +857,18 @@ export class StrategyEngine extends EventEmitter {
           
           if (remainingRiskPercent < 0.05) {
             console.log(`🚫 PORTFOLIO RISK LIMIT (Layer/Fallback): No remaining risk budget (remaining: ${remainingRiskPercent.toFixed(2)}%)`);
+            
+            // Log error to database for audit trail
+            await this.logTradeEntryError({
+              strategy,
+              symbol: liquidation.symbol,
+              side: position.side,
+              attemptType: 'layer',
+              reason: 'risk_limit_exceeded',
+              errorDetails: `No remaining risk budget (fallback check): ${remainingRiskPercent.toFixed(2)}%`,
+              liquidationValue: parseFloat(liquidation.value),
+            });
+            
             return false;
           }
           
@@ -833,6 +894,18 @@ export class StrategyEngine extends EventEmitter {
       if (aggregateStatus.blockAll) {
         console.log(`🚫 AGGREGATE RISK GATE (Layer) [${liquidation.symbol}]: ALL layers blocked - ${aggregateStatus.reason}`);
         console.log(`   📊 Aggregate metrics: RQ ${aggregateStatus.avgReversalQuality.toFixed(1)}/${aggregateStatus.avgRqThreshold.toFixed(1)}, Volatility: ${aggregateStatus.volatilityRegime} (RET: ${aggregateStatus.avgVolatilityRET.toFixed(1)}), Score: ${aggregateStatus.avgScore.toFixed(1)}, Symbols: ${aggregateStatus.symbolCount}`);
+        
+        // Log error to database for audit trail
+        await this.logTradeEntryError({
+          strategy,
+          symbol: liquidation.symbol,
+          side: position.side,
+          attemptType: 'layer',
+          reason: 'aggregate_filter',
+          errorDetails: `${aggregateStatus.reason} - RQ ${aggregateStatus.avgReversalQuality.toFixed(1)}/${aggregateStatus.avgRqThreshold.toFixed(1)}, Volatility: ${aggregateStatus.volatilityRegime}`,
+          liquidationValue: parseFloat(liquidation.value),
+        });
+        
         return false;
       } else {
         console.log(`✅ AGGREGATE GATE PASSED (Layer) [${liquidation.symbol}]: Layer allowed - aggregate quality sufficient (RQ: ${aggregateStatus.avgReversalQuality.toFixed(1)}/${aggregateStatus.avgRqThreshold.toFixed(1)}, volatility: ${aggregateStatus.volatilityRegime})`);
@@ -1111,6 +1184,18 @@ export class StrategyEngine extends EventEmitter {
           this.leverageSetForSymbols.set(liquidation.symbol, leverage);
         } else {
           console.error(`❌ Failed to set leverage for ${liquidation.symbol}, aborting order to prevent trading with wrong leverage`);
+          
+          // Log error to database for audit trail
+          await this.logTradeEntryError({
+            strategy,
+            symbol: liquidation.symbol,
+            side: positionSide,
+            attemptType: 'entry',
+            reason: 'leverage_set_failed',
+            errorDetails: `Failed to configure ${leverage}x leverage on exchange`,
+            liquidationValue: parseFloat(liquidation.value),
+          });
+          
           throw new Error(`Failed to set leverage for ${liquidation.symbol}`);
         }
       }
@@ -1373,6 +1458,18 @@ export class StrategyEngine extends EventEmitter {
           
           if (!liveOrderResult.success) {
             console.error(`❌ Live order failed: ${liveOrderResult.error}`);
+            
+            // Log error to database for audit trail
+            await this.logTradeEntryError({
+              strategy,
+              symbol: liquidation.symbol,
+              side: positionSide,
+              attemptType: layerNumber !== undefined ? 'layer' : 'entry',
+              reason: 'order_placement_failed',
+              errorDetails: `API error: ${liveOrderResult.error}`,
+              liquidationValue: parseFloat(liquidation.value),
+            });
+            
             return;
           }
           
@@ -2007,44 +2104,42 @@ export class StrategyEngine extends EventEmitter {
     }
   }
 
-  // Get symbol's maximum allowed leverage from exchange
-  private async getSymbolMaxLeverage(symbol: string): Promise<number | null> {
+  // Log trade entry error to database for debugging
+  private async logTradeEntryError(params: {
+    strategy: Strategy;
+    symbol: string;
+    side: 'long' | 'short';
+    attemptType: 'entry' | 'layer';
+    reason: string;
+    errorDetails?: string;
+    liquidationValue?: number;
+  }): Promise<void> {
     try {
-      // Fetch symbol info from exchange info endpoint (public, no auth needed)
-      const response = await fetch('https://fapi.asterdex.com/fapi/v1/exchangeInfo');
+      const errorRecord: InsertTradeEntryError = {
+        userId: params.strategy.userId,
+        strategyId: params.strategy.id,
+        symbol: params.symbol,
+        side: params.side,
+        attemptType: params.attemptType,
+        reason: params.reason,
+        errorDetails: params.errorDetails || null,
+        liquidationValue: params.liquidationValue?.toString() || null,
+        strategySettings: {
+          leverage: params.strategy.leverage,
+          maxPortfolioRiskPercent: params.strategy.maxPortfolioRiskPercent,
+          maxOpenPositions: params.strategy.maxOpenPositions,
+          riskLevel: params.strategy.riskLevel,
+          isActive: params.strategy.isActive,
+        },
+      };
       
-      if (!response.ok) {
-        console.error(`❌ Failed to fetch exchange info: ${response.status}`);
-        return null;
-      }
-      
-      const data = await response.json();
-      const symbolInfo = data.symbols?.find((s: any) => s.symbol === symbol);
-      
-      if (!symbolInfo) {
-        console.error(`❌ Symbol ${symbol} not found in exchange info`);
-        return null;
-      }
-      
-      // Calculate max leverage from requiredMarginPercent
-      // Formula: max_leverage = 1 / (requiredMarginPercent / 100)
-      // Example: requiredMarginPercent = "5.0000" → max leverage = 1 / 0.05 = 20x
-      const requiredMarginPercent = parseFloat(symbolInfo.requiredMarginPercent || "0");
-      
-      if (requiredMarginPercent === 0) {
-        console.error(`❌ Invalid requiredMarginPercent for ${symbol}`);
-        return null;
-      }
-      
-      const maxLeverage = Math.floor(1 / (requiredMarginPercent / 100));
-      return maxLeverage;
+      await storage.createTradeEntryError(errorRecord);
     } catch (error) {
-      console.error(`❌ Error fetching max leverage for ${symbol}:`, error);
-      return null;
+      console.error('❌ Failed to log trade entry error:', error);
     }
   }
 
-  // Set leverage for a symbol on Aster DEX with automatic adjustment
+  // Set leverage for a symbol on Aster DEX using fixed global settings
   private async setLeverage(symbol: string, requestedLeverage: number): Promise<boolean> {
     try {
       const apiKey = process.env.ASTER_API_KEY;
@@ -2055,16 +2150,8 @@ export class StrategyEngine extends EventEmitter {
         return false;
       }
       
-      // Get symbol's maximum allowed leverage
-      const maxLeverage = await this.getSymbolMaxLeverage(symbol);
-      
-      // Use the lower of requested leverage or symbol's max leverage
-      let leverage = requestedLeverage;
-      if (maxLeverage !== null && requestedLeverage > maxLeverage) {
-        console.log(`⚠️ ${symbol} max leverage is ${maxLeverage}x (requested ${requestedLeverage}x)`);
-        console.log(`📉 Auto-adjusting to ${maxLeverage}x (never increase beyond settings)`);
-        leverage = maxLeverage;
-      }
+      // Use the exact leverage from global settings (no auto-adjustment)
+      const leverage = requestedLeverage;
       
       const timestamp = Date.now();
       const leverageParams: Record<string, string | number> = {

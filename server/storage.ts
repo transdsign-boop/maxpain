@@ -7,12 +7,13 @@ import {
   type Fill, type InsertFill,
   type Position, type InsertPosition,
   type StrategyChange, type InsertStrategyChange,
-  type StrategySnapshot, type InsertStrategySnapshot
+  type StrategySnapshot, type InsertStrategySnapshot,
+  type TradeEntryError, type InsertTradeEntryError
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { db } from "./db";
-import { liquidations, users, userSettings, strategies, tradeSessions, orders, fills, positions, strategyChanges, strategySnapshots } from "@shared/schema";
-import { desc, gte, eq, sql as drizzleSql, inArray, and } from "drizzle-orm";
+import { liquidations, users, userSettings, strategies, tradeSessions, orders, fills, positions, strategyChanges, strategySnapshots, tradeEntryErrors } from "@shared/schema";
+import { desc, gte, lte, eq, sql as drizzleSql, inArray, and } from "drizzle-orm";
 import { neon } from '@neondatabase/serverless';
 
 // Get raw SQL client for strategies table (bypasses Drizzle ORM cache issues)
@@ -148,6 +149,16 @@ export interface IStorage {
   createStrategySnapshot(snapshot: InsertStrategySnapshot): Promise<StrategySnapshot>;
   getStrategySnapshots(strategyId: string, limit?: number): Promise<StrategySnapshot[]>;
   restoreStrategyFromSnapshot(snapshotId: string): Promise<Strategy>;
+  
+  // Trade Entry Error operations
+  createTradeEntryError(error: InsertTradeEntryError): Promise<TradeEntryError>;
+  getTradeEntryErrors(userId: string, filters?: {
+    symbol?: string;
+    reason?: string;
+    startTime?: Date;
+    endTime?: Date;
+    limit?: number;
+  }): Promise<TradeEntryError[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -838,6 +849,49 @@ export class DatabaseStorage implements IStorage {
       .returning();
 
     return result[0];
+  }
+
+  // Trade Entry Error operations
+  async createTradeEntryError(error: InsertTradeEntryError): Promise<TradeEntryError> {
+    const result = await db.insert(tradeEntryErrors).values(error).returning();
+    return result[0];
+  }
+
+  async getTradeEntryErrors(
+    userId: string,
+    filters: {
+      symbol?: string;
+      reason?: string;
+      startTime?: Date;
+      endTime?: Date;
+      limit?: number;
+    } = {}
+  ): Promise<TradeEntryError[]> {
+    const { symbol, reason, startTime, endTime, limit = 100 } = filters;
+    
+    const conditions = [eq(tradeEntryErrors.userId, userId)];
+    
+    if (symbol) {
+      conditions.push(eq(tradeEntryErrors.symbol, symbol));
+    }
+    
+    if (reason) {
+      conditions.push(eq(tradeEntryErrors.reason, reason));
+    }
+    
+    if (startTime) {
+      conditions.push(gte(tradeEntryErrors.timestamp, startTime));
+    }
+    
+    if (endTime) {
+      conditions.push(lte(tradeEntryErrors.timestamp, endTime));
+    }
+    
+    return await db.select()
+      .from(tradeEntryErrors)
+      .where(and(...conditions))
+      .orderBy(desc(tradeEntryErrors.timestamp))
+      .limit(limit);
   }
 }
 
