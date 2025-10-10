@@ -2068,6 +2068,99 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Sync P&L from exchange for all closed positions
+  app.post("/api/positions/sync-pnl-from-exchange", async (req, res) => {
+    try {
+      console.log('📥 Fetching realized P&L from Aster DEX exchange...');
+      
+      // Fetch ALL realized P&L from exchange (all-time)
+      const apiKey = process.env.ASTER_API_KEY;
+      const apiSecret = process.env.ASTER_SECRET_KEY; // Correct env var name
+      
+      if (!apiKey || !apiSecret) {
+        return res.status(500).json({ error: 'Missing API credentials' });
+      }
+      
+      const timestamp = Date.now();
+      const params = new URLSearchParams({
+        incomeType: 'REALIZED_PNL', // CRITICAL: Must filter by REALIZED_PNL only
+        startTime: '0', // Fetch all-time data
+        limit: '1000', // Max per request
+        timestamp: timestamp.toString(),
+      });
+      
+      const signature = crypto
+        .createHmac('sha256', apiSecret)
+        .update(params.toString())
+        .digest('hex');
+      params.append('signature', signature);
+      
+      const response = await fetch(`https://fapi.aster.exchange/fapi/v1/income?${params}`, {
+        headers: { 'X-MBX-APIKEY': apiKey },
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        return res.status(500).json({ error: `Exchange API error: ${errorText}` });
+      }
+      
+      const exchangeIncome: any[] = await response.json();
+      console.log(`📊 Fetched ${exchangeIncome.length} realized P&L records from exchange`);
+      
+      // Get all closed positions
+      const allSessions = await storage.getAllTradeSessions(DEFAULT_USER_ID);
+      let updatedCount = 0;
+      let matchedCount = 0;
+      
+      for (const session of allSessions) {
+        const closedPositions = await storage.getClosedPositions(session.id);
+        
+        for (const position of closedPositions) {
+          // Find matching exchange income record (by symbol and approximate timestamp)
+          const positionCloseTime = new Date(position.closedAt!).getTime();
+          const matchWindow = 60000; // 60 second window
+          
+          const matchingIncome = exchangeIncome.find((inc: any) => {
+            const incomeTime = inc.time;
+            const incomeSymbol = inc.symbol;
+            const timeDiff = Math.abs(incomeTime - positionCloseTime);
+            
+            return incomeSymbol === position.symbol && timeDiff < matchWindow;
+          });
+          
+          if (matchingIncome) {
+            matchedCount++;
+            const exchangePnl = parseFloat(matchingIncome.income);
+            const currentPnl = parseFloat(position.realizedPnl || '0');
+            
+            // Calculate percentage for display
+            const avgEntryPrice = parseFloat(position.avgEntryPrice);
+            const totalQuantity = parseFloat(position.totalQuantity);
+            const positionSize = avgEntryPrice * totalQuantity;
+            const pnlPercent = (exchangePnl / positionSize) * 100;
+            
+            if (Math.abs(exchangePnl - currentPnl) > 0.001) {
+              console.log(`🔄 Syncing ${position.symbol} ${position.side}: $${currentPnl.toFixed(2)} → $${exchangePnl.toFixed(2)} (${pnlPercent.toFixed(2)}%) from exchange`);
+              await storage.closePosition(position.id, new Date(position.closedAt!), exchangePnl, pnlPercent);
+              updatedCount++;
+            }
+          }
+        }
+      }
+      
+      console.log(`✅ Synced ${updatedCount} positions from exchange (${matchedCount} matched)`);
+      res.json({ 
+        success: true, 
+        totalExchangeRecords: exchangeIncome.length,
+        matchedPositions: matchedCount,
+        updatedPositions: updatedCount 
+      });
+    } catch (error) {
+      console.error('Error syncing P&L from exchange:', error);
+      res.status(500).json({ error: 'Failed to sync P&L from exchange' });
+    }
+  });
+
   // Get overall trading performance metrics
   app.get("/api/performance/overview", async (req, res) => {
     try {
@@ -2098,10 +2191,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
+      // Get OFFICIAL realized P&L directly from exchange income API (all-time)
+      // MUST happen BEFORE session check so we get accurate P&L even without active session
+      console.log('📊 Fetching realized P&L from exchange (all-time)...');
+      let totalRealizedPnl = 0;
+      try {
+        const { fetchRealizedPnl } = await import('./exchange-sync');
+        console.log('📊 fetchRealizedPnl imported successfully');
+        
+        const pnlResult = await fetchRealizedPnl({});
+        
+        console.log('📊 fetchRealizedPnl result:', JSON.stringify(pnlResult));
+        if (pnlResult.success) {
+          totalRealizedPnl = pnlResult.total;
+          console.log(`✅ Official exchange P&L (all-time): $${totalRealizedPnl.toFixed(2)}`);
+        } else {
+          console.error(`❌ Failed to fetch realized P&L: ${pnlResult.error}`);
+        }
+      } catch (error) {
+        console.error('❌ Error fetching realized P&L from exchange:', error);
+      }
+
       // Get the active session for this strategy
       const activeSession = await storage.getActiveTradeSession(activeStrategy.id);
 
-      // If no active session, return zeros
+      // If no active session, return with real exchange P&L (not zeros!)
       if (!activeSession) {
         const responseData = {
           totalTrades: 0,
@@ -2110,9 +2224,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           winningTrades: 0,
           losingTrades: 0,
           winRate: 0,
-          totalRealizedPnl: 0,
+          totalRealizedPnl,
           totalUnrealizedPnl: 0,
-          totalPnl: 0,
+          totalPnl: totalRealizedPnl,
           totalPnlPercent: 0,
           averageWin: 0,
           averageLoss: 0,
@@ -2142,27 +2256,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const sessionFills = await storage.getFillsBySession(session.id);
         allPositions.push(...sessionPositions);
         allSessionFills.push(...sessionFills);
-      }
-
-      // Get OFFICIAL realized P&L directly from exchange income API (all-time)
-      // This happens BEFORE checking positions so we always get accurate P&L
-      console.log('📊 Fetching realized P&L from exchange (all-time)...');
-      let totalRealizedPnl = 0;
-      try {
-        const { fetchRealizedPnl } = await import('./exchange-sync');
-        console.log('📊 fetchRealizedPnl imported successfully');
-        
-        const pnlResult = await fetchRealizedPnl({});
-        
-        console.log('📊 fetchRealizedPnl result:', JSON.stringify(pnlResult));
-        if (pnlResult.success) {
-          totalRealizedPnl = pnlResult.total;
-          console.log(`✅ Official exchange P&L (all-time): $${totalRealizedPnl.toFixed(2)}`);
-        } else {
-          console.error(`❌ Failed to fetch realized P&L: ${pnlResult.error}`);
-        }
-      } catch (error) {
-        console.error('❌ Error fetching realized P&L from exchange:', error);
       }
 
       // Get LIVE positions from exchange to calculate unrealized P&L
@@ -3299,11 +3392,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
               }
               
               // Convert percentage to dollar amount
-              // CRITICAL: totalCost stores MARGIN, multiply by leverage to get notional value
-              const totalCost = parseFloat(dbPos.totalCost);
-              const leverage = (dbPos as any).leverage || 1;
-              const notionalValue = totalCost * leverage;
-              const realizedPnlDollar = (realizedPnlPercent / 100) * notionalValue;
+              // CRITICAL FIX: P&L is based on (Price × Quantity), NOT leveraged notional value
+              // Realized P&L = P&L% × (Entry Price × Total Quantity)
+              const avgEntryPrice = parseFloat(dbPos.avgEntryPrice);
+              const totalQuantity = parseFloat(dbPos.totalQuantity);
+              const positionSize = avgEntryPrice * totalQuantity; // Actual position size (no leverage)
+              const realizedPnlDollar = (realizedPnlPercent / 100) * positionSize;
               
               console.log(`🔒 Closing database position ${dbPos.symbol} ${dbPos.side} with ${realizedPnlPercent.toFixed(2)}% P&L ($${realizedPnlDollar.toFixed(2)}) (closed on exchange)`);
               
