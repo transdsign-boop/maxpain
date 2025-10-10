@@ -372,8 +372,12 @@ class CascadeDetectorService {
         console.log(`📊 Cascade [${symbol}]: ${csvLog}`);
       }
 
-      // Broadcast all statuses
-      this.broadcast(allStatuses);
+      // Broadcast individual statuses AND aggregate status
+      const aggregateStatus = this.getAggregateStatus();
+      this.broadcast({
+        symbols: allStatuses,
+        aggregate: aggregateStatus
+      });
     } catch (error) {
       console.error('Error in cascade detector tick:', error);
     } finally {
