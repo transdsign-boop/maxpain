@@ -100,6 +100,7 @@ Preferred communication style: Simple, everyday language.
   - Single `/api/live/snapshot` endpoint serves in-memory cache that's continuously refreshed by WebSocket events
   - Completely eliminates API polling to prevent rate limit bans (user-demanded requirement)
   - **Data Flow**: Aster DEX WebSocket → user-data-stream.ts → liveDataOrchestrator.updateAccountFromWebSocket() / updatePositionsFromWebSocket() → WebSocket broadcast → Frontend
+  - **Position Filtering**: `updatePositionsFromWebSocket()` filters out closed positions (positionAmt=0) before caching/broadcasting - ensures only open positions appear in live view. Closed positions are saved to database and shown in "Completed Positions" tab.
 - **Dynamic Cascade Detection**: Cascade detector automatically monitors all user-selected assets from Global Settings. Syncs on startup, strategy registration, and when selectedAssets changes. Automatically clears detectors when strategy is inactive or no assets selected, ensuring real-time monitoring always reflects current configuration.
 - **🚨 CASCADE DETECTOR - ULTRA-MINIMAL POLLING (DO NOT MODIFY) 🚨**:
   - **⚠️ CRITICAL**: Polling architecture optimized to prevent rate limit bans - NEVER change without explicit user approval
@@ -127,7 +128,7 @@ Preferred communication style: Simple, everyday language.
 - **Settings Persistence**: When settings are updated via UI, they are saved to Neon database FIRST, then the in-memory strategy is reloaded from the database. This ensures all changes persist permanently to Neon.
 - **DCA System**: Integrated Dollar Cost Averaging (DCA) system with ATR-based volatility scaling, convex level spacing, exponential size growth, liquidation-aware risk management, and automatic take profit/stop loss calculation. Uses a SQL wrapper to bypass Drizzle ORM caching issues for DCA parameter management. All DCA parameters are accessible in the Global Settings dialog under "DCA Settings (Advanced)".
 - **Data Integrity**: Idempotency protection for orders. Atomic cooldown system for entries/layers to prevent duplicate orders. ALL trading data (positions, fills, sessions) is permanently preserved in the database - deletion functionality has been removed to comply with data preservation requirements.
-- **Position Display**: Displays only live exchange positions fetched from Aster DEX API, ensuring accurate real-time position tracking.
+- **Position Display**: Displays only live exchange positions fetched from Aster DEX API, ensuring accurate real-time position tracking. Position cards show accurate layer counts via `/api/positions/:positionId/fills` endpoint (max 1000 fills per request, matching Aster DEX API limits).
 - **Performance Metrics**: Comprehensive performance tracking including total deposited capital (deposits only, excluding withdrawals), accurate ROI calculation (Total P&L / Total Deposited * 100), transfer markers on performance chart (green vertical lines showing deposit amounts), and detailed fee tracking (commissions and funding fees).
 
 ## External Dependencies
