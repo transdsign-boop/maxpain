@@ -557,15 +557,10 @@ class CascadeDetectorService {
     
     if (autoEnabled) {
       // Block ALL if aggregate reversal quality is below aggregate threshold
+      // ONLY aggregate average affects blocking - individual critical symbols are ignored
       if (avgReversalQuality < avgRqThreshold) {
         blockAll = true;
         reason = `Aggregate RQ ${avgReversalQuality.toFixed(1)} < threshold ${avgRqThreshold.toFixed(1)}`;
-      }
-      
-      // Also block ALL if any critical symbols are detected (cascade risk)
-      if (criticalSymbols.length > 0) {
-        blockAll = true;
-        reason = `${criticalSymbols.length} critical symbols: ${criticalSymbols.join(', ')}`;
       }
     }
     

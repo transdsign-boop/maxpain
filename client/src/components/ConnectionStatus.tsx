@@ -232,7 +232,7 @@ export default function ConnectionStatus({ isConnected }: ConnectionStatusProps)
                     <p className="text-muted-foreground">Aggregate RQ: {aggregateStatus.avgReversalQuality.toFixed(1)}/{aggregateStatus.avgRqThreshold.toFixed(1)}</p>
                     <p className="text-muted-foreground">Volatility: {aggregateStatus.volatilityRegime.toUpperCase()}</p>
                     {aggregateStatus.criticalSymbols.length > 0 && (
-                      <p className="text-orange-600 dark:text-orange-400">Critical: {aggregateStatus.criticalSymbols.join(', ')}</p>
+                      <p className="text-muted-foreground text-xs">⚠️ High activity detected: {aggregateStatus.criticalSymbols.join(', ')} (monitoring only)</p>
                     )}
                   </div>
                 </div>
