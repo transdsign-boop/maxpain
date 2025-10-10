@@ -305,7 +305,7 @@ function groupTradesIntoPositions(trades: Array<{
               avgEntryPrice: entryValue / entryQty,
               avgExitPrice: exitValue / exitQty,
               totalQuantity: Math.min(entryQty, exitQty),
-              realizedPnl: totalPnl,
+              realizedPnl: totalPnl - totalFees, // NET P&L (gross minus all fees)
               totalFees,
             });
           }
