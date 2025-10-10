@@ -202,7 +202,18 @@ export function calculateDCALevels(
   // We need to account for leverage: notional = baseSize * price * leverage
   // Loss = totalQuantity * |avgPrice - stopPrice|
   // totalQuantity = Σ[qk] = q1 * Σ[wk]
-  const q1 = maxRiskDollars / (lossPerUnit * totalWeight);
+  let q1 = maxRiskDollars / (lossPerUnit * totalWeight);
+  
+  // CRITICAL: Ensure Layer 1 meets exchange minimum notional ($5 for Aster DEX)
+  const MIN_NOTIONAL = 5.0;
+  const layer1Notional = q1 * entryPrice;
+  
+  if (layer1Notional < MIN_NOTIONAL) {
+    const oldQ1 = q1;
+    q1 = MIN_NOTIONAL / entryPrice; // Scale up to meet minimum
+    console.log(`   ⚠️ Layer 1 notional $${layer1Notional.toFixed(2)} < $${MIN_NOTIONAL} minimum`);
+    console.log(`   📈 Adjusted q1: ${oldQ1.toFixed(6)} → ${q1.toFixed(6)} units to meet minimum`);
+  }
   
   console.log(`   Available capital: $${availableCapital.toFixed(2)}`);
   console.log(`   Max risk: $${maxRiskDollars.toFixed(2)} (${Rmax}% of account)`);
