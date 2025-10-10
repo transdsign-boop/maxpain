@@ -910,9 +910,11 @@ export class StrategyEngine extends EventEmitter {
       }
 
       const data = await response.json();
-      const availableBalance = parseFloat(data.availableBalance || '0');
-      console.log(`💰 Exchange available balance: $${availableBalance.toFixed(2)}`);
-      return availableBalance;
+      // CRITICAL: Use totalWalletBalance (total account equity) NOT availableBalance
+      // Risk must be calculated on total account value, not just leftover funds after positions are open
+      const totalWalletBalance = parseFloat(data.totalWalletBalance || '0');
+      console.log(`💰 Exchange total wallet balance (for risk calc): $${totalWalletBalance.toFixed(2)}`);
+      return totalWalletBalance;
     } catch (error) {
       console.error('❌ Error fetching exchange balance:', error);
       return null;
