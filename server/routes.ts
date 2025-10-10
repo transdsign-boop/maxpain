@@ -2600,7 +2600,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const fieldsToTrack = [
         'percentileThreshold', 'maxLayers', 'profitTargetPercent',
         'stopLossPercent', 'marginMode', 'leverage', 'orderDelayMs', 'slippageTolerancePercent',
-        'orderType', 'maxRetryDurationMs', 'marginAmount', 'selectedAssets'
+        'orderType', 'maxRetryDurationMs', 'marginAmount', 'selectedAssets',
+        'maxPortfolioRiskPercent', 'maxOpenPositions'
       ];
       
       fieldsToTrack.forEach(field => {
