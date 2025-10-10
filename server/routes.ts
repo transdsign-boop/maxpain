@@ -2095,7 +2095,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .digest('hex');
       params.append('signature', signature);
       
-      const response = await fetch(`https://fapi.aster.exchange/fapi/v1/income?${params}`, {
+      const response = await fetch(`https://fapi.asterdex.com/fapi/v1/income?${params}`, {
         headers: { 'X-MBX-APIKEY': apiKey },
       });
       
@@ -2138,6 +2138,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const totalQuantity = parseFloat(position.totalQuantity);
             const positionSize = avgEntryPrice * totalQuantity;
             const pnlPercent = (exchangePnl / positionSize) * 100;
+            
+            // Skip if percentage is invalid (Infinity/NaN from zero position size)
+            if (!isFinite(pnlPercent)) {
+              console.log(`⚠️  Skipping ${position.symbol} ${position.side}: Invalid P&L% (position size: $${positionSize.toFixed(2)})`);
+              continue;
+            }
             
             if (Math.abs(exchangePnl - currentPnl) > 0.001) {
               console.log(`🔄 Syncing ${position.symbol} ${position.side}: $${currentPnl.toFixed(2)} → $${exchangePnl.toFixed(2)} (${pnlPercent.toFixed(2)}%) from exchange`);
