@@ -442,9 +442,10 @@ export class StrategyEngine extends EventEmitter {
 
     if (recentLiquidations.length === 0) return;
 
-    // Determine position side (SAME as liquidation side) for counter-trading
-    // When longs liquidated → buy the dip (go long), when shorts liquidated → sell the rally (go short)
-    const positionSide = liquidation.side === "long" ? "long" : "short";
+    // Determine position side (OPPOSITE of liquidation side) for counter-trading
+    // When longs liquidated (price dropped) → go SHORT (sell the weakness)
+    // When shorts liquidated (price rose) → go LONG (buy the strength)
+    const positionSide = liquidation.side === "long" ? "short" : "long";
 
     // Create lock key for this session + symbol (+ side if hedge mode enabled) to prevent duplicate positions
     // In hedge mode, we allow both long and short positions on the same symbol, so include side in lock key
@@ -1071,9 +1072,9 @@ export class StrategyEngine extends EventEmitter {
   // Execute initial position entry with smart order placement
   private async executeEntry(strategy: Strategy, session: TradeSession, liquidation: Liquidation, positionSide: string) {
     try {
-      // Counter-trade: if LONG liquidated → go LONG (buy the dip), if SHORT liquidated → go SHORT (sell the rally)
-      const side = liquidation.side === 'long' ? 'buy' : 'sell';
-      const orderSide = liquidation.side === 'long' ? 'long' : 'short';
+      // Counter-trade: if LONG liquidated (price dropped) → go SHORT (sell weakness), if SHORT liquidated (price rose) → go LONG (buy strength)
+      const side = liquidation.side === 'long' ? 'sell' : 'buy';
+      const orderSide = liquidation.side === 'long' ? 'short' : 'long';
       const price = parseFloat(liquidation.price);
       
       // Calculate available capital based on account usage percentage
