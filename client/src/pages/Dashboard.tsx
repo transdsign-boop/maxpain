@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import ConnectionStatus from "@/components/ConnectionStatus";
+import { useWebSocketStatus, useWebSocketEvent } from "@/contexts/WebSocketContext";
 import LiveLiquidationsSidebar from "@/components/LiveLiquidationsSidebar";
 import PerformanceOverview from "@/components/PerformanceOverview";
 import TradingStrategyDialog from "@/components/TradingStrategyDialog";
@@ -32,7 +33,7 @@ interface Liquidation {
 }
 
 export default function Dashboard() {
-  const [isConnected, setIsConnected] = useState(true);
+  const { isConnected } = useWebSocketStatus();
   const [timeRange, setTimeRange] = useState("1h");
   const [sideFilter, setSideFilter] = useState<"all" | "long" | "short">("all");
   const [minValue, setMinValue] = useState("0");
@@ -223,121 +224,12 @@ export default function Dashboard() {
     }
   };
 
-  // Real-time WebSocket connection
+  // Load initial data and settings
   useEffect(() => {
-    let ws: WebSocket | null = null;
-    let reconnectTimeout: NodeJS.Timeout;
     let isMounted = true;
-    let liquidationQueue: any[] = [];
-    let processingQueue = false;
 
     const normalizeTimestamp = (timestamp: string | Date): Date => {
       return typeof timestamp === 'string' ? new Date(timestamp) : timestamp;
-    };
-
-    const processQueue = async () => {
-      if (processingQueue || liquidationQueue.length === 0) return;
-      
-      processingQueue = true;
-      
-      while (liquidationQueue.length > 0 && isMounted) {
-        const liquidation = liquidationQueue.shift();
-        
-        if (liquidation) {
-          setLiquidations(prev => {
-            const exists = prev.some(liq => liq.id === liquidation.id);
-            if (exists) {
-              return prev;
-            }
-            return [liquidation, ...prev.slice(0, 9999)];
-          });
-          
-          // Wait 1 second before processing the next item
-          if (liquidationQueue.length > 0) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          }
-        }
-      }
-      
-      processingQueue = false;
-    };
-
-    const connectWebSocket = () => {
-      if (!isMounted) return;
-
-      try {
-        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-        const wsUrl = `${protocol}//${window.location.host}/ws`;
-        
-        ws = new WebSocket(wsUrl);
-        
-        ws.onopen = () => {
-          if (!isMounted) return;
-          console.log('Connected to WebSocket');
-          setIsConnected(true);
-        };
-        
-        ws.onmessage = (event) => {
-          if (!isMounted) return;
-          try {
-            const message = JSON.parse(event.data);
-            if (message.type === 'liquidation' && message.data) {
-              // Normalize the timestamp to ensure it's a Date object
-              const normalizedLiquidation = {
-                ...message.data,
-                timestamp: normalizeTimestamp(message.data.timestamp)
-              };
-              
-              // Add to queue instead of directly to state
-              liquidationQueue.push(normalizedLiquidation);
-              processQueue();
-            } else if (message.type === 'trade_notification' && message.data) {
-              // Show toast notification for trade
-              const { symbol, side, tradeType, layerNumber, price, value } = message.data;
-              
-              const tradeTypeLabel = tradeType === 'entry' ? 'Entry' 
-                : tradeType === 'layer' ? `Layer ${layerNumber}` 
-                : tradeType === 'take_profit' ? 'Take Profit' 
-                : 'Stop Loss';
-              
-              const sideLabel = side === 'long' ? '🟢 LONG' : '🔴 SHORT';
-              
-              toast({
-                title: `${tradeTypeLabel}: ${symbol}`,
-                description: `${sideLabel} @ $${price.toFixed(4)} • Value: $${value.toFixed(2)}`,
-                duration: 3000,
-              });
-            }
-          } catch (error) {
-            console.error('Failed to parse WebSocket message:', error);
-          }
-        };
-        
-        ws.onclose = () => {
-          if (!isMounted) return;
-          console.log('WebSocket disconnected');
-          setIsConnected(false);
-          // Only reconnect if component is still mounted
-          if (isMounted) {
-            reconnectTimeout = setTimeout(connectWebSocket, 3000);
-          }
-        };
-        
-        ws.onerror = (error) => {
-          if (!isMounted) return;
-          console.error('WebSocket error:', error);
-          setIsConnected(false);
-        };
-        
-      } catch (error) {
-        if (!isMounted) return;
-        console.error('Failed to connect to WebSocket:', error);
-        setIsConnected(false);
-        // Retry connection after 5 seconds if component is still mounted
-        if (isMounted) {
-          reconnectTimeout = setTimeout(connectWebSocket, 5000);
-        }
-      }
     };
 
     // Load initial liquidations from API (last 8 hours)
@@ -361,24 +253,39 @@ export default function Dashboard() {
     };
 
     loadInitialData();
-    connectWebSocket();
     loadSettings();
 
     return () => {
       isMounted = false;
-      if (ws) {
-        // Remove event handlers to prevent any state updates
-        ws.onopen = null;
-        ws.onmessage = null;
-        ws.onclose = null;
-        ws.onerror = null;
-        ws.close();
-      }
-      if (reconnectTimeout) {
-        clearTimeout(reconnectTimeout);
-      }
     };
   }, []);
+
+  // Handle WebSocket events
+  useWebSocketEvent((event) => {
+    if (event.type === 'liquidation' && event.data) {
+      const normalizedLiquidation = {
+        ...event.data,
+        timestamp: new Date(event.data.timestamp)
+      };
+      setLiquidations(prev => {
+        const exists = prev.some(liq => liq.id === normalizedLiquidation.id);
+        if (exists) return prev;
+        return [normalizedLiquidation, ...prev.slice(0, 9999)];
+      });
+    } else if (event.type === 'trade_notification' && event.data) {
+      const { symbol, side, tradeType, layerNumber, price, value } = event.data;
+      const tradeTypeLabel = tradeType === 'entry' ? 'Entry' 
+        : tradeType === 'layer' ? `Layer ${layerNumber}` 
+        : tradeType === 'take_profit' ? 'Take Profit' 
+        : 'Stop Loss';
+      const sideLabel = side === 'long' ? '🟢 LONG' : '🔴 SHORT';
+      toast({
+        title: `${tradeTypeLabel}: ${symbol}`,
+        description: `${sideLabel} @ $${price.toFixed(4)} • Value: $${value.toFixed(2)}`,
+        duration: 3000,
+      });
+    }
+  });
 
   // Save settings when they change (only after initial load)
   useEffect(() => {
@@ -469,7 +376,7 @@ export default function Dashboard() {
           </div>
 
           <div className="flex items-center gap-8">
-            <ConnectionStatus isConnected={isConnected} />
+            <ConnectionStatus />
             
             {/* Start/Stop Button */}
             {activeStrategy && (
@@ -552,7 +459,7 @@ export default function Dashboard() {
             {/* Right: Critical Actions */}
             <div className="flex items-center gap-1 flex-shrink-0">
               <div className="scale-90 origin-right">
-                <ConnectionStatus isConnected={isConnected} />
+                <ConnectionStatus />
               </div>
               
               {activeStrategy && (
@@ -656,7 +563,6 @@ export default function Dashboard() {
       <div className="hidden lg:block">
         <LiveLiquidationsSidebar 
           liquidations={liquidations}
-          isConnected={isConnected}
           selectedAssets={selectedAssets}
           isCollapsed={isSidebarCollapsed}
           onToggleCollapse={setIsSidebarCollapsed}
@@ -682,7 +588,6 @@ export default function Dashboard() {
           <div className="h-[calc(100vh-80px)]">
             <LiveLiquidationsSidebar 
               liquidations={liquidations}
-              isConnected={isConnected}
               selectedAssets={selectedAssets}
               isCollapsed={false}
               onToggleCollapse={() => {}}

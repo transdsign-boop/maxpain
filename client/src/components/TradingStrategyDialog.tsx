@@ -32,6 +32,10 @@ interface Strategy {
   maxLayers: number;
   profitTargetPercent: string;
   stopLossPercent: string;
+  adaptiveTpEnabled: boolean;
+  tpAtrMultiplier: string;
+  minTpPercent: string;
+  maxTpPercent: string;
   marginMode: "cross" | "isolated";
   leverage: number;
   orderDelayMs: number;
@@ -64,6 +68,19 @@ const strategyFormSchema = z.object({
     const num = parseFloat(val);
     return !isNaN(num) && num >= 0.1 && num <= 50;
   }, "Stop loss must be between 0.1% and 50%"),
+  adaptiveTpEnabled: z.boolean(),
+  tpAtrMultiplier: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 0.1 && num <= 5;
+  }, "ATR multiplier must be between 0.1x and 5x"),
+  minTpPercent: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 0.1 && num <= 10;
+  }, "Min TP must be between 0.1% and 10%"),
+  maxTpPercent: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 0.1 && num <= 20;
+  }, "Max TP must be between 0.1% and 20%"),
   marginMode: z.enum(["cross", "isolated"]),
   leverage: z.number().min(1).max(125),
   orderDelayMs: z.number().min(100).max(30000),
@@ -368,6 +385,8 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
   const [isStrategyRunning, setIsStrategyRunning] = useState(false);
   const [apiTestResult, setApiTestResult] = useState<{ success: boolean; message: string; accountInfo?: any } | null>(null);
   const [assetSortMode, setAssetSortMode] = useState<"liquidations" | "liquidity" | "alphabetical">("liquidations");
+  const [atrData, setAtrData] = useState<Record<string, number>>({});
+  const [atrLoading, setAtrLoading] = useState(false);
 
   // Fetch available symbols from Aster DEX
   const { data: symbols, isLoading: symbolsLoading } = useQuery({
@@ -442,6 +461,10 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
       maxLayers: 5,
       profitTargetPercent: "1.0",
       stopLossPercent: "2.0",
+      adaptiveTpEnabled: false,
+      tpAtrMultiplier: "1.0",
+      minTpPercent: "0.3",
+      maxTpPercent: "1.2",
       marginMode: "cross",
       leverage: 1,
       orderDelayMs: 1000,
@@ -621,6 +644,10 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         maxLayers: strategy.maxLayers,
         profitTargetPercent: String(strategy.profitTargetPercent),
         stopLossPercent: String(strategy.stopLossPercent),
+        adaptiveTpEnabled: strategy.adaptiveTpEnabled ?? false,
+        tpAtrMultiplier: String(strategy.tpAtrMultiplier ?? "1.0"),
+        minTpPercent: String(strategy.minTpPercent ?? "0.3"),
+        maxTpPercent: String(strategy.maxTpPercent ?? "1.2"),
         marginMode: strategy.marginMode,
         leverage: strategy.leverage,
         orderDelayMs: strategy.orderDelayMs,
@@ -761,6 +788,59 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
       });
     }
   });
+
+  // Fetch ATR data for selected symbols to display current TP
+  const fetchAtrData = async (symbols: string[]) => {
+    if (symbols.length === 0) {
+      setAtrData({});
+      return;
+    }
+
+    setAtrLoading(true);
+    try {
+      const response = await apiRequest('POST', '/api/atr/current', { symbols });
+      const data = await response.json();
+      setAtrData(data);
+    } catch (error) {
+      console.error('Failed to fetch ATR data:', error);
+      setAtrData({});
+    } finally {
+      setAtrLoading(false);
+    }
+  };
+
+  // Calculate dynamic TP based on ATR (same formula as backend)
+  const calculateDynamicTp = (symbol: string): number | null => {
+    const atr = atrData[symbol];
+    if (!atr) return null;
+
+    const adaptiveTpEnabled = form.watch('adaptiveTpEnabled');
+    const baseTp = parseFloat(form.watch('profitTargetPercent'));
+    const multiplier = parseFloat(form.watch('tpAtrMultiplier'));
+    const minTp = parseFloat(form.watch('minTpPercent'));
+    const maxTp = parseFloat(form.watch('maxTpPercent'));
+
+    if (!adaptiveTpEnabled) return baseTp;
+
+    const referenceATR = 1.0; // 1.0% = mid-range volatility baseline
+    const scaleFactor = (atr / referenceATR) * multiplier;
+    const dynamicTp = baseTp * scaleFactor;
+    const clampedTp = Math.max(minTp, Math.min(maxTp, dynamicTp));
+
+    return clampedTp;
+  };
+
+  // Effect to fetch ATR when selected assets or adaptive TP settings change
+  useEffect(() => {
+    const selectedAssets = form.watch('selectedAssets');
+    const adaptiveTpEnabled = form.watch('adaptiveTpEnabled');
+    
+    if (open && selectedAssets.length > 0 && adaptiveTpEnabled) {
+      fetchAtrData(selectedAssets);
+    } else if (!adaptiveTpEnabled) {
+      setAtrData({});
+    }
+  }, [open, form.watch('selectedAssets'), form.watch('adaptiveTpEnabled'), form.watch('tpAtrMultiplier'), form.watch('minTpPercent'), form.watch('maxTpPercent')]);
 
   // Export settings handler
   const handleExportSettings = async () => {
@@ -935,6 +1015,10 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         maxLayers: strategy.maxLayers,
         profitTargetPercent: strategy.profitTargetPercent,
         stopLossPercent: strategy.stopLossPercent,
+        adaptiveTpEnabled: strategy.adaptiveTpEnabled ?? false,
+        tpAtrMultiplier: strategy.tpAtrMultiplier ?? "1.0",
+        minTpPercent: strategy.minTpPercent ?? "0.3",
+        maxTpPercent: strategy.maxTpPercent ?? "1.2",
         marginMode: strategy.marginMode,
         leverage: strategy.leverage,
         orderDelayMs: strategy.orderDelayMs,
@@ -1066,9 +1150,25 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                             className="border rounded-md p-2 space-y-2"
                           >
                             <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
                                 <span className="font-medium text-sm">{asset.symbol}</span>
                                 <span className="text-xs text-muted-foreground">({asset.liquidationCount})</span>
+                                {(() => {
+                                  const dynamicTp = calculateDynamicTp(asset.symbol);
+                                  const adaptiveTpEnabled = form.watch('adaptiveTpEnabled');
+                                  if (adaptiveTpEnabled && dynamicTp !== null) {
+                                    return (
+                                      <Badge 
+                                        variant="outline" 
+                                        className="text-[10px] px-1 py-0 h-4 bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20"
+                                        data-testid={`badge-tp-${asset.symbol}`}
+                                      >
+                                        TP: {dynamicTp.toFixed(2)}%
+                                      </Badge>
+                                    );
+                                  }
+                                  return null;
+                                })()}
                               </div>
                               <Checkbox
                                 data-testid={`checkbox-asset-${asset.symbol}`}
@@ -1471,6 +1571,113 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                     )}
                   />
                 </div>
+                
+                {/* Adaptive Take Profit Settings */}
+                <Collapsible open={form.watch("adaptiveTpEnabled")} className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <FormField
+                      control={form.control}
+                      name="adaptiveTpEnabled"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-row items-center gap-2 space-y-0">
+                          <FormControl>
+                            <Switch
+                              checked={field.value}
+                              onCheckedChange={field.onChange}
+                              data-testid="switch-adaptive-tp"
+                            />
+                          </FormControl>
+                          <div className="space-y-0.5">
+                            <FormLabel className="text-sm flex items-center gap-1.5">
+                              <Activity className="h-3.5 w-3.5" />
+                              Volatility-Adaptive TP
+                            </FormLabel>
+                            <FormDescription className="text-xs">
+                              Automatically adjust TP based on ATR volatility
+                            </FormDescription>
+                          </div>
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  
+                  <CollapsibleContent className="space-y-4 pt-2">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pl-6 border-l-2 border-primary/20">
+                      <FormField
+                        control={form.control}
+                        name="tpAtrMultiplier"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel data-testid="label-tp-atr-multiplier">ATR Multiplier</FormLabel>
+                            <FormControl>
+                              <Input
+                                data-testid="input-tp-atr-multiplier"
+                                type="text"
+                                placeholder="1.0"
+                                {...field}
+                                disabled={!form.watch("adaptiveTpEnabled")}
+                              />
+                            </FormControl>
+                            <FormDescription className="text-xs">
+                              Scale TP by ATR (0.1x-5x)
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      
+                      <FormField
+                        control={form.control}
+                        name="minTpPercent"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel data-testid="label-min-tp">Min TP %</FormLabel>
+                            <FormControl>
+                              <Input
+                                data-testid="input-min-tp"
+                                type="text"
+                                placeholder="0.3"
+                                {...field}
+                                disabled={!form.watch("adaptiveTpEnabled")}
+                              />
+                            </FormControl>
+                            <FormDescription className="text-xs">
+                              Minimum cap (0.1-10%)
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      
+                      <FormField
+                        control={form.control}
+                        name="maxTpPercent"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel data-testid="label-max-tp">Max TP %</FormLabel>
+                            <FormControl>
+                              <Input
+                                data-testid="input-max-tp"
+                                type="text"
+                                placeholder="1.2"
+                                {...field}
+                                disabled={!form.watch("adaptiveTpEnabled")}
+                              />
+                            </FormControl>
+                            <FormDescription className="text-xs">
+                              Maximum cap (0.1-20%)
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                    
+                    <div className="text-xs text-muted-foreground bg-primary/5 p-3 rounded-md">
+                      <strong>How it works:</strong> TP adjusts in real-time as volatility changes. Low volatility → tighter TP for quick wins. High volatility → wider TP to capture bigger moves. Uses profitTargetPercent as base value.
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
               </div>
 
               <Separator />
