@@ -8,6 +8,7 @@ import { Separator } from "@/components/ui/separator";
 import LiquidationRow from "./LiquidationRow";
 import { ChevronLeft, ChevronRight, Activity, Zap, Clock } from "lucide-react";
 import { useElapsedTime } from "@/hooks/use-elapsed-time";
+import { useWebSocketStatus } from "@/contexts/WebSocketContext";
 
 interface Liquidation {
   id: string;
@@ -21,7 +22,6 @@ interface Liquidation {
 
 interface LiveLiquidationsSidebarProps {
   liquidations: Liquidation[];
-  isConnected: boolean;
   selectedAssets: string[];
   isCollapsed: boolean;
   onToggleCollapse: (collapsed: boolean) => void;
@@ -30,12 +30,12 @@ interface LiveLiquidationsSidebarProps {
 
 export default function LiveLiquidationsSidebar({ 
   liquidations, 
-  isConnected,
   selectedAssets,
   isCollapsed,
   onToggleCollapse,
   onLiquidationClick
 }: LiveLiquidationsSidebarProps) {
+  const { isConnected } = useWebSocketStatus();
 
   // Show liquidations from the last 8 hours
   const eightHoursAgo = new Date(Date.now() - 8 * 60 * 60 * 1000);
