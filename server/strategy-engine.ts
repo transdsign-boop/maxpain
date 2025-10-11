@@ -156,48 +156,6 @@ export class StrategyEngine extends EventEmitter {
     return parseFloat(rounded.toFixed(decimals));
   }
 
-  /**
-   * Calculate dynamic take profit percentage based on ATR volatility
-   * @param strategy - The trading strategy with adaptive TP settings
-   * @param symbol - The trading symbol
-   * @returns The calculated TP percentage (falls back to profitTargetPercent if adaptive is disabled)
-   */
-  private async calculateDynamicTp(strategy: Strategy, symbol: string): Promise<number> {
-    // If adaptive TP is disabled, return the fixed profit target
-    if (!strategy.adaptiveTpEnabled) {
-      return parseFloat(strategy.profitTargetPercent);
-    }
-
-    try {
-      // Calculate current ATR for the symbol
-      const currentATR = await calculateATRPercent(symbol, 10, process.env.ASTER_API_KEY, process.env.ASTER_SECRET_KEY);
-      
-      // Use 1.0% as reference ATR (typical mid-range volatility)
-      const referenceATR = 1.0;
-      
-      // Extract adaptive TP parameters
-      const baseTp = parseFloat(strategy.profitTargetPercent);
-      const atrMultiplier = parseFloat(strategy.tpAtrMultiplier ?? '1.0');
-      const minTp = parseFloat(strategy.minTpPercent ?? '0.3');
-      const maxTp = parseFloat(strategy.maxTpPercent ?? '1.2');
-      
-      // Calculate volatility-adjusted TP
-      // Formula: TP% = baseTp × (currentATR / referenceATR) × multiplier
-      const volatilityRatio = currentATR / referenceATR;
-      const rawTp = baseTp * volatilityRatio * atrMultiplier;
-      
-      // Apply min/max caps
-      const finalTp = Math.max(minTp, Math.min(maxTp, rawTp));
-      
-      console.log(`📊 Dynamic TP for ${symbol}: ATR=${currentATR.toFixed(2)}%, Base=${baseTp}%, Final=${finalTp.toFixed(2)}% (ratio=${volatilityRatio.toFixed(2)}x, mult=${atrMultiplier}x)`);
-      
-      return finalTp;
-    } catch (error) {
-      console.error(`❌ Error calculating dynamic TP for ${symbol}, falling back to base TP:`, error);
-      return parseFloat(strategy.profitTargetPercent);
-    }
-  }
-
   // Start the strategy engine
   async start() {
     if (this.isRunning) return;
