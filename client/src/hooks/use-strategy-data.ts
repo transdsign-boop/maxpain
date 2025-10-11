@@ -128,9 +128,15 @@ export function useStrategyData() {
     staleTime: 5 * 60 * 1000, // Refresh every 5 minutes
   });
 
-  // Fetch transfers for chart markers (static historical data)
+  // Fetch transfers for chart markers (fetched from exchange API)
+  // Starting from October 1st, 2025 (timestamp: 1759276800000)
   const transfersQuery = useQuery<any[]>({
     queryKey: ['/api/transfers'],
+    queryFn: async () => {
+      const response = await fetch('/api/transfers?startTime=1759276800000');
+      if (!response.ok) return [];
+      return response.json();
+    },
     staleTime: 5 * 60 * 1000, // Refresh every 5 minutes
   });
 
