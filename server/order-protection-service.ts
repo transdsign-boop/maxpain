@@ -593,9 +593,23 @@ export class OrderProtectionService {
           eq(positionLayers.isOpen, true)
         ));
       
-      // If DCA layers exist, skip position-level protective orders (layers handle TP/SL individually)
+      // If DCA layers exist, cancel any position-level protective orders and skip creating new ones
       if (layers.length > 0) {
         console.log(`⏭️ Skipping position-level protective orders for ${position.symbol} ${position.side} - ${layers.length} active DCA layer(s) managing TP/SL individually`);
+        
+        // Cancel any existing position-level TP/SL orders to prevent stale orders
+        const existingOrders = await this.fetchExchangeOrders(position.symbol, position.side);
+        const tpslOrders = existingOrders.filter(
+          o => o.type === 'LIMIT' || o.type === 'STOP_MARKET'
+        );
+        
+        if (tpslOrders.length > 0) {
+          console.log(`   Cancelling ${tpslOrders.length} stale position-level TP/SL order(s)...`);
+          for (const order of tpslOrders) {
+            await this.cancelOrder(position.symbol, order.orderId);
+          }
+        }
+        
         releaseLock();
         return { success: true };
       }
