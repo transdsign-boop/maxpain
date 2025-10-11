@@ -63,6 +63,113 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Start the strategy engine
   await strategyEngine.start();
   
+  // ONE-TIME FIX: Repair corrupted avgEntryPrice positions
+  app.post("/api/admin/repair-positions", async (req, res) => {
+    try {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+      
+      if (!apiKey || !secretKey) {
+        return res.status(500).json({ error: "API keys not configured" });
+      }
+      
+      // Find all positions with avgEntryPrice = 0
+      const sessionId = req.body.sessionId;
+      if (!sessionId) {
+        return res.status(400).json({ error: "sessionId required" });
+      }
+      
+      const allPositions = await storage.getOpenPositions(sessionId);
+      const corruptedPositions = allPositions.filter(p => parseFloat(p.avgEntryPrice) === 0);
+      
+      if (corruptedPositions.length === 0) {
+        return res.json({ message: "No corrupted positions found", repaired: [] });
+      }
+      
+      console.log(`🔧 Found ${corruptedPositions.length} corrupted positions - fetching from exchange...`);
+      
+      // Fetch live exchange positions
+      const timestamp = Date.now();
+      const queryString = `timestamp=${timestamp}`;
+      const signature = crypto.createHmac('sha256', secretKey)
+        .update(queryString)
+        .digest('hex');
+      
+      const response = await fetch(
+        `https://fapi.asterdex.com/fapi/v2/positionRisk?${queryString}&signature=${signature}`,
+        {
+          headers: { 'X-MBX-APIKEY': apiKey }
+        }
+      );
+      
+      if (!response.ok) {
+        return res.status(500).json({ error: "Failed to fetch exchange positions" });
+      }
+      
+      const exchangePositions = await response.json();
+      const repaired: Array<{ id: string; symbol: string; side: string; action: string; details: string }> = [];
+      const zombies: Array<{ id: string; symbol: string; side: string }> = [];
+      
+      // Update each corrupted position with correct avgEntryPrice from exchange
+      for (const position of corruptedPositions) {
+        const livePosition = exchangePositions.find((p: any) => {
+          if (p.symbol !== position.symbol || parseFloat(p.positionAmt) === 0) return false;
+          const isShort = parseFloat(p.positionAmt) < 0;
+          return (position.side === 'short' && isShort) || (position.side === 'long' && !isShort);
+        });
+        
+        if (livePosition && parseFloat(livePosition.entryPrice) > 0) {
+          // Position exists on exchange - repair avgEntryPrice
+          const newEntry = parseFloat(livePosition.entryPrice);
+          await storage.updatePosition(position.id, {
+            avgEntryPrice: newEntry.toString()
+          });
+          
+          repaired.push({
+            id: position.id,
+            symbol: position.symbol,
+            side: position.side,
+            action: 'repaired',
+            details: `Updated avgEntryPrice: $0 → $${newEntry.toFixed(6)}`
+          });
+          
+          console.log(`✅ Repaired ${position.symbol} ${position.side}: $0 → $${newEntry.toFixed(6)}`);
+        } else {
+          // Position doesn't exist on exchange - it's a zombie, mark as closed
+          console.warn(`⚠️ Zombie position found: ${position.symbol} ${position.side} (not on exchange)`);
+          
+          await storage.closePosition(position.id, new Date(), 0, 0);
+          
+          zombies.push({
+            id: position.id,
+            symbol: position.symbol,
+            side: position.side
+          });
+          
+          repaired.push({
+            id: position.id,
+            symbol: position.symbol,
+            side: position.side,
+            action: 'closed_zombie',
+            details: 'Position marked as closed (not found on exchange)'
+          });
+          
+          console.log(`✅ Closed zombie position: ${position.symbol} ${position.side}`);
+        }
+      }
+      
+      res.json({
+        message: `Repaired ${repaired.length} of ${corruptedPositions.length} corrupted positions`,
+        repaired,
+        skipped: corruptedPositions.length - repaired.length
+      });
+      
+    } catch (error) {
+      console.error('❌ Failed to repair positions:', error);
+      res.status(500).json({ error: "Repair failed" });
+    }
+  });
+  
   // Liquidation API routes
   app.get("/api/liquidations", async (req, res) => {
     try {

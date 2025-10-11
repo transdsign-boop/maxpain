@@ -3366,7 +3366,7 @@ export class StrategyEngine extends EventEmitter {
       // Get all remaining open layers to recalculate avg entry
       const remainingLayers = await storage.getOpenPositionLayers(position.id);
       
-      let newAvgEntry = 0;
+      let newAvgEntry = parseFloat(position.avgEntryPrice); // Start with current value as fallback
       let newTotalCost = 0;
 
       if (remainingLayers.length > 0) {
@@ -3382,7 +3382,58 @@ export class StrategyEngine extends EventEmitter {
           newTotalCost += parseFloat(layer.cost);
         }
 
-        newAvgEntry = totalQty > 0 ? totalNotional / totalQty : 0;
+        newAvgEntry = totalQty > 0 ? totalNotional / totalQty : newAvgEntry;
+      } else if (newTotalQty > 0.000001) {
+        // CRITICAL FIX: No layers found but position still open - fetch from exchange
+        console.warn(`⚠️ No layers found for ${position.symbol} ${position.side}, fetching live exchange position...`);
+        
+        try {
+          const apiKey = process.env.ASTER_API_KEY;
+          const secretKey = process.env.ASTER_SECRET_KEY;
+          
+          if (apiKey && secretKey) {
+            const timestamp = Date.now();
+            const queryString = `timestamp=${timestamp}`;
+            const signature = createHmac('sha256', secretKey)
+              .update(queryString)
+              .digest('hex');
+            
+            const response = await fetch(
+              `https://fapi.asterdex.com/fapi/v2/positionRisk?${queryString}&signature=${signature}`,
+              {
+                headers: { 'X-MBX-APIKEY': apiKey }
+              }
+            );
+            
+            if (response.ok) {
+              const positions = await response.json();
+              const livePosition = positions.find((p: any) => {
+                if (p.symbol !== position.symbol || parseFloat(p.positionAmt) === 0) return false;
+                const isShort = parseFloat(p.positionAmt) < 0;
+                return (position.side === 'short' && isShort) || (position.side === 'long' && !isShort);
+              });
+              
+              if (livePosition && parseFloat(livePosition.entryPrice) > 0) {
+                newAvgEntry = parseFloat(livePosition.entryPrice);
+                console.log(`✅ Retrieved live exchange avgEntry: $${newAvgEntry.toFixed(6)} for ${position.symbol} ${position.side}`);
+              }
+            }
+          }
+        } catch (error) {
+          console.error(`❌ Failed to fetch live exchange position:`, error);
+        }
+      }
+      
+      // SAFEGUARD: Never allow avgEntryPrice to be set to 0
+      if (newAvgEntry === 0 || isNaN(newAvgEntry)) {
+        const currentAvg = parseFloat(position.avgEntryPrice);
+        if (currentAvg > 0) {
+          console.warn(`🛡️ Preventing avgEntryPrice corruption: keeping current value $${currentAvg.toFixed(6)}`);
+          newAvgEntry = currentAvg;
+        } else {
+          console.error(`❌ CRITICAL: Cannot determine valid avgEntryPrice for ${position.symbol} ${position.side}`);
+          return; // Abort update to prevent corruption
+        }
       }
 
       // Calculate realized P&L for closed layer
