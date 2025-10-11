@@ -67,9 +67,9 @@ PERMANENT DATA PRESERVATION: ALL trading data MUST be preserved forever. The use
 
 **Data Storage:**
 - **Database**: PostgreSQL via Neon serverless hosting (`NEON_DATABASE_URL`).
-- **Schema**: 13 core tables (e.g., `liquidations`, `strategies`, `trade_sessions`, `positions`, `fills`, `orders`, `strategy_changes`, `strategy_snapshots`, `user_settings`, `users`, `transfers`, `commissions`, `funding_fees`).
+- **Schema**: 14 core tables (e.g., `liquidations`, `strategies`, `trade_sessions`, `positions`, `position_layers`, `fills`, `orders`, `strategy_changes`, `strategy_snapshots`, `user_settings`, `users`, `transfers`, `commissions`, `funding_fees`).
 - **Connection**: `@neondatabase/serverless` HTTP driver with connection pooling.
-- **Migrations**: Drizzle Kit.
+- **Migrations**: Drizzle Kit (NOTE: drizzle.config.ts uses DATABASE_URL, but app uses NEON_DATABASE_URL - if schema changes don't appear, manually create tables using Neon SQL client).
 - **Data Retention**: Liquidation data for 30 days; trading data (positions, fills, sessions) and financial records (transfers, commissions, funding fees) are permanently preserved through archiving.
 
 **Real-time Data & Trading:**
@@ -80,6 +80,7 @@ PERMANENT DATA PRESERVATION: ALL trading data MUST be preserved forever. The use
 - **Cascade Detector Logging**: Ultra-minimal logging that only outputs when liquidation notional >$100k or quality is excellent, reducing backend noise from ~400 lines/min to ~20 lines/min.
 - **Trading System**: Live-only trading with HMAC-SHA256 authentication, automatic ATR-based TP/SL management, queue-based locking for updates, and session-based tracking.
 - **DCA System**: Integrated Dollar Cost Averaging with ATR-based volatility scaling, ATR-based take profit (TP distance = exitCushionMultiplier × ATR% × avgEntryPrice), convex level spacing, exponential size growth, and liquidation-aware risk management. Parameters managed via Global Settings.
+- **Progressive Layer Take-Profit**: Each DCA layer tracks its own entry price and TP/SL independently. Monitoring service checks every 2 seconds for profitable layers and closes them individually using market orders, minimizing exposure and locking in profits progressively. Layer closures automatically recalculate position average entry price and adjust protective orders.
 - **Take Profit**: ATR-based dynamic TP calculation using exit cushion multiplier (default 0.6x ATR). Falls back to fixed percentage only if DCA not configured.
 - **Data Integrity**: Idempotency for orders, atomic cooldowns, permanent preservation of all trading data.
 - **Performance Metrics**: Comprehensive tracking including deposited capital, ROI, transfer markers, commissions, and funding fees.
