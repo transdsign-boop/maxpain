@@ -32,10 +32,6 @@ interface Strategy {
   maxLayers: number;
   profitTargetPercent: string;
   stopLossPercent: string;
-  adaptiveTpEnabled: boolean;
-  tpAtrMultiplier: string;
-  minTpPercent: string;
-  maxTpPercent: string;
   marginMode: "cross" | "isolated";
   leverage: number;
   orderDelayMs: number;
@@ -68,19 +64,6 @@ const strategyFormSchema = z.object({
     const num = parseFloat(val);
     return !isNaN(num) && num >= 0.1 && num <= 50;
   }, "Stop loss must be between 0.1% and 50%"),
-  adaptiveTpEnabled: z.boolean(),
-  tpAtrMultiplier: z.string().refine((val) => {
-    const num = parseFloat(val);
-    return !isNaN(num) && num >= 0.1 && num <= 5;
-  }, "ATR multiplier must be between 0.1x and 5x"),
-  minTpPercent: z.string().refine((val) => {
-    const num = parseFloat(val);
-    return !isNaN(num) && num >= 0.1 && num <= 10;
-  }, "Min TP must be between 0.1% and 10%"),
-  maxTpPercent: z.string().refine((val) => {
-    const num = parseFloat(val);
-    return !isNaN(num) && num >= 0.1 && num <= 20;
-  }, "Max TP must be between 0.1% and 20%"),
   marginMode: z.enum(["cross", "isolated"]),
   leverage: z.number().min(1).max(125),
   orderDelayMs: z.number().min(100).max(30000),
@@ -459,10 +442,6 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
       maxLayers: 5,
       profitTargetPercent: "1.0",
       stopLossPercent: "2.0",
-      adaptiveTpEnabled: false,
-      tpAtrMultiplier: "1.0",
-      minTpPercent: "0.3",
-      maxTpPercent: "1.2",
       marginMode: "cross",
       leverage: 1,
       orderDelayMs: 1000,
@@ -642,10 +621,6 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         maxLayers: strategy.maxLayers,
         profitTargetPercent: String(strategy.profitTargetPercent),
         stopLossPercent: String(strategy.stopLossPercent),
-        adaptiveTpEnabled: strategy.adaptiveTpEnabled ?? false,
-        tpAtrMultiplier: String(strategy.tpAtrMultiplier ?? "1.0"),
-        minTpPercent: String(strategy.minTpPercent ?? "0.3"),
-        maxTpPercent: String(strategy.maxTpPercent ?? "1.2"),
         marginMode: strategy.marginMode,
         leverage: strategy.leverage,
         orderDelayMs: strategy.orderDelayMs,
@@ -960,10 +935,6 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         maxLayers: strategy.maxLayers,
         profitTargetPercent: strategy.profitTargetPercent,
         stopLossPercent: strategy.stopLossPercent,
-        adaptiveTpEnabled: strategy.adaptiveTpEnabled ?? false,
-        tpAtrMultiplier: strategy.tpAtrMultiplier ?? "1.0",
-        minTpPercent: strategy.minTpPercent ?? "0.3",
-        maxTpPercent: strategy.maxTpPercent ?? "1.2",
         marginMode: strategy.marginMode,
         leverage: strategy.leverage,
         orderDelayMs: strategy.orderDelayMs,
@@ -1500,113 +1471,6 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                     )}
                   />
                 </div>
-                
-                {/* Adaptive Take Profit Settings */}
-                <Collapsible open={form.watch("adaptiveTpEnabled")} className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <FormField
-                      control={form.control}
-                      name="adaptiveTpEnabled"
-                      render={({ field }) => (
-                        <FormItem className="flex flex-row items-center gap-2 space-y-0">
-                          <FormControl>
-                            <Switch
-                              checked={field.value}
-                              onCheckedChange={field.onChange}
-                              data-testid="switch-adaptive-tp"
-                            />
-                          </FormControl>
-                          <div className="space-y-0.5">
-                            <FormLabel className="text-sm flex items-center gap-1.5">
-                              <Activity className="h-3.5 w-3.5" />
-                              Volatility-Adaptive TP
-                            </FormLabel>
-                            <FormDescription className="text-xs">
-                              Automatically adjust TP based on ATR volatility
-                            </FormDescription>
-                          </div>
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-                  
-                  <CollapsibleContent className="space-y-4 pt-2">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pl-6 border-l-2 border-primary/20">
-                      <FormField
-                        control={form.control}
-                        name="tpAtrMultiplier"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel data-testid="label-tp-atr-multiplier">ATR Multiplier</FormLabel>
-                            <FormControl>
-                              <Input
-                                data-testid="input-tp-atr-multiplier"
-                                type="text"
-                                placeholder="1.0"
-                                {...field}
-                                disabled={!form.watch("adaptiveTpEnabled")}
-                              />
-                            </FormControl>
-                            <FormDescription className="text-xs">
-                              Scale TP by ATR (0.1x-5x)
-                            </FormDescription>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      
-                      <FormField
-                        control={form.control}
-                        name="minTpPercent"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel data-testid="label-min-tp">Min TP %</FormLabel>
-                            <FormControl>
-                              <Input
-                                data-testid="input-min-tp"
-                                type="text"
-                                placeholder="0.3"
-                                {...field}
-                                disabled={!form.watch("adaptiveTpEnabled")}
-                              />
-                            </FormControl>
-                            <FormDescription className="text-xs">
-                              Minimum cap (0.1-10%)
-                            </FormDescription>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      
-                      <FormField
-                        control={form.control}
-                        name="maxTpPercent"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel data-testid="label-max-tp">Max TP %</FormLabel>
-                            <FormControl>
-                              <Input
-                                data-testid="input-max-tp"
-                                type="text"
-                                placeholder="1.2"
-                                {...field}
-                                disabled={!form.watch("adaptiveTpEnabled")}
-                              />
-                            </FormControl>
-                            <FormDescription className="text-xs">
-                              Maximum cap (0.1-20%)
-                            </FormDescription>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-                    
-                    <div className="text-xs text-muted-foreground bg-primary/5 p-3 rounded-md">
-                      <strong>How it works:</strong> TP adjusts in real-time as volatility changes. Low volatility → tighter TP for quick wins. High volatility → wider TP to capture bigger moves. Uses profitTargetPercent as base value.
-                    </div>
-                  </CollapsibleContent>
-                </Collapsible>
               </div>
 
               <Separator />
