@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -29,8 +30,8 @@ export default function CascadeRiskIndicator() {
   const { cascadeStatuses: statuses } = useCascadeStatus();
   const { toast } = useToast();
 
-  // Aggregate metrics across all assets for overall market view
-  const getAggregatedStatus = (): CascadeStatus => {
+  // Aggregate metrics across all assets for overall market view (memoized to prevent recalculation on every render)
+  const getAggregatedStatus = useMemo((): CascadeStatus => {
     if (statuses.length === 0) {
       return {
         symbol: 'ALL',
@@ -110,9 +111,9 @@ export default function CascadeRiskIndicator() {
       volatility_regime,
       rq_threshold_adjusted
     };
-  };
+  }, [statuses]);
 
-  const status = getAggregatedStatus();
+  const status = getAggregatedStatus;
 
   const handleAutoToggle = async (checked: boolean) => {
     try {
