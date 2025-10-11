@@ -539,6 +539,86 @@ export async function syncTransfers(userId: string): Promise<{
   }
 }
 
+// Fetch transfers (deposits/withdrawals) from exchange with optional date range
+export async function fetchTransfers(params: {
+  startTime?: number;
+  endTime?: number;
+}): Promise<{
+  success: boolean;
+  records: any[];
+  total: number;
+  error?: string;
+}> {
+  try {
+    const apiKey = process.env.ASTER_API_KEY;
+    const secretKey = process.env.ASTER_SECRET_KEY;
+    
+    if (!apiKey || !secretKey) {
+      return { success: false, records: [], total: 0, error: 'API keys not configured' };
+    }
+    
+    let allRecords: any[] = [];
+    let currentEndTime = params.endTime || Date.now();
+    const startTime = params.startTime || 0;
+    const limit = 1000; // Max limit per request
+    
+    // Paginate backwards from endTime to startTime
+    while (true) {
+      const timestamp = Date.now();
+      const queryParams = `incomeType=TRANSFER&startTime=${startTime}&endTime=${currentEndTime}&limit=${limit}&timestamp=${timestamp}`;
+      
+      const signature = createHmac('sha256', secretKey)
+        .update(queryParams)
+        .digest('hex');
+
+      const response = await fetch(
+        `https://fapi.asterdex.com/fapi/v1/income?${queryParams}&signature=${signature}`,
+        {
+          headers: {
+            'X-MBX-APIKEY': apiKey,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return { success: false, records: [], total: 0, error: `HTTP ${response.status}: ${errorText}` };
+      }
+
+      const batch = await response.json();
+      
+      if (batch.length === 0) {
+        break; // No more records
+      }
+      
+      allRecords.push(...batch);
+      
+      // If we got fewer records than the limit, we've reached the end
+      if (batch.length < limit) {
+        break;
+      }
+      
+      // Move endTime to the oldest record's timestamp minus 1ms for next batch
+      currentEndTime = batch[batch.length - 1].time - 1;
+      
+      // Stop if we've gone past startTime
+      if (currentEndTime <= startTime) {
+        break;
+      }
+    }
+
+    // Calculate total of deposits (positive income values)
+    const total = allRecords.reduce((sum: number, item: any) => {
+      const amount = parseFloat(item.income || '0');
+      return amount > 0 ? sum + amount : sum;
+    }, 0);
+    
+    return { success: true, records: allRecords, total };
+  } catch (error) {
+    return { success: false, records: [], total: 0, error: String(error) };
+  }
+}
+
 // Fetch commission fees from exchange with optional date range
 export async function fetchCommissions(params: {
   startTime?: number;
