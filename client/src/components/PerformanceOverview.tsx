@@ -7,7 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { TrendingUp, TrendingDown, Target, Award, Activity, LineChart, DollarSign, Percent, Calendar as CalendarIcon, X } from "lucide-react";
 import { ComposedChart, Line, Area, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, ReferenceArea, Label } from "recharts";
-import { format, subDays, startOfDay, endOfDay } from "date-fns";
+import { format, subDays, subMinutes, subHours, startOfDay, endOfDay } from "date-fns";
 import { useStrategyData } from "@/hooks/use-strategy-data";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -115,13 +115,13 @@ function PerformanceOverview() {
       // Use Oct 1st as minimum start time
       const minStartTime = 1759276800000;
       const effectiveStartTime = dateRange.start 
-        ? Math.max(startOfDay(dateRange.start).getTime(), minStartTime)
+        ? Math.max(dateRange.start.getTime(), minStartTime)
         : minStartTime;
       
       params.append('startTime', effectiveStartTime.toString());
       
       if (dateRange.end) {
-        params.append('endTime', endOfDay(dateRange.end).getTime().toString());
+        params.append('endTime', dateRange.end.getTime().toString());
       }
       
       const url = `/api/commissions?${params.toString()}`;
@@ -139,13 +139,13 @@ function PerformanceOverview() {
       // Use Oct 1st as minimum start time
       const minStartTime = 1759276800000;
       const effectiveStartTime = dateRange.start 
-        ? Math.max(startOfDay(dateRange.start).getTime(), minStartTime)
+        ? Math.max(dateRange.start.getTime(), minStartTime)
         : minStartTime;
       
       params.append('startTime', effectiveStartTime.toString());
       
       if (dateRange.end) {
-        params.append('endTime', endOfDay(dateRange.end).getTime().toString());
+        params.append('endTime', dateRange.end.getTime().toString());
       }
       
       const url = `/api/funding-fees?${params.toString()}`;
@@ -217,8 +217,10 @@ function PerformanceOverview() {
   const sourceChartData = useMemo(() => {
     if (!dateRange.start && !dateRange.end) return rawSourceData;
     
-    const startTimestamp = dateRange.start ? startOfDay(dateRange.start).getTime() : 0;
-    const endTimestamp = dateRange.end ? endOfDay(dateRange.end).getTime() : Date.now();
+    // Use raw timestamps for sub-day filters (15 min, 1 hour, 2 hours, 4 hours)
+    // This preserves exact time filtering without rounding to start/end of day
+    const startTimestamp = dateRange.start ? dateRange.start.getTime() : 0;
+    const endTimestamp = dateRange.end ? dateRange.end.getTime() : Date.now();
     
     return rawSourceData.filter(trade => 
       trade.timestamp >= startTimestamp && trade.timestamp <= endTimestamp
@@ -471,8 +473,8 @@ function PerformanceOverview() {
     // Filter by date range if active
     let filteredPnlEvents = realizedPnlEvents || [];
     if (dateRange.start || dateRange.end) {
-      const startTimestamp = dateRange.start ? startOfDay(dateRange.start).getTime() : 0;
-      const endTimestamp = dateRange.end ? endOfDay(dateRange.end).getTime() : Date.now();
+      const startTimestamp = dateRange.start ? dateRange.start.getTime() : 0;
+      const endTimestamp = dateRange.end ? dateRange.end.getTime() : Date.now();
       
       filteredPnlEvents = filteredPnlEvents.filter(event => 
         event.time >= startTimestamp && event.time <= endTimestamp
@@ -861,6 +863,38 @@ function PerformanceOverview() {
                 data-testid="button-filter-all-time"
               >
                 All Time
+              </Button>
+              <Button
+                variant={(dateRange.start && Math.abs(dateRange.start.getTime() - subMinutes(new Date(), 15).getTime()) < 60000) ? "default" : "outline"}
+                size="sm"
+                onClick={() => setDateRange({ start: subMinutes(new Date(), 15), end: new Date() })}
+                data-testid="button-filter-15min"
+              >
+                15 Min
+              </Button>
+              <Button
+                variant={(dateRange.start && Math.abs(dateRange.start.getTime() - subHours(new Date(), 1).getTime()) < 60000) ? "default" : "outline"}
+                size="sm"
+                onClick={() => setDateRange({ start: subHours(new Date(), 1), end: new Date() })}
+                data-testid="button-filter-1hour"
+              >
+                1 Hour
+              </Button>
+              <Button
+                variant={(dateRange.start && Math.abs(dateRange.start.getTime() - subHours(new Date(), 2).getTime()) < 60000) ? "default" : "outline"}
+                size="sm"
+                onClick={() => setDateRange({ start: subHours(new Date(), 2), end: new Date() })}
+                data-testid="button-filter-2hours"
+              >
+                2 Hours
+              </Button>
+              <Button
+                variant={(dateRange.start && Math.abs(dateRange.start.getTime() - subHours(new Date(), 4).getTime()) < 60000) ? "default" : "outline"}
+                size="sm"
+                onClick={() => setDateRange({ start: subHours(new Date(), 4), end: new Date() })}
+                data-testid="button-filter-4hours"
+              >
+                4 Hours
               </Button>
               <Button
                 variant={(dateRange.start && Math.abs(dateRange.start.getTime() - subDays(new Date(), 1).getTime()) < 86400000) ? "default" : "outline"}
