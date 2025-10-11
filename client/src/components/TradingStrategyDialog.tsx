@@ -110,7 +110,7 @@ interface DCASettings {
 }
 
 // DCA Settings Component
-function DCASettingsSection({ strategyId, isStrategyRunning, onSaveRequest }: { strategyId: string; isStrategyRunning: boolean; onSaveRequest?: () => void }) {
+function DCASettingsSection({ strategyId, isStrategyRunning, saveTrigger }: { strategyId: string; isStrategyRunning: boolean; saveTrigger?: number }) {
   const { toast } = useToast();
   const [isExpanded, setIsExpanded] = useState(true);
   
@@ -160,6 +160,13 @@ function DCASettingsSection({ strategyId, isStrategyRunning, onSaveRequest }: { 
   const handleSubmit = () => {
     updateDCAMutation.mutate(formValues);
   };
+
+  // Save when saveTrigger changes (triggered from parent)
+  useEffect(() => {
+    if (saveTrigger && Object.keys(formValues).length > 0) {
+      updateDCAMutation.mutate(formValues);
+    }
+  }, [saveTrigger]);
 
   if (isLoading) {
     return (
@@ -556,6 +563,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
   const [isStrategyRunning, setIsStrategyRunning] = useState(false);
   const [apiTestResult, setApiTestResult] = useState<{ success: boolean; message: string; accountInfo?: any } | null>(null);
   const [assetSortMode, setAssetSortMode] = useState<"liquidations" | "liquidity" | "alphabetical">("liquidations");
+  const [dcaSaveTrigger, setDcaSaveTrigger] = useState(0);
 
   // Fetch available symbols from Aster DEX
   const { data: symbols, isLoading: symbolsLoading } = useQuery({
@@ -1030,17 +1038,22 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
     input.click();
   };
 
-  const onSubmit = async (data: StrategyFormData) => {
+  const onSubmit = (data: StrategyFormData) => {
     if (activeStrategy) {
-      // Save strategy settings
       updateStrategyMutation.mutate(data);
-      
-      // Also save DCA settings (includes adaptive TP/SL) if form has changes
-      if (Object.keys(formValues).length > 0) {
-        updateDCAMutation.mutate(formValues);
-      }
     } else {
       createStrategyMutation.mutate(data);
+    }
+  };
+
+  // Handler for "Save Settings" button - saves both main form AND DCA settings
+  const handleSaveSettings = () => {
+    // Save main strategy form
+    form.handleSubmit(onSubmit)();
+    
+    // Trigger DCA settings save (includes adaptive TP/SL)
+    if (activeStrategy) {
+      setDcaSaveTrigger(prev => prev + 1);
     }
   };
 
@@ -2003,6 +2016,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                 <DCASettingsSection 
                   strategyId={activeStrategy.id} 
                   isStrategyRunning={isStrategyRunning}
+                  saveTrigger={dcaSaveTrigger}
                 />
               )}
 
@@ -2117,7 +2131,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
           <Button
             type="button"
             variant="outline"
-            onClick={form.handleSubmit(onSubmit)}
+            onClick={handleSaveSettings}
             disabled={createStrategyMutation.isPending || updateStrategyMutation.isPending}
             data-testid="button-save-strategy"
           >
