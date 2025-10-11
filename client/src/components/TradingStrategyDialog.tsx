@@ -103,6 +103,10 @@ interface DCASettings {
   tpAtrMultiplier: string;
   minTpPercent: string;
   maxTpPercent: string;
+  adaptiveSlEnabled: boolean;
+  slAtrMultiplier: string;
+  minSlPercent: string;
+  maxSlPercent: string;
 }
 
 // DCA Settings Component
@@ -390,6 +394,94 @@ function DCASettingsSection({ strategyId, isStrategyRunning, onSaveRequest }: { 
                     Formula: <code className="bg-background/50 px-1 py-0.5 rounded">TP = clamp(ATR × Multiplier, Min%, Max%)</code>
                     <br />
                     <span className="text-muted-foreground text-xs mt-1 block">Calm markets = tighter TP (closer to Min). Volatile markets = wider TP (closer to Max).</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Adaptive Stop Loss Section */}
+            <Separator className="my-4" />
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium flex items-center gap-2">
+                  <Shield className="h-4 w-4" />
+                  Adaptive Stop Loss (Auto Envelope)
+                </Label>
+                <Switch
+                  id="adaptiveSlEnabled"
+                  data-testid="switch-adaptive-sl"
+                  checked={formValues.adaptiveSlEnabled || false}
+                  onCheckedChange={(checked) => handleInputChange('adaptiveSlEnabled', checked)}
+                />
+              </div>
+              
+              {formValues.adaptiveSlEnabled && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-muted/30 rounded-md">
+                  <div className="space-y-2">
+                    <Label htmlFor="slAtrMultiplier" data-testid="label-sl-atr-multiplier">
+                      ATR Multiplier
+                    </Label>
+                    <Input
+                      id="slAtrMultiplier"
+                      data-testid="input-sl-atr-multiplier"
+                      type="number"
+                      step="0.1"
+                      min="0.5"
+                      max="5.0"
+                      value={formValues.slAtrMultiplier || ''}
+                      onChange={(e) => handleInputChange('slAtrMultiplier', e.target.value)}
+                      placeholder="2.0"
+                    />
+                    <div className="text-xs text-muted-foreground">
+                      SL = ATR × this multiplier. Higher = wider stops in volatile markets.
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="minSlPercent" data-testid="label-min-sl">
+                      Min SL %
+                    </Label>
+                    <Input
+                      id="minSlPercent"
+                      data-testid="input-min-sl"
+                      type="number"
+                      step="0.1"
+                      min="0.5"
+                      max="10.0"
+                      value={formValues.minSlPercent || ''}
+                      onChange={(e) => handleInputChange('minSlPercent', e.target.value)}
+                      placeholder="1.0"
+                    />
+                    <div className="text-xs text-muted-foreground">
+                      Minimum SL floor (safety net for low volatility).
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="maxSlPercent" data-testid="label-max-sl">
+                      Max SL %
+                    </Label>
+                    <Input
+                      id="maxSlPercent"
+                      data-testid="input-max-sl"
+                      type="number"
+                      step="0.1"
+                      min="1.0"
+                      max="10.0"
+                      value={formValues.maxSlPercent || ''}
+                      onChange={(e) => handleInputChange('maxSlPercent', e.target.value)}
+                      placeholder="5.0"
+                    />
+                    <div className="text-xs text-muted-foreground">
+                      Maximum SL ceiling (prevents overly wide stops).
+                    </div>
+                  </div>
+
+                  <div className="col-span-full text-sm bg-destructive/10 border border-destructive/20 p-3 rounded-md">
+                    <strong>🛡️ Auto Envelope Mode:</strong> System automatically sets SL based on current volatility (ATR). 
+                    Formula: <code className="bg-background/50 px-1 py-0.5 rounded">SL = clamp(ATR × Multiplier, Min%, Max%)</code>
+                    <br />
+                    <span className="text-muted-foreground text-xs mt-1 block">Calm markets = tighter SL (closer to Min). Volatile markets = wider SL (closer to Max).</span>
                   </div>
                 </div>
               )}
