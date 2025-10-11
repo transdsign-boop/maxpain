@@ -99,6 +99,10 @@ interface DCASettings {
   dcaExitCushionMultiplier: string;
   retHighThreshold: string;
   retMediumThreshold: string;
+  adaptiveTpEnabled: boolean;
+  tpAtrMultiplier: string;
+  minTpPercent: string;
+  maxTpPercent: string;
 }
 
 // DCA Settings Component
@@ -143,7 +147,7 @@ function DCASettingsSection({ strategyId, isStrategyRunning, onSaveRequest }: { 
     }
   }, [dcaSettings]);
 
-  const handleInputChange = (field: keyof DCASettings, value: string) => {
+  const handleInputChange = (field: keyof DCASettings, value: string | boolean) => {
     setFormValues(prev => ({ ...prev, [field]: value }));
   };
 
@@ -299,7 +303,97 @@ function DCASettingsSection({ strategyId, isStrategyRunning, onSaveRequest }: { 
                   <strong>Determines take profit distance relative to your total DCA spacing.</strong> 0.6 = TP is 60% of the total distance you're willing to DCA. Lower values (0.3-0.5) = tighter profits, faster exits. Higher values (0.7-1.0) = let winners run more but risk giving back gains.
                 </div>
               </div>
+            </div>
 
+            {/* Adaptive Take Profit Section */}
+            <Separator className="my-4" />
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium flex items-center gap-2">
+                  <Target className="h-4 w-4" />
+                  Adaptive Take Profit (Auto Envelope)
+                </Label>
+                <Switch
+                  id="adaptiveTpEnabled"
+                  data-testid="switch-adaptive-tp"
+                  checked={formValues.adaptiveTpEnabled || false}
+                  onCheckedChange={(checked) => handleInputChange('adaptiveTpEnabled', checked)}
+                />
+              </div>
+              
+              {formValues.adaptiveTpEnabled && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-muted/30 rounded-md">
+                  <div className="space-y-2">
+                    <Label htmlFor="tpAtrMultiplier" data-testid="label-tp-atr-multiplier">
+                      ATR Multiplier
+                    </Label>
+                    <Input
+                      id="tpAtrMultiplier"
+                      data-testid="input-tp-atr-multiplier"
+                      type="number"
+                      step="0.1"
+                      min="0.5"
+                      max="5.0"
+                      value={formValues.tpAtrMultiplier || ''}
+                      onChange={(e) => handleInputChange('tpAtrMultiplier', e.target.value)}
+                      placeholder="1.5"
+                    />
+                    <div className="text-xs text-muted-foreground">
+                      TP = ATR × this multiplier. Higher = wider targets in volatile markets.
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="minTpPercent" data-testid="label-min-tp">
+                      Min TP %
+                    </Label>
+                    <Input
+                      id="minTpPercent"
+                      data-testid="input-min-tp"
+                      type="number"
+                      step="0.1"
+                      min="0.1"
+                      max="10.0"
+                      value={formValues.minTpPercent || ''}
+                      onChange={(e) => handleInputChange('minTpPercent', e.target.value)}
+                      placeholder="0.5"
+                    />
+                    <div className="text-xs text-muted-foreground">
+                      Minimum TP floor (safety net for low volatility).
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="maxTpPercent" data-testid="label-max-tp">
+                      Max TP %
+                    </Label>
+                    <Input
+                      id="maxTpPercent"
+                      data-testid="input-max-tp"
+                      type="number"
+                      step="0.1"
+                      min="1.0"
+                      max="20.0"
+                      value={formValues.maxTpPercent || ''}
+                      onChange={(e) => handleInputChange('maxTpPercent', e.target.value)}
+                      placeholder="5.0"
+                    />
+                    <div className="text-xs text-muted-foreground">
+                      Maximum TP ceiling (prevents overly wide targets).
+                    </div>
+                  </div>
+
+                  <div className="col-span-full text-sm bg-primary/10 border border-primary/20 p-3 rounded-md">
+                    <strong>🎯 Auto Envelope Mode:</strong> System automatically sets TP based on current volatility (ATR). 
+                    Formula: <code className="bg-background/50 px-1 py-0.5 rounded">TP = clamp(ATR × Multiplier, Min%, Max%)</code>
+                    <br />
+                    <span className="text-muted-foreground text-xs mt-1 block">Calm markets = tighter TP (closer to Min). Volatile markets = wider TP (closer to Max).</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="retHighThreshold" data-testid="label-ret-high-threshold">
                   RET High Threshold

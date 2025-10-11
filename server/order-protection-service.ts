@@ -133,8 +133,8 @@ export class OrderProtectionService {
   }
 
   /**
-   * Calculate ATR-based take profit price
-   * Uses the same logic as DCA calculator to ensure consistency
+   * Calculate ATR-based take profit price with optional adaptive envelope
+   * Priority: Adaptive TP > Exit Cushion Multiplier > Fixed Percentage
    */
   private async calculateATRBasedTP(
     strategy: Strategy,
@@ -145,14 +145,7 @@ export class OrderProtectionService {
     try {
       // Get DCA parameters from strategy
       const strategyWithDCA = await getStrategyWithDCA(strategy.id);
-      if (!strategyWithDCA || strategyWithDCA.dca_exit_cushion_multiplier == null) {
-        // Fallback to fixed percentage if DCA not configured
-        const profitTargetPercent = parseFloat(strategy.profitTargetPercent);
-        return side === 'long' 
-          ? avgEntryPrice * (1 + profitTargetPercent / 100)
-          : avgEntryPrice * (1 - profitTargetPercent / 100);
-      }
-
+      
       // Calculate ATR percentage
       const atrPercent = await calculateATRPercent(
         symbol,
@@ -161,17 +154,44 @@ export class OrderProtectionService {
         process.env.ASTER_SECRET_KEY
       );
 
-      // Get exit cushion multiplier
-      const exitCushion = parseFloat(String(strategyWithDCA.dca_exit_cushion_multiplier));
-      
-      // Calculate TP distance using ATR-based formula
-      // TP = avgEntryPrice +/- (cushion * ATR% * avgEntryPrice)
-      const tpDistance = exitCushion * (atrPercent / 100) * avgEntryPrice;
-      const tpPrice = side === 'long' 
-        ? avgEntryPrice + tpDistance
-        : avgEntryPrice - tpDistance;
+      // PRIORITY 1: Adaptive TP (Auto Envelope) - if enabled
+      if (strategyWithDCA && strategyWithDCA.adaptive_tp_enabled) {
+        const atrMultiplier = parseFloat(String(strategyWithDCA.tp_atr_multiplier || 1.5));
+        const minTpPercent = parseFloat(String(strategyWithDCA.min_tp_percent || 0.5));
+        const maxTpPercent = parseFloat(String(strategyWithDCA.max_tp_percent || 5.0));
+        
+        // Calculate TP as ATR × multiplier, clamped between min and max
+        const rawTpPercent = atrPercent * atrMultiplier;
+        const clampedTpPercent = Math.max(minTpPercent, Math.min(maxTpPercent, rawTpPercent));
+        
+        const tpPrice = side === 'long'
+          ? avgEntryPrice * (1 + clampedTpPercent / 100)
+          : avgEntryPrice * (1 - clampedTpPercent / 100);
+        
+        console.log(`🎯 Adaptive TP: ATR=${atrPercent.toFixed(2)}% × ${atrMultiplier} = ${rawTpPercent.toFixed(2)}% → clamped to ${clampedTpPercent.toFixed(2)}%`);
+        return tpPrice;
+      }
 
-      return tpPrice;
+      // PRIORITY 2: Exit Cushion Multiplier (DCA-based TP) - if configured
+      if (strategyWithDCA && strategyWithDCA.dca_exit_cushion_multiplier != null) {
+        const exitCushion = parseFloat(String(strategyWithDCA.dca_exit_cushion_multiplier));
+        
+        // Calculate TP distance using ATR-based formula
+        // TP = avgEntryPrice +/- (cushion * ATR% * avgEntryPrice)
+        const tpDistance = exitCushion * (atrPercent / 100) * avgEntryPrice;
+        const tpPrice = side === 'long' 
+          ? avgEntryPrice + tpDistance
+          : avgEntryPrice - tpDistance;
+
+        return tpPrice;
+      }
+
+      // PRIORITY 3: Fixed percentage fallback
+      const profitTargetPercent = parseFloat(strategy.profitTargetPercent);
+      return side === 'long' 
+        ? avgEntryPrice * (1 + profitTargetPercent / 100)
+        : avgEntryPrice * (1 - profitTargetPercent / 100);
+
     } catch (error) {
       // Fallback to fixed percentage
       const profitTargetPercent = parseFloat(strategy.profitTargetPercent);
