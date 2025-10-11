@@ -25,6 +25,10 @@ export interface DCAStrategyParams {
   tpAtrMultiplier: string;
   minTpPercent: string;
   maxTpPercent: string;
+  adaptiveSlEnabled: boolean;
+  slAtrMultiplier: string;
+  minSlPercent: string;
+  maxSlPercent: string;
 }
 
 /**
@@ -39,6 +43,7 @@ export async function getStrategyWithDCA(strategyId: string) {
       dca_start_step_percent, dca_spacing_convexity, dca_size_growth,
       dca_max_risk_percent, dca_volatility_ref, dca_exit_cushion_multiplier,
       adaptive_tp_enabled, tp_atr_multiplier, min_tp_percent, max_tp_percent,
+      adaptive_sl_enabled, sl_atr_multiplier, min_sl_percent, max_sl_percent,
       ret_high_threshold, ret_medium_threshold,
       margin_mode, leverage, order_delay_ms, slippage_tolerance_percent,
       order_type, max_retry_duration_ms, margin_amount,
@@ -133,6 +138,22 @@ export async function updateStrategyDCAParams(
   if (params.maxTpPercent !== undefined) {
     setClauses.push(`"max_tp_percent" = $${paramIndex++}`);
     values.push(params.maxTpPercent);
+  }
+  if (params.adaptiveSlEnabled !== undefined) {
+    setClauses.push(`"adaptive_sl_enabled" = $${paramIndex++}`);
+    values.push(params.adaptiveSlEnabled);
+  }
+  if (params.slAtrMultiplier !== undefined) {
+    setClauses.push(`"sl_atr_multiplier" = $${paramIndex++}`);
+    values.push(params.slAtrMultiplier);
+  }
+  if (params.minSlPercent !== undefined) {
+    setClauses.push(`"min_sl_percent" = $${paramIndex++}`);
+    values.push(params.minSlPercent);
+  }
+  if (params.maxSlPercent !== undefined) {
+    setClauses.push(`"max_sl_percent" = $${paramIndex++}`);
+    values.push(params.maxSlPercent);
   }
   
   if (setClauses.length === 0) {
