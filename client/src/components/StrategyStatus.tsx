@@ -73,6 +73,8 @@ interface PositionCardProps{
   formatPercentage: (value: number) => string;
   getPnlColor: (pnl: number) => string;
   isHedge?: boolean;
+  actualTpPrice?: number | null;
+  actualSlPrice?: number | null;
 }
 
 interface CompletedTradeCardProps {
@@ -292,7 +294,7 @@ function RealizedPnlEventCard({ event, formatCurrency, getPnlColor }: RealizedPn
   );
 }
 
-function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, formatPercentage, getPnlColor, isHedge }: PositionCardProps) {
+function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, formatPercentage, getPnlColor, isHedge, actualTpPrice, actualSlPrice }: PositionCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isFlashing, setIsFlashing] = useState(false);
   const prevLayersRef = useRef(position.layersFilled);
@@ -376,16 +378,24 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
     return parseFloat(rounded.toFixed(decimals));
   };
   
-  const rawStopLossPrice = position.side === 'long'
+  // Use actual TP/SL prices from exchange if available, otherwise calculate from strategy settings
+  const rawStopLossPrice = actualSlPrice || (position.side === 'long'
     ? avgEntry * (1 - sanitizedSL / 100)
-    : avgEntry * (1 + sanitizedSL / 100);
+    : avgEntry * (1 + sanitizedSL / 100));
     
-  const rawTakeProfitPrice = position.side === 'long'
+  const rawTakeProfitPrice = actualTpPrice || (position.side === 'long'
     ? avgEntry * (1 + sanitizedTP / 100)
-    : avgEntry * (1 - sanitizedTP / 100);
+    : avgEntry * (1 - sanitizedTP / 100));
   
-  const stopLossPrice = calculateRoundedPrice(rawStopLossPrice);
-  const takeProfitPrice = calculateRoundedPrice(rawTakeProfitPrice);
+  const stopLossPrice = actualSlPrice || calculateRoundedPrice(rawStopLossPrice);
+  const takeProfitPrice = actualTpPrice || calculateRoundedPrice(rawTakeProfitPrice);
+  
+  // Calculate actual TP percentage from exchange TP price
+  const actualTpPercent = takeProfitPrice
+    ? (position.side === 'long'
+        ? ((takeProfitPrice - avgEntry) / avgEntry) * 100
+        : ((avgEntry - takeProfitPrice) / avgEntry) * 100)
+    : sanitizedTP;
 
   // Calculate liquidation price based on leverage (isolated margin)
   const maintenanceMarginFactor = 0.95;
@@ -540,7 +550,10 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
                   </div>
                   <div>
                     <div className="text-[10px] text-muted-foreground">TP:</div>
-                    <div className="text-xs text-lime-600 dark:text-lime-400">{formatCurrency(takeProfitPrice)}</div>
+                    <div className="text-xs text-lime-600 dark:text-lime-400">
+                      {formatCurrency(takeProfitPrice)}
+                      <span className="text-[10px] ml-1 font-bold">({actualTpPercent.toFixed(2)}%)</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -672,7 +685,10 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
                 </div>
                 <div className="min-w-0">
                   <div className="text-[10px] text-muted-foreground truncate">TP:</div>
-                  <div className="text-xs text-lime-600 dark:text-lime-400 truncate">{formatCurrency(takeProfitPrice)}</div>
+                  <div className="text-xs text-lime-600 dark:text-lime-400 truncate">
+                    {formatCurrency(takeProfitPrice)}
+                    <span className="text-[10px] ml-1 font-bold">({actualTpPercent.toFixed(2)}%)</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -838,6 +854,14 @@ export const StrategyStatus = memo(function StrategyStatus() {
     },
     enabled: livePositionIds.length > 0,
     refetchInterval: 120000, // 2min fallback, WebSocket provides real-time
+    retry: 2,
+  });
+
+  // Fetch actual TP/SL orders from exchange
+  const { data: protectiveOrders } = useQuery({
+    queryKey: ['/api/live/protective-orders'],
+    enabled: livePositionIds.length > 0,
+    refetchInterval: 10000, // Refresh every 10 seconds to show adaptive TP changes
     retry: 2,
   });
 
@@ -1321,22 +1345,29 @@ export const StrategyStatus = memo(function StrategyStatus() {
           <TabsContent value="active" className="mt-3 md:mt-4">
             {displaySummary?.positions && displaySummary.positions.length > 0 ? (
               <div className="space-y-2">
-                {displaySummary.positions.map((position) => (
-                  <PositionCard
-                    key={position.id}
-                    position={position}
-                    strategy={activeStrategy}
-                    onClose={() => {
-                      setPositionToClose(position);
-                      setIsCloseConfirmOpen(true);
-                    }}
-                    isClosing={closePositionMutation.isPending}
-                    formatCurrency={formatCurrency}
-                    formatPercentage={formatPercentage}
-                    getPnlColor={getPnlColor}
-                    isHedge={hedgeSymbols.has(position.symbol)}
-                  />
-                ))}
+                {displaySummary.positions.map((position) => {
+                  const orderKey = `${position.symbol}-${position.side.toUpperCase()}`;
+                  const orders = protectiveOrders?.[orderKey];
+                  
+                  return (
+                    <PositionCard
+                      key={position.id}
+                      position={position}
+                      strategy={activeStrategy}
+                      onClose={() => {
+                        setPositionToClose(position);
+                        setIsCloseConfirmOpen(true);
+                      }}
+                      isClosing={closePositionMutation.isPending}
+                      formatCurrency={formatCurrency}
+                      formatPercentage={formatPercentage}
+                      getPnlColor={getPnlColor}
+                      isHedge={hedgeSymbols.has(position.symbol)}
+                      actualTpPrice={orders?.tpPrice}
+                      actualSlPrice={orders?.slPrice}
+                    />
+                  );
+                })}
               </div>
             ) : (
               <div className="text-center py-8">

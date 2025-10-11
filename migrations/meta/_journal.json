@@ -8,6 +8,13 @@
       "when": 1759967755987,
       "tag": "0000_solid_deathstrike",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1760161697705,
+      "tag": "0001_modern_jetstream",
+      "breakpoints": true
     }
   ]
 }
