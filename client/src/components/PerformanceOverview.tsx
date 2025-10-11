@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { TrendingUp, TrendingDown, Target, Award, Activity, LineChart, DollarSign, Percent, Calendar as CalendarIcon, X } from "lucide-react";
+import { TrendingUp, TrendingDown, Target, Award, Activity, LineChart, DollarSign, Percent, Calendar as CalendarIcon, X, Wallet } from "lucide-react";
 import { ComposedChart, Line, Area, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, ReferenceArea, Label } from "recharts";
 import { format, subDays, subMinutes, subHours, startOfDay, endOfDay } from "date-fns";
 import { useStrategyData } from "@/hooks/use-strategy-data";
@@ -79,6 +79,8 @@ function PerformanceOverview() {
   // Date range filter state
   const [dateRange, setDateRange] = useState<{ start: Date | null; end: Date | null }>({ start: null, end: null });
   const [dateFilterOpen, setDateFilterOpen] = useState(false);
+  const [depositFilterOpen, setDepositFilterOpen] = useState(false);
+  const [selectedDepositId, setSelectedDepositId] = useState<string | null>(null);
   
   // Pagination and zoom state for chart
   const [chartEndIndex, setChartEndIndex] = useState<number | null>(null);
@@ -578,15 +580,43 @@ function PerformanceOverview() {
   const cumulativePnlDomain = unifiedDomain;
 
   // Calculate total deposited capital (only positive deposits, exclude withdrawals)
-  const { totalDeposited, depositCount } = useMemo(() => {
-    if (!transfers || transfers.length === 0) return { totalDeposited: 0, depositCount: 0 };
+  const { totalDeposited, depositCount, depositsList } = useMemo(() => {
+    if (!transfers || transfers.length === 0) return { totalDeposited: 0, depositCount: 0, depositsList: [] };
     
     // Filter to only include deposits (positive amounts)
     const deposits = transfers.filter(t => parseFloat(t.amount || '0') > 0);
     const totalDeposited = deposits.reduce((sum, transfer) => sum + parseFloat(transfer.amount || '0'), 0);
     
-    return { totalDeposited, depositCount: deposits.length };
+    // Sort deposits by timestamp (newest first for easy selection)
+    const sortedDeposits = [...deposits].sort((a, b) => 
+      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
+    
+    return { totalDeposited, depositCount: deposits.length, depositsList: sortedDeposits };
   }, [transfers]);
+  
+  // Handle deposit event selection
+  const handleDepositSelect = (depositId: string) => {
+    const deposit = depositsList.find(d => d.id === depositId);
+    if (deposit) {
+      const depositTime = new Date(deposit.timestamp);
+      setDateRange({ start: depositTime, end: new Date() });
+      setSelectedDepositId(depositId);
+      setDepositFilterOpen(false);
+    }
+  };
+  
+  // Clear deposit filter
+  const clearDepositFilter = () => {
+    setSelectedDepositId(null);
+    setDateRange({ start: null, end: null });
+  };
+  
+  // Get selected deposit info
+  const selectedDeposit = useMemo(() => {
+    if (!selectedDepositId) return null;
+    return depositsList.find(d => d.id === selectedDepositId);
+  }, [selectedDepositId, depositsList]);
 
   const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
@@ -969,9 +999,64 @@ function PerformanceOverview() {
                   </div>
                 </PopoverContent>
               </Popover>
+
+              {/* Deposit Event Filter */}
+              {depositsList.length > 0 && (
+                <Popover open={depositFilterOpen} onOpenChange={setDepositFilterOpen}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" data-testid="button-deposit-filter">
+                      <Wallet className="h-4 w-4 mr-2" />
+                      From Deposit
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-80 p-3" align="start">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium block">Select Deposit Event</label>
+                      <div className="max-h-60 overflow-y-auto space-y-1">
+                        {depositsList.map((deposit) => {
+                          const amount = parseFloat(deposit.amount || '0');
+                          const depositDate = new Date(deposit.timestamp);
+                          return (
+                            <Button
+                              key={deposit.id}
+                              variant={selectedDepositId === deposit.id ? "default" : "ghost"}
+                              size="sm"
+                              className="w-full justify-start text-left"
+                              onClick={() => handleDepositSelect(deposit.id)}
+                              data-testid={`button-deposit-${deposit.id}`}
+                            >
+                              <div className="flex items-center justify-between w-full gap-2">
+                                <span className="text-xs text-muted-foreground">
+                                  {format(depositDate, 'MMM d, yyyy HH:mm')}
+                                </span>
+                                <span className="font-mono font-semibold text-[rgb(34,197,94)]">
+                                  +${amount.toFixed(2)}
+                                </span>
+                              </div>
+                            </Button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              )}
               
-              {/* Active Filter Indicator */}
-              {(dateRange.start || dateRange.end) && (
+              {/* Active Deposit Filter Indicator */}
+              {selectedDeposit && (
+                <Badge variant="secondary" className="gap-1" data-testid="badge-active-deposit-filter">
+                  <Wallet className="h-3 w-3" />
+                  From ${parseFloat(selectedDeposit.amount || '0').toFixed(0)} deposit
+                  <X 
+                    className="h-3 w-3 ml-1 cursor-pointer hover:text-destructive" 
+                    onClick={clearDepositFilter}
+                    data-testid="button-clear-deposit-filter"
+                  />
+                </Badge>
+              )}
+
+              {/* Active Date Filter Indicator (only show if not from deposit) */}
+              {(dateRange.start || dateRange.end) && !selectedDeposit && (
                 <Badge variant="secondary" className="gap-1" data-testid="badge-active-filter">
                   <CalendarIcon className="h-3 w-3" />
                   {dateRange.start && format(dateRange.start, 'MMM d')}
