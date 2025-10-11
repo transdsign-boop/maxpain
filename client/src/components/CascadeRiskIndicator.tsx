@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { AlertTriangle, TrendingDown, Activity } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useCascadeStatus } from "@/contexts/WebSocketContext";
 
 interface CascadeStatus {
   symbol: string;
@@ -26,11 +27,11 @@ interface CascadeStatus {
 }
 
 export default function CascadeRiskIndicator() {
-  const [statuses, setStatuses] = useState<CascadeStatus[]>([]);
+  const { cascadeStatuses: statuses } = useCascadeStatus();
   const { toast } = useToast();
 
-  // Aggregate metrics across all assets for overall market view
-  const getAggregatedStatus = (): CascadeStatus => {
+  // Aggregate metrics across all assets for overall market view (memoized to prevent recalculation on every render)
+  const getAggregatedStatus = useMemo((): CascadeStatus => {
     if (statuses.length === 0) {
       return {
         symbol: 'ALL',
@@ -110,49 +111,9 @@ export default function CascadeRiskIndicator() {
       volatility_regime,
       rq_threshold_adjusted
     };
-  };
+  }, [statuses]);
 
-  const status = getAggregatedStatus();
-
-  useEffect(() => {
-    const ws = new WebSocket(
-      `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`
-    );
-
-    ws.onopen = () => {
-      console.log('Connected to cascade detector WebSocket');
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data);
-        if (message.type === 'cascade_status') {
-          // New format: { symbols: [...], aggregate: {...} }
-          if (message.data.symbols && Array.isArray(message.data.symbols)) {
-            setStatuses(message.data.symbols);
-          } else {
-            // Fallback for old format
-            const data = Array.isArray(message.data) ? message.data : [message.data];
-            setStatuses(data);
-          }
-        }
-      } catch (error) {
-        console.error('Error parsing cascade status:', error);
-      }
-    };
-
-    ws.onerror = (error) => {
-      console.error('Cascade WebSocket error:', error);
-    };
-
-    ws.onclose = () => {
-      console.log('Cascade detector WebSocket closed');
-    };
-
-    return () => {
-      ws.close();
-    };
-  }, []);
+  const status = getAggregatedStatus;
 
   const handleAutoToggle = async (checked: boolean) => {
     try {

@@ -1,6 +1,7 @@
 import { createHmac } from 'crypto';
 import { storage } from './storage';
 import type { Position, Strategy } from '@shared/schema';
+import { calculateATRPercent } from './dca-calculator';
 
 interface ExchangeOrder {
   orderId: string;
@@ -131,12 +132,54 @@ export class OrderProtectionService {
   }
 
   /**
+   * Calculate dynamic take profit percentage based on ATR volatility
+   * @param strategy - The trading strategy with adaptive TP settings
+   * @param symbol - The trading symbol
+   * @returns The calculated TP percentage (falls back to profitTargetPercent if adaptive is disabled)
+   */
+  private async calculateDynamicTp(strategy: Strategy, symbol: string): Promise<number> {
+    // If adaptive TP is disabled, return the fixed profit target
+    if (!strategy.adaptiveTpEnabled) {
+      return parseFloat(strategy.profitTargetPercent);
+    }
+
+    try {
+      // Calculate current ATR for the symbol
+      const currentATR = await calculateATRPercent(symbol, 10, process.env.ASTER_API_KEY, process.env.ASTER_SECRET_KEY);
+      
+      // Use 1.0% as reference ATR (typical mid-range volatility)
+      const referenceATR = 1.0;
+      
+      // Extract adaptive TP parameters
+      const baseTp = parseFloat(strategy.profitTargetPercent);
+      const atrMultiplier = parseFloat(strategy.tpAtrMultiplier ?? '1.0');
+      const minTp = parseFloat(strategy.minTpPercent ?? '0.3');
+      const maxTp = parseFloat(strategy.maxTpPercent ?? '1.2');
+      
+      // Calculate volatility-adjusted TP
+      // Formula: TP% = baseTp × (currentATR / referenceATR) × multiplier
+      const volatilityRatio = currentATR / referenceATR;
+      const rawTp = baseTp * volatilityRatio * atrMultiplier;
+      
+      // Apply min/max caps
+      const finalTp = Math.max(minTp, Math.min(maxTp, rawTp));
+      
+      console.log(`📊 Dynamic TP for ${symbol}: ATR=${currentATR.toFixed(2)}%, Base=${baseTp}%, Final=${finalTp.toFixed(2)}% (ratio=${volatilityRatio.toFixed(2)}x, mult=${atrMultiplier}x)`);
+      
+      return finalTp;
+    } catch (error) {
+      console.error(`❌ Error calculating dynamic TP for ${symbol}, falling back to base TP:`, error);
+      return parseFloat(strategy.profitTargetPercent);
+    }
+  }
+
+  /**
    * Calculate desired TP/SL orders based on position
    */
-  private calculateDesiredOrders(position: Position, strategy: Strategy): DesiredOrder[] {
+  private async calculateDesiredOrders(position: Position, strategy: Strategy): Promise<DesiredOrder[]> {
     const entryPrice = parseFloat(position.avgEntryPrice);
     const quantity = parseFloat(position.totalQuantity);
-    const tpPercent = parseFloat(strategy.profitTargetPercent);
+    const tpPercent = await this.calculateDynamicTp(strategy, position.symbol);
     const slPercent = parseFloat(strategy.stopLossPercent);
 
     let tpPrice: number;
@@ -479,7 +522,7 @@ export class OrderProtectionService {
       }
 
       // Calculate desired order state using live position data
-      const desiredOrders = this.calculateDesiredOrders(positionToUse, strategy);
+      const desiredOrders = await this.calculateDesiredOrders(positionToUse, strategy);
       const desiredSignature = this.getOrderSignature(desiredOrders);
 
       // Fetch existing orders

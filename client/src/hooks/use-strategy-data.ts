@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useWebSocketData } from "./useWebSocketData";
+import { useWebSocketStatus } from "@/contexts/WebSocketContext";
 import { useEffect } from "react";
 import { queryClient } from "@/lib/queryClient";
 
@@ -12,7 +12,7 @@ import { queryClient } from "@/lib/queryClient";
  */
 export function useStrategyData() {
   // Connect to WebSocket for real-time updates (single connection shared across app)
-  const { isConnected: wsConnected } = useWebSocketData({ enabled: true });
+  const { isConnected: wsConnected } = useWebSocketStatus();
 
   // Fetch strategies ONCE (no polling - WebSocket provides real-time updates)
   const strategiesQuery = useQuery<any[]>({
