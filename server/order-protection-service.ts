@@ -581,6 +581,25 @@ export class OrderProtectionService {
     const releaseLock = await this.acquireLock(lockKey);
 
     try {
+      // Check if position has active DCA layers
+      const { db } = await import('./db');
+      const { positionLayers } = await import('@shared/schema');
+      const { eq, and } = await import('drizzle-orm');
+      
+      const layers = await db.select()
+        .from(positionLayers)
+        .where(and(
+          eq(positionLayers.positionId, position.id),
+          eq(positionLayers.isOpen, true)
+        ));
+      
+      // If DCA layers exist, skip position-level protective orders (layers handle TP/SL individually)
+      if (layers.length > 0) {
+        console.log(`⏭️ Skipping position-level protective orders for ${position.symbol} ${position.side} - ${layers.length} active DCA layer(s) managing TP/SL individually`);
+        releaseLock();
+        return { success: true };
+      }
+      
       // Ensure exchange info is fetched
       await this.fetchExchangeInfo();
 

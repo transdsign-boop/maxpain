@@ -591,7 +591,7 @@ export class StrategyEngine extends EventEmitter {
         throw new Error('DCA parameters not configured');
       }
       
-      // Build full strategy with DCA params
+      // Build full strategy with DCA params and adaptive TP/SL settings
       const fullStrategy = {
         ...strategy,
         dcaStartStepPercent: String(strategyWithDCA.dca_start_step_percent),
@@ -1129,7 +1129,7 @@ export class StrategyEngine extends EventEmitter {
         return;
       }
       
-      // Build full strategy with DCA params
+      // Build full strategy with DCA params and adaptive TP/SL settings
       const fullStrategy = {
         ...strategy,
         dcaStartStepPercent: String(strategyWithDCA.dca_start_step_percent),
