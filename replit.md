@@ -1,156 +1,103 @@
 # Aster DEX Liquidations Dashboard
 
-## Overview
-A real-time liquidation monitoring dashboard for the Aster DEX exchange, designed for traders and analysts. It provides live trading liquidation data, advanced filtering, analysis tools, and a professional trading interface, offering immediate insight into market liquidation events across various cryptocurrency and tokenized stock pairs. The project aims to provide a robust, production-ready system for real-money trading with comprehensive safety checks and detailed performance tracking, including a sophisticated Dollar Cost Averaging (DCA) system.
+### Overview
+The Aster DEX Liquidations Dashboard is a real-time monitoring and trading platform for the Aster DEX exchange. It provides live liquidation data, advanced filtering, and analysis tools for cryptocurrency and tokenized stock pairs. The project aims to be a robust, production-ready system for real-money trading, offering comprehensive safety checks, detailed performance tracking, and a sophisticated Dollar Cost Averaging (DCA) system.
 
-## User Preferences
+### User Preferences
 Preferred communication style: Simple, everyday language.
 
-### 🚨 CRITICAL: DATABASE CONFIGURATION 🚨
-**🛑 NEVER USE `execute_sql_tool` FOR THIS PROJECT 🛑**
-**THIS APPLICATION USES NEON DATABASE EXCLUSIVELY**
+🚨 CRITICAL: DATABASE CONFIGURATION 🚨
+🛑 NEVER USE `execute_sql_tool` FOR THIS PROJECT 🛑
+THIS APPLICATION USES NEON DATABASE EXCLUSIVELY
 
-- ❌ **DO NOT USE** `execute_sql_tool` - it connects to a worthless development database
-- ❌ **DO NOT TRUST** any SQL query results from `execute_sql_tool` - they are from the WRONG database
-- ✅ **ONLY USE** the application API endpoints to check database state (e.g., `/api/strategies`, `/api/strategies/sync`)
-- ✅ **ONLY USE** application logs to verify database operations
-- ✅ **ONLY USE** `npm run db:push` to apply schema changes to the real Neon database
+- ❌ DO NOT USE `execute_sql_tool` - it connects to a worthless development database
+- ❌ DO NOT TRUST any SQL query results from `execute_sql_tool` - they are from the WRONG database
+- ✅ ONLY USE the application API endpoints to check database state (e.g., `/api/strategies`, `/api/strategies/sync`)
+- ✅ ONLY USE application logs to verify database operations
+- ✅ ONLY USE `npm run db:push` to apply schema changes to the real Neon database
 
-**Why this matters:**
-- The app uses Neon database via `NEON_DATABASE_URL` environment variable
-- `execute_sql_tool` connects to a completely separate local development database
-- These are TWO DIFFERENT DATABASES with different data
-- The user has had to correct this mistake many times - DO NOT make it again
+📊 REALIZED P&L, COMMISSION & FUNDING FEE DATA
+All financial metrics are fetched directly from the exchange API, NOT stored in the database
 
-### 📊 REALIZED P&L, COMMISSION & FUNDING FEE DATA
-**All financial metrics are fetched directly from the exchange API, NOT stored in the database**
-
-**Realized P&L Source:**
+Realized P&L Source:
 - ✅ Uses `/fapi/v1/income` endpoint with `incomeType=REALIZED_PNL` filter
 - ✅ Matches exactly how Aster DEX Portfolio Overview calculates P&L
 - ✅ Fetches all historical records with proper pagination (startTime=0 for all-time data)
-- ⚠️ **IMPORTANT**: The `incomeType` filter is required - fetching without it returns incorrect data
+- ⚠️ IMPORTANT: The `incomeType` filter is required - fetching without it returns incorrect data
 
-**Commissions and Funding Fees:**
+Commissions and Funding Fees:
 - ✅ `/api/commissions?startTime=X&endTime=Y` - Fetches commission data from exchange with optional date range filters
 - ✅ `/api/funding-fees?startTime=X&endTime=Y` - Fetches funding fee data from exchange with optional date range filters
 - 📍 Data is retrieved in real-time from Aster DEX `/fapi/v1/income` endpoint
 - 📍 Supports pagination (1000 records per batch) for complete historical data
 - 📍 Frontend filters this data by selected date range for accurate metrics calculation
 
-### 🚨 CRITICAL: STRATEGY CREATION POLICY 🚨
-**🛑 NEVER AUTO-CREATE STRATEGIES 🛑**
+🚨 CRITICAL: STRATEGY CREATION POLICY 🚨
+🛑 NEVER AUTO-CREATE STRATEGIES 🛑
 
-- ❌ **NEVER** automatically create a new strategy under any circumstances
-- ❌ **NEVER** create a strategy as a "fallback" or "default" behavior
-- ✅ **ONLY** create strategies when user explicitly uses the UI to create one (future feature)
-- ✅ **FAIL GRACEFULLY** - If an operation expects a strategy but none exists, return an error
+- ❌ NEVER automatically create a new strategy under any circumstances
+- ❌ NEVER create a strategy as a "fallback" or "default" behavior
+- ✅ ONLY create strategies when user explicitly uses the UI to create one (future feature)
+- ✅ FAIL GRACEFULLY - If an operation expects a strategy but none exists, return an error
 
-**Why this matters:**
-- User will build a UI for strategy creation later
-- Auto-creation causes duplicate strategies and confusion
-- User must have full control over when strategies are created
-
-**PERMANENT DATA PRESERVATION**: ALL trading data MUST be preserved forever. The user requires complete access to historical trading records at any time.
+PERMANENT DATA PRESERVATION: ALL trading data MUST be preserved forever. The user requires complete access to historical trading records at any time.
 - NEVER DELETE any positions, fills, or trade session data.
 - When the user wants to "start fresh", ARCHIVE the current session (mark inactive) and create a new session.
 - All historical sessions remain in the database permanently.
 - A "Start Fresh Session" button archives the current session but preserves all data.
 - The user must be able to recall any historical trading data at any time.
 
-## System Architecture
+### System Architecture
 
-### Frontend Architecture
-- **Framework**: React 18 with TypeScript and Vite.
-- **UI Framework**: Radix UI primitives with shadcn/ui.
-- **Styling**: Tailwind CSS with a financial trading-focused design system.
+**Frontend:**
+- **Frameworks**: React 18, TypeScript, Vite.
+- **UI**: Radix UI, shadcn/ui, Tailwind CSS (financial trading-focused design with lime for profit, orange for loss).
 - **State Management**: React hooks with TanStack Query.
 - **Routing**: Wouter.
-- **UI/UX Design**: Dark/light mode, professional aesthetic (lime for profit, orange for loss), Inter font for text, JetBrains Mono for numerical data, responsive design, optimized tables/cards. Mobile responsive layout with critical controls visible and secondary actions in a Sheet menu. Cascade risk indicator uses fixed-width badges with horizontal scroll.
-- **Key Features**: Collapsible trade details, live strategy editing with performance chart visualization, interactive performance chart with per-trade P&L, hedge position detection, and intelligent recommendations for assets and risk parameters based on account size and real-time liquidity.
-- **Settings Organization**: All trading configuration, DCA settings, and API connection management are consolidated in the single Global Settings dialog (TradingStrategyDialog) accessed via the Settings button in the header. Settings can be exported/imported using timestamped JSON files (format: settings_YYYY-MM-DD_HH-MM-SS.json) for backup and portability. Settings automatically save when the dialog is closed.
+- **Design**: Dark/light modes, responsive layout (Inter font for text, JetBrains Mono for numerical data), optimized tables/cards, mobile-first approach.
+- **Features**: Collapsible trade details, live strategy editing with performance charts, interactive P&L charts, hedge position detection, intelligent asset/risk recommendations, consolidated Global Settings dialog for all trading configurations, DCA settings, and API management (export/import JSON settings).
 
-### Backend Architecture
+**Backend:**
 - **Runtime**: Node.js with Express.js.
 - **Language**: TypeScript.
-- **Database ORM**: Drizzle ORM with raw SQL for critical operations to bypass caching.
-- **API Design**: RESTful endpoints with `/api` prefix.
-- **Data Persistence**: ALL strategy changes are immediately saved to Neon database first, then loaded into memory. Nothing is stored only in memory.
+- **Database ORM**: Drizzle ORM (raw SQL for critical operations).
+- **API**: RESTful endpoints with `/api` prefix.
+- **Data Persistence**: All strategy changes are immediately saved to the Neon database and then loaded into memory.
 
-### Data Storage
-- **Database**: PostgreSQL with Neon serverless hosting (ALWAYS uses Neon, never local storage).
-- **Configuration**: Uses `NEON_DATABASE_URL` environment variable exclusively.
-- **Schema**: 13 core tables - liquidations, strategies, trade_sessions, positions, fills, orders, strategy_changes, strategy_snapshots, user_settings, users, transfers, commissions, funding_fees. The sessions table (required for Replit Auth) remains empty. All tables use indexing for optimal performance.
-- **Connection**: Connection pooling with `@neondatabase/serverless` HTTP driver.
+**Data Storage:**
+- **Database**: PostgreSQL via Neon serverless hosting (`NEON_DATABASE_URL`).
+- **Schema**: 13 core tables (e.g., `liquidations`, `strategies`, `trade_sessions`, `positions`, `fills`, `orders`, `strategy_changes`, `strategy_snapshots`, `user_settings`, `users`, `transfers`, `commissions`, `funding_fees`).
+- **Connection**: `@neondatabase/serverless` HTTP driver with connection pooling.
 - **Migrations**: Drizzle Kit.
-- **Data Retention**: Liquidation data automatically retained for 30 days only; older data deleted every 5 minutes. Trading data (positions, fills, sessions) and financial records (transfers, commissions, funding fees) are permanently preserved through archiving (never deleted).
-- **Important**: All runtime operations use the Neon database. The app never uses local database storage.
-- **Historical Financial Tracking**: Complete tracking of all transfer events (deposits/withdrawals), commission fees, and funding fees with idempotent sync endpoints using composite unique constraints. Sync endpoints use batched inserts with onConflictDoNothing() and returning() for accurate insert counts.
+- **Data Retention**: Liquidation data for 30 days; trading data (positions, fills, sessions) and financial records (transfers, commissions, funding fees) are permanently preserved through archiving.
 
-### Real-time Data Features
-- Live WebSocket connection to Aster DEX for real-time liquidation streaming.
-- Connection monitoring and status display.
-- Dominant direction analysis using order book and funding rate data.
-- Asset Ranking: By Liquidation Activity (default), Best Liquidity, or Alphabetical.
-- Real-time Liquidity Metrics: Batch endpoint fetches order book depth, calculates bid/ask liquidity, and checks trade size capacity.
-- Intelligent Recommendations: Recommends assets and risk parameters based on account tiers, fetched account balance, and liquidity thresholds. Provides visual warnings for unsafe user settings.
-- **100% WebSocket Architecture (ZERO Polling)**: 
-  - **User Data Stream** → directly updates **Live Data Orchestrator** cache → broadcasts to frontend via **WebSocket Broadcaster**
-  - All live account/position data flows exclusively through WebSocket events (ACCOUNT_UPDATE, ORDER_TRADE_UPDATE)
-  - Single `/api/live/snapshot` endpoint serves in-memory cache that's continuously refreshed by WebSocket events
-  - Completely eliminates API polling to prevent rate limit bans (user-demanded requirement)
-  - **Data Flow**: Aster DEX WebSocket → user-data-stream.ts → liveDataOrchestrator.updateAccountFromWebSocket() / updatePositionsFromWebSocket() → WebSocket broadcast → Frontend
-  - **Position Filtering**: `updatePositionsFromWebSocket()` filters out closed positions (positionAmt=0) before caching/broadcasting - ensures only open positions appear in live view. Closed positions are saved to database and shown in "Completed Positions" tab.
-- **Dynamic Cascade Detection**: Cascade detector automatically monitors all user-selected assets from Global Settings. Syncs on startup, strategy registration, and when selectedAssets changes. Automatically clears detectors when strategy is inactive or no assets selected, ensuring real-time monitoring always reflects current configuration.
-- **Aggregate-Based Trade Filtering (All-or-None)**: System uses aggregate average across ALL monitored symbols for trade filtering decisions. Blocks ALL assets or NONE (never individual assets). Calculates average reversal_quality, average RQ threshold, and volatility regime across all symbols. Entry and layer-add logic check aggregate quality - if aggregate metrics fail, NO trades execute on ANY symbol. Frontend displays aggregate status (RQ average, volatility regime, critical symbols) instead of per-symbol lists. WebSocket broadcasts both individual symbol statuses and aggregate decision for UI display.
-- **🚨 CASCADE DETECTOR - ULTRA-MINIMAL POLLING (DO NOT MODIFY) 🚨**:
-  - **⚠️ CRITICAL**: Polling architecture optimized to prevent rate limit bans - NEVER change without explicit user approval
-  - **Tick Interval**: 10 seconds (configurable via POLL_INTERVAL env var, default: 10000ms)
-  - **Price Updates**: Single batch API call per tick (`/fapi/v1/ticker/price` - all symbols at once)
-  - **Open Interest**: Rotating fetch (3 symbols per tick, configurable via OI_PER_TICK env var)
-  - **OI Cache**: 60-second cache (configurable via OI_MAX_AGE env var) - reuses stale OI to minimize API calls
-  - **Rotation Logic**: Fetches oldest OI snapshots first, ensures all 19 symbols refresh every ~63 seconds
-  - **API Usage**: 4 calls per 10s = ~24 calls/minute (98.5% reduction from previous 1,620 calls/min)
-  - **Liquidations**: Real-time WebSocket stream (`!forceOrder@arr`) - zero API calls
-  - **Architecture Warning**: Code includes explicit "DO NOT MODIFY" warnings - changing this causes rate limit bans
-  - **Monitoring**: OI age displayed in cascade logs (e.g., "OI age: 12s") for staleness tracking
+**Real-time Data & Trading:**
+- **WebSocket**: Live connection to Aster DEX for real-time liquidation streaming and user data (ACCOUNT_UPDATE, ORDER_TRADE_UPDATE).
+- **Live Data Orchestrator**: Caches and broadcasts real-time account/position data to the frontend via WebSocket. Eliminates API polling.
+- **Cascade Detection**: Dynamic monitoring of selected assets, syncing on startup and configuration changes, with aggregate-based trade filtering (all-or-none decisions across all monitored symbols).
+- **Cascade Detector Polling (Critical - DO NOT MODIFY)**: Highly optimized polling architecture for price updates and open interest to prevent rate limits (10-second tick interval, rotating OI fetch, 60-second OI cache).
+- **Trading System**: Live-only trading with HMAC-SHA256 authentication, automatic TP/SL management, queue-based locking for updates, and session-based tracking.
+- **DCA System**: Integrated Dollar Cost Averaging with ATR-based volatility scaling, convex level spacing, exponential size growth, and liquidation-aware risk management. Parameters managed via Global Settings.
+- **Data Integrity**: Idempotency for orders, atomic cooldowns, permanent preservation of all trading data.
+- **Performance Metrics**: Comprehensive tracking including deposited capital, ROI, transfer markers, commissions, and funding fees.
 
-### Security & Performance
-- End-to-end TypeScript for type safety.
-- Zod schemas for runtime input validation.
-- Comprehensive error handling.
-- Optimized performance with virtualized tables, memoized components, and efficient re-renders.
-- Robust handling of duplicate liquidations and race conditions through atomic locking and queue-based processing.
+### External Dependencies
 
-### Trading System
-- **Architecture**: Live-only trading application - all paper and demo modes removed for production simplicity.
-- **Live Trading**: HMAC-SHA256 signature authentication for Aster DEX with comprehensive safety checks. Automatic TP/SL management (updated after each layer). Queue-based locking for sequential updates. Uses actual fill data from Aster DEX `/fapi/v1/userTrades`. Session-based tracking with singleton session model per user.
-- **Strategy Management**: Singleton session model with continuous trading per user. Configurable liquidation lookback window. Single persistent session ensures all trading history is preserved in one place.
-- **Settings Persistence**: When settings are updated via UI, they are saved to Neon database FIRST, then the in-memory strategy is reloaded from the database. This ensures all changes persist permanently to Neon.
-- **DCA System**: Integrated Dollar Cost Averaging (DCA) system with ATR-based volatility scaling, convex level spacing, exponential size growth, liquidation-aware risk management, and automatic take profit/stop loss calculation. Uses a SQL wrapper to bypass Drizzle ORM caching issues for DCA parameter management. All DCA parameters are accessible in the Global Settings dialog under "DCA Settings (Advanced)".
-- **Data Integrity**: Idempotency protection for orders. Atomic cooldown system for entries/layers to prevent duplicate orders. ALL trading data (positions, fills, sessions) is permanently preserved in the database - deletion functionality has been removed to comply with data preservation requirements.
-- **Position Display**: Displays only live exchange positions fetched from Aster DEX API, ensuring accurate real-time position tracking. Position cards show accurate layer counts via `/api/positions/:positionId/fills` endpoint (max 1000 fills per request, matching Aster DEX API limits).
-- **Performance Metrics**: Comprehensive performance tracking including total deposited capital (deposits only, excluding withdrawals), accurate ROI calculation (Total P&L / Total Deposited * 100), transfer markers on performance chart (green vertical lines showing deposit amounts), and detailed fee tracking (commissions and funding fees).
-
-## External Dependencies
-
-### Core Dependencies
+**Core:**
 - **@radix-ui/react-\***: Accessible UI primitives.
 - **@tanstack/react-query**: Server state management.
 - **drizzle-orm**: Type-safe PostgreSQL ORM.
-- **@neondatabase/serverless**: Serverless PostgreSQL client with connection pooling.
+- **@neondatabase/serverless**: Serverless PostgreSQL client.
 
-### Development Tools
-- **Vite**: Fast build tool.
-- **TypeScript**: Static type checking.
+**UI & Styling:**
 - **Tailwind CSS**: Utility-first CSS framework.
-- **ESBuild**: Fast JavaScript bundler.
-
-### UI & Styling
 - **class-variance-authority**: Component variant management.
-- **clsx & tailwind-merge**: Conditional class name utilities.
+- **clsx & tailwind-merge**: Class name utilities.
 - **Lucide React**: Icon library.
 - **date-fns**: Date manipulation.
+- **Google Fonts**: Inter, JetBrains Mono.
 
-### Font Integration
-- **Google Fonts**: Inter (UI text) and JetBrains Mono (numerical data).
+**Development Tools:**
+- **Vite**: Fast build tool.
+- **TypeScript**: Static type checking.
+- **ESBuild**: Fast JavaScript bundler.
