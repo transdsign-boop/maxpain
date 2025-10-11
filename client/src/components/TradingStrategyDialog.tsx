@@ -122,7 +122,9 @@ function DCASettingsSection({ strategyId, isStrategyRunning, onSaveRequest }: { 
       const response = await apiRequest('PUT', `/api/strategies/${strategyId}/dca`, data);
       return await response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      // Immediately update form state with the response data
+      setFormValues(data);
       toast({
         title: "DCA Settings Updated",
         description: "Your DCA parameters have been saved successfully.",
