@@ -5,11 +5,24 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useWebSocketStatus, useCascadeStatus } from "@/contexts/WebSocketContext";
+
+interface ConnectionStatusProps {
+  isConnected: boolean;
+}
 
 interface ApiError {
   message: string;
   timestamp: Date;
+}
+
+interface CascadeStatus {
+  symbol: string;
+  autoBlock: boolean;
+  autoEnabled: boolean;
+  reversal_quality: number;
+  rq_threshold_adjusted: number;
+  rq_bucket: 'poor' | 'ok' | 'good' | 'excellent';
+  volatility_regime: 'low' | 'medium' | 'high';
 }
 
 interface AggregateStatus {
@@ -25,25 +38,11 @@ interface AggregateStatus {
   reason?: string;
 }
 
-export default function ConnectionStatus() {
-  const { isConnected } = useWebSocketStatus();
-  const { aggregateStatus: wsAggregateStatus } = useCascadeStatus();
+export default function ConnectionStatus({ isConnected }: ConnectionStatusProps) {
   const [apiConnected, setApiConnected] = useState(true);
   const [latestError, setLatestError] = useState<ApiError | null>(null);
-
-  // Convert WebSocket aggregate status to the format expected by this component
-  const aggregateStatus: AggregateStatus | null = wsAggregateStatus ? {
-    avgReversalQuality: wsAggregateStatus.avgRQ || 0,
-    avgRqThreshold: 1,
-    avgVolatilityRET: wsAggregateStatus.avgRET || 0,
-    avgScore: wsAggregateStatus.score || 0,
-    blockAll: wsAggregateStatus.autoBlock || false,
-    autoEnabled: true,
-    symbolCount: wsAggregateStatus.totalAssets || 0,
-    criticalSymbols: [],
-    volatilityRegime: 'low' as const,
-    reason: undefined
-  } : null;
+  const [cascadeStatuses, setCascadeStatuses] = useState<CascadeStatus[]>([]);
+  const [aggregateStatus, setAggregateStatus] = useState<AggregateStatus | null>(null);
 
   // Check API connection health and capture errors
   useEffect(() => {
@@ -89,6 +88,36 @@ export default function ConnectionStatus() {
 
     window.addEventListener('api-error' as any, handleApiError);
     return () => window.removeEventListener('api-error' as any, handleApiError);
+  }, []);
+
+  // Listen for cascade status updates via WebSocket
+  useEffect(() => {
+    const ws = new WebSocket(
+      `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`
+    );
+
+    ws.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        if (message.type === 'cascade_status') {
+          // New format: { symbols: [...], aggregate: {...} }
+          if (message.data.symbols && message.data.aggregate) {
+            setCascadeStatuses(message.data.symbols);
+            setAggregateStatus(message.data.aggregate);
+          } else {
+            // Fallback for old format
+            const statuses = Array.isArray(message.data) ? message.data : [message.data];
+            setCascadeStatuses(statuses);
+          }
+        }
+      } catch (error) {
+        console.error('Error parsing cascade status:', error);
+      }
+    };
+
+    return () => {
+      ws.close();
+    };
   }, []);
 
   // Use aggregate status from WebSocket (all-or-none blocking)

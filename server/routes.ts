@@ -2771,48 +2771,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get current ATR values for symbols (for dynamic TP display)
-  app.post("/api/atr/current", async (req, res) => {
-    try {
-      const { symbols } = req.body;
-      
-      if (!Array.isArray(symbols) || symbols.length === 0) {
-        return res.status(400).json({ error: "symbols array is required" });
-      }
-
-      // Import ATR calculation function
-      const { calculateATRPercent } = await import('./dca-calculator');
-      
-      // Get API keys from env
-      const apiKey = process.env.ASTER_API_KEY;
-      const secretKey = process.env.ASTER_SECRET_KEY;
-      
-      // Calculate ATR for each symbol in parallel
-      const atrPromises = symbols.map(async (symbol: string) => {
-        try {
-          const atr = await calculateATRPercent(symbol, 10, apiKey, secretKey);
-          return { symbol, atr };
-        } catch (error) {
-          console.error(`Failed to get ATR for ${symbol}:`, error);
-          return { symbol, atr: 1.2 }; // Default fallback
-        }
-      });
-
-      const results = await Promise.all(atrPromises);
-      
-      // Convert array to object for easier frontend access
-      const atrData = results.reduce((acc, { symbol, atr }) => {
-        acc[symbol] = atr;
-        return acc;
-      }, {} as Record<string, number>);
-
-      res.json(atrData);
-    } catch (error) {
-      console.error('Error fetching ATR data:', error);
-      res.status(500).json({ error: "Failed to fetch ATR data" });
-    }
-  });
-
   app.post("/api/strategies/:id/start", async (req, res) => {
     try {
       const strategyId = req.params.id;
