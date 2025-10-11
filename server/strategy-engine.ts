@@ -67,6 +67,7 @@ export class StrategyEngine extends EventEmitter {
   private fillCooldownMs: number = 30000; // 30 second cooldown between layers/entries
   private leverageSetForSymbols: Map<string, number> = new Map(); // symbol -> leverage value (track actual leverage configured on exchange)
   private pendingQ1Values: Map<string, number> = new Map(); // "sessionId-symbol-side" -> q1 base layer size for position being created
+  private pendingFirstLayerData: Map<string, { takeProfitPrice: number; stopLossPrice: number; entryPrice: number; quantity: number }> = new Map(); // "sessionId-symbol-side" -> first layer TP/SL data
 
   constructor() {
     super();
@@ -813,13 +814,7 @@ export class StrategyEngine extends EventEmitter {
         throw new Error('DCA calculator could not calculate next layer');
       }
       
-      const { price: nextLayerPrice, quantity: nextLayerQuantity } = nextLayerResult;
-      
-      // Calculate stop loss price based on strategy
-      const stopLossPercent = parseFloat(strategy.stopLossPercent);
-      const stopLossPrice = position.side === 'long'
-        ? nextLayerPrice * (1 - stopLossPercent / 100)
-        : nextLayerPrice * (1 + stopLossPercent / 100);
+      const { price: nextLayerPrice, quantity: nextLayerQuantity, takeProfitPrice, stopLossPrice } = nextLayerResult;
       
       // Calculate dollar risk for this layer
       const lossPerUnit = position.side === 'long'
@@ -1165,6 +1160,15 @@ export class StrategyEngine extends EventEmitter {
       const q1Key = `${session.id}-${liquidation.symbol}-${positionSide}`;
       this.pendingQ1Values.set(q1Key, dcaResult.q1);
       console.log(`💾 Stored q1=${dcaResult.q1.toFixed(6)} for ${q1Key}`);
+      
+      // Store first layer TP/SL data for position layer creation
+      this.pendingFirstLayerData.set(q1Key, {
+        takeProfitPrice: firstLevel.takeProfitPrice,
+        stopLossPrice: firstLevel.stopLossPrice,
+        entryPrice: firstLevel.price,
+        quantity: firstLevel.quantity
+      });
+      console.log(`💾 Stored Layer 1 TP/SL: TP=$${firstLevel.takeProfitPrice.toFixed(6)}, SL=$${firstLevel.stopLossPrice.toFixed(6)}`);
 
       // CRITICAL SAFETY CHECK: Validate position size is valid
       if (!Number.isFinite(quantity) || isNaN(quantity) || quantity <= 0) {
@@ -1336,9 +1340,19 @@ export class StrategyEngine extends EventEmitter {
         return;
       }
       
-      const { price, quantity } = nextLayerCalc;
+      const { price, quantity, takeProfitPrice, stopLossPrice, level } = nextLayerCalc;
       
       console.log(`📐 DCA Layer ${nextLayer} for ${liquidation.symbol}: Price=$${price.toFixed(6)}, Qty=${quantity.toFixed(6)} (P0=$${initialEntryPrice.toFixed(6)})`);
+      
+      // Store layer TP/SL data for position layer creation after fill
+      const layerKey = `${position.id}-${nextLayer}`;
+      this.pendingFirstLayerData.set(layerKey, {
+        takeProfitPrice,
+        stopLossPrice,
+        entryPrice: price,
+        quantity
+      });
+      console.log(`💾 Stored Layer ${nextLayer} TP/SL: TP=$${takeProfitPrice.toFixed(6)}, SL=$${stopLossPrice.toFixed(6)}`);
 
       // SAFETY CHECK: Ensure new layer is at a better price than the last layer
       if (position.lastLayerPrice) {
@@ -3073,6 +3087,8 @@ export class StrategyEngine extends EventEmitter {
       const positionSide = order.side === 'buy' ? 'long' : 'short';
       const q1Key = `${order.sessionId}-${order.symbol}-${positionSide}`;
       const dcaBaseSize = this.pendingQ1Values.get(q1Key);
+      const firstLayerData = this.pendingFirstLayerData.get(q1Key);
+      
       if (dcaBaseSize) {
         console.log(`✅ Retrieved q1=${dcaBaseSize.toFixed(6)} for ${order.symbol} ${positionSide}`);
         // Clean up after retrieval
@@ -3083,21 +3099,46 @@ export class StrategyEngine extends EventEmitter {
 
       console.log(`🔍 POSITION CREATE DEBUG: order.side=${order.side}, derived positionSide=${positionSide}`);
       
-      // Create new position
-      position = await storage.createPosition({
-        sessionId: order.sessionId,
-        symbol: order.symbol,
-        side: positionSide,
-        totalQuantity: fillQuantity.toString(),
-        avgEntryPrice: fillPrice.toString(),
-        initialEntryPrice: fillPrice.toString(), // P0: Store initial entry price for DCA calculations
-        dcaBaseSize: dcaBaseSize?.toString(), // q1: Base layer size for exponential growth
-        totalCost: actualMargin.toString(), // Actual margin = notional / leverage
-        layersFilled: 1,
-        maxLayers,
-        leverage,
-        lastLayerPrice: fillPrice.toString(),
-      });
+      try {
+        // Create new position
+        position = await storage.createPosition({
+          sessionId: order.sessionId,
+          symbol: order.symbol,
+          side: positionSide,
+          totalQuantity: fillQuantity.toString(),
+          avgEntryPrice: fillPrice.toString(),
+          initialEntryPrice: fillPrice.toString(), // P0: Store initial entry price for DCA calculations
+          dcaBaseSize: dcaBaseSize?.toString(), // q1: Base layer size for exponential growth
+          totalCost: actualMargin.toString(), // Actual margin = notional / leverage
+          layersFilled: 1,
+          maxLayers,
+          leverage,
+          lastLayerPrice: fillPrice.toString(),
+        });
+        
+        // Create position layer record for Layer 1
+        if (firstLayerData) {
+          await storage.createPositionLayer({
+            positionId: position.id,
+            layerNumber: 1,
+            entryPrice: firstLayerData.entryPrice.toString(),
+            quantity: firstLayerData.quantity.toString(),
+            cost: actualMargin.toString(),
+            takeProfitPrice: firstLayerData.takeProfitPrice.toString(),
+            stopLossPrice: firstLayerData.stopLossPrice.toString(),
+          });
+          console.log(`📊 Created Layer 1 record: Entry=$${firstLayerData.entryPrice.toFixed(6)}, TP=$${firstLayerData.takeProfitPrice.toFixed(6)}, SL=$${firstLayerData.stopLossPrice.toFixed(6)}`);
+          
+          // Clean up only after successful layer creation
+          this.pendingFirstLayerData.delete(q1Key);
+        } else {
+          console.warn(`⚠️ No first layer TP/SL data found for ${q1Key}, position layer not created`);
+        }
+      } catch (positionError) {
+        console.error(`❌ Failed to create position:`, positionError);
+        // Don't clean up data on position creation failure - we might retry
+        throw positionError;
+      }
     } else {
       // Update existing position with new layer
       await this.updatePositionAfterFill(position, fillPrice, fillQuantity);
@@ -3151,13 +3192,37 @@ export class StrategyEngine extends EventEmitter {
       return;
     }
 
+    const nextLayerNumber = position.layersFilled + 1;
+    
     await storage.updatePosition(position.id, {
       totalQuantity: newQuantity.toString(),
       avgEntryPrice: newAvgPrice.toString(), // Weighted average of entry prices
       totalCost: newCost.toString(), // Actual total margin used
-      layersFilled: position.layersFilled + 1,
+      layersFilled: nextLayerNumber,
       lastLayerPrice: fillPrice.toString(),
     });
+    
+    // Create position layer record if we have the TP/SL data
+    const layerKey = `${position.id}-${nextLayerNumber}`;
+    const layerData = this.pendingFirstLayerData.get(layerKey);
+    
+    if (layerData) {
+      await storage.createPositionLayer({
+        positionId: position.id,
+        layerNumber: nextLayerNumber,
+        entryPrice: layerData.entryPrice.toString(),
+        quantity: layerData.quantity.toString(),
+        cost: newLayerMargin.toString(),
+        takeProfitPrice: layerData.takeProfitPrice.toString(),
+        stopLossPrice: layerData.stopLossPrice.toString(),
+      });
+      console.log(`📊 Created Layer ${nextLayerNumber} record: Entry=$${layerData.entryPrice.toFixed(6)}, TP=$${layerData.takeProfitPrice.toFixed(6)}, SL=$${layerData.stopLossPrice.toFixed(6)}`);
+      
+      // Clean up after use
+      this.pendingFirstLayerData.delete(layerKey);
+    } else {
+      console.warn(`⚠️ No layer TP/SL data found for ${layerKey}, position layer not created`);
+    }
   }
 
   // Start monitoring positions for exit conditions
