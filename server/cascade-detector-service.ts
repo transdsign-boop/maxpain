@@ -369,7 +369,11 @@ class CascadeDetectorService {
           `(OI age: ${Math.round(oiAge/1000)}s)`
         ].join(',');
         
-        console.log(`📊 Cascade [${symbol}]: ${csvLog}`);
+        // Only log if there's meaningful activity (liquidations or quality changes)
+        // Silent monitoring reduces log spam from 126 lines/min to ~5-10 lines/min
+        if (liqInfo.notional > 0 || status.quality !== 'poor') {
+          console.log(`📊 Cascade [${symbol}]: ${csvLog}`);
+        }
       }
 
       // Broadcast individual statuses AND aggregate status
