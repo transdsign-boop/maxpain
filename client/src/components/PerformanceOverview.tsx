@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, memo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -75,7 +75,7 @@ interface AssetPerformance {
   totalTrades: number;
 }
 
-export default function PerformanceOverview() {
+function PerformanceOverview() {
   // Date range filter state
   const [dateRange, setDateRange] = useState<{ start: Date | null; end: Date | null }>({ start: null, end: null });
   const [dateFilterOpen, setDateFilterOpen] = useState(false);
@@ -1284,3 +1284,6 @@ export default function PerformanceOverview() {
     </Card>
   );
 }
+
+// Memoize component to prevent unnecessary re-renders when parent updates
+export default memo(PerformanceOverview);

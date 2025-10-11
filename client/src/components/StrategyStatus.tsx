@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from "react";
+import React, { useState, useMemo, useRef, useEffect, memo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -781,7 +781,8 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
   );
 }
 
-export function StrategyStatus() {
+// Memoize component to prevent unnecessary re-renders when parent updates
+export const StrategyStatus = memo(function StrategyStatus() {
   const { toast } = useToast();
   const [isCloseConfirmOpen, setIsCloseConfirmOpen] = useState(false);
   const [positionToClose, setPositionToClose] = useState<Position | null>(null);
@@ -1443,4 +1444,4 @@ export function StrategyStatus() {
     </Dialog>
     </div>
   );
-}
+});

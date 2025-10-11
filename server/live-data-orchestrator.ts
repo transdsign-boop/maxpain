@@ -34,6 +34,8 @@ interface LiveSnapshot {
 
 class LiveDataOrchestrator {
   private cache: Map<string, LiveSnapshot> = new Map();
+  private lastAccountLogTime: number = 0;
+  private lastPositionsLogTime: number = 0;
 
   constructor() {
     console.log('🎯 Live Data Orchestrator initialized - 100% WebSocket mode (NO POLLING)');
@@ -89,7 +91,11 @@ class LiveDataOrchestrator {
         }]
       };
       snapshot.timestamp = Date.now();
-      console.log('✅ Updated account cache from WebSocket (balance: $' + parseFloat(walletBalance).toFixed(2) + ')');
+      // Reduced logging - only log occasionally (every 30s) to reduce log spam
+      if (Date.now() - this.lastAccountLogTime > 30000) {
+        console.log('✅ Updated account cache from WebSocket (balance: $' + parseFloat(walletBalance).toFixed(2) + ')');
+        this.lastAccountLogTime = Date.now();
+      }
       this.broadcastSnapshot(strategyId);
     }
   }
@@ -103,7 +109,11 @@ class LiveDataOrchestrator {
     
     snapshot.positions = openPositions;
     snapshot.timestamp = Date.now();
-    console.log(`✅ Updated positions cache from WebSocket (${positions.length} total, ${openPositions.length} open)`);
+    // Reduced logging - only log occasionally (every 30s) to reduce log spam
+    if (Date.now() - this.lastPositionsLogTime > 30000) {
+      console.log(`✅ Updated positions cache from WebSocket (${positions.length} total, ${openPositions.length} open)`);
+      this.lastPositionsLogTime = Date.now();
+    }
     this.calculatePositionSummary(strategyId);
   }
 

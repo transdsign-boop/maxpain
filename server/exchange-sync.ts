@@ -88,11 +88,9 @@ export async function fetchAccountTrades(params: {
     }
     
     const trades = await response.json();
-    console.log(`✅ Fetched ${trades.length} account trades from exchange`);
-    
-    // Log sample trade for debugging
+    // Reduced logging - only show count (improves performance)
     if (trades.length > 0) {
-      console.log('📋 Sample trade:', JSON.stringify(trades[0], null, 2));
+      console.log(`✅ Fetched ${trades.length} account trades from exchange`);
     } else {
       console.log('⚠️ No trades returned from exchange API');
     }
@@ -250,7 +248,8 @@ function groupTradesIntoPositions(trades: Array<{
     // Sort by time
     groupTrades.sort((a: typeof trades[0], b: typeof trades[0]) => a.time - b.time);
     
-    console.log(`  📋 ${key}: ${groupTrades.length} trades (${groupTrades.filter((t: typeof trades[0]) => (side === 'long' && t.side === 'BUY') || (side === 'short' && t.side === 'SELL')).length} entries, ${groupTrades.filter((t: typeof trades[0]) => (side === 'long' && t.side === 'SELL') || (side === 'short' && t.side === 'BUY')).length} exits)`);
+    // Reduced logging - commenting out per-symbol details (improves performance)
+    // console.log(`  📋 ${key}: ${groupTrades.length} trades (${groupTrades.filter((t: typeof trades[0]) => (side === 'long' && t.side === 'BUY') || (side === 'short' && t.side === 'SELL')).length} entries, ${groupTrades.filter((t: typeof trades[0]) => (side === 'long' && t.side === 'SELL') || (side === 'short' && t.side === 'BUY')).length} exits)`);
     
     let entryTrades: typeof trades = [];
     let exitTrades: typeof trades = [];
