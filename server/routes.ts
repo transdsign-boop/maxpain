@@ -1148,18 +1148,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get all transfers for current user
+  // Get transfers (deposits/withdrawals) from exchange with optional date range
   app.get("/api/transfers", async (req, res) => {
     try {
-      const userTransfers = await db.query.transfers.findMany({
-        where: eq(transfers.userId, DEFAULT_USER_ID),
-        orderBy: (transfers, { asc }) => [asc(transfers.timestamp)],
-      });
+      const { fetchTransfers } = await import('./exchange-sync');
       
-      res.json(userTransfers);
+      const startTime = req.query.startTime ? parseInt(req.query.startTime as string) : undefined;
+      const endTime = req.query.endTime ? parseInt(req.query.endTime as string) : undefined;
+      
+      const result = await fetchTransfers({ startTime, endTime });
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error, records: [], total: 0 });
+      }
+      
+      // Transform to match the frontend's expected format
+      const transformedRecords = result.records.map((transfer: any) => ({
+        id: transfer.tranId || `${transfer.time}`,
+        userId: DEFAULT_USER_ID,
+        amount: transfer.income || '0',
+        asset: transfer.asset || 'USDT',
+        transactionId: transfer.tranId || null,
+        timestamp: new Date(transfer.time),
+      }));
+      
+      res.json(transformedRecords);
     } catch (error: any) {
       console.error('❌ Error fetching transfers:', error);
-      res.status(500).json({ error: `Failed to fetch transfers: ${error.message}` });
+      res.status(500).json({ error: `Failed to fetch transfers: ${error.message}`, records: [] });
     }
   });
 
