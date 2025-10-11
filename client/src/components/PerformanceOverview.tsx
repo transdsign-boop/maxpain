@@ -1090,36 +1090,53 @@ function PerformanceOverview() {
                 })}
 
                 {/* Vertical markers for transfer events (deposits) */}
-                {transfers?.map((transfer) => {
+                {transfers?.filter((transfer) => {
+                  // Filter transfers by date range
                   const transferTime = new Date(transfer.timestamp).getTime();
-                  let tradeIndex = chartData.findIndex(trade => trade.timestamp >= transferTime);
+                  const startTimestamp = dateRange.start ? dateRange.start.getTime() : 0;
+                  const endTimestamp = dateRange.end ? dateRange.end.getTime() : Date.now();
+                  return transferTime >= startTimestamp && transferTime <= endTimestamp;
+                }).map((transfer) => {
+                  const transferTime = new Date(transfer.timestamp).getTime();
+                  const amount = parseFloat(transfer.amount || '0');
                   
-                  if (tradeIndex === -1 && chartData.length > 0) {
-                    tradeIndex = chartData.length - 1;
+                  // Only show deposits (positive amounts)
+                  if (amount <= 0) return null;
+                  
+                  // Find the closest trade or create a position for the transfer
+                  let tradeNumber;
+                  if (chartData.length === 0) {
+                    // No trades in visible range, place at position 1
+                    tradeNumber = 1;
+                  } else {
+                    // Find first trade after transfer, or use last trade if transfer is most recent
+                    const tradeIndex = chartData.findIndex(trade => trade.timestamp >= transferTime);
+                    if (tradeIndex >= 0) {
+                      tradeNumber = chartData[tradeIndex].tradeNumber;
+                    } else {
+                      // Transfer is after all trades, place slightly after the last trade
+                      tradeNumber = chartData[chartData.length - 1].tradeNumber + 0.5;
+                    }
                   }
                   
-                  if (tradeIndex >= 0) {
-                    const amount = parseFloat(transfer.amount || '0');
-                    return (
-                      <ReferenceLine
-                        key={transfer.id}
-                        x={chartData[tradeIndex].tradeNumber}
-                        yAxisId="left"
-                        stroke="rgb(34, 197, 94)"
-                        strokeWidth={2}
-                        label={{
-                          value: `+$${amount.toFixed(2)}`,
-                          position: 'center',
-                          fill: 'rgb(34, 197, 94)',
-                          fontSize: 11,
-                          fontWeight: 600,
-                          angle: -90,
-                          dx: -20,
-                        }}
-                      />
-                    );
-                  }
-                  return null;
+                  return (
+                    <ReferenceLine
+                      key={transfer.id}
+                      x={tradeNumber}
+                      yAxisId="left"
+                      stroke="rgb(34, 197, 94)"
+                      strokeWidth={2}
+                      label={{
+                        value: `+$${amount.toFixed(2)}`,
+                        position: 'center',
+                        fill: 'rgb(34, 197, 94)',
+                        fontSize: 11,
+                        fontWeight: 600,
+                        angle: -90,
+                        dx: -20,
+                      }}
+                    />
+                  );
                 })}
                 <defs>
                   <linearGradient id="positivePnlGradient" x1="0" y1="0" x2="0" y2="1">
