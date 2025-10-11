@@ -109,6 +109,11 @@ export const strategies = pgTable("strategies", {
   tpAtrMultiplier: decimal("tp_atr_multiplier", { precision: 5, scale: 2 }).notNull().default("1.5"), // TP = ATR × multiplier (default 1.5x ATR)
   minTpPercent: decimal("min_tp_percent", { precision: 5, scale: 2 }).notNull().default("0.5"), // Minimum TP percentage (floor)
   maxTpPercent: decimal("max_tp_percent", { precision: 5, scale: 2 }).notNull().default("5.0"), // Maximum TP percentage (ceiling)
+  // Adaptive Stop Loss (Automatic Volatility-Based Risk)
+  adaptiveSlEnabled: boolean("adaptive_sl_enabled").notNull().default(false), // Enable automatic SL based on ATR envelope
+  slAtrMultiplier: decimal("sl_atr_multiplier", { precision: 5, scale: 2 }).notNull().default("2.0"), // SL = ATR × multiplier (default 2.0x ATR)
+  minSlPercent: decimal("min_sl_percent", { precision: 5, scale: 2 }).notNull().default("1.0"), // Minimum SL percentage (floor)
+  maxSlPercent: decimal("max_sl_percent", { precision: 5, scale: 2 }).notNull().default("5.0"), // Maximum SL percentage (ceiling)
   // RET (Realized Volatility) Threshold Configuration
   retHighThreshold: decimal("ret_high_threshold", { precision: 5, scale: 2 }).notNull().default("35.0"), // RET threshold for high volatility (requires RQ >= 3)
   retMediumThreshold: decimal("ret_medium_threshold", { precision: 5, scale: 2 }).notNull().default("25.0"), // RET threshold for medium volatility (requires RQ >= 2)
