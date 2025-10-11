@@ -47,6 +47,8 @@ interface Strategy {
   riskLevel: number;
   createdAt: string;
   updatedAt: string;
+  adaptiveTpEnabled?: boolean;
+  adaptiveSlEnabled?: boolean;
 }
 
 // Form validation schema
@@ -614,6 +616,12 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
   // Fetch current strategies
   const { data: strategies, isLoading: strategiesLoading } = useQuery<Strategy[]>({
     queryKey: ['/api/strategies'],
+  });
+
+  // Fetch DCA settings for active strategy to get adaptive TP/SL flags
+  const { data: dcaSettings } = useQuery<DCASettings>({
+    queryKey: [`/api/strategies/${activeStrategy?.id}/dca`],
+    enabled: !!activeStrategy?.id,
   });
 
   // Fetch exchange account balance - NO HTTP polling, populated by WebSocket only
@@ -1608,18 +1616,54 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
               <div className="space-y-4">
                 <Label className="text-base font-medium flex items-center gap-2">
                   <Target className="h-4 w-4" />
-                  Risk Management
+                  Risk Management (Fallback Values)
                 </Label>
+
+                {/* Adaptive Mode Active Indicator */}
+                {(dcaSettings?.adaptiveTpEnabled || dcaSettings?.adaptiveSlEnabled) && (
+                  <div className="bg-primary/10 border border-primary/20 p-3 rounded-md">
+                    <div className="flex items-start gap-2">
+                      <Activity className="h-4 w-4 text-primary mt-0.5" />
+                      <div className="flex-1 text-sm">
+                        <strong className="text-primary">
+                          {dcaSettings.adaptiveTpEnabled && dcaSettings.adaptiveSlEnabled ? (
+                            <>Adaptive Mode Active — TP & SL</>
+                          ) : dcaSettings.adaptiveTpEnabled ? (
+                            <>Adaptive Mode Active — TP Only</>
+                          ) : (
+                            <>Adaptive Mode Active — SL Only</>
+                          )}
+                        </strong>
+                        <p className="text-muted-foreground mt-1">
+                          {dcaSettings.adaptiveTpEnabled && dcaSettings.adaptiveSlEnabled ? (
+                            <>TP and SL are automatically calculated using ATR (volatility). Values below are only used as fallbacks if adaptive calculation fails.</>
+                          ) : dcaSettings.adaptiveTpEnabled ? (
+                            <>Take Profit is automatically calculated using ATR. Stop Loss uses the fixed value below.</>
+                          ) : (
+                            <>Stop Loss is automatically calculated using ATR. Take Profit uses the fixed value below.</>
+                          )}
+                        </p>
+                        {dcaSettings.adaptiveTpEnabled && dcaSettings.adaptiveSlEnabled && (
+                          <p className="text-xs text-primary/80 mt-2">
+                            Configure adaptive settings in DCA Settings (Advanced) section below.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
                     name="profitTargetPercent"
                     render={({ field }) => (
-                      <FormItem>
+                      <FormItem className={dcaSettings?.adaptiveTpEnabled ? "opacity-60" : ""}>
                         <div className="flex items-center gap-2">
-                          <FormLabel data-testid="label-profit-target">Take Profit %</FormLabel>
-                          {limitingAsset && parseFloat(field.value) < recommendedTakeProfit * 0.8 && recommendedTakeProfit > 0 && (
+                          <FormLabel data-testid="label-profit-target">
+                            Take Profit % {dcaSettings?.adaptiveTpEnabled && <span className="text-xs text-muted-foreground">(Fallback)</span>}
+                          </FormLabel>
+                          {limitingAsset && parseFloat(field.value) < recommendedTakeProfit * 0.8 && recommendedTakeProfit > 0 && !dcaSettings?.adaptiveTpEnabled && (
                             <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20">
                               ⚠ Too tight
                             </Badge>
@@ -1635,9 +1679,14 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                           />
                         </FormControl>
                         <FormDescription className="text-xs">
-                          Close when profit reaches this % (0.1-20%)
-                          {limitingAsset && recommendedTakeProfit > 0 && (
-                            <span className="text-primary ml-1">(Recommended: {recommendedTakeProfit.toFixed(1)}%)</span>
+                          {dcaSettings?.adaptiveTpEnabled ? (
+                            <>Fallback value used only if ATR-based calculation fails</>
+                          ) : (
+                            <>Close when profit reaches this % (0.1-20%)
+                              {limitingAsset && recommendedTakeProfit > 0 && (
+                                <span className="text-primary ml-1">(Recommended: {recommendedTakeProfit.toFixed(1)}%)</span>
+                              )}
+                            </>
                           )}
                         </FormDescription>
                         <FormMessage />
@@ -1649,10 +1698,12 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                     control={form.control}
                     name="stopLossPercent"
                     render={({ field }) => (
-                      <FormItem>
+                      <FormItem className={dcaSettings?.adaptiveSlEnabled ? "opacity-60" : ""}>
                         <div className="flex items-center gap-2">
-                          <FormLabel data-testid="label-stop-loss">Stop Loss %</FormLabel>
-                          {limitingAsset && parseFloat(field.value) > recommendedStopLoss * 1.5 && recommendedStopLoss > 0 && (
+                          <FormLabel data-testid="label-stop-loss">
+                            Stop Loss % {dcaSettings?.adaptiveSlEnabled && <span className="text-xs text-muted-foreground">(Fallback)</span>}
+                          </FormLabel>
+                          {limitingAsset && parseFloat(field.value) > recommendedStopLoss * 1.5 && recommendedStopLoss > 0 && !dcaSettings?.adaptiveSlEnabled && (
                             <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20">
                               ⚠ Too wide
                             </Badge>
@@ -1668,9 +1719,14 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                           />
                         </FormControl>
                         <FormDescription className="text-xs">
-                          Close when loss reaches this % (0.1-50%)
-                          {limitingAsset && recommendedStopLoss > 0 && (
-                            <span className="text-primary ml-1">(Recommended: {recommendedStopLoss.toFixed(1)}%)</span>
+                          {dcaSettings?.adaptiveSlEnabled ? (
+                            <>Fallback value used only if ATR-based calculation fails</>
+                          ) : (
+                            <>Close when loss reaches this % (0.1-50%)
+                              {limitingAsset && recommendedStopLoss > 0 && (
+                                <span className="text-primary ml-1">(Recommended: {recommendedStopLoss.toFixed(1)}%)</span>
+                              )}
+                            </>
                           )}
                         </FormDescription>
                         <FormMessage />
