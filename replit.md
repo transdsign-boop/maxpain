@@ -14,7 +14,12 @@ THIS APPLICATION USES NEON DATABASE EXCLUSIVELY
 - ❌ DO NOT TRUST any SQL query results from `execute_sql_tool` - they are from the WRONG database
 - ✅ ONLY USE the application API endpoints to check database state (e.g., `/api/strategies`, `/api/strategies/sync`)
 - ✅ ONLY USE application logs to verify database operations
-- ✅ ONLY USE `npm run db:push` to apply schema changes to the real Neon database
+
+📋 SCHEMA CHANGES POLICY:
+- ✅ ALWAYS use manual SQL scripts executed directly in Neon SQL Editor for schema changes
+- ❌ NEVER use `npm run db:push` or Drizzle migrations (DATABASE_URL ≠ NEON_DATABASE_URL)
+- 📝 Process: Update `shared/schema.ts` → Write SQL script → Execute in Neon SQL Editor
+- 📌 Example: position_layers table was created via manual SQL script (see project history)
 
 📊 REALIZED P&L, COMMISSION & FUNDING FEE DATA
 All financial metrics are fetched directly from the exchange API, NOT stored in the database
@@ -69,7 +74,7 @@ PERMANENT DATA PRESERVATION: ALL trading data MUST be preserved forever. The use
 - **Database**: PostgreSQL via Neon serverless hosting (`NEON_DATABASE_URL`).
 - **Schema**: 14 core tables (e.g., `liquidations`, `strategies`, `trade_sessions`, `positions`, `position_layers`, `fills`, `orders`, `strategy_changes`, `strategy_snapshots`, `user_settings`, `users`, `transfers`, `commissions`, `funding_fees`).
 - **Connection**: `@neondatabase/serverless` HTTP driver with connection pooling.
-- **Migrations**: Drizzle Kit (NOTE: drizzle.config.ts uses DATABASE_URL, but app uses NEON_DATABASE_URL - if schema changes don't appear, manually create tables using Neon SQL client).
+- **Schema Changes**: Manual SQL scripts only (drizzle.config.ts uses wrong database). Update `shared/schema.ts` then execute SQL in Neon SQL Editor.
 - **Data Retention**: Liquidation data for 30 days; trading data (positions, fills, sessions) and financial records (transfers, commissions, funding fees) are permanently preserved through archiving.
 
 **Real-time Data & Trading:**
