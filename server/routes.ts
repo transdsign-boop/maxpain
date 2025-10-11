@@ -2687,7 +2687,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         adaptiveTpEnabled: strategy.adaptive_tp_enabled,
         tpAtrMultiplier: strategy.tp_atr_multiplier,
         minTpPercent: strategy.min_tp_percent,
-        maxTpPercent: strategy.max_tp_percent
+        maxTpPercent: strategy.max_tp_percent,
+        adaptiveSlEnabled: strategy.adaptive_sl_enabled,
+        slAtrMultiplier: strategy.sl_atr_multiplier,
+        minSlPercent: strategy.min_sl_percent,
+        maxSlPercent: strategy.max_sl_percent
       });
     } catch (error) {
       console.error('Error fetching DCA settings:', error);
@@ -2749,6 +2753,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const num = parseFloat(val);
           return !isNaN(num) && num >= 1.0 && num <= 20.0;
         }, "Must be between 1.0 and 20.0").nullable().optional(),
+        adaptiveSlEnabled: z.union([z.boolean(), z.string()]).transform((val) => {
+          if (typeof val === 'boolean') return val;
+          return val === 'true';
+        }).nullable().optional(),
+        slAtrMultiplier: z.string().refine((val) => {
+          const num = parseFloat(val);
+          return !isNaN(num) && num >= 0.5 && num <= 5.0;
+        }, "Must be between 0.5 and 5.0").nullable().optional(),
+        minSlPercent: z.string().refine((val) => {
+          const num = parseFloat(val);
+          return !isNaN(num) && num >= 0.5 && num <= 10.0;
+        }, "Must be between 0.5 and 10.0").nullable().optional(),
+        maxSlPercent: z.string().refine((val) => {
+          const num = parseFloat(val);
+          return !isNaN(num) && num >= 1.0 && num <= 10.0;
+        }, "Must be between 1.0 and 10.0").nullable().optional(),
       });
       
       const validatedData = dcaUpdateSchema.parse(req.body);
@@ -2768,6 +2788,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const maxTp = parseFloat(filteredData.maxTpPercent);
         if (minTp > maxTp) {
           return res.status(400).json({ error: "Min TP % must be less than or equal to Max TP %" });
+        }
+      }
+      
+      // Validate minSlPercent <= maxSlPercent if both are provided
+      if (filteredData.minSlPercent && filteredData.maxSlPercent) {
+        const minSl = parseFloat(filteredData.minSlPercent);
+        const maxSl = parseFloat(filteredData.maxSlPercent);
+        if (minSl > maxSl) {
+          return res.status(400).json({ error: "Min SL % must be less than or equal to Max SL %" });
         }
       }
       
@@ -2793,7 +2822,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         adaptiveTpEnabled: updated.adaptive_tp_enabled,
         tpAtrMultiplier: updated.tp_atr_multiplier,
         minTpPercent: updated.min_tp_percent,
-        maxTpPercent: updated.max_tp_percent
+        maxTpPercent: updated.max_tp_percent,
+        adaptiveSlEnabled: updated.adaptive_sl_enabled,
+        slAtrMultiplier: updated.sl_atr_multiplier,
+        minSlPercent: updated.min_sl_percent,
+        maxSlPercent: updated.max_sl_percent
       });
     } catch (error) {
       console.error('Error updating DCA settings:', error);
