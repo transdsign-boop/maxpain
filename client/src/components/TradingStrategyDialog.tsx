@@ -1030,9 +1030,15 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
     input.click();
   };
 
-  const onSubmit = (data: StrategyFormData) => {
+  const onSubmit = async (data: StrategyFormData) => {
     if (activeStrategy) {
+      // Save strategy settings
       updateStrategyMutation.mutate(data);
+      
+      // Also save DCA settings (includes adaptive TP/SL) if form has changes
+      if (Object.keys(formValues).length > 0) {
+        updateDCAMutation.mutate(formValues);
+      }
     } else {
       createStrategyMutation.mutate(data);
     }
