@@ -1,6 +1,8 @@
 import { createHmac } from 'crypto';
 import { storage } from './storage';
 import type { Position, Strategy } from '@shared/schema';
+import { calculateATRPercent } from './dca-calculator';
+import { getStrategyWithDCA } from './dca-sql';
 
 interface ExchangeOrder {
   orderId: string;
@@ -131,13 +133,69 @@ export class OrderProtectionService {
   }
 
   /**
+   * Calculate ATR-based take profit price
+   * Uses the same logic as DCA calculator to ensure consistency
+   */
+  private async calculateATRBasedTP(
+    strategy: Strategy,
+    symbol: string,
+    avgEntryPrice: number,
+    side: 'long' | 'short'
+  ): Promise<number> {
+    try {
+      // Get DCA parameters from strategy
+      const strategyWithDCA = await getStrategyWithDCA(strategy.id);
+      if (!strategyWithDCA || strategyWithDCA.dca_exit_cushion_multiplier == null) {
+        // Fallback to fixed percentage if DCA not configured
+        const profitTargetPercent = parseFloat(strategy.profitTargetPercent);
+        return side === 'long' 
+          ? avgEntryPrice * (1 + profitTargetPercent / 100)
+          : avgEntryPrice * (1 - profitTargetPercent / 100);
+      }
+
+      // Calculate ATR percentage
+      const atrPercent = await calculateATRPercent(
+        symbol,
+        10,
+        process.env.ASTER_API_KEY,
+        process.env.ASTER_SECRET_KEY
+      );
+
+      // Get exit cushion multiplier
+      const exitCushion = parseFloat(String(strategyWithDCA.dca_exit_cushion_multiplier));
+      
+      // Calculate TP distance using ATR-based formula
+      // TP = avgEntryPrice +/- (cushion * ATR% * avgEntryPrice)
+      const tpDistance = exitCushion * (atrPercent / 100) * avgEntryPrice;
+      const tpPrice = side === 'long' 
+        ? avgEntryPrice + tpDistance
+        : avgEntryPrice - tpDistance;
+
+      return tpPrice;
+    } catch (error) {
+      // Fallback to fixed percentage
+      const profitTargetPercent = parseFloat(strategy.profitTargetPercent);
+      return side === 'long' 
+        ? avgEntryPrice * (1 + profitTargetPercent / 100)
+        : avgEntryPrice * (1 - profitTargetPercent / 100);
+    }
+  }
+
+  /**
    * Calculate desired TP/SL orders based on position
    */
-  private calculateDesiredOrders(position: Position, strategy: Strategy): DesiredOrder[] {
+  private async calculateDesiredOrders(position: Position, strategy: Strategy): Promise<DesiredOrder[]> {
     const entryPrice = parseFloat(position.avgEntryPrice);
     const quantity = parseFloat(position.totalQuantity);
-    const tpPercent = parseFloat(strategy.profitTargetPercent);
     const slPercent = parseFloat(strategy.stopLossPercent);
+
+    // Calculate ATR-based TP price
+    const rawTpPrice = await this.calculateATRBasedTP(
+      strategy,
+      position.symbol,
+      entryPrice,
+      position.side as 'long' | 'short'
+    );
 
     let tpPrice: number;
     let slPrice: number;
@@ -145,12 +203,12 @@ export class OrderProtectionService {
     let slSide: 'BUY' | 'SELL';
 
     if (position.side === 'long') {
-      tpPrice = this.roundPrice(position.symbol, entryPrice * (1 + tpPercent / 100));
+      tpPrice = this.roundPrice(position.symbol, rawTpPrice);
       slPrice = this.roundPrice(position.symbol, entryPrice * (1 - slPercent / 100));
       tpSide = 'SELL';
       slSide = 'SELL';
     } else {
-      tpPrice = this.roundPrice(position.symbol, entryPrice * (1 - tpPercent / 100));
+      tpPrice = this.roundPrice(position.symbol, rawTpPrice);
       slPrice = this.roundPrice(position.symbol, entryPrice * (1 + slPercent / 100));
       tpSide = 'BUY';
       slSide = 'BUY';
@@ -463,7 +521,7 @@ export class OrderProtectionService {
       // CRITICAL FIX: Fetch live exchange position for accurate quantity/entry price
       // Database position may be stale due to async fill processing
       // IMPORTANT: Filter by side to support hedge mode correctly
-      const livePosition = await this.fetchLiveExchangePosition(position.symbol, position.side);
+      const livePosition = await this.fetchLiveExchangePosition(position.symbol, position.side as 'long' | 'short');
       
       let positionToUse = position;
       if (livePosition) {
@@ -479,7 +537,7 @@ export class OrderProtectionService {
       }
 
       // Calculate desired order state using live position data
-      const desiredOrders = this.calculateDesiredOrders(positionToUse, strategy);
+      const desiredOrders = await this.calculateDesiredOrders(positionToUse, strategy);
       const desiredSignature = this.getOrderSignature(desiredOrders);
 
       // Fetch existing orders

@@ -2455,6 +2455,56 @@ export class StrategyEngine extends EventEmitter {
     }
   }
 
+  /**
+   * Calculate ATR-based take profit price
+   * Uses the same logic as DCA calculator to ensure consistency
+   */
+  private async calculateATRBasedTP(
+    strategy: Strategy,
+    symbol: string,
+    avgEntryPrice: number,
+    side: 'long' | 'short'
+  ): Promise<number> {
+    try {
+      // Get DCA parameters from strategy
+      const strategyWithDCA = await storage.getStrategyWithDCA(strategy.id);
+      if (!strategyWithDCA || strategyWithDCA.dca_exit_cushion_multiplier == null) {
+        // Fallback to fixed percentage if DCA not configured
+        const profitTargetPercent = parseFloat(strategy.profitTargetPercent);
+        return side === 'long' 
+          ? avgEntryPrice * (1 + profitTargetPercent / 100)
+          : avgEntryPrice * (1 - profitTargetPercent / 100);
+      }
+
+      // Calculate ATR percentage
+      const atrPercent = await calculateATRPercent(
+        symbol,
+        10,
+        process.env.ASTER_API_KEY,
+        process.env.ASTER_SECRET_KEY
+      );
+
+      // Get exit cushion multiplier
+      const exitCushion = parseFloat(String(strategyWithDCA.dca_exit_cushion_multiplier));
+      
+      // Calculate TP distance using ATR-based formula
+      // TP = avgEntryPrice +/- (cushion * ATR% * avgEntryPrice)
+      const tpDistance = exitCushion * (atrPercent / 100) * avgEntryPrice;
+      const tpPrice = side === 'long' 
+        ? avgEntryPrice + tpDistance
+        : avgEntryPrice - tpDistance;
+
+      return tpPrice;
+    } catch (error) {
+      console.error(`⚠️ Error calculating ATR-based TP for ${symbol}, using fallback:`, error);
+      // Fallback to fixed percentage
+      const profitTargetPercent = parseFloat(strategy.profitTargetPercent);
+      return side === 'long' 
+        ? avgEntryPrice * (1 + profitTargetPercent / 100)
+        : avgEntryPrice * (1 - profitTargetPercent / 100);
+    }
+  }
+
   // Auto-repair missing TP/SL orders for exchange positions
   async autoRepairMissingTPSL(): Promise<number> {
     try {
@@ -2537,12 +2587,15 @@ export class StrategyEngine extends EventEmitter {
         const entryPrice = parseFloat(dbPosition.avgEntryPrice);
         
         const stopLossPercent = parseFloat(strategy.stopLossPercent);
-        const profitTargetPercent = parseFloat(strategy.profitTargetPercent);
         
-        // Calculate TP and SL prices using CORRECT entry price from database
-        const tpPrice = side === 'LONG' 
-          ? entryPrice * (1 + profitTargetPercent / 100)
-          : entryPrice * (1 - profitTargetPercent / 100);
+        // Calculate ATR-based TP price using database entry price
+        const tpPrice = await this.calculateATRBasedTP(
+          strategy,
+          symbol,
+          entryPrice,
+          side === 'LONG' ? 'long' : 'short'
+        );
+        
         const slPrice = side === 'LONG'
           ? entryPrice * (1 - stopLossPercent / 100)
           : entryPrice * (1 + stopLossPercent / 100);
@@ -2698,12 +2751,15 @@ export class StrategyEngine extends EventEmitter {
         if (!dbPosition || !strategy) continue;
         
         const stopLossPercent = parseFloat(strategy.stopLossPercent);
-        const profitTargetPercent = parseFloat(strategy.profitTargetPercent);
         
-        // Calculate TP and SL prices
-        const tpPrice = side === 'LONG' 
-          ? entryPrice * (1 + profitTargetPercent / 100)
-          : entryPrice * (1 - profitTargetPercent / 100);
+        // Calculate ATR-based TP price
+        const tpPrice = await this.calculateATRBasedTP(
+          strategy,
+          symbol,
+          entryPrice,
+          side === 'LONG' ? 'long' : 'short'
+        );
+        
         const slPrice = side === 'LONG'
           ? entryPrice * (1 - stopLossPercent / 100)
           : entryPrice * (1 + stopLossPercent / 100);
