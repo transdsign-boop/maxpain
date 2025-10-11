@@ -55,6 +55,7 @@ export class StrategyEngine extends EventEmitter {
   private positionCreationLocks: Map<string, Promise<void>> = new Map(); // sessionId-symbol -> lock to prevent duplicate positions
   private pendingLayerOrders: Map<string, Set<number>> = new Map(); // positionId -> Set of pending layer numbers to prevent duplicates
   private isRunning = false;
+  private isCheckingLayers = false; // Re-entrancy guard for layer monitoring
   private orderMonitorInterval?: NodeJS.Timeout;
   private cleanupInterval?: NodeJS.Timeout;
   private pollingInterval?: NodeJS.Timeout; // For preview mode polling
@@ -3225,14 +3226,217 @@ export class StrategyEngine extends EventEmitter {
     }
   }
 
-  // Start monitoring positions for exit conditions
+  // Start monitoring positions for progressive layer exits
   private startExitMonitoring() {
-    setInterval(async () => {
+    this.orderMonitorInterval = setInterval(async () => {
       if (!this.isRunning) return;
       
-      // Note: Live trading uses exchange TP/SL orders
-      // No manual exit monitoring needed since positions are managed by exchange
-    }, 1000); // Check every 1 second for real-time updates
+      // Re-entrancy guard: skip if previous check is still running
+      if (this.isCheckingLayers) {
+        return;
+      }
+      
+      this.isCheckingLayers = true;
+      try {
+        // Check all active sessions for progressive layer exits
+        for (const [strategyId, session] of this.activeSessions) {
+          const positions = await storage.getOpenPositions(session.id);
+          
+          for (const position of positions) {
+            await this.checkLayersForExit(position);
+          }
+        }
+      } catch (error) {
+        console.error('❌ Error in layer exit monitoring:', error);
+      } finally {
+        this.isCheckingLayers = false;
+      }
+    }, 2000); // Check every 2 seconds for progressive exits
+  }
+
+  // Check individual layers for progressive TP/SL exits
+  private async checkLayersForExit(position: Position) {
+    try {
+      // Get all open layers for this position
+      const openLayers = await storage.getOpenPositionLayers(position.id);
+      
+      if (openLayers.length === 0) {
+        return; // No layers to monitor
+      }
+
+      // Get current market price
+      const currentPrice = await this.fetchCurrentMarketPrice(position.symbol);
+      if (!currentPrice) {
+        return;
+      }
+
+      // Check each layer for TP/SL hits
+      for (const layer of openLayers) {
+        const entryPrice = parseFloat(layer.entryPrice);
+        const takeProfitPrice = parseFloat(layer.takeProfitPrice);
+        const stopLossPrice = parseFloat(layer.stopLossPrice);
+        
+        let shouldClose = false;
+        let reason = '';
+
+        if (position.side === 'long') {
+          // Long: close if price >= TP or price <= SL
+          if (currentPrice >= takeProfitPrice) {
+            shouldClose = true;
+            reason = 'TP Hit';
+          } else if (currentPrice <= stopLossPrice) {
+            shouldClose = true;
+            reason = 'SL Hit';
+          }
+        } else {
+          // Short: close if price <= TP or price >= SL
+          if (currentPrice <= takeProfitPrice) {
+            shouldClose = true;
+            reason = 'TP Hit';
+          } else if (currentPrice >= stopLossPrice) {
+            shouldClose = true;
+            reason = 'SL Hit';
+          }
+        }
+
+        if (shouldClose) {
+          console.log(`🎯 Layer ${layer.layerNumber} ${reason}: ${position.symbol} ${position.side}`);
+          console.log(`   Entry: $${entryPrice.toFixed(6)}, Current: $${currentPrice.toFixed(6)}, TP: $${takeProfitPrice.toFixed(6)}, SL: $${stopLossPrice.toFixed(6)}`);
+          
+          await this.closeIndividualLayer(position, layer, currentPrice, reason);
+        }
+      }
+    } catch (error) {
+      console.error(`❌ Error checking layers for ${position.symbol}:`, error);
+    }
+  }
+
+  // Close an individual layer when it hits TP/SL
+  private async closeIndividualLayer(position: Position, layer: any, currentPrice: number, reason: string) {
+    try {
+      const layerQty = parseFloat(layer.quantity);
+      const entryPrice = parseFloat(layer.entryPrice);
+
+      // Calculate P&L for this layer
+      const pnlPercent = position.side === 'long'
+        ? ((currentPrice - entryPrice) / entryPrice) * 100
+        : ((entryPrice - currentPrice) / entryPrice) * 100;
+
+      const realizedPnlDollar = (currentPrice - entryPrice) * layerQty * (position.side === 'long' ? 1 : -1);
+
+      console.log(`💰 Closing Layer ${layer.layerNumber}: Qty=${layerQty}, P&L=${pnlPercent.toFixed(2)}% ($${realizedPnlDollar.toFixed(2)})`);
+
+      // Execute market order to close this layer
+      const orderSide = position.side === 'long' ? 'sell' : 'buy';
+      
+      const closeResult = await this.executeLiveOrder({
+        symbol: position.symbol,
+        side: orderSide,
+        orderType: 'market',
+        quantity: layerQty,
+        price: currentPrice,
+        positionSide: this.exchangePositionMode === 'dual' ? position.side : undefined,
+      });
+
+      if (!closeResult.success) {
+        console.error(`❌ Failed to close layer ${layer.layerNumber}: ${closeResult.error}`);
+        return;
+      }
+
+      console.log(`✅ Layer ${layer.layerNumber} closed: Order #${closeResult.orderId}`);
+
+      // Mark layer as closed in database
+      await storage.closePositionLayer(layer.id, realizedPnlDollar);
+
+      // Update position: reduce quantity and recalculate
+      await this.updatePositionAfterLayerClose(position, layer, currentPrice);
+
+    } catch (error) {
+      console.error(`❌ Failed to close layer ${layer.layerNumber}:`, error);
+    }
+  }
+
+  // Update position after closing a layer
+  private async updatePositionAfterLayerClose(position: Position, closedLayer: any, closePrice: number) {
+    try {
+      const closedQty = parseFloat(closedLayer.quantity);
+      const currentTotalQty = parseFloat(position.totalQuantity);
+      const newTotalQty = currentTotalQty - closedQty;
+
+      // Get all remaining open layers to recalculate avg entry
+      const remainingLayers = await storage.getOpenPositionLayers(position.id);
+      
+      let newAvgEntry = 0;
+      let newTotalCost = 0;
+
+      if (remainingLayers.length > 0) {
+        // Recalculate weighted average entry from remaining layers
+        let totalNotional = 0;
+        let totalQty = 0;
+
+        for (const layer of remainingLayers) {
+          const qty = parseFloat(layer.quantity);
+          const entry = parseFloat(layer.entryPrice);
+          totalNotional += qty * entry;
+          totalQty += qty;
+          newTotalCost += parseFloat(layer.cost);
+        }
+
+        newAvgEntry = totalQty > 0 ? totalNotional / totalQty : 0;
+      }
+
+      // Calculate realized P&L for closed layer
+      const closedLayerEntry = parseFloat(closedLayer.entryPrice);
+      const pnlPercent = position.side === 'long'
+        ? ((closePrice - closedLayerEntry) / closedLayerEntry) * 100
+        : ((closedLayerEntry - closePrice) / closedLayerEntry) * 100;
+
+      const realizedPnlDollar = (closePrice - closedLayerEntry) * closedQty * (position.side === 'long' ? 1 : -1);
+
+      if (newTotalQty <= 0.000001) {
+        // Position fully closed - all layers taken profit/stopped out
+        console.log(`📊 Position fully closed: All ${position.symbol} ${position.side} layers exited`);
+        await storage.closePosition(position.id, new Date(), realizedPnlDollar, pnlPercent);
+        
+        // Note: Orphaned TP/SL orders will be cleaned up by the reconciliation service
+      } else {
+        // Position partially closed - update remaining size
+        console.log(`📊 Position reduced: ${currentTotalQty.toFixed(4)} → ${newTotalQty.toFixed(4)} (-${closedQty.toFixed(4)})`);
+        
+        // Update position in database
+        const updatedPosition = await storage.updatePosition(position.id, {
+          totalQuantity: newTotalQty.toString(),
+          avgEntryPrice: newAvgEntry.toString(),
+          totalCost: newTotalCost.toString(),
+        });
+
+        // Update TP/SL orders to match new position size
+        const session = Array.from(this.activeSessions.values()).find(s => s.id === position.sessionId);
+        if (session) {
+          const strategy = this.activeStrategies.get(session.strategyId);
+          if (strategy && updatedPosition) {
+            await orderProtectionService.updateProtectiveOrders(updatedPosition, strategy);
+          }
+        }
+      }
+
+    } catch (error) {
+      console.error(`❌ Failed to update position after layer close:`, error);
+    }
+  }
+
+  // Fetch current market price from exchange API
+  private async fetchCurrentMarketPrice(symbol: string): Promise<number | null> {
+    try {
+      const response = await fetch(`https://fapi.asterdex.com/fapi/v1/ticker/price?symbol=${symbol}`);
+      if (!response.ok) {
+        return null;
+      }
+      const data = await response.json();
+      return parseFloat(data.price);
+    } catch (error) {
+      return null;
+    }
   }
 
   // Check if position should be closed
