@@ -462,11 +462,16 @@ export class StrategyEngine extends EventEmitter {
         ? await storage.getPositionBySymbolAndSide(session.id, liquidation.symbol, positionSide)
         : await storage.getPositionBySymbol(session.id, liquidation.symbol);
       if (positionAfterWait && positionAfterWait.isOpen) {
-        // Position was created by the concurrent process, check if we should layer
-        const shouldLayer = await this.shouldAddLayer(strategy, positionAfterWait, liquidation);
-        if (shouldLayer) {
-          // NOTE: executeLayer() atomically checks and sets cooldown at the start
-          await this.executeLayer(strategy, session, positionAfterWait, liquidation, positionSide);
+        // CRITICAL: Verify position direction matches liquidation direction
+        if (positionAfterWait.side === positionSide) {
+          // Position was created by the concurrent process, check if we should layer
+          const shouldLayer = await this.shouldAddLayer(strategy, positionAfterWait, liquidation);
+          if (shouldLayer) {
+            // NOTE: executeLayer() atomically checks and sets cooldown at the start
+            await this.executeLayer(strategy, session, positionAfterWait, liquidation, positionSide);
+          }
+        } else {
+          console.log(`⏭️ Skipping layer (concurrent): Existing ${positionAfterWait.side} position doesn't match ${positionSide} liquidation signal`);
         }
       }
       return;
@@ -486,11 +491,17 @@ export class StrategyEngine extends EventEmitter {
         : await storage.getPositionBySymbol(session.id, liquidation.symbol);
       
       if (existingPosition && existingPosition.isOpen) {
-        // We have an open position - check if we should add a layer
-        const shouldLayer = await this.shouldAddLayer(strategy, existingPosition, liquidation);
-        if (shouldLayer) {
-          // NOTE: executeLayer() atomically checks and sets cooldown at the start
-          await this.executeLayer(strategy, session, existingPosition, liquidation, positionSide);
+        // CRITICAL: Verify position direction matches liquidation direction
+        // Only add layers if position side matches the intended positionSide from liquidation
+        if (existingPosition.side === positionSide) {
+          // We have an open position in the CORRECT direction - check if we should add a layer
+          const shouldLayer = await this.shouldAddLayer(strategy, existingPosition, liquidation);
+          if (shouldLayer) {
+            // NOTE: executeLayer() atomically checks and sets cooldown at the start
+            await this.executeLayer(strategy, session, existingPosition, liquidation, positionSide);
+          }
+        } else {
+          console.log(`⏭️ Skipping layer: Existing ${existingPosition.side} position doesn't match ${positionSide} liquidation signal`);
         }
       } else {
         // No open position - check if we should enter a new position
