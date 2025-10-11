@@ -397,6 +397,13 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
         : ((avgEntry - takeProfitPrice) / avgEntry) * 100)
     : sanitizedTP;
 
+  // Calculate actual SL percentage from exchange SL price
+  const actualSlPercent = stopLossPrice
+    ? (position.side === 'long'
+        ? ((avgEntry - stopLossPrice) / avgEntry) * 100
+        : ((stopLossPrice - avgEntry) / avgEntry) * 100)
+    : sanitizedSL;
+
   // Calculate liquidation price based on leverage (isolated margin)
   const maintenanceMarginFactor = 0.95;
   const hasLiquidation = leverage > 1 && !isNaN(leverage) && isFinite(leverage);
@@ -513,7 +520,10 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
                   </div>
                   <div>
                     <div className="text-[10px] text-muted-foreground">SL:</div>
-                    <div className="text-xs text-red-700 dark:text-red-500">{formatCurrency(stopLossPrice)}</div>
+                    <div className="text-xs text-red-700 dark:text-red-500">
+                      {formatCurrency(stopLossPrice)}
+                      <span className="text-[10px] ml-1 font-bold">({actualSlPercent.toFixed(2)}%)</span>
+                    </div>
                   </div>
                 </div>
 
@@ -648,7 +658,10 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
                 </div>
                 <div className="min-w-0">
                   <div className="text-[10px] text-muted-foreground truncate">SL:</div>
-                  <div className="text-xs text-red-700 dark:text-red-500 truncate">{formatCurrency(stopLossPrice)}</div>
+                  <div className="text-xs text-red-700 dark:text-red-500 truncate">
+                    {formatCurrency(stopLossPrice)}
+                    <span className="text-[10px] ml-1 font-bold">({actualSlPercent.toFixed(2)}%)</span>
+                  </div>
                 </div>
               </div>
 
