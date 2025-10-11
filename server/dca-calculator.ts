@@ -108,6 +108,7 @@ export interface StrategyWithDCA extends Strategy {
   dcaMaxRiskPercent: string;
   dcaVolatilityRef: string;
   dcaExitCushionMultiplier: string;
+  // Note: adaptiveTpEnabled, tpAtrMultiplier, etc. are already in base Strategy interface
 }
 
 /**
@@ -225,19 +226,61 @@ export function calculateDCALevels(
   // Step 7: Calculate position sizes for each level with individual TP/SL
   // qk = q1 · g^(k-1)
   // Each layer gets its own TP/SL based on ITS entry price for progressive profit-taking
-  const exitCushion = parseFloat(strategy.dcaExitCushionMultiplier.toString());
   
   const dcaLevels: DCALevel[] = levelPrices.map(({ level, ck, price }, i) => {
-    // Calculate individual TP for this layer (based on layer's entry price, not avg)
-    const layerTpDistance = exitCushion * (atrPercent / 100) * price;
-    const layerTpPrice = side === 'long' 
-      ? price + layerTpDistance
-      : price - layerTpDistance;
+    // Calculate adaptive TP for this layer
+    let layerTpPrice: number;
     
-    // Calculate individual SL for this layer (based on layer's entry price)
-    const layerSlPrice = side === 'long'
-      ? price * (1 - stopLossPercent / 100)
-      : price * (1 + stopLossPercent / 100);
+    if (strategy.adaptiveTpEnabled) {
+      // Adaptive TP: ATR × multiplier, clamped to min/max
+      const tpAtrMultiplier = parseFloat(strategy.tpAtrMultiplier?.toString() || '1.5');
+      const minTpPercent = parseFloat(strategy.minTpPercent?.toString() || '0.5');
+      const maxTpPercent = parseFloat(strategy.maxTpPercent?.toString() || '5.0');
+      
+      const rawTpPercent = atrPercent * tpAtrMultiplier;
+      const clampedTpPercent = Math.max(minTpPercent, Math.min(maxTpPercent, rawTpPercent));
+      
+      layerTpPrice = side === 'long'
+        ? price * (1 + clampedTpPercent / 100)
+        : price * (1 - clampedTpPercent / 100);
+      
+      if (level === 1) {
+        console.log(`   🎯 Adaptive Layer TP: ATR=${atrPercent.toFixed(2)}% × ${tpAtrMultiplier} = ${rawTpPercent.toFixed(2)}% → clamped to ${clampedTpPercent.toFixed(2)}%`);
+      }
+    } else {
+      // Fallback: Use exitCushion multiplier (legacy behavior)
+      const exitCushion = parseFloat(strategy.dcaExitCushionMultiplier.toString());
+      const layerTpDistance = exitCushion * (atrPercent / 100) * price;
+      layerTpPrice = side === 'long' 
+        ? price + layerTpDistance
+        : price - layerTpDistance;
+    }
+    
+    // Calculate adaptive SL for this layer
+    let layerSlPrice: number;
+    
+    if (strategy.adaptiveSlEnabled) {
+      // Adaptive SL: ATR × multiplier, clamped to min/max
+      const slAtrMultiplier = parseFloat(strategy.slAtrMultiplier?.toString() || '2.0');
+      const minSlPercent = parseFloat(strategy.minSlPercent?.toString() || '1.0');
+      const maxSlPercent = parseFloat(strategy.maxSlPercent?.toString() || '5.0');
+      
+      const rawSlPercent = atrPercent * slAtrMultiplier;
+      const clampedSlPercent = Math.max(minSlPercent, Math.min(maxSlPercent, rawSlPercent));
+      
+      layerSlPrice = side === 'long'
+        ? price * (1 - clampedSlPercent / 100)
+        : price * (1 + clampedSlPercent / 100);
+      
+      if (level === 1) {
+        console.log(`   🛡️ Adaptive Layer SL: ATR=${atrPercent.toFixed(2)}% × ${slAtrMultiplier} = ${rawSlPercent.toFixed(2)}% → clamped to ${clampedSlPercent.toFixed(2)}%`);
+      }
+    } else {
+      // Fallback: Use fixed stopLossPercent
+      layerSlPrice = side === 'long'
+        ? price * (1 - stopLossPercent / 100)
+        : price * (1 + stopLossPercent / 100);
+    }
     
     return {
       level,
@@ -256,15 +299,36 @@ export function calculateDCALevels(
   console.log(`   Total quantity if all fill: ${totalQuantity.toFixed(6)} units`);
   console.log(`   Total notional: $${totalNotional.toFixed(2)} (${leverage}x leverage)`);
   
-  // Step 8: Calculate take profit price (weighted average TP for reference only)
-  // TP = avgEntryPrice + (cushion * ATR% * avgEntryPrice)
-  const tpDistance = exitCushion * (atrPercent / 100) * avgEntryPrice;
-  const takeProfitPrice = side === 'long' 
-    ? avgEntryPrice + tpDistance
-    : avgEntryPrice - tpDistance;
+  // Step 8: Calculate reference take profit price (weighted average TP for reference only)
+  // This is now calculated using adaptive TP if enabled
+  let takeProfitPrice: number;
   
-  console.log(`   Take profit: $${takeProfitPrice.toFixed(4)} (${exitCushion}x ATR cushion)`);
-  console.log(`   TP distance: $${tpDistance.toFixed(4)} (${(tpDistance/avgEntryPrice*100).toFixed(2)}%)\n`);
+  if (strategy.adaptiveTpEnabled) {
+    const tpAtrMultiplier = parseFloat(strategy.tpAtrMultiplier?.toString() || '1.5');
+    const minTpPercent = parseFloat(strategy.minTpPercent?.toString() || '0.5');
+    const maxTpPercent = parseFloat(strategy.maxTpPercent?.toString() || '5.0');
+    
+    const rawTpPercent = atrPercent * tpAtrMultiplier;
+    const clampedTpPercent = Math.max(minTpPercent, Math.min(maxTpPercent, rawTpPercent));
+    
+    takeProfitPrice = side === 'long'
+      ? avgEntryPrice * (1 + clampedTpPercent / 100)
+      : avgEntryPrice * (1 - clampedTpPercent / 100);
+    
+    const tpDistance = Math.abs(takeProfitPrice - avgEntryPrice);
+    console.log(`   Take profit: $${takeProfitPrice.toFixed(4)} (adaptive ${clampedTpPercent.toFixed(2)}%)`);
+    console.log(`   TP distance: $${tpDistance.toFixed(4)} (${(tpDistance/avgEntryPrice*100).toFixed(2)}%)\n`);
+  } else {
+    // Fallback: Use exitCushion multiplier
+    const exitCushion = parseFloat(strategy.dcaExitCushionMultiplier.toString());
+    const tpDistance = exitCushion * (atrPercent / 100) * avgEntryPrice;
+    takeProfitPrice = side === 'long' 
+      ? avgEntryPrice + tpDistance
+      : avgEntryPrice - tpDistance;
+    
+    console.log(`   Take profit: $${takeProfitPrice.toFixed(4)} (${exitCushion}x ATR cushion)`);
+    console.log(`   TP distance: $${tpDistance.toFixed(4)} (${(tpDistance/avgEntryPrice*100).toFixed(2)}%)\n`);
+  }
   
   return {
     levels: dcaLevels,
@@ -334,6 +398,14 @@ export async function calculateNextLayer(
     dcaMaxRiskPercent: String(strategyWithDCA.dca_max_risk_percent),
     dcaVolatilityRef: String(strategyWithDCA.dca_volatility_ref),
     dcaExitCushionMultiplier: String(strategyWithDCA.dca_exit_cushion_multiplier),
+    adaptiveTpEnabled: strategyWithDCA.adaptive_tp_enabled ?? false,
+    tpAtrMultiplier: String(strategyWithDCA.tp_atr_multiplier ?? '1.5'),
+    minTpPercent: String(strategyWithDCA.min_tp_percent ?? '0.5'),
+    maxTpPercent: String(strategyWithDCA.max_tp_percent ?? '5.0'),
+    adaptiveSlEnabled: strategyWithDCA.adaptive_sl_enabled ?? false,
+    slAtrMultiplier: String(strategyWithDCA.sl_atr_multiplier ?? '2.0'),
+    minSlPercent: String(strategyWithDCA.min_sl_percent ?? '1.0'),
+    maxSlPercent: String(strategyWithDCA.max_sl_percent ?? '5.0'),
   };
   
   // If we have stored q1, use it directly for exponential sizing (avoids recalculation bug)
@@ -363,16 +435,48 @@ export async function calculateNextLayer(
     // Calculate quantity using exponential growth: qk = q1 * g^(k-1)
     const nextQuantity = storedQ1 * Math.pow(g, nextLayer - 1);
     
-    // Calculate individual TP for this layer (based on layer's entry price, not avg)
-    const layerTpDistance = exitCushion * (atrPercent / 100) * nextPrice;
-    const layerTpPrice = side === 'long' 
-      ? nextPrice + layerTpDistance
-      : nextPrice - layerTpDistance;
+    // Calculate adaptive TP for this layer
+    let layerTpPrice: number;
     
-    // Calculate individual SL for this layer (based on layer's entry price)
-    const layerSlPrice = side === 'long'
-      ? nextPrice * (1 - stopLossPercent / 100)
-      : nextPrice * (1 + stopLossPercent / 100);
+    if (fullStrategy.adaptiveTpEnabled) {
+      const tpAtrMultiplier = parseFloat(fullStrategy.tpAtrMultiplier?.toString() || '1.5');
+      const minTpPercent = parseFloat(fullStrategy.minTpPercent?.toString() || '0.5');
+      const maxTpPercent = parseFloat(fullStrategy.maxTpPercent?.toString() || '5.0');
+      
+      const rawTpPercent = atrPercent * tpAtrMultiplier;
+      const clampedTpPercent = Math.max(minTpPercent, Math.min(maxTpPercent, rawTpPercent));
+      
+      layerTpPrice = side === 'long'
+        ? nextPrice * (1 + clampedTpPercent / 100)
+        : nextPrice * (1 - clampedTpPercent / 100);
+    } else {
+      // Fallback: Use exitCushion multiplier
+      const layerTpDistance = exitCushion * (atrPercent / 100) * nextPrice;
+      layerTpPrice = side === 'long' 
+        ? nextPrice + layerTpDistance
+        : nextPrice - layerTpDistance;
+    }
+    
+    // Calculate adaptive SL for this layer
+    let layerSlPrice: number;
+    
+    if (fullStrategy.adaptiveSlEnabled) {
+      const slAtrMultiplier = parseFloat(fullStrategy.slAtrMultiplier?.toString() || '2.0');
+      const minSlPercent = parseFloat(fullStrategy.minSlPercent?.toString() || '1.0');
+      const maxSlPercent = parseFloat(fullStrategy.maxSlPercent?.toString() || '5.0');
+      
+      const rawSlPercent = atrPercent * slAtrMultiplier;
+      const clampedSlPercent = Math.max(minSlPercent, Math.min(maxSlPercent, rawSlPercent));
+      
+      layerSlPrice = side === 'long'
+        ? nextPrice * (1 - clampedSlPercent / 100)
+        : nextPrice * (1 + clampedSlPercent / 100);
+    } else {
+      // Fallback: Use fixed stopLossPercent
+      layerSlPrice = side === 'long'
+        ? nextPrice * (1 - stopLossPercent / 100)
+        : nextPrice * (1 + stopLossPercent / 100);
+    }
     
     console.log(`   Layer ${nextLayer}: price=$${nextPrice.toFixed(4)}, qty=${nextQuantity.toFixed(6)} (q1 × ${g}^${nextLayer-1}), TP=$${layerTpPrice.toFixed(4)}, SL=$${layerSlPrice.toFixed(4)}`);
     
