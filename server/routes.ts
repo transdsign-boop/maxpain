@@ -4019,6 +4019,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get actual TP/SL orders for live positions
+  app.get('/api/live/protective-orders', async (req, res) => {
+    try {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+      
+      if (!apiKey || !secretKey) {
+        return res.status(500).json({ error: 'API keys not configured' });
+      }
+
+      // Get all open orders
+      const timestamp = Date.now();
+      const params = `timestamp=${timestamp}`;
+      const signature = crypto
+        .createHmac('sha256', secretKey)
+        .update(params)
+        .digest('hex');
+
+      const response = await fetch(
+        `https://fapi.asterdex.com/fapi/v1/openOrders?${params}&signature=${signature}`,
+        {
+          headers: { 'X-MBX-APIKEY': apiKey },
+        }
+      );
+
+      if (!response.ok) {
+        return res.status(500).json({ error: 'Failed to fetch orders' });
+      }
+
+      const orders = await response.json();
+      
+      // Group orders by symbol and find TP/SL for each position
+      const protectiveOrders: Record<string, { symbol: string; tpPrice: number | null; slPrice: number | null; side: string }> = {};
+      
+      for (const order of orders) {
+        const key = `${order.symbol}-${order.side === 'BUY' ? 'SHORT' : 'LONG'}`; // Opposite of order side
+        
+        if (!protectiveOrders[key]) {
+          protectiveOrders[key] = {
+            symbol: order.symbol,
+            tpPrice: null,
+            slPrice: null,
+            side: order.side === 'BUY' ? 'SHORT' : 'LONG'
+          };
+        }
+        
+        // TP is LIMIT order, SL is STOP_MARKET order
+        if (order.type === 'LIMIT' && order.reduceOnly) {
+          protectiveOrders[key].tpPrice = parseFloat(order.price);
+        } else if (order.type === 'STOP_MARKET') {
+          protectiveOrders[key].slPrice = parseFloat(order.stopPrice);
+        }
+      }
+
+      res.json(protectiveOrders);
+    } catch (error) {
+      console.error('Error fetching protective orders:', error);
+      res.status(500).json({ error: 'Failed to fetch protective orders' });
+    }
+  });
+
   // Clean up duplicate positions for a strategy
   app.post('/api/strategies/:strategyId/cleanup-duplicates', async (req, res) => {
     try {
