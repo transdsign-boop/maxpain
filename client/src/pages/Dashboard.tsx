@@ -224,43 +224,12 @@ export default function Dashboard() {
     }
   };
 
-  // Real-time WebSocket connection
+  // Load initial data and settings
   useEffect(() => {
-    let ws: WebSocket | null = null;
-    let reconnectTimeout: NodeJS.Timeout;
     let isMounted = true;
-    let liquidationQueue: any[] = [];
-    let processingQueue = false;
 
     const normalizeTimestamp = (timestamp: string | Date): Date => {
       return typeof timestamp === 'string' ? new Date(timestamp) : timestamp;
-    };
-
-    const processQueue = async () => {
-      if (processingQueue || liquidationQueue.length === 0) return;
-      
-      processingQueue = true;
-      
-      while (liquidationQueue.length > 0 && isMounted) {
-        const liquidation = liquidationQueue.shift();
-        
-        if (liquidation) {
-          setLiquidations(prev => {
-            const exists = prev.some(liq => liq.id === liquidation.id);
-            if (exists) {
-              return prev;
-            }
-            return [liquidation, ...prev.slice(0, 9999)];
-          });
-          
-          // Wait 1 second before processing the next item
-          if (liquidationQueue.length > 0) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          }
-        }
-      }
-      
-      processingQueue = false;
     };
 
     // Load initial liquidations from API (last 8 hours)
