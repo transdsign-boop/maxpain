@@ -2683,7 +2683,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         dcaVolatilityRef: strategy.dca_volatility_ref,
         dcaExitCushionMultiplier: strategy.dca_exit_cushion_multiplier,
         retHighThreshold: strategy.ret_high_threshold,
-        retMediumThreshold: strategy.ret_medium_threshold
+        retMediumThreshold: strategy.ret_medium_threshold,
+        adaptiveTpEnabled: strategy.adaptive_tp_enabled,
+        tpAtrMultiplier: strategy.tp_atr_multiplier,
+        minTpPercent: strategy.min_tp_percent,
+        maxTpPercent: strategy.max_tp_percent
       });
     } catch (error) {
       console.error('Error fetching DCA settings:', error);
@@ -2729,6 +2733,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const num = parseFloat(val);
           return !isNaN(num) && num >= 5 && num <= 100;
         }, "Must be between 5 and 100").nullable().optional(),
+        adaptiveTpEnabled: z.union([z.boolean(), z.string()]).transform((val) => {
+          if (typeof val === 'boolean') return val;
+          return val === 'true';
+        }).nullable().optional(),
+        tpAtrMultiplier: z.string().refine((val) => {
+          const num = parseFloat(val);
+          return !isNaN(num) && num >= 0.5 && num <= 5.0;
+        }, "Must be between 0.5 and 5.0").nullable().optional(),
+        minTpPercent: z.string().refine((val) => {
+          const num = parseFloat(val);
+          return !isNaN(num) && num >= 0.1 && num <= 10.0;
+        }, "Must be between 0.1 and 10.0").nullable().optional(),
+        maxTpPercent: z.string().refine((val) => {
+          const num = parseFloat(val);
+          return !isNaN(num) && num >= 1.0 && num <= 20.0;
+        }, "Must be between 1.0 and 20.0").nullable().optional(),
       });
       
       const validatedData = dcaUpdateSchema.parse(req.body);
@@ -2740,6 +2760,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (Object.keys(filteredData).length === 0) {
         return res.status(400).json({ error: "No DCA parameters provided" });
+      }
+      
+      // Validate minTpPercent <= maxTpPercent if both are provided
+      if (filteredData.minTpPercent && filteredData.maxTpPercent) {
+        const minTp = parseFloat(filteredData.minTpPercent);
+        const maxTp = parseFloat(filteredData.maxTpPercent);
+        if (minTp > maxTp) {
+          return res.status(400).json({ error: "Min TP % must be less than or equal to Max TP %" });
+        }
       }
       
       const { updateStrategyDCAParams } = await import('./dca-sql');
@@ -2760,7 +2789,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         dcaVolatilityRef: updated.dca_volatility_ref,
         dcaExitCushionMultiplier: updated.dca_exit_cushion_multiplier,
         retHighThreshold: updated.ret_high_threshold,
-        retMediumThreshold: updated.ret_medium_threshold
+        retMediumThreshold: updated.ret_medium_threshold,
+        adaptiveTpEnabled: updated.adaptive_tp_enabled,
+        tpAtrMultiplier: updated.tp_atr_multiplier,
+        minTpPercent: updated.min_tp_percent,
+        maxTpPercent: updated.max_tp_percent
       });
     } catch (error) {
       console.error('Error updating DCA settings:', error);

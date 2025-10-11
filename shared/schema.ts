@@ -104,6 +104,11 @@ export const strategies = pgTable("strategies", {
   dcaMaxRiskPercent: decimal("dca_max_risk_percent", { precision: 5, scale: 2 }).notNull().default("1.0"), // Max % of account at risk
   dcaVolatilityRef: decimal("dca_volatility_ref", { precision: 5, scale: 2 }).notNull().default("1.0"), // ATR volatility reference multiplier
   dcaExitCushionMultiplier: decimal("dca_exit_cushion_multiplier", { precision: 5, scale: 2 }).notNull().default("0.6"), // Take profit at 60% of DCA distance
+  // Adaptive Take Profit (Automatic Volatility Envelope)
+  adaptiveTpEnabled: boolean("adaptive_tp_enabled").notNull().default(false), // Enable automatic TP based on ATR envelope
+  tpAtrMultiplier: decimal("tp_atr_multiplier", { precision: 5, scale: 2 }).notNull().default("1.5"), // TP = ATR × multiplier (default 1.5x ATR)
+  minTpPercent: decimal("min_tp_percent", { precision: 5, scale: 2 }).notNull().default("0.5"), // Minimum TP percentage (floor)
+  maxTpPercent: decimal("max_tp_percent", { precision: 5, scale: 2 }).notNull().default("5.0"), // Maximum TP percentage (ceiling)
   // RET (Realized Volatility) Threshold Configuration
   retHighThreshold: decimal("ret_high_threshold", { precision: 5, scale: 2 }).notNull().default("35.0"), // RET threshold for high volatility (requires RQ >= 3)
   retMediumThreshold: decimal("ret_medium_threshold", { precision: 5, scale: 2 }).notNull().default("25.0"), // RET threshold for medium volatility (requires RQ >= 2)
