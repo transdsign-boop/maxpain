@@ -48,7 +48,7 @@ export function useStrategyData() {
       const response = await fetch('/api/live/snapshot');
       if (!response.ok) return [];
       const data = await response.json();
-      return data?.snapshot?.positions || [];
+      return data?.positions || [];
     },
     staleTime: Infinity,
     gcTime: Infinity,
