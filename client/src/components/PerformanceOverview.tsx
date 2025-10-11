@@ -1090,32 +1090,18 @@ function PerformanceOverview() {
                 })}
 
                 {/* Vertical markers for transfer events (deposits) */}
-                {(() => {
-                  console.log('📊 Total transfers from API:', transfers?.length || 0);
-                  console.log('📊 Transfer data:', transfers);
-                  
-                  const filtered = transfers?.filter((transfer) => {
-                    // Filter transfers by date range
-                    const transferTime = new Date(transfer.timestamp).getTime();
-                    const startTimestamp = dateRange.start ? dateRange.start.getTime() : 0;
-                    const endTimestamp = dateRange.end ? dateRange.end.getTime() : Date.now();
-                    return transferTime >= startTimestamp && transferTime <= endTimestamp;
-                  });
-                  
-                  console.log('📊 Transfers after date filter:', filtered?.length || 0, filtered);
-                  
-                  return filtered;
-                })()?.map((transfer) => {
+                {transfers?.filter((transfer) => {
+                  // Filter transfers by date range
+                  const transferTime = new Date(transfer.timestamp).getTime();
+                  const startTimestamp = dateRange.start ? dateRange.start.getTime() : 0;
+                  const endTimestamp = dateRange.end ? dateRange.end.getTime() : Date.now();
+                  return transferTime >= startTimestamp && transferTime <= endTimestamp;
+                }).map((transfer) => {
                   const transferTime = new Date(transfer.timestamp).getTime();
                   const amount = parseFloat(transfer.amount || '0');
                   
-                  console.log(`💰 Processing transfer: ${transfer.id}, amount: ${amount}, time: ${new Date(transfer.timestamp).toISOString()}`);
-                  
                   // Only show deposits (positive amounts)
-                  if (amount <= 0) {
-                    console.log(`⏭️ Skipping transfer ${transfer.id}: amount=${amount} (not a deposit)`);
-                    return null;
-                  }
+                  if (amount <= 0) return null;
                   
                   // Find the closest trade or create a position for the transfer
                   let tradeNumber;
