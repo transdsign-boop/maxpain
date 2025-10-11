@@ -6,6 +6,8 @@ export interface DCALevel {
   price: number;
   quantity: number;
   cumulativeDistance: number; // ck value as percentage
+  takeProfitPrice: number; // Individual TP for this layer
+  stopLossPrice: number; // Individual SL for this layer
 }
 
 export interface DCAConfig {
@@ -220,14 +222,32 @@ export function calculateDCALevels(
   console.log(`   Loss per unit at stop: $${lossPerUnit.toFixed(4)}`);
   console.log(`   Solved q1: ${q1.toFixed(6)} units`);
   
-  // Step 7: Calculate position sizes for each level
+  // Step 7: Calculate position sizes for each level with individual TP/SL
   // qk = q1 · g^(k-1)
-  const dcaLevels: DCALevel[] = levelPrices.map(({ level, ck, price }, i) => ({
-    level,
-    price,
-    quantity: q1 * weights[i],
-    cumulativeDistance: ck,
-  }));
+  // Each layer gets its own TP/SL based on ITS entry price for progressive profit-taking
+  const exitCushion = parseFloat(strategy.dcaExitCushionMultiplier.toString());
+  
+  const dcaLevels: DCALevel[] = levelPrices.map(({ level, ck, price }, i) => {
+    // Calculate individual TP for this layer (based on layer's entry price, not avg)
+    const layerTpDistance = exitCushion * (atrPercent / 100) * price;
+    const layerTpPrice = side === 'long' 
+      ? price + layerTpDistance
+      : price - layerTpDistance;
+    
+    // Calculate individual SL for this layer (based on layer's entry price)
+    const layerSlPrice = side === 'long'
+      ? price * (1 - stopLossPercent / 100)
+      : price * (1 + stopLossPercent / 100);
+    
+    return {
+      level,
+      price,
+      quantity: q1 * weights[i],
+      cumulativeDistance: ck,
+      takeProfitPrice: layerTpPrice,
+      stopLossPrice: layerSlPrice,
+    };
+  });
   
   // Calculate total notional value if all levels fill
   const totalQuantity = dcaLevels.reduce((sum, l) => sum + l.quantity, 0);
@@ -236,9 +256,8 @@ export function calculateDCALevels(
   console.log(`   Total quantity if all fill: ${totalQuantity.toFixed(6)} units`);
   console.log(`   Total notional: $${totalNotional.toFixed(2)} (${leverage}x leverage)`);
   
-  // Step 8: Calculate take profit price
+  // Step 8: Calculate take profit price (weighted average TP for reference only)
   // TP = avgEntryPrice + (cushion * ATR% * avgEntryPrice)
-  const exitCushion = parseFloat(strategy.dcaExitCushionMultiplier.toString());
   const tpDistance = exitCushion * (atrPercent / 100) * avgEntryPrice;
   const takeProfitPrice = side === 'long' 
     ? avgEntryPrice + tpDistance
@@ -285,7 +304,7 @@ export async function calculateNextLayer(
   apiKey?: string,
   secretKey?: string,
   maxRiskOverride?: number  // Optional override for max risk % (uses remaining portfolio budget)
-): Promise<{ price: number; quantity: number; level: number } | null> {
+): Promise<{ price: number; quantity: number; level: number; takeProfitPrice: number; stopLossPrice: number } | null> {
   // Check if we've reached max layers
   if (currentLayer >= strategy.maxLayers) {
     console.log(`⚠️  Max layers reached (${strategy.maxLayers}), no more layers`);
@@ -327,6 +346,8 @@ export async function calculateNextLayer(
     const delta1 = parseFloat(fullStrategy.dcaStartStepPercent);
     const p = parseFloat(fullStrategy.dcaSpacingConvexity);
     const Vref = parseFloat(fullStrategy.dcaVolatilityRef);
+    const exitCushion = parseFloat(fullStrategy.dcaExitCushionMultiplier);
+    const stopLossPercent = parseFloat(strategy.stopLossPercent);
     
     const volatilityMultiplier = Math.max(1, atrPercent / Vref);
     const ck = delta1 * Math.pow(nextLayer, p) * volatilityMultiplier;
@@ -342,12 +363,25 @@ export async function calculateNextLayer(
     // Calculate quantity using exponential growth: qk = q1 * g^(k-1)
     const nextQuantity = storedQ1 * Math.pow(g, nextLayer - 1);
     
-    console.log(`   Layer ${nextLayer}: price=$${nextPrice.toFixed(4)}, qty=${nextQuantity.toFixed(6)} (q1 × ${g}^${nextLayer-1})`);
+    // Calculate individual TP for this layer (based on layer's entry price, not avg)
+    const layerTpDistance = exitCushion * (atrPercent / 100) * nextPrice;
+    const layerTpPrice = side === 'long' 
+      ? nextPrice + layerTpDistance
+      : nextPrice - layerTpDistance;
+    
+    // Calculate individual SL for this layer (based on layer's entry price)
+    const layerSlPrice = side === 'long'
+      ? nextPrice * (1 - stopLossPercent / 100)
+      : nextPrice * (1 + stopLossPercent / 100);
+    
+    console.log(`   Layer ${nextLayer}: price=$${nextPrice.toFixed(4)}, qty=${nextQuantity.toFixed(6)} (q1 × ${g}^${nextLayer-1}), TP=$${layerTpPrice.toFixed(4)}, SL=$${layerSlPrice.toFixed(4)}`);
     
     return {
       price: nextPrice,
       quantity: nextQuantity,
       level: nextLayer,
+      takeProfitPrice: layerTpPrice,
+      stopLossPrice: layerSlPrice,
     };
   }
   
@@ -361,7 +395,7 @@ export async function calculateNextLayer(
     atrPercent,
   }, maxRiskOverride);
   
-  // Get the next level's price and quantity
+  // Get the next level's price, quantity, and TP/SL
   const nextLevel = dcaResult.levels[nextLayer - 1];
   if (!nextLevel) {
     console.log(`⚠️  Level ${nextLayer} not found in DCA calculation`);
@@ -372,5 +406,7 @@ export async function calculateNextLayer(
     price: nextLevel.price,
     quantity: nextLevel.quantity,
     level: nextLayer,
+    takeProfitPrice: nextLevel.takeProfitPrice,
+    stopLossPrice: nextLevel.stopLossPrice,
   };
 }
