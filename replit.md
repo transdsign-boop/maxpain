@@ -76,8 +76,9 @@ PERMANENT DATA PRESERVATION: ALL trading data MUST be preserved forever. The use
 - **Live Data Orchestrator**: Caches and broadcasts real-time account/position data to the frontend via WebSocket. Eliminates API polling.
 - **Cascade Detection**: Dynamic monitoring of selected assets, syncing on startup and configuration changes, with aggregate-based trade filtering (all-or-none decisions across all monitored symbols).
 - **Cascade Detector Polling (Critical - DO NOT MODIFY)**: Highly optimized polling architecture for price updates and open interest to prevent rate limits (10-second tick interval, rotating OI fetch, 60-second OI cache).
-- **Trading System**: Live-only trading with HMAC-SHA256 authentication, automatic TP/SL management, queue-based locking for updates, and session-based tracking.
-- **DCA System**: Integrated Dollar Cost Averaging with ATR-based volatility scaling, convex level spacing, exponential size growth, and liquidation-aware risk management. Parameters managed via Global Settings.
+- **Trading System**: Live-only trading with HMAC-SHA256 authentication, automatic ATR-based TP/SL management, queue-based locking for updates, and session-based tracking.
+- **DCA System**: Integrated Dollar Cost Averaging with ATR-based volatility scaling, ATR-based take profit (TP distance = exitCushionMultiplier × ATR% × avgEntryPrice), convex level spacing, exponential size growth, and liquidation-aware risk management. Parameters managed via Global Settings.
+- **Take Profit**: ATR-based dynamic TP calculation using exit cushion multiplier (default 0.6x ATR). Falls back to fixed percentage only if DCA not configured.
 - **Data Integrity**: Idempotency for orders, atomic cooldowns, permanent preservation of all trading data.
 - **Performance Metrics**: Comprehensive tracking including deposited capital, ROI, transfer markers, commissions, and funding fees.
 
