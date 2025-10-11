@@ -202,15 +202,75 @@ export class OrderProtectionService {
   }
 
   /**
+   * Calculate ATR-based stop loss price with optional adaptive envelope
+   * Priority: Adaptive SL > Fixed Percentage
+   */
+  private async calculateATRBasedSL(
+    strategy: Strategy,
+    symbol: string,
+    avgEntryPrice: number,
+    side: 'long' | 'short'
+  ): Promise<number> {
+    try {
+      const { getStrategyWithDCA } = await import('./dca-sql');
+      const strategyWithDCA = await getStrategyWithDCA(strategy.id);
+      
+      const atrPercent = await calculateATRPercent(
+        symbol,
+        10,
+        process.env.ASTER_API_KEY,
+        process.env.ASTER_SECRET_KEY
+      );
+
+      // PRIORITY 1: Adaptive SL (Auto Envelope) - if enabled
+      if (strategyWithDCA && strategyWithDCA.adaptive_sl_enabled) {
+        const atrMultiplier = parseFloat(String(strategyWithDCA.sl_atr_multiplier || 2.0));
+        const minSlPercent = parseFloat(String(strategyWithDCA.min_sl_percent || 1.0));
+        const maxSlPercent = parseFloat(String(strategyWithDCA.max_sl_percent || 5.0));
+        
+        // Calculate SL as ATR × multiplier, clamped between min and max
+        const rawSlPercent = atrPercent * atrMultiplier;
+        const clampedSlPercent = Math.max(minSlPercent, Math.min(maxSlPercent, rawSlPercent));
+        
+        const slPrice = side === 'long'
+          ? avgEntryPrice * (1 - clampedSlPercent / 100)
+          : avgEntryPrice * (1 + clampedSlPercent / 100);
+        
+        console.log(`🛡️ Adaptive SL: ATR=${atrPercent.toFixed(2)}% × ${atrMultiplier} = ${rawSlPercent.toFixed(2)}% → clamped to ${clampedSlPercent.toFixed(2)}%`);
+        return slPrice;
+      }
+
+      // PRIORITY 2: Fixed percentage fallback
+      const stopLossPercent = parseFloat(strategy.stopLossPercent);
+      return side === 'long' 
+        ? avgEntryPrice * (1 - stopLossPercent / 100)
+        : avgEntryPrice * (1 + stopLossPercent / 100);
+
+    } catch (error) {
+      // Fallback to fixed percentage
+      const stopLossPercent = parseFloat(strategy.stopLossPercent);
+      return side === 'long' 
+        ? avgEntryPrice * (1 - stopLossPercent / 100)
+        : avgEntryPrice * (1 + stopLossPercent / 100);
+    }
+  }
+
+  /**
    * Calculate desired TP/SL orders based on position
    */
   private async calculateDesiredOrders(position: Position, strategy: Strategy): Promise<DesiredOrder[]> {
     const entryPrice = parseFloat(position.avgEntryPrice);
     const quantity = parseFloat(position.totalQuantity);
-    const slPercent = parseFloat(strategy.stopLossPercent);
 
-    // Calculate ATR-based TP price
+    // Calculate ATR-based TP and SL prices
     const rawTpPrice = await this.calculateATRBasedTP(
+      strategy,
+      position.symbol,
+      entryPrice,
+      position.side as 'long' | 'short'
+    );
+
+    const rawSlPrice = await this.calculateATRBasedSL(
       strategy,
       position.symbol,
       entryPrice,
@@ -224,12 +284,12 @@ export class OrderProtectionService {
 
     if (position.side === 'long') {
       tpPrice = this.roundPrice(position.symbol, rawTpPrice);
-      slPrice = this.roundPrice(position.symbol, entryPrice * (1 - slPercent / 100));
+      slPrice = this.roundPrice(position.symbol, rawSlPrice);
       tpSide = 'SELL';
       slSide = 'SELL';
     } else {
       tpPrice = this.roundPrice(position.symbol, rawTpPrice);
-      slPrice = this.roundPrice(position.symbol, entryPrice * (1 + slPercent / 100));
+      slPrice = this.roundPrice(position.symbol, rawSlPrice);
       tpSide = 'BUY';
       slSide = 'BUY';
     }
