@@ -172,21 +172,7 @@ export class OrderProtectionService {
         return tpPrice;
       }
 
-      // PRIORITY 2: Exit Cushion Multiplier (DCA-based TP) - if configured
-      if (strategyWithDCA && strategyWithDCA.dca_exit_cushion_multiplier != null) {
-        const exitCushion = parseFloat(String(strategyWithDCA.dca_exit_cushion_multiplier));
-        
-        // Calculate TP distance using ATR-based formula
-        // TP = avgEntryPrice +/- (cushion * ATR% * avgEntryPrice)
-        const tpDistance = exitCushion * (atrPercent / 100) * avgEntryPrice;
-        const tpPrice = side === 'long' 
-          ? avgEntryPrice + tpDistance
-          : avgEntryPrice - tpDistance;
-
-        return tpPrice;
-      }
-
-      // PRIORITY 3: Fixed percentage fallback
+      // PRIORITY 2: Fixed percentage (when adaptive is disabled)
       const profitTargetPercent = parseFloat(strategy.profitTargetPercent);
       return side === 'long' 
         ? avgEntryPrice * (1 + profitTargetPercent / 100)

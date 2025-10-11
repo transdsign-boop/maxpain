@@ -424,12 +424,12 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
     distanceToLiquidation = Math.max(0, rawDistance);
   }
   
-  // Calculate position pressure for visual indicator
-  const totalRange = sanitizedTP + sanitizedSL;
-  const clampedPnl = Math.max(-sanitizedSL, Math.min(sanitizedTP, unrealizedPnlPercent));
-  const clampedFromLeft = clampedPnl + sanitizedSL;
+  // Calculate position pressure for visual indicator using ACTUAL TP/SL percentages
+  const totalRange = actualTpPercent + actualSlPercent;
+  const clampedPnl = Math.max(-actualSlPercent, Math.min(actualTpPercent, unrealizedPnlPercent));
+  const clampedFromLeft = clampedPnl + actualSlPercent;
   const pressureValue = totalRange > 0 ? Math.max(0, Math.min(100, (clampedFromLeft / totalRange) * 100)) : 50;
-  const neutralPoint = totalRange > 0 ? (sanitizedSL / totalRange) * 100 : 50;
+  const neutralPoint = totalRange > 0 ? (actualSlPercent / totalRange) * 100 : 50;
 
   // Calculate gradient opacity based on distance from neutral point
   // Opacity increases as we move closer to either extreme (SL or TP)
