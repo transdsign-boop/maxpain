@@ -56,6 +56,7 @@ PERMANENT DATA PRESERVATION: ALL trading data MUST be preserved forever. The use
 - **Routing**: Wouter.
 - **Design**: Dark/light modes, responsive layout (Inter font for text, JetBrains Mono for numerical data), optimized tables/cards, mobile-first approach.
 - **Features**: Collapsible trade details, live strategy editing with performance charts, interactive P&L charts, hedge position detection, intelligent asset/risk recommendations, consolidated Global Settings dialog for all trading configurations, DCA settings, and API management (export/import JSON settings).
+- **Performance**: React.memo optimization on LiveLiquidationsSidebar, StrategyStatus, and PerformanceOverview components to prevent unnecessary re-renders and ensure smooth UI performance.
 
 **Backend:**
 - **Runtime**: Node.js with Express.js.
@@ -76,6 +77,7 @@ PERMANENT DATA PRESERVATION: ALL trading data MUST be preserved forever. The use
 - **Live Data Orchestrator**: Caches and broadcasts real-time account/position data to the frontend via WebSocket. Eliminates API polling.
 - **Cascade Detection**: Dynamic monitoring of selected assets, syncing on startup and configuration changes, with aggregate-based trade filtering (all-or-none decisions across all monitored symbols).
 - **Cascade Detector Polling (Critical - DO NOT MODIFY)**: Highly optimized polling architecture for price updates and open interest to prevent rate limits (10-second tick interval, rotating OI fetch, 60-second OI cache).
+- **Cascade Detector Logging**: Ultra-minimal logging that only outputs when liquidation notional >$100k or quality is excellent, reducing backend noise from ~400 lines/min to ~20 lines/min.
 - **Trading System**: Live-only trading with HMAC-SHA256 authentication, automatic ATR-based TP/SL management, queue-based locking for updates, and session-based tracking.
 - **DCA System**: Integrated Dollar Cost Averaging with ATR-based volatility scaling, ATR-based take profit (TP distance = exitCushionMultiplier × ATR% × avgEntryPrice), convex level spacing, exponential size growth, and liquidation-aware risk management. Parameters managed via Global Settings.
 - **Take Profit**: ATR-based dynamic TP calculation using exit cushion multiplier (default 0.6x ATR). Falls back to fixed percentage only if DCA not configured.
