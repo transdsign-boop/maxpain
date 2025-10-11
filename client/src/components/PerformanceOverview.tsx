@@ -897,7 +897,7 @@ function PerformanceOverview() {
                 4 Hours
               </Button>
               <Button
-                variant={(dateRange.start && Math.abs(dateRange.start.getTime() - subDays(new Date(), 1).getTime()) < 86400000) ? "default" : "outline"}
+                variant={(dateRange.start && Math.abs(dateRange.start.getTime() - subDays(new Date(), 1).getTime()) < 60000) ? "default" : "outline"}
                 size="sm"
                 onClick={() => setDateRange({ start: subDays(new Date(), 1), end: new Date() })}
                 data-testid="button-filter-1day"
@@ -905,7 +905,7 @@ function PerformanceOverview() {
                 Last 1 Day
               </Button>
               <Button
-                variant={(dateRange.start && Math.abs(dateRange.start.getTime() - subDays(new Date(), 3).getTime()) < 86400000) ? "default" : "outline"}
+                variant={(dateRange.start && Math.abs(dateRange.start.getTime() - subDays(new Date(), 3).getTime()) < 60000) ? "default" : "outline"}
                 size="sm"
                 onClick={() => setDateRange({ start: subDays(new Date(), 3), end: new Date() })}
                 data-testid="button-filter-3days"
@@ -913,7 +913,7 @@ function PerformanceOverview() {
                 Last 3 Days
               </Button>
               <Button
-                variant={(dateRange.start && Math.abs(dateRange.start.getTime() - subDays(new Date(), 7).getTime()) < 86400000) ? "default" : "outline"}
+                variant={(dateRange.start && Math.abs(dateRange.start.getTime() - subDays(new Date(), 7).getTime()) < 60000) ? "default" : "outline"}
                 size="sm"
                 onClick={() => setDateRange({ start: subDays(new Date(), 7), end: new Date() })}
                 data-testid="button-filter-7days"
@@ -921,7 +921,7 @@ function PerformanceOverview() {
                 Last 7 Days
               </Button>
               <Button
-                variant={(dateRange.start && Math.abs(dateRange.start.getTime() - subDays(new Date(), 30).getTime()) < 86400000) ? "default" : "outline"}
+                variant={(dateRange.start && Math.abs(dateRange.start.getTime() - subDays(new Date(), 30).getTime()) < 60000) ? "default" : "outline"}
                 size="sm"
                 onClick={() => setDateRange({ start: subDays(new Date(), 30), end: new Date() })}
                 data-testid="button-filter-30days"
