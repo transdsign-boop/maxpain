@@ -831,8 +831,8 @@ function PerformanceOverview() {
           </div>
         </div>
 
-        {/* Trading Statistics Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+        {/* Trading Statistics Grid - Positioned closer to balance metrics */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 -mt-2">
           {/* Win Rate */}
           <div className="space-y-1.5">
             <div className="flex items-center gap-1.5">
