@@ -119,19 +119,16 @@ export default function ConnectionStatus({ isConnected }: ConnectionStatusProps)
           }
         } else if (message.type === 'trade_block') {
           // Handle trade block events
-          setTradeBlock({
-            ...message.data,
-            timestamp: message.timestamp || Date.now()
-          });
-          // Clear block after 5 seconds if trades are allowed again
-          setTimeout(() => {
-            setTradeBlock(prev => {
-              if (prev && prev.timestamp === (message.timestamp || Date.now())) {
-                return null;
-              }
-              return prev;
+          if (message.data.blocked) {
+            // Set block - will remain until explicitly cleared
+            setTradeBlock({
+              ...message.data,
+              timestamp: message.timestamp || Date.now()
             });
-          }, 5000);
+          } else {
+            // Clear block - explicit unblock signal
+            setTradeBlock(null);
+          }
         }
       } catch (error) {
         console.error('Error parsing WebSocket message:', error);

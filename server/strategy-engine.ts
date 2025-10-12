@@ -807,6 +807,13 @@ export class StrategyEngine extends EventEmitter {
       // This prevents race condition where two threads both pass the check before either sets cooldown
       this.lastFillTime.set(cooldownKey, Date.now());
       console.log(`🔒 Entry cooldown locked ATOMICALLY for ${liquidation.symbol} ${positionSide} (${this.fillCooldownMs / 1000}s)`);
+      
+      // Broadcast unblock signal - trade is allowed
+      wsBroadcaster.broadcastTradeBlock({
+        blocked: false,
+        reason: 'Trade allowed',
+        type: 'unblock'
+      });
     } else {
       console.log(`❌ Percentile BLOCKED: $${currentLiquidationValue.toFixed(2)} is at ${currentPercentile}th percentile (< ${strategy.percentileThreshold}% threshold)`);
       console.log(`   📊 Need at least ${strategy.percentileThreshold}th percentile to enter (currently in bottom ${strategy.percentileThreshold}%)`);
