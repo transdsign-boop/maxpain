@@ -686,6 +686,58 @@ export class OrderProtectionService {
 
       if (!tpResult.success) {
         console.error(`❌ Failed to place new TP order: ${tpResult.error}`);
+        
+        // ISOLATED MARGIN FIX: If we get "ReduceOnly Order is rejected", it might be due to
+        // old orders with reduceOnly=true blocking new orders. Force cancel all old orders and retry.
+        if (tpResult.error && tpResult.error.includes('ReduceOnly')) {
+          console.log(`🔧 Detected ReduceOnly conflict - force canceling all existing orders and retrying...`);
+          
+          // Cancel ALL existing TP/SL orders
+          for (const order of tpslOrders) {
+            await this.cancelExchangeOrder(position.symbol, order.orderId);
+            console.log(`   🗑️ Cancelled old ${order.type} #${order.orderId}`);
+          }
+          
+          // Retry TP order placement
+          const tpRetry = await this.placeExchangeOrder(
+            position.symbol,
+            tpOrder.type,
+            tpOrder.side,
+            tpOrder.quantity,
+            tpOrder.price,
+            position.side.toUpperCase() as 'LONG' | 'SHORT'
+          );
+          
+          if (!tpRetry.success) {
+            console.error(`❌ TP retry still failed: ${tpRetry.error}`);
+            return { success: false, error: `TP order failed after cleanup: ${tpRetry.error}` };
+          }
+          
+          console.log(`   ✅ Placed new TP order #${tpRetry.orderId} (after cleanup)`);
+          
+          // Continue with SL placement using retry result
+          const slOrderRetry = desiredOrders.find(o => o.purpose === 'stop_loss')!;
+          const slRetry = await this.placeExchangeOrder(
+            position.symbol,
+            slOrderRetry.type,
+            slOrderRetry.side,
+            slOrderRetry.quantity,
+            slOrderRetry.price,
+            position.side.toUpperCase() as 'LONG' | 'SHORT'
+          );
+          
+          if (!slRetry.success) {
+            console.error(`❌ SL retry failed: ${slRetry.error}`);
+            await this.cancelExchangeOrder(position.symbol, tpRetry.orderId!);
+            return { success: false, error: `SL order failed after cleanup: ${slRetry.error}` };
+          }
+          
+          console.log(`   ✅ Placed new SL order #${slRetry.orderId} (after cleanup)`);
+          console.log(`✅ Protective orders updated safely for ${position.symbol} ${position.side} (forced cleanup + retry)`);
+          
+          return { success: true };
+        }
+        
         // Keep old orders in place - no rollback needed since nothing was cancelled
         return { success: false, error: `TP order failed: ${tpResult.error}` };
       }
