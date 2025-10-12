@@ -1,9 +1,10 @@
-import { useMemo, useState, useEffect, memo } from "react";
+import { useMemo, useState, useEffect, memo, Fragment } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Calendar } from "@/components/ui/calendar";
 import { TrendingUp, TrendingDown, Target, Award, Activity, LineChart, DollarSign, Percent, Calendar as CalendarIcon, X, Wallet } from "lucide-react";
 import { ComposedChart, Line, Area, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, ReferenceArea, Label } from "recharts";
@@ -86,6 +87,9 @@ function PerformanceOverview() {
   const [chartEndIndex, setChartEndIndex] = useState<number | null>(null);
   const [tradesPerPage, setTradesPerPage] = useState<number>(50);
   const [isDateFiltered, setIsDateFiltered] = useState(false);
+  
+  // Strategy change dialog state
+  const [selectedChange, setSelectedChange] = useState<any>(null);
   
   // Use centralized hook for all strategy-related data (reduces API calls by 10-20x)
   const {
@@ -1160,15 +1164,26 @@ function PerformanceOverview() {
                   }
                   
                   if (tradeIndex >= 0) {
+                    const tradeNumber = chartData[tradeIndex].tradeNumber;
                     return (
-                      <ReferenceLine
-                        key={change.id}
-                        x={chartData[tradeIndex].tradeNumber}
-                        yAxisId="left"
-                        stroke="hsl(var(--primary))"
-                        strokeWidth={1}
-                        strokeDasharray="5 5"
-                      />
+                      <Fragment key={change.id}>
+                        <ReferenceLine
+                          x={tradeNumber}
+                          yAxisId="left"
+                          stroke="hsl(var(--primary))"
+                          strokeWidth={2}
+                          strokeDasharray="5 5"
+                        />
+                        <ReferenceArea
+                          x1={tradeNumber - 0.5}
+                          x2={tradeNumber + 0.5}
+                          yAxisId="left"
+                          fill="transparent"
+                          style={{ cursor: 'pointer' }}
+                          onClick={() => setSelectedChange(change)}
+                          data-testid={`strategy-change-line-${change.id}`}
+                        />
+                      </Fragment>
                     );
                   }
                   return null;
@@ -1417,6 +1432,48 @@ function PerformanceOverview() {
         </>
         )}
       </CardContent>
+      
+      {/* Strategy Change Details Dialog */}
+      <Dialog open={!!selectedChange} onOpenChange={(open) => !open && setSelectedChange(null)}>
+        <DialogContent data-testid="dialog-strategy-change">
+          <DialogHeader>
+            <DialogTitle>Strategy Settings Changed</DialogTitle>
+            <DialogDescription>
+              {selectedChange && format(new Date(selectedChange.changedAt), 'MMM d, yyyy h:mm a')}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 mt-4">
+            {selectedChange && selectedChange.changes && Object.entries(selectedChange.changes).map(([key, value]: [string, any]) => {
+              if (value && typeof value === 'object' && 'old' in value && 'new' in value) {
+                // Convert camelCase to readable format
+                const readableKey = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+                
+                // Format array values nicely
+                const formatValue = (val: any) => {
+                  if (Array.isArray(val)) {
+                    return val.length > 3 ? `${val.length} assets` : val.join(', ');
+                  }
+                  return val;
+                };
+                
+                return (
+                  <div key={key} className="flex items-center justify-between p-3 rounded-md bg-muted/50" data-testid={`change-item-${key}`}>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-sm font-medium">{readableKey}</span>
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="font-mono text-muted-foreground">{formatValue(value.old)}</span>
+                        <span className="text-primary">→</span>
+                        <span className="font-mono text-foreground font-semibold">{formatValue(value.new)}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })}
+          </div>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
