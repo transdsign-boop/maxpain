@@ -45,6 +45,7 @@ interface SymbolPrecision {
   pricePrecision: number;
   stepSize: string;
   tickSize: string;
+  minNotional: number; // Minimum order value (price × quantity)
 }
 
 export class StrategyEngine extends EventEmitter {
@@ -105,6 +106,7 @@ export class StrategyEngine extends EventEmitter {
       for (const symbol of data.symbols || []) {
         const lotSizeFilter = symbol.filters?.find((f: any) => f.filterType === 'LOT_SIZE');
         const priceFilter = symbol.filters?.find((f: any) => f.filterType === 'PRICE_FILTER');
+        const minNotionalFilter = symbol.filters?.find((f: any) => f.filterType === 'MIN_NOTIONAL');
         
         if (lotSizeFilter && priceFilter) {
           this.symbolPrecisionCache.set(symbol.symbol, {
@@ -112,6 +114,7 @@ export class StrategyEngine extends EventEmitter {
             pricePrecision: symbol.pricePrecision || 8,
             stepSize: lotSizeFilter.stepSize || '1',
             tickSize: priceFilter.tickSize || '0.01',
+            minNotional: minNotionalFilter?.notional ? parseFloat(minNotionalFilter.notional) : 5.0, // Use exchange value or fallback to $5
           });
         }
       }
@@ -698,6 +701,10 @@ export class StrategyEngine extends EventEmitter {
       
       console.log(`💰 Risk Budget: current=${portfolioRisk.riskPercentage.toFixed(1)}%, max=${maxRiskPercent}%, remaining=${remainingRiskPercent.toFixed(1)}%, effective=${effectiveMaxRisk.toFixed(1)}% (${effectiveMaxRisk < strategyMaxRisk ? 'SCALED DOWN' : 'normal'})`);
       
+      // Get symbol precision (includes exchange-specific minimum notional)
+      const symbolPrecision = this.symbolPrecisionCache.get(liquidation.symbol);
+      const minNotional = symbolPrecision?.minNotional ?? 5.0; // Fallback to $5 if not cached
+      
       // Calculate DCA levels for prospective entry with risk override if needed
       const dcaResult = calculateDCALevels(fullStrategy, {
         entryPrice: price,
@@ -705,6 +712,7 @@ export class StrategyEngine extends EventEmitter {
         currentBalance,
         leverage: strategy.leverage,
         atrPercent,
+        minNotional,
       }, effectiveMaxRisk < strategyMaxRisk ? effectiveMaxRisk : undefined);
       
       // Get total risk from DCA calculation (this is the max risk across all layers)
@@ -1325,6 +1333,10 @@ export class StrategyEngine extends EventEmitter {
         dcaExitCushionMultiplier: String(strategyWithDCA.dca_exit_cushion_multiplier),
       };
       
+      // Get symbol precision (includes exchange-specific minimum notional)
+      const symbolPrecision = this.symbolPrecisionCache.get(liquidation.symbol);
+      const minNotional = symbolPrecision?.minNotional ?? 5.0; // Fallback to $5 if not cached
+      
       // Calculate all DCA levels - we'll use Level 1 for initial entry
       const dcaResult = calculateDCALevels(fullStrategy, {
         entryPrice: price,
@@ -1332,6 +1344,7 @@ export class StrategyEngine extends EventEmitter {
         currentBalance,
         leverage,
         atrPercent,
+        minNotional,
       });
       
       const firstLevel = dcaResult.levels[0];
