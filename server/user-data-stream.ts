@@ -6,6 +6,7 @@ interface UserDataStreamConfig {
   onAccountUpdate?: (data: any) => void;
   onPositionUpdate?: (data: any) => void;
   onOrderUpdate?: (data: any) => void;
+  onTradeFill?: (order: any) => void;
 }
 
 class UserDataStreamManager {
@@ -360,6 +361,12 @@ class UserDataStreamManager {
         data: order,
         timestamp: Date.now()
       });
+
+      // CRITICAL: If this is a TRADE event (position changed), trigger immediate protective order update
+      // This ensures TP/SL orders are ALWAYS current after every fill
+      if (orderData.x === 'TRADE' && this.config?.onTradeFill) {
+        this.config.onTradeFill(order);
+      }
 
       if (this.config?.onOrderUpdate) {
         this.config.onOrderUpdate(order);
