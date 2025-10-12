@@ -522,6 +522,58 @@ function PerformanceOverview() {
     const totalLosses = Math.abs(losingTrades.reduce((sum, e) => sum + parseFloat(e.income || '0'), 0));
     const totalRealizedPnl = filteredPnlEvents.reduce((sum, e) => sum + parseFloat(e.income || '0'), 0);
     
+    // Calculate max drawdown from filtered data (using sourceChartData which is already filtered)
+    let maxDrawdown = 0;
+    let maxDrawdownPercent = 0;
+    let peak = -Infinity;
+    
+    sourceChartData.forEach(trade => {
+      // Initialize peak from first data point
+      if (peak === -Infinity) {
+        peak = trade.cumulativePnl;
+      }
+      
+      if (trade.cumulativePnl > peak) {
+        peak = trade.cumulativePnl;
+      }
+      
+      const drawdown = peak - trade.cumulativePnl;
+      if (drawdown > maxDrawdown) {
+        maxDrawdown = drawdown;
+        // Calculate drawdown as percentage of peak (handle both positive and negative peaks)
+        const absPeak = Math.abs(peak);
+        maxDrawdownPercent = absPeak > 0 ? (drawdown / absPeak) * 100 : 0;
+      }
+    });
+    
+    // Calculate average trade time from filtered closed positions
+    let avgTradeTimeMs = 0;
+    if (closedPositions && closedPositions.length > 0) {
+      let filteredClosedPositions = closedPositions;
+      
+      if (dateRange.start || dateRange.end) {
+        const startTimestamp = dateRange.start ? dateRange.start.getTime() : 0;
+        const endTimestamp = dateRange.end ? dateRange.end.getTime() : Date.now();
+        
+        filteredClosedPositions = closedPositions.filter(pos => {
+          if (!pos.closedAt) return false;
+          const closeTime = new Date(pos.closedAt).getTime();
+          return closeTime >= startTimestamp && closeTime <= endTimestamp;
+        });
+      }
+      
+      if (filteredClosedPositions.length > 0) {
+        const totalTime = filteredClosedPositions.reduce((sum, pos) => {
+          if (!pos.openedAt || !pos.closedAt) return sum;
+          const openTime = new Date(pos.openedAt).getTime();
+          const closeTime = new Date(pos.closedAt).getTime();
+          return sum + (closeTime - openTime);
+        }, 0);
+        
+        avgTradeTimeMs = totalTime / filteredClosedPositions.length;
+      }
+    }
+    
     return {
       ...basePerformance,
       totalTrades: filteredPnlEvents.length,
@@ -538,8 +590,11 @@ function PerformanceOverview() {
       profitFactor: totalLosses > 0 ? totalWins / totalLosses : (totalWins > 0 ? 999 : 0),
       totalFees: totalCommissions,
       fundingCost: totalFundingFees,
+      averageTradeTimeMs: avgTradeTimeMs,
+      maxDrawdown: maxDrawdown,
+      maxDrawdownPercent: maxDrawdownPercent,
     };
-  }, [performance, dateRange, realizedPnlEvents, commissions, fundingFees]);
+  }, [performance, dateRange, realizedPnlEvents, commissions, fundingFees, sourceChartData, closedPositions]);
   const displayLoading = isLoading || chartLoading || liveAccountLoading;
   const showLoadingUI = displayLoading || !performance;
 
