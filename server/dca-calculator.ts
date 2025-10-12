@@ -16,6 +16,7 @@ export interface DCAConfig {
   currentBalance: number;
   leverage: number;
   atrPercent: number; // Current volatility as percentage
+  minNotional?: number; // Minimum order value required by exchange (price × quantity)
 }
 
 export interface DCAResult {
@@ -207,14 +208,14 @@ export function calculateDCALevels(
   // totalQuantity = Σ[qk] = q1 * Σ[wk]
   let q1 = maxRiskDollars / (lossPerUnit * totalWeight);
   
-  // CRITICAL: Ensure Layer 1 meets exchange minimum notional ($5 for Aster DEX)
-  const MIN_NOTIONAL = 5.0;
+  // CRITICAL: Ensure Layer 1 meets exchange minimum notional
+  const MIN_NOTIONAL = config.minNotional ?? 5.0; // Use exchange-specific value or fallback to $5
   const layer1Notional = q1 * entryPrice;
   
   if (layer1Notional < MIN_NOTIONAL) {
     const oldQ1 = q1;
     q1 = MIN_NOTIONAL / entryPrice; // Scale up to meet minimum
-    console.log(`   ⚠️ Layer 1 notional $${layer1Notional.toFixed(2)} < $${MIN_NOTIONAL} minimum`);
+    console.log(`   ⚠️ Layer 1 notional $${layer1Notional.toFixed(2)} < $${MIN_NOTIONAL} minimum (exchange requirement)`);
     console.log(`   📈 Adjusted q1: ${oldQ1.toFixed(6)} → ${q1.toFixed(6)} units to meet minimum`);
   }
   
