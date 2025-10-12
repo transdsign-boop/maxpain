@@ -760,8 +760,9 @@ export class StrategyEngine extends EventEmitter {
     // This ensures bot entry logic matches what user sees in the UI
     const currentLiquidationValue = parseFloat(liquidation.value);
     
-    // Get ALL historical liquidations for this symbol (not just lookback window)
-    const symbolHistory = this.liquidationHistory.get(liquidation.symbol);
+    // Query database for ALL historical liquidations for this symbol (matching UI's approach)
+    // Frontend fetches limit=10000, so we do the same for consistent percentile calculations
+    const symbolHistory = await this.storage.getLiquidationsBySymbol([liquidation.symbol], 10000);
     if (!symbolHistory || symbolHistory.length === 0) {
       console.log(`❌ No historical liquidations found for ${liquidation.symbol} - entry filtered`);
       // Note: No historical data is per-symbol filter, NOT a system-wide block
