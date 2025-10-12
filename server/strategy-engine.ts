@@ -328,6 +328,35 @@ export class StrategyEngine extends EventEmitter {
           },
           onOrderUpdate: (data) => {
             console.log('📦 Order updated via WebSocket');
+          },
+          onTradeFill: async (order) => {
+            // CRITICAL: Immediately update protective orders when position changes from trade fill
+            console.log(`🚨 TRADE FILL detected for ${order.symbol} ${order.positionSide} - triggering immediate protective order update`);
+            try {
+              const session = this.activeSessions.get(activeStrategy!.id);
+              if (!session) {
+                console.log('⏭️ No active session, skipping protective order update');
+                return;
+              }
+
+              // Find the specific position that just filled
+              const positionSide = order.positionSide === 'LONG' ? 'long' : 'short';
+              const position = await storage.getPositionBySymbolAndSide(
+                session.id,
+                order.symbol,
+                positionSide
+              );
+
+              if (position && position.isOpen) {
+                // Update protective orders ONLY for the position that just filled
+                await orderProtectionService.updateProtectiveOrders(position, activeStrategy!);
+                console.log(`✅ Protective orders updated immediately for ${order.symbol} ${positionSide}`);
+              } else {
+                console.log(`⏭️ No open ${order.symbol} ${positionSide} position found`);
+              }
+            } catch (error) {
+              console.error('❌ Failed to update protective orders after fill:', error);
+            }
           }
         });
         console.log('✅ User data stream started for real-time updates (deployed mode)');
@@ -4239,9 +4268,9 @@ export class StrategyEngine extends EventEmitter {
       } finally {
         this.cleanupInProgress = false;
       }
-    }, 30 * 1000); // 30 seconds (reduced from 60s for faster protective order safety)
+    }, 10 * 1000); // 10 seconds (aggressive protective order safety - always ensure TP/SL exist)
     
-    console.log('🔄 Order reconciliation started: Orphan cleanup + Position verification (30s intervals)');
+    console.log('🔄 Order reconciliation started: Orphan cleanup + Position verification (10s intervals)');
   }
 
   // Manual cleanup trigger - run all cleanup tasks immediately
