@@ -5077,6 +5077,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get exchange limits (MIN_NOTIONAL, precision) for cascade monitoring symbols
+  app.get('/api/exchange-limits', async (req, res) => {
+    try {
+      if (!strategyEngine) {
+        return res.status(503).json({ error: 'Strategy engine not initialized' });
+      }
+
+      // Get user settings to find cascade monitoring symbols
+      const settings = await storage.getUserSettings(DEFAULT_USER_ID);
+      const monitoredSymbols = settings?.cascadeMonitoringSymbols || [];
+
+      if (monitoredSymbols.length === 0) {
+        return res.json({ limits: [], message: 'No symbols configured for cascade monitoring' });
+      }
+
+      // Get symbol precision data from strategy engine cache using public getter
+      const limits = monitoredSymbols.map(symbol => {
+        const precision = strategyEngine.getSymbolPrecision(symbol);
+        return {
+          symbol,
+          minNotional: precision?.minNotional ?? null,
+          pricePrecision: precision?.pricePrecision ?? null,
+          quantityPrecision: precision?.quantityPrecision ?? null,
+          available: !!precision?.minNotional
+        };
+      });
+
+      res.json({ limits });
+    } catch (error) {
+      console.error('Error fetching exchange limits:', error);
+      res.status(500).json({ error: 'Failed to fetch exchange limits' });
+    }
+  });
+
   // Get trade entry errors with optional filtering (symbol, reason, date range)
   app.get('/api/trade-errors', async (req, res) => {
     try {
