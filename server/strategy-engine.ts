@@ -212,9 +212,36 @@ export class StrategyEngine extends EventEmitter {
     console.log('✅ StrategyEngine stopped');
   }
 
-  // Get current market price for a symbol
-  getCurrentPrice(symbol: string): number | undefined {
-    return this.priceCache.get(symbol);
+  // Get current market price for a symbol (with exchange API fallback)
+  async getCurrentPrice(symbol: string): Promise<number | undefined> {
+    // Check cache first
+    const cachedPrice = this.priceCache.get(symbol);
+    if (cachedPrice) {
+      return cachedPrice;
+    }
+
+    // Fallback: fetch from exchange ticker API
+    try {
+      const tickerUrl = `https://fapi.asterdex.com/fapi/v1/ticker/price?symbol=${symbol}`;
+      const response = await fetch(tickerUrl);
+      
+      if (!response.ok) {
+        console.log(`⚠️ Failed to fetch ticker for ${symbol}: ${response.status}`);
+        return undefined;
+      }
+
+      const data = await response.json();
+      const price = parseFloat(data.price);
+      
+      // Cache the fetched price for future use
+      this.priceCache.set(symbol, price);
+      console.log(`💰 Fetched and cached current price for ${symbol}: $${price.toFixed(6)}`);
+      
+      return price;
+    } catch (error) {
+      console.error(`❌ Error fetching ticker for ${symbol}:`, error);
+      return undefined;
+    }
   }
 
   // Set WebSocket clients for broadcasting trade notifications

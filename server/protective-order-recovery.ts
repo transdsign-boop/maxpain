@@ -125,12 +125,12 @@ export class ProtectiveOrderRecovery {
                   : layerEntryPrice * (1 + stopLossPercent / 100);
               }
               
-              // Get current market price for validation
-              const cachedPrice = (this.strategyEngine as any).getCurrentPrice(position.symbol);
+              // Get current market price for validation (with exchange API fallback)
+              const currentPrice = await (this.strategyEngine as any).getCurrentPrice(position.symbol);
               
-              if (!cachedPrice) {
+              if (!currentPrice) {
                 // Can't validate TP/SL without current market price - skip for now
-                console.log(`⏭️ Skipping Layer ${layer.layerNumber} protective orders - no current market price available for validation`);
+                console.log(`⏭️ Skipping Layer ${layer.layerNumber} protective orders - failed to fetch current market price`);
                 console.log(`   Will retry in next reconciliation cycle (60s)`);
                 continue;
               }
@@ -140,19 +140,19 @@ export class ProtectiveOrderRecovery {
               
               if (position.side === 'short') {
                 // SHORT TP is a BUY LIMIT - must be <= current price
-                if (recalculatedTP > cachedPrice) {
-                  validTP = cachedPrice * 0.998; // 0.2% below current price for safety
-                  console.log(`⚠️ Adjusted SHORT TP from $${recalculatedTP.toFixed(6)} to $${validTP.toFixed(6)} (market at $${cachedPrice.toFixed(6)})`);
+                if (recalculatedTP > currentPrice) {
+                  validTP = currentPrice * 0.998; // 0.2% below current price for safety
+                  console.log(`⚠️ Adjusted SHORT TP from $${recalculatedTP.toFixed(6)} to $${validTP.toFixed(6)} (market at $${currentPrice.toFixed(6)})`);
                 }
               } else {
                 // LONG TP is a SELL LIMIT - must be >= current price
-                if (recalculatedTP < cachedPrice) {
-                  validTP = cachedPrice * 1.002; // 0.2% above current price for safety
-                  console.log(`⚠️ Adjusted LONG TP from $${recalculatedTP.toFixed(6)} to $${validTP.toFixed(6)} (market at $${cachedPrice.toFixed(6)})`);
+                if (recalculatedTP < currentPrice) {
+                  validTP = currentPrice * 1.002; // 0.2% above current price for safety
+                  console.log(`⚠️ Adjusted LONG TP from $${recalculatedTP.toFixed(6)} to $${validTP.toFixed(6)} (market at $${currentPrice.toFixed(6)})`);
                 }
               }
               
-              console.log(`🔄 Recalculated TP/SL: Entry=$${layerEntryPrice.toFixed(6)}, Market=$${cachedPrice.toFixed(6)}, TP=$${validTP.toFixed(6)}, SL=$${recalculatedSL.toFixed(6)} (ATR=${currentATR.toFixed(2)}%)`);
+              console.log(`🔄 Recalculated TP/SL: Entry=$${layerEntryPrice.toFixed(6)}, Market=$${currentPrice.toFixed(6)}, TP=$${validTP.toFixed(6)}, SL=$${recalculatedSL.toFixed(6)} (ATR=${currentATR.toFixed(2)}%)`);
               
               // Create modified layer with recalculated prices
               const layerWithRecalculatedPrices = {
