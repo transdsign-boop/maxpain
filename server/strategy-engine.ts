@@ -18,6 +18,7 @@ import { userDataStreamManager } from './user-data-stream';
 import { liveDataOrchestrator } from './live-data-orchestrator';
 import { syncCompletedTrades } from './exchange-sync';
 import { ProtectiveOrderRecovery } from './protective-order-recovery';
+import { wsBroadcaster } from './websocket-broadcaster';
 
 // Aster DEX fee schedule
 const ASTER_MAKER_FEE_PERCENT = 0.01;  // 0.01% for limit orders (adds liquidity) 
