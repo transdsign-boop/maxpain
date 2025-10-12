@@ -1500,10 +1500,10 @@ function PerformanceOverview() {
                   settings: [
                     { key: 'profitTargetPercent', label: 'Profit Target', suffix: '%' },
                     { key: 'stopLossPercent', label: 'Stop Loss', suffix: '%' },
-                    { key: 'useAdaptiveTP', label: 'Adaptive TP' },
-                    { key: 'useAdaptiveSL', label: 'Adaptive SL' },
-                    { key: 'exitCushionMultiplier', label: 'TP Cushion Multiplier', suffix: 'x' },
-                    { key: 'stopLossCushionMultiplier', label: 'SL Cushion Multiplier', suffix: 'x' },
+                    { key: 'adaptiveTpEnabled', label: 'Adaptive TP' },
+                    { key: 'adaptiveSlEnabled', label: 'Adaptive SL' },
+                    { key: 'tpAtrMultiplier', label: 'TP ATR Multiplier', suffix: 'x' },
+                    { key: 'slAtrMultiplier', label: 'SL ATR Multiplier', suffix: 'x' },
                   ]
                 },
                 {
@@ -1514,6 +1514,7 @@ function PerformanceOverview() {
                     { key: 'dcaSizeGrowth', label: 'Size Growth' },
                     { key: 'dcaMaxRiskPercent', label: 'Max Risk per Layer', suffix: '%' },
                     { key: 'dcaVolatilityRef', label: 'Volatility Reference', suffix: '%' },
+                    { key: 'dcaExitCushionMultiplier', label: 'Exit Cushion Multiplier', suffix: 'x' },
                   ]
                 },
               ];
