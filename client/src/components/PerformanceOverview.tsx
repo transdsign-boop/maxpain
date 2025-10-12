@@ -1373,92 +1373,48 @@ function PerformanceOverview() {
           </div>
         </div>
 
-        {/* Additional Metrics Ticker */}
-        <div className="-mx-6 overflow-hidden bg-muted/30 border-y border-border py-3">
-          <div className="ticker-wrapper">
-            <div className="ticker-content">
-              {/* First set */}
-              <div className="ticker-item">
-                <DollarSign className="h-3 w-3 text-muted-foreground" />
-                <span className="text-xs text-muted-foreground">In Use</span>
-                <span className="text-xs font-mono font-semibold" data-testid="ticker-margin-in-use">{formatCurrency(marginInUse)}</span>
-              </div>
-              <div className="ticker-item">
-                <TrendingUp className="h-3 w-3 text-muted-foreground" />
-                <span className="text-xs text-muted-foreground">Exposure</span>
-                <span className="text-xs font-mono font-semibold" data-testid="ticker-total-exposure">{formatCurrency(totalExposure)}</span>
-              </div>
-              <div className="ticker-item">
-                <Award className="h-3 w-3 text-[rgb(190,242,100)]" />
-                <span className="text-xs text-muted-foreground">Best Trade</span>
-                <span className="text-xs font-mono font-semibold text-[rgb(190,242,100)]">{formatCurrency(displayPerformance.bestTrade)}</span>
-              </div>
-              <div className="ticker-item">
-                <TrendingDown className="h-3 w-3 text-[rgb(251,146,60)]" />
-                <span className="text-xs text-muted-foreground">Worst Trade</span>
-                <span className="text-xs font-mono font-semibold text-[rgb(251,146,60)]">{formatCurrency(displayPerformance.worstTrade)}</span>
-              </div>
-              <div className="ticker-item">
-                <Activity className="h-3 w-3 text-muted-foreground" />
-                <span className="text-xs text-muted-foreground">Avg Trade Time</span>
-                <span className="text-xs font-mono font-semibold">{formatTradeTime(displayPerformance.averageTradeTimeMs)}</span>
-              </div>
-              <div className="ticker-item">
-                <TrendingDown className="h-3 w-3 text-[rgb(251,146,60)]" />
-                <span className="text-xs text-muted-foreground">Max Drawdown</span>
-                <span className="text-xs font-mono font-semibold text-[rgb(251,146,60)]">{formatCurrency(displayPerformance.maxDrawdown)} ({(displayPerformance.maxDrawdownPercent ?? 0).toFixed(2)}%)</span>
-              </div>
-              <div className="ticker-item">
-                <TrendingUp className="h-3 w-3 text-[rgb(190,242,100)]" />
-                <span className="text-xs text-muted-foreground">Avg Win</span>
-                <span className="text-xs font-mono font-semibold text-[rgb(190,242,100)]">{formatCurrency(displayPerformance.averageWin)}</span>
-              </div>
-              <div className="ticker-item">
-                <TrendingDown className="h-3 w-3 text-[rgb(251,146,60)]" />
-                <span className="text-xs text-muted-foreground">Avg Loss</span>
-                <span className="text-xs font-mono font-semibold text-[rgb(251,146,60)]">{formatCurrency(displayPerformance.averageLoss)}</span>
-              </div>
-              {/* Duplicate set for seamless loop */}
-              <div className="ticker-item">
-                <DollarSign className="h-3 w-3 text-muted-foreground" />
-                <span className="text-xs text-muted-foreground">In Use</span>
-                <span className="text-xs font-mono font-semibold">{formatCurrency(marginInUse)}</span>
-              </div>
-              <div className="ticker-item">
-                <TrendingUp className="h-3 w-3 text-muted-foreground" />
-                <span className="text-xs text-muted-foreground">Exposure</span>
-                <span className="text-xs font-mono font-semibold">{formatCurrency(totalExposure)}</span>
-              </div>
-              <div className="ticker-item">
-                <Award className="h-3 w-3 text-[rgb(190,242,100)]" />
-                <span className="text-xs text-muted-foreground">Best Trade</span>
-                <span className="text-xs font-mono font-semibold text-[rgb(190,242,100)]">{formatCurrency(displayPerformance.bestTrade)}</span>
-              </div>
-              <div className="ticker-item">
-                <TrendingDown className="h-3 w-3 text-[rgb(251,146,60)]" />
-                <span className="text-xs text-muted-foreground">Worst Trade</span>
-                <span className="text-xs font-mono font-semibold text-[rgb(251,146,60)]">{formatCurrency(displayPerformance.worstTrade)}</span>
-              </div>
-              <div className="ticker-item">
-                <Activity className="h-3 w-3 text-muted-foreground" />
-                <span className="text-xs text-muted-foreground">Avg Trade Time</span>
-                <span className="text-xs font-mono font-semibold">{formatTradeTime(displayPerformance.averageTradeTimeMs)}</span>
-              </div>
-              <div className="ticker-item">
-                <TrendingDown className="h-3 w-3 text-[rgb(251,146,60)]" />
-                <span className="text-xs text-muted-foreground">Max Drawdown</span>
-                <span className="text-xs font-mono font-semibold text-[rgb(251,146,60)]">{formatCurrency(displayPerformance.maxDrawdown)} ({(displayPerformance.maxDrawdownPercent ?? 0).toFixed(2)}%)</span>
-              </div>
-              <div className="ticker-item">
-                <TrendingUp className="h-3 w-3 text-[rgb(190,242,100)]" />
-                <span className="text-xs text-muted-foreground">Avg Win</span>
-                <span className="text-xs font-mono font-semibold text-[rgb(190,242,100)]">{formatCurrency(displayPerformance.averageWin)}</span>
-              </div>
-              <div className="ticker-item">
-                <TrendingDown className="h-3 w-3 text-[rgb(251,146,60)]" />
-                <span className="text-xs text-muted-foreground">Avg Loss</span>
-                <span className="text-xs font-mono font-semibold text-[rgb(251,146,60)]">{formatCurrency(displayPerformance.averageLoss)}</span>
-              </div>
+        {/* Additional Metrics - Multi-Column List */}
+        <div className="-mx-6 bg-muted/30 border-y border-border py-3 px-6">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 gap-x-6 gap-y-2">
+            <div className="flex items-center gap-1.5">
+              <DollarSign className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+              <span className="text-xs text-muted-foreground whitespace-nowrap">In Use</span>
+              <span className="text-xs font-mono font-semibold ml-auto" data-testid="ticker-margin-in-use">{formatCurrency(marginInUse)}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <TrendingUp className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+              <span className="text-xs text-muted-foreground whitespace-nowrap">Exposure</span>
+              <span className="text-xs font-mono font-semibold ml-auto" data-testid="ticker-total-exposure">{formatCurrency(totalExposure)}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Award className="h-3 w-3 text-[rgb(190,242,100)] flex-shrink-0" />
+              <span className="text-xs text-muted-foreground whitespace-nowrap">Best Trade</span>
+              <span className="text-xs font-mono font-semibold text-[rgb(190,242,100)] ml-auto">{formatCurrency(displayPerformance.bestTrade)}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <TrendingDown className="h-3 w-3 text-[rgb(251,146,60)] flex-shrink-0" />
+              <span className="text-xs text-muted-foreground whitespace-nowrap">Worst Trade</span>
+              <span className="text-xs font-mono font-semibold text-[rgb(251,146,60)] ml-auto">{formatCurrency(displayPerformance.worstTrade)}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Activity className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+              <span className="text-xs text-muted-foreground whitespace-nowrap">Avg Trade Time</span>
+              <span className="text-xs font-mono font-semibold ml-auto">{formatTradeTime(displayPerformance.averageTradeTimeMs)}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <TrendingDown className="h-3 w-3 text-[rgb(251,146,60)] flex-shrink-0" />
+              <span className="text-xs text-muted-foreground whitespace-nowrap">Max Drawdown</span>
+              <span className="text-xs font-mono font-semibold text-[rgb(251,146,60)] ml-auto">{formatCurrency(displayPerformance.maxDrawdown)} ({(displayPerformance.maxDrawdownPercent ?? 0).toFixed(2)}%)</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <TrendingUp className="h-3 w-3 text-[rgb(190,242,100)] flex-shrink-0" />
+              <span className="text-xs text-muted-foreground whitespace-nowrap">Avg Win</span>
+              <span className="text-xs font-mono font-semibold text-[rgb(190,242,100)] ml-auto">{formatCurrency(displayPerformance.averageWin)}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <TrendingDown className="h-3 w-3 text-[rgb(251,146,60)] flex-shrink-0" />
+              <span className="text-xs text-muted-foreground whitespace-nowrap">Avg Loss</span>
+              <span className="text-xs font-mono font-semibold text-[rgb(251,146,60)] ml-auto">{formatCurrency(displayPerformance.averageLoss)}</span>
             </div>
           </div>
         </div>
