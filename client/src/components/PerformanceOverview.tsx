@@ -767,49 +767,64 @@ function PerformanceOverview() {
             </div>
           </div>
 
-          {/* Risk Pressure Bar */}
-          <div className="flex flex-col items-center gap-2 lg:border-l lg:pl-6" data-testid="container-risk-bar">
+          {/* Risk Pressure Meter - Circular */}
+          <div className="flex flex-col items-center gap-3 lg:border-l lg:pl-6" data-testid="container-risk-bar">
             <div className="text-xs text-muted-foreground uppercase tracking-wider text-center whitespace-nowrap">Total Risk</div>
             <div className="relative flex flex-col items-center">
-              {/* Vertical Bar Container */}
-              <div className="relative h-40 w-12 bg-muted rounded-md overflow-hidden border border-border">
-                {/* Risk Fill */}
-                <div 
-                  className={`absolute bottom-0 left-0 right-0 transition-all duration-300 ${
-                    (() => {
-                      const maxRisk = activeStrategy ? parseFloat(activeStrategy.maxPortfolioRiskPercent) : 15;
-                      const redThreshold = maxRisk * 0.9; // Red at 90% of max
-                      const orangeThreshold = maxRisk * 0.75; // Orange at 75% of max
-                      
-                      return riskPercentage >= redThreshold ? 'bg-red-600 dark:bg-red-500' :
-                        riskPercentage >= orangeThreshold ? 'bg-orange-500 dark:bg-orange-400' :
-                        'bg-lime-600 dark:bg-lime-500';
-                    })()
-                  }`}
-                  style={{ height: `${Math.min(100, riskPercentage)}%` }}
-                  data-testid="bar-risk-fill"
-                />
-                {/* Percentage Label Inside Bar */}
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="text-xs font-mono font-bold text-white mix-blend-difference">
-                    {riskPercentage.toFixed(1)}%
-                  </span>
-                </div>
-              </div>
-              {/* Dollar Amount Below Bar */}
-              <div className="mt-2 text-center">
-                <div className="text-sm font-mono font-bold text-red-600 dark:text-red-400" data-testid="text-risk-amount">
-                  -${totalRisk.toFixed(2)}
-                </div>
-                <div className="text-[10px] text-muted-foreground">
-                  if all SL hit
+              {/* Circular Meter */}
+              <div className="relative w-28 h-28">
+                <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
+                  {/* Background circle */}
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="40"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="8"
+                    className="text-muted opacity-20"
+                  />
+                  {/* Progress circle */}
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="40"
+                    fill="none"
+                    strokeWidth="8"
+                    strokeLinecap="round"
+                    className={`transition-all duration-300 ${
+                      (() => {
+                        const maxRisk = activeStrategy ? parseFloat(activeStrategy.maxPortfolioRiskPercent) : 15;
+                        const redThreshold = maxRisk * 0.9;
+                        const orangeThreshold = maxRisk * 0.75;
+                        
+                        return riskPercentage >= redThreshold ? 'stroke-red-600 dark:stroke-red-500' :
+                          riskPercentage >= orangeThreshold ? 'stroke-orange-500 dark:stroke-orange-400' :
+                          'stroke-lime-600 dark:stroke-lime-500';
+                      })()
+                    }`}
+                    strokeDasharray={`${2 * Math.PI * 40}`}
+                    strokeDashoffset={`${2 * Math.PI * 40 * (1 - Math.min(100, riskPercentage) / 100)}`}
+                    data-testid="bar-risk-fill"
+                  />
+                </svg>
+                {/* Centered content */}
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <div className="text-xl font-mono font-bold">{riskPercentage.toFixed(1)}%</div>
+                  <div className="text-xs font-mono font-bold text-red-600 dark:text-red-400 mt-0.5" data-testid="text-risk-amount">
+                    -${totalRisk.toFixed(2)}
+                  </div>
                 </div>
               </div>
               
+              <div className="text-[10px] text-muted-foreground text-center mt-1">
+                if all SL hit
+              </div>
+              
               {/* Risk Limit Slider */}
-              <div className="mt-4 w-32 space-y-2">
+              <div className="mt-3 w-28 space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] text-muted-foreground">Max Risk</span>
+                  <span className="text-[10px] text-muted-foreground">Max</span>
                   <span className="text-xs font-mono font-semibold">{localRiskLimit.toFixed(1)}%</span>
                 </div>
                 <Slider
@@ -822,10 +837,6 @@ function PerformanceOverview() {
                   className="cursor-pointer"
                   data-testid="slider-max-risk"
                 />
-                <div className="flex justify-between text-[9px] text-muted-foreground">
-                  <span>1%</span>
-                  <span>100%</span>
-                </div>
               </div>
             </div>
           </div>
