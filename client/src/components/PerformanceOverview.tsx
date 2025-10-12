@@ -106,6 +106,7 @@ function PerformanceOverview() {
     livePositions,
     strategyChanges,
     transfers,
+    closedPositions,
     realizedPnlEvents,
     realizedPnlTotal,
     realizedPnlCount,
@@ -201,23 +202,51 @@ function PerformanceOverview() {
   const rawSourceData = useMemo(() => {
     if (!realizedPnlEvents || realizedPnlEvents.length === 0) return [];
     
+    // Create a map of closed positions by symbol and close time for quick lookup
+    const closedPosMap = new Map<string, any>();
+    if (closedPositions && closedPositions.length > 0) {
+      closedPositions.forEach(pos => {
+        if (pos.closedAt) {
+          const closeTime = new Date(pos.closedAt).getTime();
+          const key = `${pos.symbol}-${closeTime}`;
+          closedPosMap.set(key, pos);
+        }
+      });
+    }
+    
     let cumulativePnl = 0;
     return realizedPnlEvents.map((event, index) => {
       const pnl = parseFloat(event.income || '0');
       cumulativePnl += pnl;
       
+      // Try to match P&L event with closed position to get actual side
+      // Match by symbol and timestamp (within 5 second window)
+      let actualSide = 'unknown';
+      const eventTime = event.time;
+      
+      // Look for matching position within ±5 seconds
+      for (let offset = -5000; offset <= 5000; offset += 1000) {
+        const checkTime = eventTime + offset;
+        const key = `${event.symbol}-${checkTime}`;
+        const matchedPos = closedPosMap.get(key);
+        if (matchedPos) {
+          actualSide = matchedPos.side;
+          break;
+        }
+      }
+      
       return {
         tradeNumber: index + 1,
         timestamp: event.time,
         symbol: event.symbol,
-        side: pnl > 0 ? 'long' : 'short', // Inferred from P&L direction
+        side: actualSide,
         pnl: pnl,
         cumulativePnl: cumulativePnl,
         entryPrice: 0, // Not available from P&L events
         quantity: 0, // Not available from P&L events
       };
     });
-  }, [realizedPnlEvents]);
+  }, [realizedPnlEvents, closedPositions]);
   
   // Apply date range filter
   const sourceChartData = useMemo(() => {
