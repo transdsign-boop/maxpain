@@ -3185,7 +3185,7 @@ export class StrategyEngine extends EventEmitter {
         
         // Create position layer record for Layer 1
         if (firstLayerData) {
-          await storage.createPositionLayer({
+          const layer = await storage.createPositionLayer({
             positionId: position.id,
             layerNumber: 1,
             entryPrice: firstLayerData.entryPrice.toString(),
@@ -3195,6 +3195,33 @@ export class StrategyEngine extends EventEmitter {
             stopLossPrice: firstLayerData.stopLossPrice.toString(),
           });
           console.log(`📊 Created Layer 1 record: Entry=$${firstLayerData.entryPrice.toFixed(6)}, TP=$${firstLayerData.takeProfitPrice.toFixed(6)}, SL=$${firstLayerData.stopLossPrice.toFixed(6)}`);
+          
+          // Find the strategy for this session to pass to placeLayerProtectiveOrders
+          let strategy: Strategy | undefined;
+          for (const [strategyId, strat] of this.activeStrategies) {
+            const session = this.activeSessions.get(strategyId);
+            if (session && session.id === order.sessionId) {
+              strategy = strat;
+              break;
+            }
+          }
+          
+          // Place LIMIT TP and STOP_MARKET SL orders on the exchange order book
+          if (strategy) {
+            const orderResult = await this.placeLayerProtectiveOrders({
+              position,
+              layer,
+              strategy,
+            });
+            
+            if (orderResult.success && orderResult.tpOrderId && orderResult.slOrderId) {
+              // Update layer with order IDs
+              await storage.updateLayerOrderIds(layer.id, orderResult.tpOrderId, orderResult.slOrderId);
+              console.log(`✅ Layer 1 protective orders placed: TP=${orderResult.tpOrderId}, SL=${orderResult.slOrderId}`);
+            } else {
+              console.error(`❌ Failed to place protective orders for Layer 1:`, orderResult.error);
+            }
+          }
           
           // Clean up only after successful layer creation
           this.pendingFirstLayerData.delete(q1Key);
@@ -3274,7 +3301,7 @@ export class StrategyEngine extends EventEmitter {
     const layerData = this.pendingFirstLayerData.get(layerKey);
     
     if (layerData) {
-      await storage.createPositionLayer({
+      const layer = await storage.createPositionLayer({
         positionId: position.id,
         layerNumber: nextLayerNumber,
         entryPrice: layerData.entryPrice.toString(),
@@ -3284,6 +3311,33 @@ export class StrategyEngine extends EventEmitter {
         stopLossPrice: layerData.stopLossPrice.toString(),
       });
       console.log(`📊 Created Layer ${nextLayerNumber} record: Entry=$${layerData.entryPrice.toFixed(6)}, TP=$${layerData.takeProfitPrice.toFixed(6)}, SL=$${layerData.stopLossPrice.toFixed(6)}`);
+      
+      // Find the strategy for this position to pass to placeLayerProtectiveOrders
+      let strategy: Strategy | undefined;
+      for (const [strategyId, strat] of this.activeStrategies) {
+        const session = this.activeSessions.get(strategyId);
+        if (session && session.id === position.sessionId) {
+          strategy = strat;
+          break;
+        }
+      }
+      
+      // Place LIMIT TP and STOP_MARKET SL orders on the exchange order book
+      if (strategy) {
+        const orderResult = await this.placeLayerProtectiveOrders({
+          position,
+          layer,
+          strategy,
+        });
+        
+        if (orderResult.success && orderResult.tpOrderId && orderResult.slOrderId) {
+          // Update layer with order IDs
+          await storage.updateLayerOrderIds(layer.id, orderResult.tpOrderId, orderResult.slOrderId);
+          console.log(`✅ Layer ${nextLayerNumber} protective orders placed: TP=${orderResult.tpOrderId}, SL=${orderResult.slOrderId}`);
+        } else {
+          console.error(`❌ Failed to place protective orders for Layer ${nextLayerNumber}:`, orderResult.error);
+        }
+      }
       
       // Clean up after use
       this.pendingFirstLayerData.delete(layerKey);
