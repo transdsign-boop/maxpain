@@ -762,7 +762,7 @@ export class StrategyEngine extends EventEmitter {
     
     // Query database for ALL historical liquidations for this symbol (matching UI's approach)
     // Frontend fetches limit=10000, so we do the same for consistent percentile calculations
-    const symbolHistory = await this.storage.getLiquidationsBySymbol([liquidation.symbol], 10000);
+    const symbolHistory = await storage.getLiquidationsBySymbol([liquidation.symbol], 10000);
     if (!symbolHistory || symbolHistory.length === 0) {
       console.log(`❌ No historical liquidations found for ${liquidation.symbol} - entry filtered`);
       // Note: No historical data is per-symbol filter, NOT a system-wide block
@@ -1065,9 +1065,69 @@ export class StrategyEngine extends EventEmitter {
     }
   }
 
+  // Reconcile stale positions: close database positions that are already closed on the exchange
+  private async reconcileStalePositions(sessionId: string, strategy: Strategy): Promise<void> {
+    try {
+      // Get live positions from exchange
+      const livePositions = await this.getExchangePositions();
+      if (!livePositions) {
+        console.log('⏭️ Skipping position reconciliation - could not fetch live positions');
+        return;
+      }
+      
+      // Get open positions from database
+      const dbPositions = await storage.getOpenPositions(sessionId);
+      if (dbPositions.length === 0) {
+        return; // No positions to reconcile
+      }
+      
+      // Create a map of live positions by symbol+side for quick lookup
+      const livePositionMap = new Map<string, any>();
+      for (const livePos of livePositions) {
+        if (Math.abs(parseFloat(livePos.positionAmt)) > 0) {
+          const side = parseFloat(livePos.positionAmt) > 0 ? 'long' : 'short';
+          const key = `${livePos.symbol}-${side}`;
+          livePositionMap.set(key, livePos);
+        }
+      }
+      
+      // Check each database position against live positions
+      let closedCount = 0;
+      for (const dbPos of dbPositions) {
+        const key = `${dbPos.symbol}-${dbPos.side}`;
+        const livePos = livePositionMap.get(key);
+        
+        // If position exists in DB but not on exchange (or has zero quantity), it's stale
+        if (!livePos) {
+          console.log(`🧹 Auto-closing stale position: ${dbPos.symbol} ${dbPos.side} (closed on exchange but open in DB)`);
+          
+          // Close the position in the database
+          await storage.updatePosition(dbPos.id, {
+            status: 'closed',
+            closedAt: new Date(),
+            unrealizedPnl: '0', // Already realized on exchange
+          });
+          
+          closedCount++;
+        }
+      }
+      
+      if (closedCount > 0) {
+        console.log(`✅ Reconciliation complete: auto-closed ${closedCount} stale position(s)`);
+      }
+    } catch (error) {
+      console.error('⚠️ Error reconciling stale positions:', error);
+      // Don't throw - allow portfolio calculation to continue
+    }
+  }
+
   // Calculate current portfolio risk metrics for gating decisions
   private async calculatePortfolioRisk(strategy: Strategy, session: TradeSession): Promise<{ openPositionCount: number; riskPercentage: number; totalRisk: number }> {
     try {
+      // AUTOMATIC POSITION RECONCILIATION: Close stale database positions before calculating risk
+      // This prevents ghost positions (closed on exchange but open in DB) from blocking trades
+      await this.reconcileStalePositions(session.id, strategy);
+      
       // Get all open positions for this session
       const openPositions = await storage.getOpenPositions(session.id);
       
