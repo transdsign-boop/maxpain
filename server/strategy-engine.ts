@@ -1692,7 +1692,9 @@ export class StrategyEngine extends EventEmitter {
           orderParams.price = roundedPrice;
           orderParams.quantity = roundedQuantity;
           orderParams.timeInForce = 'GTC';
-          orderParams.reduceOnly = true; // Keep reduceOnly for limit TP orders
+          // HEDGE MODE FIX: Do NOT set reduceOnly for LIMIT orders
+          // When positionSide is set, reduceOnly is automatically implied
+          // Setting it explicitly causes "ReduceOnly Order is rejected" error
         }
         
         return orderParams;
