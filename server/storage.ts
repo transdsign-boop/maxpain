@@ -146,6 +146,7 @@ export interface IStorage {
   getPositionLayers(positionId: string): Promise<PositionLayer[]>;
   getOpenPositionLayers(positionId: string): Promise<PositionLayer[]>;
   closePositionLayer(layerId: string, realizedPnl: number): Promise<PositionLayer>;
+  updateLayerOrderIds(layerId: string, tpOrderId: string, slOrderId: string): Promise<PositionLayer>;
 
   // Strategy Change operations
   recordStrategyChange(change: InsertStrategyChange): Promise<StrategyChange>;
@@ -827,6 +828,17 @@ export class DatabaseStorage implements IStorage {
         isOpen: false,
         realizedPnl: realizedPnl.toString(),
         closedAt: new Date()
+      })
+      .where(eq(positionLayers.id, layerId))
+      .returning();
+    return result[0];
+  }
+
+  async updateLayerOrderIds(layerId: string, tpOrderId: string, slOrderId: string): Promise<PositionLayer> {
+    const result = await db.update(positionLayers)
+      .set({
+        tpOrderId,
+        slOrderId,
       })
       .where(eq(positionLayers.id, layerId))
       .returning();
