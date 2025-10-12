@@ -612,7 +612,8 @@ export class OrderProtectionService {
   }
 
   /**
-   * Main method: Update protective orders with atomic cancel-then-place
+   * Main method: Update protective orders with PLACE-THEN-CANCEL pattern
+   * SAFETY FIX: Places new orders BEFORE canceling old ones to eliminate protective order gaps
    */
   async updateProtectiveOrders(
     position: Position,
@@ -672,47 +673,7 @@ export class OrderProtectionService {
       console.log(`🔄 Updating protective orders for ${position.symbol} ${position.side}`);
       console.log(`   Desired: TP=${desiredSignature.tp}, SL=${desiredSignature.sl}`);
 
-      // STEP 1: Cancel all existing TP/SL orders
-      const cancelledOrders: ExchangeOrder[] = [];
-      if (tpslOrders.length > 0) {
-        console.log(`   Cancelling ${tpslOrders.length} existing orders...`);
-        
-        for (const order of tpslOrders) {
-          const cancelled = await this.cancelExchangeOrder(position.symbol, order.orderId);
-          if (cancelled) {
-            cancelledOrders.push(order);
-            console.log(`   ✅ Cancelled ${order.type} #${order.orderId}`);
-          } else {
-            // ABORT: Cancellation failed - restore already-cancelled orders
-            console.error(`   ❌ Failed to cancel ${order.type} #${order.orderId}`);
-            console.log(`   🔄 Restoring ${cancelledOrders.length} already-cancelled orders...`);
-            
-            for (const oldOrder of cancelledOrders) {
-              // Skip MARKET orders in rollback (protective orders are LIMIT or STOP_MARKET only)
-              if (oldOrder.type !== 'LIMIT' && oldOrder.type !== 'STOP_MARKET') continue;
-              
-              const restoreResult = await this.placeExchangeOrder(
-                position.symbol,
-                oldOrder.type,
-                oldOrder.side,
-                parseFloat(oldOrder.origQty),
-                parseFloat(oldOrder.type === 'LIMIT' ? oldOrder.price : oldOrder.stopPrice),
-                position.side.toUpperCase() as 'LONG' | 'SHORT'
-              );
-              
-              if (restoreResult.success) {
-                console.log(`   ✅ Restored ${oldOrder.type} order`);
-              } else {
-                console.warn(`   ⚠️ Failed to restore ${oldOrder.type} order`);
-              }
-            }
-            
-            return { success: false, error: `Failed to cancel order #${order.orderId}` };
-          }
-        }
-      }
-
-      // STEP 2: Place new TP order
+      // STEP 1: Place NEW TP order (before canceling old ones - safety first!)
       const tpOrder = desiredOrders.find(o => o.purpose === 'take_profit')!;
       const tpResult = await this.placeExchangeOrder(
         position.symbol,
@@ -724,36 +685,14 @@ export class OrderProtectionService {
       );
 
       if (!tpResult.success) {
-        // ROLLBACK: Restore ONLY the orders we successfully cancelled
-        console.error(`❌ Failed to place TP order: ${tpResult.error}`);
-        console.log(`🔄 Attempting rollback - restoring ${cancelledOrders.length} cancelled orders...`);
-        
-        for (const oldOrder of cancelledOrders) {
-          // Skip MARKET orders in rollback (protective orders are LIMIT or STOP_MARKET only)
-          if (oldOrder.type !== 'LIMIT' && oldOrder.type !== 'STOP_MARKET') continue;
-          
-          const restoreResult = await this.placeExchangeOrder(
-            position.symbol,
-            oldOrder.type,
-            oldOrder.side,
-            parseFloat(oldOrder.origQty),
-            parseFloat(oldOrder.type === 'LIMIT' ? oldOrder.price : oldOrder.stopPrice),
-            position.side.toUpperCase() as 'LONG' | 'SHORT'
-          );
-          
-          if (restoreResult.success) {
-            console.log(`   ✅ Restored ${oldOrder.type} order`);
-          } else {
-            console.warn(`   ⚠️ Failed to restore ${oldOrder.type} order`);
-          }
-        }
-        
+        console.error(`❌ Failed to place new TP order: ${tpResult.error}`);
+        // Keep old orders in place - no rollback needed since nothing was cancelled
         return { success: false, error: `TP order failed: ${tpResult.error}` };
       }
 
-      console.log(`   ✅ Placed TP order #${tpResult.orderId}`);
+      console.log(`   ✅ Placed new TP order #${tpResult.orderId}`);
 
-      // STEP 3: Place new SL order
+      // STEP 2: Place NEW SL order (still before canceling - maintain protection!)
       const slOrder = desiredOrders.find(o => o.purpose === 'stop_loss')!;
       const slResult = await this.placeExchangeOrder(
         position.symbol,
@@ -765,43 +704,37 @@ export class OrderProtectionService {
       );
 
       if (!slResult.success) {
-        // ROLLBACK: Cancel the TP order we just placed and restore ONLY cancelled orders
-        console.error(`❌ Failed to place SL order: ${slResult.error}`);
-        console.log(`🔄 Attempting rollback...`);
+        console.error(`❌ Failed to place new SL order: ${slResult.error}`);
+        console.log(`🔄 Cancelling orphaned TP order #${tpResult.orderId}`);
         
-        // Cancel the TP we just placed
-        if (tpResult.orderId) {
-          console.log(`   Cancelling TP order #${tpResult.orderId}`);
-          await this.cancelExchangeOrder(position.symbol, tpResult.orderId);
-        }
+        // Cancel the TP we just placed since SL failed
+        await this.cancelExchangeOrder(position.symbol, tpResult.orderId!);
         
-        // Restore ONLY the orders we successfully cancelled
-        console.log(`   Restoring ${cancelledOrders.length} cancelled orders...`);
-        for (const oldOrder of cancelledOrders) {
-          // Skip MARKET orders in rollback (protective orders are LIMIT or STOP_MARKET only)
-          if (oldOrder.type !== 'LIMIT' && oldOrder.type !== 'STOP_MARKET') continue;
-          
-          const restoreResult = await this.placeExchangeOrder(
-            position.symbol,
-            oldOrder.type,
-            oldOrder.side,
-            parseFloat(oldOrder.origQty),
-            parseFloat(oldOrder.type === 'LIMIT' ? oldOrder.price : oldOrder.stopPrice),
-            position.side.toUpperCase() as 'LONG' | 'SHORT'
-          );
-          
-          if (restoreResult.success) {
-            console.log(`   ✅ Restored ${oldOrder.type} order`);
-          } else {
-            console.warn(`   ⚠️ Failed to restore ${oldOrder.type} order`);
-          }
-        }
-        
+        // Keep old orders in place - no need to restore since they were never cancelled
         return { success: false, error: `SL order failed: ${slResult.error}` };
       }
 
-      console.log(`   ✅ Placed SL order #${slResult.orderId}`);
-      console.log(`✅ Protective orders updated successfully for ${position.symbol} ${position.side}`);
+      console.log(`   ✅ Placed new SL order #${slResult.orderId}`);
+
+      // STEP 3: NOW cancel old orders (new protective orders are already active!)
+      const newOrderIds = new Set([tpResult.orderId, slResult.orderId]);
+      const ordersToCancel = tpslOrders.filter(o => !newOrderIds.has(o.orderId));
+      
+      if (ordersToCancel.length > 0) {
+        console.log(`   Cancelling ${ordersToCancel.length} old orders (new orders already active)...`);
+        
+        for (const order of ordersToCancel) {
+          const cancelled = await this.cancelExchangeOrder(position.symbol, order.orderId);
+          if (cancelled) {
+            console.log(`   ✅ Cancelled old ${order.type} #${order.orderId}`);
+          } else {
+            // Not critical - new orders are already active
+            console.warn(`   ⚠️ Failed to cancel old ${order.type} #${order.orderId} (not critical - new orders active)`);
+          }
+        }
+      }
+
+      console.log(`✅ Protective orders updated safely for ${position.symbol} ${position.side} (zero-gap transition)`);
 
       return { success: true };
 

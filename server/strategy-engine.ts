@@ -4109,9 +4109,9 @@ export class StrategyEngine extends EventEmitter {
       } finally {
         this.cleanupInProgress = false;
       }
-    }, 60 * 1000); // 1 minute
+    }, 30 * 1000); // 30 seconds (reduced from 60s for faster protective order safety)
     
-    console.log('🔄 Order reconciliation started: Orphan cleanup + Position verification (1 min intervals)');
+    console.log('🔄 Order reconciliation started: Orphan cleanup + Position verification (30s intervals)');
   }
 
   // Manual cleanup trigger - run all cleanup tasks immediately
