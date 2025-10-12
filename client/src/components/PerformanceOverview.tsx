@@ -7,7 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Calendar } from "@/components/ui/calendar";
 import { TrendingUp, TrendingDown, Target, Award, Activity, LineChart, DollarSign, Percent, Calendar as CalendarIcon, X, Wallet } from "lucide-react";
-import { ComposedChart, Line, Area, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, ReferenceArea, Label } from "recharts";
+import { ComposedChart, Line, Area, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, ReferenceArea, ReferenceDot, Label } from "recharts";
 import { format, subDays, subMinutes, subHours, startOfDay, endOfDay } from "date-fns";
 import { useStrategyData } from "@/hooks/use-strategy-data";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -1083,7 +1083,7 @@ function PerformanceOverview() {
           {!chartLoading && chartData && chartData.length > 0 ? (
             <>
               <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={chartData} margin={{ top: 10, right: 0, left: 0, bottom: 30 }}>
+                <ComposedChart data={chartData} margin={{ top: 35, right: 0, left: 0, bottom: 30 }}>
                 <XAxis 
                   dataKey="tradeNumber" 
                   label={{ value: 'Trade #', position: 'insideBottom', offset: -5 }}
@@ -1154,7 +1154,7 @@ function PerformanceOverview() {
                   />
                 ))}
                 
-                {/* Vertical lines for strategy changes */}
+                {/* Vertical lines for strategy changes with clickable dots */}
                 {strategyChanges?.map((change) => {
                   const changeTime = new Date(change.changedAt).getTime();
                   let tradeIndex = chartData.findIndex(trade => trade.timestamp >= changeTime);
@@ -1165,6 +1165,8 @@ function PerformanceOverview() {
                   
                   if (tradeIndex >= 0) {
                     const tradeNumber = chartData[tradeIndex].tradeNumber;
+                    const yPosition = cumulativePnlDomain[1]; // Position at top of chart
+                    
                     return (
                       <Fragment key={change.id}>
                         <ReferenceLine
@@ -1174,16 +1176,17 @@ function PerformanceOverview() {
                           strokeWidth={2}
                           strokeDasharray="5 5"
                         />
-                        <ReferenceArea
-                          x1={tradeNumber - 1}
-                          x2={tradeNumber + 1}
-                          yAxisId="left"
-                          fill="hsl(var(--primary) / 0.3)"
-                          stroke="hsl(var(--primary) / 0.5)"
-                          strokeWidth={1}
+                        <ReferenceDot
+                          x={tradeNumber}
+                          y={yPosition}
+                          yAxisId="right"
+                          r={6}
+                          fill="hsl(var(--primary))"
+                          stroke="hsl(var(--background))"
+                          strokeWidth={2}
                           style={{ cursor: 'pointer' }}
                           onClick={() => setSelectedChange(change)}
-                          data-testid={`strategy-change-line-${change.id}`}
+                          data-testid={`strategy-change-dot-${change.id}`}
                         />
                       </Fragment>
                     );
@@ -1435,44 +1438,123 @@ function PerformanceOverview() {
         )}
       </CardContent>
       
-      {/* Strategy Change Details Dialog */}
+      {/* Strategy Settings Dialog */}
       <Dialog open={!!selectedChange} onOpenChange={(open) => !open && setSelectedChange(null)}>
-        <DialogContent data-testid="dialog-strategy-change">
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto" data-testid="dialog-strategy-change">
           <DialogHeader>
-            <DialogTitle>Strategy Settings Changed</DialogTitle>
+            <DialogTitle>Strategy Settings at this Point</DialogTitle>
             <DialogDescription>
               {selectedChange && format(new Date(selectedChange.changedAt), 'MMM d, yyyy h:mm a')}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 mt-4">
-            {selectedChange && selectedChange.changes && Object.entries(selectedChange.changes).map(([key, value]: [string, any]) => {
-              if (value && typeof value === 'object' && 'old' in value && 'new' in value) {
-                // Convert camelCase to readable format
-                const readableKey = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
-                
-                // Format array values nicely
-                const formatValue = (val: any) => {
-                  if (Array.isArray(val)) {
-                    return val.length > 3 ? `${val.length} assets` : val.join(', ');
-                  }
-                  return val;
-                };
-                
-                return (
-                  <div key={key} className="flex items-center justify-between p-3 rounded-md bg-muted/50" data-testid={`change-item-${key}`}>
-                    <div className="flex flex-col gap-1">
-                      <span className="text-sm font-medium">{readableKey}</span>
-                      <div className="flex items-center gap-2 text-sm">
-                        <span className="font-mono text-muted-foreground">{formatValue(value.old)}</span>
-                        <span className="text-primary">→</span>
-                        <span className="font-mono text-foreground font-semibold">{formatValue(value.new)}</span>
-                      </div>
-                    </div>
-                  </div>
-                );
+          <div className="space-y-4 mt-4">
+            {selectedChange && activeStrategy && (() => {
+              // Reconstruct strategy state at the selected point in time
+              const reconstructedStrategy = { ...activeStrategy };
+              
+              // Find the selected change index (strategyChanges is ordered newest first)
+              const selectedIndex = strategyChanges?.findIndex(c => c.id === selectedChange.id) ?? -1;
+              
+              // Apply all changes AFTER the selected one in reverse to undo them
+              if (selectedIndex >= 0 && strategyChanges) {
+                for (let i = 0; i < selectedIndex; i++) {
+                  const laterChange = strategyChanges[i];
+                  Object.entries(laterChange.changes).forEach(([key, value]: [string, any]) => {
+                    if (value && typeof value === 'object' && 'old' in value && 'new' in value) {
+                      // Reverse the change by applying the "old" value
+                      (reconstructedStrategy as any)[key] = value.old;
+                    }
+                  });
+                }
               }
-              return null;
-            })}
+              
+              // Apply the selected change itself
+              Object.entries(selectedChange.changes).forEach(([key, value]: [string, any]) => {
+                if (value && typeof value === 'object' && 'old' in value && 'new' in value) {
+                  (reconstructedStrategy as any)[key] = value.new;
+                }
+              });
+              
+              // Define all settings to display with categories
+              const settingCategories = [
+                {
+                  name: "Assets & Risk",
+                  settings: [
+                    { key: 'selectedAssets', label: 'Selected Assets' },
+                    { key: 'percentileThreshold', label: 'Percentile Threshold', suffix: '%' },
+                    { key: 'maxOpenPositions', label: 'Max Open Positions' },
+                    { key: 'maxPortfolioRiskPercent', label: 'Max Portfolio Risk', suffix: '%' },
+                    { key: 'riskLevel', label: 'Risk Level' },
+                  ]
+                },
+                {
+                  name: "Position Sizing",
+                  settings: [
+                    { key: 'marginAmount', label: 'Account Usage', suffix: '%' },
+                    { key: 'leverage', label: 'Leverage', suffix: 'x' },
+                    { key: 'maxLayers', label: 'Max DCA Layers' },
+                  ]
+                },
+                {
+                  name: "Take Profit & Stop Loss",
+                  settings: [
+                    { key: 'profitTargetPercent', label: 'Profit Target', suffix: '%' },
+                    { key: 'stopLossPercent', label: 'Stop Loss', suffix: '%' },
+                    { key: 'useAdaptiveTP', label: 'Adaptive TP' },
+                    { key: 'useAdaptiveSL', label: 'Adaptive SL' },
+                    { key: 'exitCushionMultiplier', label: 'TP Cushion Multiplier', suffix: 'x' },
+                    { key: 'stopLossCushionMultiplier', label: 'SL Cushion Multiplier', suffix: 'x' },
+                  ]
+                },
+                {
+                  name: "DCA Settings",
+                  settings: [
+                    { key: 'dcaStartStepPercent', label: 'DCA Start Step', suffix: '%' },
+                    { key: 'dcaSpacingConvexity', label: 'Spacing Convexity' },
+                    { key: 'dcaSizeGrowth', label: 'Size Growth' },
+                    { key: 'dcaMaxRiskPercent', label: 'Max Risk per Layer', suffix: '%' },
+                    { key: 'dcaVolatilityRef', label: 'Volatility Reference', suffix: '%' },
+                  ]
+                },
+              ];
+              
+              const formatValue = (val: any, key: string) => {
+                if (val === null || val === undefined) return 'N/A';
+                if (typeof val === 'boolean') return val ? 'Yes' : 'No';
+                if (Array.isArray(val)) {
+                  return val.length > 3 ? `${val.length} assets` : val.join(', ');
+                }
+                return val.toString();
+              };
+              
+              return settingCategories.map(category => (
+                <div key={category.name} className="space-y-2">
+                  <h3 className="text-sm font-semibold text-muted-foreground">{category.name}</h3>
+                  <div className="space-y-1">
+                    {category.settings.map(setting => {
+                      const value = (reconstructedStrategy as any)[setting.key];
+                      const displayValue = formatValue(value, setting.key) + (setting.suffix || '');
+                      
+                      // Check if this setting was changed
+                      const wasChanged = selectedChange.changes[setting.key] !== undefined;
+                      
+                      return (
+                        <div 
+                          key={setting.key} 
+                          className={`flex items-center justify-between p-2 rounded-md ${wasChanged ? 'bg-primary/10 border border-primary/20' : 'bg-muted/30'}`}
+                          data-testid={`setting-${setting.key}`}
+                        >
+                          <span className="text-sm">{setting.label}</span>
+                          <span className={`text-sm font-mono font-semibold ${wasChanged ? 'text-primary' : ''}`}>
+                            {displayValue}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ));
+            })()}
           </div>
         </DialogContent>
       </Dialog>
