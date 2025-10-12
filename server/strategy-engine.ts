@@ -174,8 +174,9 @@ export class StrategyEngine extends EventEmitter {
     // Load active strategies and sessions
     await this.loadActiveStrategies();
     
-    // Start periodic checks for exit conditions
-    this.startExitMonitoring();
+    // NOTE: Removed programmatic layer monitoring - layers now use exchange orders (LIMIT TP, STOP_MARKET SL)
+    // Exchange will automatically execute these orders, and we'll receive ORDER_TRADE_UPDATE events via WebSocket
+    // this.startExitMonitoring(); // DISABLED - no longer needed
     
     // Start periodic cleanup of orphaned TP/SL orders (every 5 minutes)
     // NOTE: TP/SL updates are handled by updateProtectiveOrders() after each fill
