@@ -1070,14 +1070,35 @@ export class StrategyEngine extends EventEmitter {
       // Get all open positions for this session
       const openPositions = await storage.getOpenPositions(session.id);
       
-      // Count open positions
-      const openPositionCount = openPositions.length;
+      // CRITICAL: Count UNIQUE symbol/side combinations to handle potential duplicate records
+      // Use a Map to deduplicate and aggregate position data by symbol+side
+      const uniquePositions = new Map<string, Position>();
       
-      // DEBUG: Log what positions we're calculating risk for
-      console.log(`🔍 Portfolio Risk Calculation: Found ${openPositionCount} open positions`);
-      openPositions.forEach(pos => {
+      for (const pos of openPositions) {
+        const key = `${pos.symbol}-${pos.side}`;
+        const existing = uniquePositions.get(key);
+        
+        // Keep the position with the most recent update (or higher quantity if same time)
+        if (!existing || pos.updatedAt > existing.updatedAt || 
+            (pos.updatedAt === existing.updatedAt && parseFloat(pos.totalQuantity) > parseFloat(existing.totalQuantity))) {
+          uniquePositions.set(key, pos);
+        }
+      }
+      
+      // Count UNIQUE positions (deduped by symbol+side)
+      const openPositionCount = uniquePositions.size;
+      const deduplicatedPositions = Array.from(uniquePositions.values());
+      
+      // Log what positions we're calculating risk for
+      console.log(`🔍 Portfolio Risk Calculation: Found ${openPositions.length} records (${openPositionCount} unique positions)`);
+      deduplicatedPositions.forEach(pos => {
         console.log(`   - ${pos.symbol} ${pos.side}: qty=${pos.totalQuantity}, avgPrice=${pos.avgEntryPrice}, id=${pos.id}`);
       });
+      
+      // Warn if duplicates detected
+      if (openPositions.length > openPositionCount) {
+        console.warn(`⚠️ DUPLICATE POSITIONS DETECTED: ${openPositions.length} records but only ${openPositionCount} unique symbol/side combinations`);
+      }
       
       // If no positions, return zero risk
       if (openPositionCount === 0) {
@@ -1101,8 +1122,8 @@ export class StrategyEngine extends EventEmitter {
       // Calculate stop loss percentage from strategy
       const stopLossPercent = parseFloat(strategy.stopLossPercent);
       
-      // Calculate total potential loss across all positions
-      const totalPotentialLoss = openPositions.reduce((sum, position) => {
+      // Calculate total potential loss across all UNIQUE positions (use deduplicated array)
+      const totalPotentialLoss = deduplicatedPositions.reduce((sum, position) => {
         const entryPrice = parseFloat(position.avgEntryPrice);
         const quantity = Math.abs(parseFloat(position.totalQuantity));
         const isLong = position.side === 'long';

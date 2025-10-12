@@ -93,6 +93,7 @@ PERMANENT DATA PRESERVATION: ALL trading data MUST be preserved forever. The use
 - **Protective Order Safety (CRITICAL)**: Place-then-cancel pattern ensures protective orders are ALWAYS active. New TP/SL orders are placed BEFORE old ones are cancelled, eliminating dangerous gaps. Reconciliation runs every 30 seconds (reduced from 60s) for faster updates.
 - **Data Integrity**: Idempotency for orders, atomic cooldowns, permanent preservation of all trading data.
 - **Performance Metrics**: Comprehensive tracking including deposited capital, ROI, transfer markers, commissions, and funding fees.
+- **Portfolio Limit (Hedge Mode Safe)**: Position counting uses unique symbol/side deduplication to handle hedge mode correctly. `calculatePortfolioRisk()` counts distinct position combinations, not raw database records. `ensurePositionForFill()` uses `getPositionBySymbolAndSide()` for proper hedge mode position lookup. Admin endpoint `/api/admin/dedupe-positions` available for cleanup if needed.
 
 **Trade Blocking System:**
 The system implements comprehensive real-time trade blocking with WebSocket broadcasting and persistent UI indicators. The trade status light (green/red) reflects **system-wide blocking conditions** and remains red until conditions clear.
