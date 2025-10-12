@@ -559,14 +559,18 @@ class CascadeDetectorService {
     let blockAll = false;
     let reason: string | undefined;
     
-    if (autoEnabled) {
-      // Block ALL if aggregate reversal quality is below aggregate threshold
-      // ONLY aggregate average affects blocking - individual critical symbols are ignored
-      if (avgReversalQuality < avgRqThreshold) {
-        blockAll = true;
-        reason = `Aggregate RQ ${avgReversalQuality.toFixed(1)} < threshold ${avgRqThreshold.toFixed(1)}`;
-      }
-    }
+    // REVERSAL QUALITY IS NOW INFORMATIONAL ONLY - NOT USED FOR GATING
+    // Trades are gated only by percentile threshold and risk limits
+    // Reversal quality metrics still calculated and displayed for information
+    
+    // if (autoEnabled) {
+    //   // Block ALL if aggregate reversal quality is below aggregate threshold
+    //   // ONLY aggregate average affects blocking - individual critical symbols are ignored
+    //   if (avgReversalQuality < avgRqThreshold) {
+    //     blockAll = true;
+    //     reason = `Aggregate RQ ${avgReversalQuality.toFixed(1)} < threshold ${avgRqThreshold.toFixed(1)}`;
+    //   }
+    // }
     
     return {
       avgReversalQuality,

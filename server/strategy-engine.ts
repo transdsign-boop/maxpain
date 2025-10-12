@@ -713,33 +713,11 @@ export class StrategyEngine extends EventEmitter {
       return false;
     }
     
-    // CASCADE DETECTOR CHECK: Use AGGREGATE metrics across all symbols to block ALL trades or allow ALL trades
+    // CASCADE DETECTOR: Get metrics for informational logging (RQ is informational only, not used for gating)
     const aggregateStatus = cascadeDetectorService.getAggregateStatus();
     
-    // Only apply gates if auto-gating is enabled
-    if (aggregateStatus.autoEnabled) {
-      if (aggregateStatus.blockAll) {
-        console.log(`🚫 AGGREGATE RISK GATE [${liquidation.symbol}]: ALL entries blocked - ${aggregateStatus.reason}`);
-        console.log(`   📊 Aggregate metrics: RQ ${aggregateStatus.avgReversalQuality.toFixed(1)}/${aggregateStatus.avgRqThreshold.toFixed(1)}, Volatility: ${aggregateStatus.volatilityRegime} (RET: ${aggregateStatus.avgVolatilityRET.toFixed(1)}), Score: ${aggregateStatus.avgScore.toFixed(1)}, Symbols: ${aggregateStatus.symbolCount}`);
-        
-        // Log error to database for audit trail
-        await this.logTradeEntryError({
-          strategy,
-          symbol: liquidation.symbol,
-          side: positionSide,
-          attemptType: 'entry',
-          reason: 'aggregate_filter',
-          errorDetails: `${aggregateStatus.reason} - RQ ${aggregateStatus.avgReversalQuality.toFixed(1)}/${aggregateStatus.avgRqThreshold.toFixed(1)}, Volatility: ${aggregateStatus.volatilityRegime}`,
-          liquidationValue: parseFloat(liquidation.value),
-        });
-        
-        return false;
-      } else {
-        console.log(`✅ AGGREGATE GATE PASSED [${liquidation.symbol}]: Entry allowed - aggregate quality sufficient (RQ: ${aggregateStatus.avgReversalQuality.toFixed(1)}/${aggregateStatus.avgRqThreshold.toFixed(1)}, volatility: ${aggregateStatus.volatilityRegime})`);
-      }
-    } else {
-      console.log(`✅ AUTO-GATING DISABLED [${liquidation.symbol}]: Bypassing aggregate quality gates (avg RQ: ${aggregateStatus.avgReversalQuality.toFixed(1)}, volatility: ${aggregateStatus.volatilityRegime})`);
-    }
+    // Log aggregate metrics for information (reversal quality does not gate trades)
+    console.log(`📊 Cascade Metrics [${liquidation.symbol}]: RQ ${aggregateStatus.avgReversalQuality.toFixed(1)}/${aggregateStatus.avgRqThreshold.toFixed(1)}, Volatility: ${aggregateStatus.volatilityRegime} (RET: ${aggregateStatus.avgVolatilityRET.toFixed(1)}), Score: ${aggregateStatus.avgScore.toFixed(1)}, Symbols: ${aggregateStatus.symbolCount}`);
     
     // Calculate percentile threshold using ALL symbol history (same as UI badge)
     // This ensures bot entry logic matches what user sees in the UI
@@ -945,33 +923,11 @@ export class StrategyEngine extends EventEmitter {
       return false;
     }
 
-    // CASCADE DETECTOR CHECK: Use AGGREGATE metrics across all symbols to block ALL layers or allow ALL layers
+    // CASCADE DETECTOR: Get metrics for informational logging (RQ is informational only, not used for gating)
     const aggregateStatus = cascadeDetectorService.getAggregateStatus();
     
-    // Only apply gates if auto-gating is enabled
-    if (aggregateStatus.autoEnabled) {
-      if (aggregateStatus.blockAll) {
-        console.log(`🚫 AGGREGATE RISK GATE (Layer) [${liquidation.symbol}]: ALL layers blocked - ${aggregateStatus.reason}`);
-        console.log(`   📊 Aggregate metrics: RQ ${aggregateStatus.avgReversalQuality.toFixed(1)}/${aggregateStatus.avgRqThreshold.toFixed(1)}, Volatility: ${aggregateStatus.volatilityRegime} (RET: ${aggregateStatus.avgVolatilityRET.toFixed(1)}), Score: ${aggregateStatus.avgScore.toFixed(1)}, Symbols: ${aggregateStatus.symbolCount}`);
-        
-        // Log error to database for audit trail
-        await this.logTradeEntryError({
-          strategy,
-          symbol: liquidation.symbol,
-          side: position.side,
-          attemptType: 'layer',
-          reason: 'aggregate_filter',
-          errorDetails: `${aggregateStatus.reason} - RQ ${aggregateStatus.avgReversalQuality.toFixed(1)}/${aggregateStatus.avgRqThreshold.toFixed(1)}, Volatility: ${aggregateStatus.volatilityRegime}`,
-          liquidationValue: parseFloat(liquidation.value),
-        });
-        
-        return false;
-      } else {
-        console.log(`✅ AGGREGATE GATE PASSED (Layer) [${liquidation.symbol}]: Layer allowed - aggregate quality sufficient (RQ: ${aggregateStatus.avgReversalQuality.toFixed(1)}/${aggregateStatus.avgRqThreshold.toFixed(1)}, volatility: ${aggregateStatus.volatilityRegime})`);
-      }
-    } else {
-      console.log(`✅ AUTO-GATING DISABLED (Layer) [${liquidation.symbol}]: Bypassing aggregate quality gates (avg RQ: ${aggregateStatus.avgReversalQuality.toFixed(1)}, volatility: ${aggregateStatus.volatilityRegime})`);
-    }
+    // Log aggregate metrics for information (reversal quality does not gate layers)
+    console.log(`📊 Cascade Metrics (Layer) [${liquidation.symbol}]: RQ ${aggregateStatus.avgReversalQuality.toFixed(1)}/${aggregateStatus.avgRqThreshold.toFixed(1)}, Volatility: ${aggregateStatus.volatilityRegime} (RET: ${aggregateStatus.avgVolatilityRET.toFixed(1)}), Score: ${aggregateStatus.avgScore.toFixed(1)}, Symbols: ${aggregateStatus.symbolCount}`);
 
     // Calculate percentile using ALL symbol history (same as entry and UI badge)
     const currentLiquidationValue = parseFloat(liquidation.value);
