@@ -95,27 +95,32 @@ PERMANENT DATA PRESERVATION: ALL trading data MUST be preserved forever. The use
 - **Performance Metrics**: Comprehensive tracking including deposited capital, ROI, transfer markers, commissions, and funding fees.
 
 **Trade Blocking System:**
-The system implements comprehensive real-time trade blocking with WebSocket broadcasting and persistent UI indicators. The trade status light (green/red) reflects ALL blocking conditions and remains red until conditions clear.
+The system implements comprehensive real-time trade blocking with WebSocket broadcasting and persistent UI indicators. The trade status light (green/red) reflects **system-wide blocking conditions** and remains red until conditions clear.
 
-**9 Categories of Blocking Conditions:**
+**System-Wide Blocks** (block ALL trades across all symbols):
 1. **Cascade Auto-Blocking** (≥50% threshold): Blocks ALL trades when 50%+ of monitored symbols show orange/red cascade activity (high liquidation volume/velocity). All-or-nothing decision across all symbols.
 2. **Strategy-Level Blocks**: Strategy paused or inactive.
 3. **Risk Limits**: 
    - Portfolio position limit exceeded
    - Risk budget exhausted (multiple safety checks)
    - Position value exceeds risk budget
-4. **Percentile Threshold**: Liquidation below configured percentile (e.g., 60% = only top 40% of liquidations)
-5. **Entry Cooldown**: 30-second cooldown between entries for same symbol/side
-6. **Max Layers**: DCA layer limit reached for position
-7. **DCA Configuration**: Missing or invalid DCA settings
-8. **Safety/Validation**: NaN/Infinity values, missing historical data
-9. **Exchange Execution**: Order placement failures, API errors
+4. **DCA Configuration**: Missing or invalid DCA settings
+5. **Safety/Validation**: NaN/Infinity values in calculations
+6. **Exchange Execution**: Order placement failures, API errors
+
+**Per-Liquidation Filters** (filter individual liquidations, don't block all trades):
+1. **Percentile Threshold**: Rejects liquidations below configured percentile (e.g., 60% = only top 40%)
+2. **Entry Cooldown**: 30-second cooldown between entries for same symbol/side
+3. **Max Layers**: DCA layer limit reached for specific position
+4. **No Historical Data**: Symbol lacks historical liquidation data for percentile calculation
 
 **WebSocket Broadcasting:**
-- `trade_block` event type broadcasts blocking information to frontend
+- `trade_block` event type broadcasts **system-wide blocking** information to frontend
+- Only broadcasts for system-wide blocks (cascade, risk limits, portfolio limits, etc.)
+- Does NOT broadcast for per-liquidation filters (percentile, cooldown, no history, max layers)
 - Blocking messages include: `blocked` (true/false), `reason` (human-readable), `type` (category)
 - Trade light turns RED when `blocked: true` and remains red until `blocked: false` signal received
-- Unblock signal sent when trades successfully pass all checks (percentile threshold met, no blocks active)
+- Per-liquidation filters are logged to console but don't affect trade light status
 
 **UI Behavior:**
 - ConnectionStatus component displays trade light with real-time blocking status
