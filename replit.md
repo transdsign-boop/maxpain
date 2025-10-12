@@ -1,9 +1,9 @@
 # Aster DEX Liquidations Dashboard
 
-### Overview
-The Aster DEX Liquidations Dashboard is a real-time monitoring and trading platform for the Aster DEX exchange. It provides live liquidation data, advanced filtering, and analysis tools for cryptocurrency and tokenized stock pairs. The project aims to be a robust, production-ready system for real-money trading, offering comprehensive safety checks, detailed performance tracking, and a sophisticated Dollar Cost Averaging (DCA) system.
+## Overview
+The Aster DEX Liquidations Dashboard is a real-time monitoring and trading platform for the Aster DEX exchange. It provides live liquidation data, advanced filtering, and analysis tools for cryptocurrency and tokenized stock pairs. The project aims to be a robust, production-ready system for real-money trading, offering comprehensive safety checks, detailed performance tracking, and a sophisticated Dollar Cost Averaging (DCA) system. The business vision is to provide a powerful tool for traders, enabling informed decisions and automated, risk-managed trading strategies within the Aster DEX ecosystem.
 
-### User Preferences
+## User Preferences
 Preferred communication style: Simple, everyday language.
 
 🚨 CRITICAL: DATABASE CONFIGURATION 🚨
@@ -19,23 +19,6 @@ THIS APPLICATION USES NEON DATABASE EXCLUSIVELY
 - ✅ ALWAYS use manual SQL scripts executed directly in Neon SQL Editor for schema changes
 - ❌ NEVER use `npm run db:push` or Drizzle migrations (DATABASE_URL ≠ NEON_DATABASE_URL)
 - 📝 Process: Update `shared/schema.ts` → Write SQL script → Execute in Neon SQL Editor
-- 📌 Example: position_layers table was created via manual SQL script (see project history)
-
-📊 REALIZED P&L, COMMISSION & FUNDING FEE DATA
-All financial metrics are fetched directly from the exchange API, NOT stored in the database
-
-Realized P&L Source:
-- ✅ Uses `/fapi/v1/income` endpoint with `incomeType=REALIZED_PNL` filter
-- ✅ Matches exactly how Aster DEX Portfolio Overview calculates P&L
-- ✅ Fetches all historical records with proper pagination (startTime=0 for all-time data)
-- ⚠️ IMPORTANT: The `incomeType` filter is required - fetching without it returns incorrect data
-
-Commissions and Funding Fees:
-- ✅ `/api/commissions?startTime=X&endTime=Y` - Fetches commission data from exchange with optional date range filters
-- ✅ `/api/funding-fees?startTime=X&endTime=Y` - Fetches funding fee data from exchange with optional date range filters
-- 📍 Data is retrieved in real-time from Aster DEX `/fapi/v1/income` endpoint
-- 📍 Supports pagination (1000 records per batch) for complete historical data
-- 📍 Frontend filters this data by selected date range for accurate metrics calculation
 
 🚨 CRITICAL: STRATEGY CREATION POLICY 🚨
 🛑 NEVER AUTO-CREATE STRATEGIES 🛑
@@ -52,92 +35,57 @@ PERMANENT DATA PRESERVATION: ALL trading data MUST be preserved forever. The use
 - A "Start Fresh Session" button archives the current session but preserves all data.
 - The user must be able to recall any historical trading data at any time.
 
-### System Architecture
+## System Architecture
 
-**Frontend:**
+**UI/UX Decisions:**
 - **Frameworks**: React 18, TypeScript, Vite.
-- **UI**: Radix UI, shadcn/ui, Tailwind CSS (financial trading-focused design with lime for profit, orange for loss).
-- **State Management**: React hooks with TanStack Query.
+- **Design**: Radix UI, shadcn/ui, Tailwind CSS (financial trading-focused with lime for profit, orange for loss). Dark/light modes, responsive layout (Inter font for text, JetBrains Mono for numerical data), optimized tables/cards, mobile-first approach.
+- **Features**: Collapsible trade details, live strategy editing with performance charts, interactive P&L charts, hedge position detection, intelligent asset/risk recommendations, consolidated Global Settings dialog, DCA settings, API management (export/import JSON settings).
+- **Performance**: `React.memo` optimization on key components to prevent unnecessary re-renders.
+
+**Technical Implementations:**
+- **Frontend State Management**: React hooks with TanStack Query.
 - **Routing**: Wouter.
-- **Design**: Dark/light modes, responsive layout (Inter font for text, JetBrains Mono for numerical data), optimized tables/cards, mobile-first approach.
-- **Features**: Collapsible trade details, live strategy editing with performance charts, interactive P&L charts, hedge position detection, intelligent asset/risk recommendations, consolidated Global Settings dialog for all trading configurations, DCA settings, and API management (export/import JSON settings).
-- **Performance**: React.memo optimization on LiveLiquidationsSidebar, StrategyStatus, and PerformanceOverview components to prevent unnecessary re-renders and ensure smooth UI performance.
-
-**Backend:**
-- **Runtime**: Node.js with Express.js.
-- **Language**: TypeScript.
+- **Backend Runtime**: Node.js with Express.js.
+- **Backend Language**: TypeScript.
 - **Database ORM**: Drizzle ORM (raw SQL for critical operations).
-- **API**: RESTful endpoints with `/api` prefix.
-- **Data Persistence**: All strategy changes are immediately saved to the Neon database and then loaded into memory.
+- **API**: RESTful endpoints with `/api` prefix. All strategy changes are immediately saved to the Neon database and then loaded into memory.
+- **Real-time Data**: WebSocket connection to Aster DEX for live liquidation streaming and user data (ACCOUNT_UPDATE, ORDER_TRADE_UPDATE). A Live Data Orchestrator caches and broadcasts real-time account/position data.
+- **Cascade Detection**: Dynamic monitoring of selected assets, aggregate-based trade filtering (blocking triggers when ≥50% of monitored symbols show cascade activity). Reversal Quality is informational only.
+- **Percentile Threshold**: All percentile calculations use database records, not in-memory cache, for accuracy.
+- **Automatic Position Reconciliation**: Database positions are reconciled with live exchange positions before every portfolio risk calculation to prevent ghost positions.
+- **Cascade Detector Polling**: Optimized polling for price updates and open interest to prevent rate limits.
+- **Trading System**: Live-only trading with HMAC-SHA256 authentication, automatic ATR-based TP/SL management, queue-based locking, and session-based tracking.
+- **Margin Mode**: System configures isolated/cross margin mode on exchange (`/fapi/v1/marginType`) before placing orders, defaulting to isolated.
+- **Hedge Mode Orders**: All protective orders include `positionSide` parameter for hedge mode compatibility.
+- **DCA System**: Integrated Dollar Cost Averaging with ATR-based volatility scaling, convex level spacing, exponential size growth, and liquidation-aware risk management. **Strict Minimum Notional Enforcement**: Layer 1 position sizing uses exchange-specific MIN_NOTIONAL values from `/fapi/v1/exchangeInfo` (cached in `symbolPrecisionCache`). When exchange data is unavailable, trades are BLOCKED entirely with `missing_exchange_limits` WebSocket notification—no fallback to $5. UI displays exchange limits in Global Settings.
+- **Simplified TP/SL**: Position-level protective orders only (one TP and one SL per position).
+- **Protective Order Safety**: Place-then-cancel pattern for TP/SL orders, scheduled and WebSocket-triggered reconciliation, per-position locking, and automatic retry on `ReduceOnly` rejection.
+- **Data Integrity**: Idempotency for orders, atomic cooldowns, and permanent preservation of all trading data.
+- **Performance Metrics**: Tracking of deposited capital, ROI, transfer markers, commissions, and funding fees.
+- **Portfolio Limit**: Position counting uses unique symbol/side deduplication for hedge mode compatibility.
 
-**Data Storage:**
-- **Database**: PostgreSQL via Neon serverless hosting (`NEON_DATABASE_URL`).
-- **Schema**: 14 core tables (e.g., `liquidations`, `strategies`, `trade_sessions`, `positions`, `position_layers`, `fills`, `orders`, `strategy_changes`, `strategy_snapshots`, `user_settings`, `users`, `transfers`, `commissions`, `funding_fees`).
-- **Connection**: `@neondatabase/serverless` HTTP driver with connection pooling.
-- **Schema Changes**: Manual SQL scripts only (drizzle.config.ts uses wrong database). Update `shared/schema.ts` then execute SQL in Neon SQL Editor.
-- **Data Retention**: Liquidation data for 30 days; trading data (positions, fills, sessions) and financial records (transfers, commissions, funding fees) are permanently preserved through archiving.
+**Feature Specifications:**
+- **Financial Metrics**: Realized P&L, commissions, and funding fees are fetched directly from the exchange API (e.g., `/fapi/v1/income`) and not stored in the database.
+- **Trade Blocking System**: Comprehensive real-time trade blocking with WebSocket broadcasting and persistent UI indicators.
+    - **System-Wide Blocks**: Cascade auto-blocking (≥50% threshold), strategy-level blocks, risk limits (portfolio, budget, position value), DCA configuration, missing exchange limits (MIN_NOTIONAL), safety/validation issues, exchange execution failures. These block all trades and turn the UI trade light red.
+    - **Per-Liquidation Filters**: Percentile threshold, entry cooldown, max layers, missing historical data. These filter individual liquidations but do not block all trades or change the UI trade light.
+- **WebSocket Broadcasting**: `trade_block` event broadcasts system-wide blocking information to the frontend.
+- **Exchange Limits UI**: Global Settings dialog displays real-time MIN_NOTIONAL, price precision, and quantity precision for all monitored symbols via `/api/exchange-limits` endpoint.
 
-**Real-time Data & Trading:**
-- **WebSocket**: Live connection to Aster DEX for real-time liquidation streaming and user data (ACCOUNT_UPDATE, ORDER_TRADE_UPDATE).
-- **Live Data Orchestrator**: Caches and broadcasts real-time account/position data to the frontend via WebSocket. Eliminates API polling.
-- **Cascade Detection**: Dynamic monitoring of selected assets, syncing on startup and configuration changes, with aggregate-based trade filtering (all-or-none decisions across all monitored symbols). Blocking triggers when 50%+ of monitored symbols show cascade activity (orange/red lights).
-- **Reversal Quality**: Informational metric only - displayed in UI but does NOT gate trades. Cascade blocking uses detector lights (high activity signals), NOT reversal quality scores.
-- **Percentile Threshold (Database-Only Policy)**: ALL percentile calculations use database records, NEVER in-memory cache. Entry and layer decisions query database for up to 10,000 historical liquidations per symbol via `storage.getLiquidationsBySymbol()` to ensure accuracy and consistency with UI badges. 60% threshold = only enter liquidations at 60th percentile or higher (top 40%). In-memory `liquidationHistory` cache (100 records max) is used ONLY for informational logging (e.g., recent liquidation counts), NOT for any decision-making or threshold checks.
-- **Automatic Position Reconciliation (CRITICAL FIX)**: Before every portfolio risk calculation, the system automatically compares database positions against live exchange positions and closes any "stale" positions (positions closed on exchange but still open in database). This prevents ghost positions from blocking trades via portfolio limit checks. Reconciliation happens transparently before risk calculations - no manual intervention needed.
-- **Cascade Detector Polling (Critical - DO NOT MODIFY)**: Highly optimized polling architecture for price updates and open interest to prevent rate limits (10-second tick interval, rotating OI fetch, 60-second OI cache).
-- **Cascade Detector Logging**: Ultra-minimal logging that only outputs when liquidation notional >$100k or quality is excellent, reducing backend noise from ~400 lines/min to ~20 lines/min.
-- **Trading System**: Live-only trading with HMAC-SHA256 authentication, automatic ATR-based TP/SL management, queue-based locking for updates, and session-based tracking.
-- **Margin Mode Configuration (CRITICAL)**: Before placing any order, system configures isolated/cross margin mode on exchange via `/fapi/v1/marginType` endpoint. Uses `marginModeSetForSymbols` cache to prevent redundant API calls. Defaults to isolated margin (recommended for multi-symbol trading). Configuration happens after leverage setting and before order placement. Aborts order if margin mode configuration fails.
-- **Hedge Mode Orders (CRITICAL)**: All protective orders MUST include `positionSide` parameter (LONG/SHORT) for hedge mode compatibility. LIMIT TP orders must NOT include `reduceOnly` parameter (automatically implied when `positionSide` is set). STOP_MARKET SL orders can optionally include `reduceOnly: true`.
-- **DCA System**: Integrated Dollar Cost Averaging with ATR-based volatility scaling, convex level spacing, exponential size growth, and liquidation-aware risk management. Parameters managed via Global Settings. **Dynamic Minimum Notional**: Layer 1 position sizing uses real exchange-specific MIN_NOTIONAL values (fetched from `/fapi/v1/exchangeInfo` and cached in `symbolPrecisionCache`), not hardcoded values. System queries exchange for each symbol's minimum order value, ensuring compliance with exchange rules. Falls back to $5 if exchange data unavailable.
-- **SIMPLIFIED TP/SL APPROACH**: Position-level protective orders only. Each position has ONE TP and ONE SL order based on average entry price and total quantity. No individual layer TP/SL. Progressive layer monitoring DISABLED.
-- **Take Profit**: ATR-based dynamic TP calculation using exit cushion multiplier (default 0.6x ATR). Calculated from average entry price for entire position. Falls back to fixed percentage only if DCA not configured.
-- **Protective Order Safety (CRITICAL)**: Place-then-cancel pattern ensures protective orders are ALWAYS active. New TP/SL orders are placed BEFORE old ones are cancelled, eliminating dangerous gaps. Dual-trigger updates: scheduled reconciliation every 10 seconds + immediate WebSocket-triggered updates on every trade fill. Per-position locking prevents concurrent update conflicts. **ReduceOnly Error Recovery**: When "ReduceOnly Order is rejected" error occurs (due to isolated margin legacy orders), system automatically force-cancels ALL existing TP/SL orders and retries placement, ensuring protective orders always succeed.
-- **Data Integrity**: Idempotency for orders, atomic cooldowns, permanent preservation of all trading data.
-- **Performance Metrics**: Comprehensive tracking including deposited capital, ROI, transfer markers, commissions, and funding fees.
-- **Portfolio Limit (Hedge Mode Safe)**: Position counting uses unique symbol/side deduplication to handle hedge mode correctly. `calculatePortfolioRisk()` counts distinct position combinations, not raw database records. `ensurePositionForFill()` uses `getPositionBySymbolAndSide()` for proper hedge mode position lookup. Admin endpoint `/api/admin/dedupe-positions` available for cleanup if needed.
+**System Design Choices:**
+- **Data Persistence**: PostgreSQL via Neon serverless hosting.
+- **Schema**: 14 core tables for liquidations, strategies, trade sessions, positions, fills, orders, etc.
+- **Schema Changes**: Manual SQL scripts are exclusively used for schema updates.
+- **Data Retention**: Liquidation data for 30 days; trading data and financial records are permanently preserved through archiving.
 
-**Trade Blocking System:**
-The system implements comprehensive real-time trade blocking with WebSocket broadcasting and persistent UI indicators. The trade status light (green/red) reflects **system-wide blocking conditions** and remains red until conditions clear.
-
-**System-Wide Blocks** (block ALL trades across all symbols):
-1. **Cascade Auto-Blocking** (≥50% threshold): Blocks ALL trades when 50%+ of monitored symbols show orange/red cascade activity (high liquidation volume/velocity). All-or-nothing decision across all symbols.
-2. **Strategy-Level Blocks**: Strategy paused or inactive.
-3. **Risk Limits**: 
-   - Portfolio position limit exceeded
-   - Risk budget exhausted (multiple safety checks)
-   - Position value exceeds risk budget
-4. **DCA Configuration**: Missing or invalid DCA settings
-5. **Safety/Validation**: NaN/Infinity values in calculations
-6. **Exchange Execution**: Order placement failures, API errors
-
-**Per-Liquidation Filters** (filter individual liquidations, don't block all trades):
-1. **Percentile Threshold**: Rejects liquidations below configured percentile (e.g., 60% = only top 40%)
-2. **Entry Cooldown**: 30-second cooldown between entries for same symbol/side
-3. **Max Layers**: DCA layer limit reached for specific position
-4. **No Historical Data**: Symbol lacks historical liquidation data for percentile calculation
-
-**WebSocket Broadcasting:**
-- `trade_block` event type broadcasts **system-wide blocking** information to frontend
-- Only broadcasts for system-wide blocks (cascade, risk limits, portfolio limits, etc.)
-- Does NOT broadcast for per-liquidation filters (percentile, cooldown, no history, max layers)
-- Blocking messages include: `blocked` (true/false), `reason` (human-readable), `type` (category)
-- Trade light turns RED when `blocked: true` and remains red until `blocked: false` signal received
-- Per-liquidation filters are logged to console but don't affect trade light status
-
-**UI Behavior:**
-- ConnectionStatus component displays trade light with real-time blocking status
-- Tooltip shows detailed block reason, type, and cascade metrics
-- Red light persists until explicit unblock - no arbitrary timeouts
-- Block details include: reason, type, aggregate reversal quality, volatility regime, critical symbols
-
-### External Dependencies
+## External Dependencies
 
 **Core:**
-- **@radix-ui/react-\***: Accessible UI primitives.
+- **@radix-ui/react-\***: UI primitives.
 - **@tanstack/react-query**: Server state management.
 - **drizzle-orm**: Type-safe PostgreSQL ORM.
-- **@neondatabase/serverless**: Serverless PostgreSQL client.
+- **@neondatabase/serverless**: Serverless PostgreSQL client for Neon.
 
 **UI & Styling:**
 - **Tailwind CSS**: Utility-first CSS framework.
@@ -146,8 +94,3 @@ The system implements comprehensive real-time trade blocking with WebSocket broa
 - **Lucide React**: Icon library.
 - **date-fns**: Date manipulation.
 - **Google Fonts**: Inter, JetBrains Mono.
-
-**Development Tools:**
-- **Vite**: Fast build tool.
-- **TypeScript**: Static type checking.
-- **ESBuild**: Fast JavaScript bundler.
