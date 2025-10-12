@@ -457,7 +457,8 @@ export class StrategyEngine extends EventEmitter {
     // Update price cache
     this.priceCache.set(liquidation.symbol, parseFloat(liquidation.price));
     
-    // Add to liquidation history for threshold checking
+    // Add to liquidation history for informational logging ONLY (NOT for percentile calculations)
+    // Percentile calculations ALWAYS query database via storage.getLiquidationsBySymbol()
     if (!this.liquidationHistory.has(liquidation.symbol)) {
       this.liquidationHistory.set(liquidation.symbol, []);
     }
@@ -466,6 +467,7 @@ export class StrategyEngine extends EventEmitter {
     history.push(liquidation);
     
     // Keep only last 100 liquidations per symbol for memory efficiency
+    // This cache is ONLY used for counting recent liquidations in logs, NOT for threshold decisions
     if (history.length > 100) {
       history.shift();
     }
