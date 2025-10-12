@@ -597,17 +597,35 @@ export class OrderProtectionService {
       if (layers.length > 0) {
         console.log(`⏭️ Skipping position-level protective orders for ${position.symbol} ${position.side} - ${layers.length} active DCA layer(s) managing TP/SL individually`);
         
+        // Collect all layer order IDs to exclude them from cancellation
+        const layerOrderIds = new Set<string>();
+        for (const layer of layers) {
+          if (layer.tpOrderId) layerOrderIds.add(layer.tpOrderId);
+          if (layer.slOrderId) layerOrderIds.add(layer.slOrderId);
+        }
+        
+        console.log(`   📋 Layer order IDs from DB: [${Array.from(layerOrderIds).join(', ')}]`);
+        
         // Cancel any existing position-level TP/SL orders to prevent stale orders
         const existingOrders = await this.fetchExchangeOrders(position.symbol, position.side);
         const tpslOrders = existingOrders.filter(
           o => o.type === 'LIMIT' || o.type === 'STOP_MARKET'
         );
         
-        if (tpslOrders.length > 0) {
-          console.log(`   Cancelling ${tpslOrders.length} stale position-level TP/SL order(s)...`);
-          for (const order of tpslOrders) {
+        console.log(`   📋 Exchange orders found: [${tpslOrders.map(o => o.orderId).join(', ')}]`);
+        
+        // Filter out orders that belong to layers
+        const orphanedOrders = tpslOrders.filter(o => !layerOrderIds.has(o.orderId));
+        
+        if (orphanedOrders.length > 0) {
+          console.log(`   ❌ Cancelling ${orphanedOrders.length} orphaned orders: [${orphanedOrders.map(o => o.orderId).join(', ')}]`);
+          for (const order of orphanedOrders) {
             await this.cancelExchangeOrder(position.symbol, order.orderId);
           }
+        }
+        
+        if (layerOrderIds.size > 0) {
+          console.log(`   ✅ Preserved ${layerOrderIds.size} layer-specific orders`);
         }
         
         releaseLock();
