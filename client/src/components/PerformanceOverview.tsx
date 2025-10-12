@@ -1175,10 +1175,12 @@ function PerformanceOverview() {
                           strokeDasharray="5 5"
                         />
                         <ReferenceArea
-                          x1={tradeNumber - 0.5}
-                          x2={tradeNumber + 0.5}
+                          x1={tradeNumber - 1}
+                          x2={tradeNumber + 1}
                           yAxisId="left"
-                          fill="transparent"
+                          fill="hsl(var(--primary) / 0.3)"
+                          stroke="hsl(var(--primary) / 0.5)"
+                          strokeWidth={1}
                           style={{ cursor: 'pointer' }}
                           onClick={() => setSelectedChange(change)}
                           data-testid={`strategy-change-line-${change.id}`}
