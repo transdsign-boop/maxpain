@@ -1839,7 +1839,15 @@ export class StrategyEngine extends EventEmitter {
         // reduceOnly causes exchange to auto-cancel orders when position size changes
       } else if (orderType.toLowerCase() === 'stop_market') {
         orderParams.stopPrice = roundedPrice; // Trigger price for stop market orders
-        orderParams.reduceOnly = 'true'; // SL orders can only reduce positions
+        orderParams.workingType = 'CONTRACT_PRICE'; // Use contract price, not mark price
+        // Hedge mode (dual): Use closePosition='true' to avoid reduceOnly API error
+        // One-way mode: Use reduceOnly to prevent reverse positions
+        if (this.exchangePositionMode === 'dual') {
+          orderParams.closePosition = 'true'; // Close the position when triggered
+        } else {
+          orderParams.quantity = roundedQuantity;
+          orderParams.reduceOnly = 'true'; // Prevent reverse positions in one-way mode
+        }
       } else if (orderType.toLowerCase() === 'take_profit_market') {
         orderParams.stopPrice = roundedPrice; // Trigger price for TP market orders
         orderParams.reduceOnly = 'true'; // TP orders can only reduce positions
