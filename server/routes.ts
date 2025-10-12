@@ -170,6 +170,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  // ONE-TIME FIX: Remove duplicate position records (caused by hedge mode bug)
+  app.post("/api/admin/dedupe-positions", async (req, res) => {
+    try {
+      const sessionId = req.body.sessionId;
+      if (!sessionId) {
+        return res.status(400).json({ error: "sessionId required" });
+      }
+      
+      // Get all open positions for this session
+      const openPositions = await storage.getOpenPositions(sessionId);
+      
+      // Group by symbol+side to find duplicates
+      const positionGroups = new Map<string, Position[]>();
+      for (const pos of openPositions) {
+        const key = `${pos.symbol}-${pos.side}`;
+        const group = positionGroups.get(key) || [];
+        group.push(pos);
+        positionGroups.set(key, group);
+      }
+      
+      const removed: Array<{ symbol: string; side: string; count: number; keptId: string }> = [];
+      
+      // For each group with duplicates, keep the most recent one and close others
+      for (const [key, group] of positionGroups.entries()) {
+        if (group.length > 1) {
+          // Sort by updatedAt descending (most recent first)
+          group.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+          
+          const keeper = group[0]; // Keep most recent
+          const duplicates = group.slice(1); // Remove others
+          
+          console.log(`🔧 Found ${group.length} positions for ${key}, keeping ${keeper.id}, removing ${duplicates.length} duplicates`);
+          
+          // Close duplicate positions
+          for (const dup of duplicates) {
+            await storage.closePosition(dup.id, new Date(), 0, 0);
+            console.log(`   ❌ Closed duplicate: ${dup.id} (qty=${dup.totalQuantity}, updated=${dup.updatedAt})`);
+          }
+          
+          removed.push({
+            symbol: keeper.symbol,
+            side: keeper.side,
+            count: duplicates.length,
+            keptId: keeper.id
+          });
+        }
+      }
+      
+      if (removed.length === 0) {
+        res.json({ message: "No duplicate positions found", removed: [] });
+      } else {
+        res.json({
+          message: `Removed ${removed.reduce((sum, r) => sum + r.count, 0)} duplicate position records`,
+          removed
+        });
+      }
+      
+    } catch (error) {
+      console.error('❌ Failed to dedupe positions:', error);
+      res.status(500).json({ error: "Deduplication failed" });
+    }
+  });
+  
   // Liquidation API routes
   app.get("/api/liquidations", async (req, res) => {
     try {
