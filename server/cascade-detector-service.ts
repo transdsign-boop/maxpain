@@ -559,16 +559,19 @@ class CascadeDetectorService {
     let blockAll = false;
     let reason: string | undefined;
     
-    // CASCADE AUTO-BLOCKING: Based on aggregate average across ALL symbols
-    // When the overall market shows cascade risk (all average RQ < threshold), sit out
-    // Individual symbol reversal quality is informational only
+    // CASCADE AUTO-BLOCKING: Based on cascade detector signals (orange/red lights)
+    // When cascade activity is detected across monitored symbols, sit out
+    // Reversal quality is informational only - NOT used for gating
     
-    if (autoEnabled) {
-      // Block ALL if aggregate average reversal quality is below aggregate threshold
-      // This detects overall cascade risk across the entire monitored basket
-      if (avgReversalQuality < avgRqThreshold) {
+    if (autoEnabled && statuses.length > 0) {
+      // Calculate what percentage of symbols are showing cascade activity
+      const cascadePercentage = (criticalSymbols.length / statuses.length) * 100;
+      
+      // Block when ANY symbol shows cascade activity (orange/red light)
+      // This indicates high cascade risk in the market
+      if (criticalSymbols.length > 0) {
         blockAll = true;
-        reason = `Cascade risk detected - Aggregate RQ ${avgReversalQuality.toFixed(1)} < threshold ${avgRqThreshold.toFixed(1)}`;
+        reason = `Cascade activity detected on ${criticalSymbols.length}/${statuses.length} symbols (${cascadePercentage.toFixed(0)}%): ${criticalSymbols.join(', ')}`;
       }
     }
     
