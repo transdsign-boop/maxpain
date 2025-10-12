@@ -1068,6 +1068,8 @@ export class StrategyEngine extends EventEmitter {
   // Reconcile stale positions: close database positions that are already closed on the exchange
   private async reconcileStalePositions(sessionId: string, strategy: Strategy): Promise<void> {
     try {
+      console.log('🔄 Starting stale position reconciliation...');
+      
       // Get live positions from exchange
       const livePositions = await this.getExchangePositions();
       if (!livePositions) {
@@ -1075,9 +1077,14 @@ export class StrategyEngine extends EventEmitter {
         return;
       }
       
+      console.log(`📊 Found ${livePositions.length} live positions on exchange`);
+      
       // Get open positions from database
       const dbPositions = await storage.getOpenPositions(sessionId);
+      console.log(`📊 Found ${dbPositions.length} open positions in database`);
+      
       if (dbPositions.length === 0) {
+        console.log('✅ No database positions to reconcile');
         return; // No positions to reconcile
       }
       
@@ -1103,7 +1110,7 @@ export class StrategyEngine extends EventEmitter {
           
           // Close the position in the database
           await storage.updatePosition(dbPos.id, {
-            status: 'closed',
+            isOpen: false,
             closedAt: new Date(),
             unrealizedPnl: '0', // Already realized on exchange
           });
