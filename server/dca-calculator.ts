@@ -209,7 +209,8 @@ export function calculateDCALevels(
   let q1 = maxRiskDollars / (lossPerUnit * totalWeight);
   
   // CRITICAL: Ensure Layer 1 meets exchange minimum notional
-  const MIN_NOTIONAL = config.minNotional ?? 5.0; // Use exchange-specific value or fallback to $5
+  // Note: minNotional should always be provided from strategy-engine (fetched from exchange)
+  const MIN_NOTIONAL = config.minNotional ?? 5.0; // Fallback should never be used
   const layer1Notional = q1 * entryPrice;
   
   if (layer1Notional < MIN_NOTIONAL) {

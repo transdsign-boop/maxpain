@@ -112,6 +112,104 @@ interface DCASettings {
 }
 
 // DCA Settings Component
+function ExchangeLimitsSection() {
+  const [isOpen, setIsOpen] = useState(false);
+  
+  const { data: limitsData, isLoading } = useQuery({
+    queryKey: ['/api/exchange-limits'],
+    refetchInterval: 30000, // Refresh every 30 seconds
+  });
+
+  if (!limitsData) {
+    return null;
+  }
+
+  const limits = limitsData.limits || [];
+  const hasLimits = limits.length > 0;
+
+  return (
+    <Collapsible open={isOpen} onOpenChange={setIsOpen} className="space-y-2">
+      <CollapsibleTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="w-full justify-between p-2 h-auto"
+          data-testid="button-toggle-exchange-limits"
+        >
+          <div className="flex items-center gap-2">
+            <Shield className="h-4 w-4" />
+            <span className="text-base font-medium">Exchange Limits</span>
+          </div>
+          <div className="flex items-center gap-2">
+            {hasLimits && (
+              <Badge variant="outline" className="text-xs">
+                {limits.filter((l: any) => l.available).length}/{limits.length} Available
+              </Badge>
+            )}
+            <ChevronDown className={`h-4 w-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+          </div>
+        </Button>
+      </CollapsibleTrigger>
+      
+      <CollapsibleContent className="space-y-2">
+        {isLoading && (
+          <div className="text-sm text-muted-foreground p-2">Loading exchange limits...</div>
+        )}
+        
+        {!isLoading && !hasLimits && (
+          <div className="text-sm text-muted-foreground p-2">
+            No cascade monitoring symbols configured
+          </div>
+        )}
+        
+        {!isLoading && hasLimits && (
+          <div className="space-y-1 p-2 bg-muted/30 rounded-md">
+            <div className="text-xs font-medium text-muted-foreground mb-2">Monitored Assets</div>
+            <div className="grid gap-1">
+              {limits.map((limit: any) => (
+                <div
+                  key={limit.symbol}
+                  className="flex items-center justify-between text-xs p-2 bg-background rounded border"
+                  data-testid={`exchange-limit-${limit.symbol}`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono font-medium">{limit.symbol}</span>
+                    {!limit.available && (
+                      <Badge variant="destructive" className="text-[10px] h-4 px-1">
+                        ⚠️ Missing
+                      </Badge>
+                    )}
+                  </div>
+                  {limit.available && (
+                    <div className="flex items-center gap-3 text-muted-foreground">
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px]">Min:</span>
+                        <span className="font-mono">${limit.minNotional}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px]">Price:</span>
+                        <span className="font-mono">{limit.pricePrecision}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px]">Qty:</span>
+                        <span className="font-mono">{limit.quantityPrecision}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="text-[10px] text-muted-foreground mt-2 p-1">
+              Min = Minimum notional value (USD), Price = Price precision (decimals), Qty = Quantity precision (decimals)
+            </div>
+          </div>
+        )}
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
 function DCASettingsSection({ strategyId, isStrategyRunning, saveTrigger }: { strategyId: string; isStrategyRunning: boolean; saveTrigger?: number }) {
   const { toast } = useToast();
   const [isExpanded, setIsExpanded] = useState(true);
@@ -2075,6 +2173,11 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                   saveTrigger={dcaSaveTrigger}
                 />
               )}
+
+              <Separator />
+
+              {/* Exchange Limits */}
+              <ExchangeLimitsSection />
 
               <Separator />
 

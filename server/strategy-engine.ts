@@ -703,7 +703,30 @@ export class StrategyEngine extends EventEmitter {
       
       // Get symbol precision (includes exchange-specific minimum notional)
       const symbolPrecision = this.symbolPrecisionCache.get(liquidation.symbol);
-      const minNotional = symbolPrecision?.minNotional ?? 5.0; // Fallback to $5 if not cached
+      if (!symbolPrecision?.minNotional) {
+        console.error(`❌ Missing MIN_NOTIONAL for ${liquidation.symbol} - cannot trade without exchange limits`);
+        console.error(`   ⚠️  ABORTING TRADE - Exchange limits are required for safe position sizing`);
+        
+        wsBroadcaster.broadcastTradeBlock({
+          blocked: true,
+          reason: `Missing exchange limits for ${liquidation.symbol}`,
+          type: 'safety_validation'
+        });
+        
+        await this.logTradeEntryError({
+          strategy,
+          symbol: liquidation.symbol,
+          side: positionSide,
+          attemptType: 'entry',
+          reason: 'missing_exchange_limits',
+          errorDetails: `MIN_NOTIONAL not available for ${liquidation.symbol}`,
+          liquidationValue: parseFloat(liquidation.value),
+        });
+        
+        return false;
+      }
+      
+      const minNotional = symbolPrecision.minNotional;
       
       // Calculate DCA levels for prospective entry with risk override if needed
       const dcaResult = calculateDCALevels(fullStrategy, {
@@ -1335,7 +1358,13 @@ export class StrategyEngine extends EventEmitter {
       
       // Get symbol precision (includes exchange-specific minimum notional)
       const symbolPrecision = this.symbolPrecisionCache.get(liquidation.symbol);
-      const minNotional = symbolPrecision?.minNotional ?? 5.0; // Fallback to $5 if not cached
+      if (!symbolPrecision?.minNotional) {
+        console.error(`❌ Missing MIN_NOTIONAL for ${liquidation.symbol} - cannot trade without exchange limits`);
+        console.error(`   ⚠️  ABORTING TRADE - Exchange limits are required for safe position sizing`);
+        return;
+      }
+      
+      const minNotional = symbolPrecision.minNotional;
       
       // Calculate all DCA levels - we'll use Level 1 for initial entry
       const dcaResult = calculateDCALevels(fullStrategy, {
@@ -4441,6 +4470,11 @@ export class StrategyEngine extends EventEmitter {
     } finally {
       this.cleanupInProgress = false;
     }
+  }
+
+  // Public getter for symbol precision cache (used by API endpoints)
+  getSymbolPrecision(symbol: string): SymbolPrecision | undefined {
+    return this.symbolPrecisionCache.get(symbol);
   }
 }
 
