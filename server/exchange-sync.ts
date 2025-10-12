@@ -1001,3 +1001,146 @@ export async function fetchRealizedPnlEvents(params: {
     return { success: false, events: [], total: 0, count: 0, error: String(error) };
   }
 }
+
+// Sync open positions from exchange to database (orphan position detection)
+// This ensures all exchange positions are tracked in DB and receive protective orders
+export async function syncOpenPositions(sessionId: string): Promise<{
+  success: boolean;
+  addedCount: number;
+  error?: string;
+}> {
+  try {
+    const apiKey = process.env.ASTER_API_KEY;
+    const secretKey = process.env.ASTER_SECRET_KEY;
+    
+    if (!apiKey || !secretKey) {
+      return { success: false, addedCount: 0, error: 'API keys not configured' };
+    }
+
+    // Fetch all open positions from exchange
+    const timestamp = Date.now();
+    const queryParams = `timestamp=${timestamp}`;
+    const signature = createHmac('sha256', secretKey)
+      .update(queryParams)
+      .digest('hex');
+
+    const response = await fetch(
+      `https://fapi.asterdex.com/fapi/v2/positionRisk?${queryParams}&signature=${signature}`,
+      {
+        headers: {
+          'X-MBX-APIKEY': apiKey,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return { success: false, addedCount: 0, error: `HTTP ${response.status}: ${errorText}` };
+    }
+
+    const exchangePositions = await response.json();
+    
+    // Filter to only non-zero positions (open positions)
+    const openExchangePositions = exchangePositions.filter((pos: any) => 
+      parseFloat(pos.positionAmt || '0') !== 0
+    );
+
+    if (openExchangePositions.length === 0) {
+      return { success: true, addedCount: 0 };
+    }
+
+    // Get existing open positions from database
+    const dbPositions = await storage.getOpenPositions(sessionId);
+    const dbPositionKeys = new Set(
+      dbPositions.map(p => `${p.symbol}-${p.side}`)
+    );
+
+    let addedCount = 0;
+
+    // Check each exchange position
+    for (const exPos of openExchangePositions) {
+      const positionAmt = parseFloat(exPos.positionAmt || '0');
+      const symbol = exPos.symbol;
+      
+      // Determine side from position amount and positionSide
+      let side: 'long' | 'short';
+      if (exPos.positionSide === 'LONG') {
+        side = 'long';
+      } else if (exPos.positionSide === 'SHORT') {
+        side = 'short';
+      } else {
+        // One-way mode: use positionAmt sign
+        side = positionAmt > 0 ? 'long' : 'short';
+      }
+
+      const positionKey = `${symbol}-${side}`;
+
+      // Skip if already in database
+      if (dbPositionKeys.has(positionKey)) {
+        continue;
+      }
+
+      // Orphan position detected! Add to database
+      console.log(`🔍 Orphan position detected: ${symbol} ${side} (qty=${Math.abs(positionAmt)})`);
+
+      const entryPrice = parseFloat(exPos.entryPrice || '0');
+      const quantity = Math.abs(positionAmt);
+      const leverage = parseFloat(exPos.leverage || '1');
+      const notionalValue = entryPrice * quantity;
+      const margin = notionalValue / leverage;
+
+      // Get strategy for session
+      const strategy = await storage.getStrategyBySession(sessionId);
+
+      // Create orphan position in database
+      const position = await storage.createPosition({
+        sessionId,
+        symbol,
+        side,
+        totalQuantity: quantity.toString(),
+        avgEntryPrice: entryPrice.toString(),
+        totalCost: margin.toString(),
+        unrealizedPnl: exPos.unRealizedProfit || '0',
+        realizedPnl: '0',
+        layersFilled: 1,
+        maxLayers: strategy?.maxLayers || 1,
+        leverage,
+        isOpen: true,
+      });
+
+      // Create synthetic fill for the orphan position
+      // Use current timestamp since we don't know exact entry time
+      const now = new Date();
+      await storage.applyFill({
+        orderId: `orphan-${symbol}-${side}-${now.getTime()}`,
+        sessionId,
+        positionId: position.id,
+        symbol,
+        side: side === 'long' ? 'buy' : 'sell',
+        quantity: quantity.toString(),
+        price: entryPrice.toString(),
+        value: notionalValue.toString(),
+        fee: '0', // Unknown - set to 0 for orphan positions
+        layerNumber: 1,
+        filledAt: now,
+      });
+
+      // Update position timestamp to now (since it's an orphan we just discovered)
+      await db.update(positions)
+        .set({ openedAt: now })
+        .where(eq(positions.id, position.id));
+
+      console.log(`✅ Added orphan position to database: ${symbol} ${side}`);
+      addedCount++;
+    }
+
+    if (addedCount > 0) {
+      console.log(`✅ Synced ${addedCount} orphan positions from exchange`);
+    }
+
+    return { success: true, addedCount };
+  } catch (error) {
+    console.error('❌ Error syncing open positions:', error);
+    return { success: false, addedCount: 0, error: String(error) };
+  }
+}
