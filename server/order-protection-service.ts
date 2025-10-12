@@ -372,7 +372,8 @@ export class OrderProtectionService {
 
   /**
    * Check if existing exchange orders match desired state (idempotency check)
-   * Returns true ONLY if there's EXACTLY 1 TP and 1 SL that match perfectly
+   * Returns true ONLY if there's EXACTLY 1 TP and 1 SL that match within tolerance
+   * Uses price/quantity tolerance to prevent churn from minor ATR fluctuations
    */
   private ordersMatchDesired(
     existingOrders: ExchangeOrder[],
@@ -390,15 +391,51 @@ export class OrderProtectionService {
     const existingTP = tpOrders[0];
     const existingSL = slOrders[0];
 
-    const tpMatches = 
-      parseFloat(existingTP.price) === tpOrder!.price &&
-      parseFloat(existingTP.origQty) === tpOrder!.quantity;
+    // Use tolerance to prevent churn from minor ATR drift
+    // Price tolerance: 0.2% or 2 tick sizes, whichever is larger
+    const PRICE_TOLERANCE_PERCENT = 0.002; // 0.2%
+    const QTY_TOLERANCE_PERCENT = 0.001;   // 0.1%
 
-    const slMatches = 
-      parseFloat(existingSL.stopPrice) === slOrder!.price &&
-      parseFloat(existingSL.origQty) === slOrder!.quantity;
+    const tpPriceDiff = Math.abs(parseFloat(existingTP.price) - tpOrder!.price);
+    const tpPriceTolerance = Math.max(
+      tpOrder!.price * PRICE_TOLERANCE_PERCENT,
+      this.getTickSize(existingTP.symbol) * 2
+    );
+    const tpPriceMatches = tpPriceDiff <= tpPriceTolerance;
 
-    return tpMatches && slMatches;
+    const tpQtyDiff = Math.abs(parseFloat(existingTP.origQty) - tpOrder!.quantity);
+    const tpQtyTolerance = tpOrder!.quantity * QTY_TOLERANCE_PERCENT;
+    const tpQtyMatches = tpQtyDiff <= tpQtyTolerance;
+
+    const slPriceDiff = Math.abs(parseFloat(existingSL.stopPrice) - slOrder!.price);
+    const slPriceTolerance = Math.max(
+      slOrder!.price * PRICE_TOLERANCE_PERCENT,
+      this.getTickSize(existingSL.symbol) * 2
+    );
+    const slPriceMatches = slPriceDiff <= slPriceTolerance;
+
+    const slQtyDiff = Math.abs(parseFloat(existingSL.origQty) - slOrder!.quantity);
+    const slQtyTolerance = slOrder!.quantity * QTY_TOLERANCE_PERCENT;
+    const slQtyMatches = slQtyDiff <= slQtyTolerance;
+
+    const allMatch = tpPriceMatches && tpQtyMatches && slPriceMatches && slQtyMatches;
+    
+    if (!allMatch) {
+      console.log(`📊 Order mismatch detected:`);
+      console.log(`   TP: price ${tpPriceMatches ? '✅' : '❌'} (${tpPriceDiff.toFixed(6)} vs ${tpPriceTolerance.toFixed(6)}), qty ${tpQtyMatches ? '✅' : '❌'}`);
+      console.log(`   SL: price ${slPriceMatches ? '✅' : '❌'} (${slPriceDiff.toFixed(6)} vs ${slPriceTolerance.toFixed(6)}), qty ${slQtyMatches ? '✅' : '❌'}`);
+    }
+
+    return allMatch;
+  }
+
+  /**
+   * Get tick size for a symbol (used for price tolerance)
+   */
+  private getTickSize(symbol: string): number {
+    const precision = this.symbolPrecisionCache.get(symbol);
+    if (!precision) return 0.001; // Default 0.001 if not found
+    return parseFloat(precision.tickSize);
   }
 
   /**
