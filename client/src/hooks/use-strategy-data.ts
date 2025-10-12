@@ -109,11 +109,11 @@ export function useStrategyData() {
     staleTime: Infinity, // Never refetch - WebSocket provides updates
   });
 
-  // Fetch closed positions ONCE (no polling - WebSocket provides updates)
+  // Fetch closed positions (refresh every 5 minutes to stay in sync with P&L events)
   const closedPositionsQuery = useQuery<any[]>({
     queryKey: ['/api/strategies', activeStrategy?.id, 'positions', 'closed'],
     enabled: !!activeStrategy?.id,
-    staleTime: Infinity, // Never refetch - WebSocket provides updates
+    staleTime: 5 * 60 * 1000, // Refresh every 5 minutes (same as P&L events)
   });
 
   // Fetch realized P&L events from exchange (actual closed trades - source of truth)
