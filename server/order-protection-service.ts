@@ -512,7 +512,8 @@ export class OrderProtectionService {
     type: 'LIMIT' | 'STOP_MARKET',
     side: 'BUY' | 'SELL',
     quantity: number,
-    price: number
+    price: number,
+    positionSide: 'LONG' | 'SHORT'
   ): Promise<{ success: boolean; orderId?: string; error?: string }> {
     try {
       const apiKey = process.env.ASTER_API_KEY;
@@ -532,6 +533,7 @@ export class OrderProtectionService {
         symbol,
         side,
         type,
+        positionSide, // CRITICAL: Must specify position side for hedge mode
         quantity: roundedQty.toString(),
         timestamp,
         recvWindow: 5000,
@@ -540,10 +542,12 @@ export class OrderProtectionService {
       if (type === 'LIMIT') {
         params.price = roundedPrice.toString();
         params.timeInForce = 'GTC';
-        params.reduceOnly = 'true'; // TP limit orders must reduce only to prevent position flip
+        // Note: reduceOnly is implied when positionSide is set in hedge mode
+        // params.reduceOnly = 'true';
       } else if (type === 'STOP_MARKET') {
         params.stopPrice = roundedPrice.toString();
-        params.reduceOnly = 'true';
+        // Note: reduceOnly is implied when positionSide is set in hedge mode
+        // params.reduceOnly = 'true';
       }
 
       const queryString = Object.entries(params)
@@ -695,12 +699,16 @@ export class OrderProtectionService {
             console.log(`   🔄 Restoring ${cancelledOrders.length} already-cancelled orders...`);
             
             for (const oldOrder of cancelledOrders) {
+              // Skip MARKET orders in rollback (protective orders are LIMIT or STOP_MARKET only)
+              if (oldOrder.type !== 'LIMIT' && oldOrder.type !== 'STOP_MARKET') continue;
+              
               const restoreResult = await this.placeExchangeOrder(
                 position.symbol,
                 oldOrder.type,
                 oldOrder.side,
                 parseFloat(oldOrder.origQty),
-                parseFloat(oldOrder.type === 'LIMIT' ? oldOrder.price : oldOrder.stopPrice)
+                parseFloat(oldOrder.type === 'LIMIT' ? oldOrder.price : oldOrder.stopPrice),
+                position.side.toUpperCase() as 'LONG' | 'SHORT'
               );
               
               if (restoreResult.success) {
@@ -722,7 +730,8 @@ export class OrderProtectionService {
         tpOrder.type,
         tpOrder.side,
         tpOrder.quantity,
-        tpOrder.price
+        tpOrder.price,
+        position.side.toUpperCase() as 'LONG' | 'SHORT'
       );
 
       if (!tpResult.success) {
@@ -731,12 +740,16 @@ export class OrderProtectionService {
         console.log(`🔄 Attempting rollback - restoring ${cancelledOrders.length} cancelled orders...`);
         
         for (const oldOrder of cancelledOrders) {
+          // Skip MARKET orders in rollback (protective orders are LIMIT or STOP_MARKET only)
+          if (oldOrder.type !== 'LIMIT' && oldOrder.type !== 'STOP_MARKET') continue;
+          
           const restoreResult = await this.placeExchangeOrder(
             position.symbol,
             oldOrder.type,
             oldOrder.side,
             parseFloat(oldOrder.origQty),
-            parseFloat(oldOrder.type === 'LIMIT' ? oldOrder.price : oldOrder.stopPrice)
+            parseFloat(oldOrder.type === 'LIMIT' ? oldOrder.price : oldOrder.stopPrice),
+            position.side.toUpperCase() as 'LONG' | 'SHORT'
           );
           
           if (restoreResult.success) {
@@ -758,7 +771,8 @@ export class OrderProtectionService {
         slOrder.type,
         slOrder.side,
         slOrder.quantity,
-        slOrder.price
+        slOrder.price,
+        position.side.toUpperCase() as 'LONG' | 'SHORT'
       );
 
       if (!slResult.success) {
@@ -775,12 +789,16 @@ export class OrderProtectionService {
         // Restore ONLY the orders we successfully cancelled
         console.log(`   Restoring ${cancelledOrders.length} cancelled orders...`);
         for (const oldOrder of cancelledOrders) {
+          // Skip MARKET orders in rollback (protective orders are LIMIT or STOP_MARKET only)
+          if (oldOrder.type !== 'LIMIT' && oldOrder.type !== 'STOP_MARKET') continue;
+          
           const restoreResult = await this.placeExchangeOrder(
             position.symbol,
             oldOrder.type,
             oldOrder.side,
             parseFloat(oldOrder.origQty),
-            parseFloat(oldOrder.type === 'LIMIT' ? oldOrder.price : oldOrder.stopPrice)
+            parseFloat(oldOrder.type === 'LIMIT' ? oldOrder.price : oldOrder.stopPrice),
+            position.side.toUpperCase() as 'LONG' | 'SHORT'
           );
           
           if (restoreResult.success) {
