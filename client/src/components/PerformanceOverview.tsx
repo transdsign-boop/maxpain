@@ -1455,6 +1455,40 @@ function PerformanceOverview() {
               // Find the selected change index (strategyChanges is ordered newest first)
               const selectedIndex = strategyChanges?.findIndex(c => c.id === selectedChange.id) ?? -1;
               
+              // Determine which fields didn't exist yet at this point in time
+              // A field didn't exist if it FIRST appears in a change AFTER this point
+              const fieldsAddedLater = new Set<string>();
+              
+              if (selectedIndex >= 0 && strategyChanges) {
+                // Track fields that appear in changes after this point
+                const fieldsInLaterChanges = new Set<string>();
+                for (let i = 0; i < selectedIndex; i++) {
+                  const laterChange = strategyChanges[i];
+                  Object.keys(laterChange.changes).forEach(key => {
+                    fieldsInLaterChanges.add(key);
+                  });
+                }
+                
+                // Track fields that appear at or before this point
+                const fieldsInEarlierChanges = new Set<string>();
+                Object.keys(selectedChange.changes).forEach(key => {
+                  fieldsInEarlierChanges.add(key);
+                });
+                for (let i = selectedIndex + 1; i < strategyChanges.length; i++) {
+                  const earlierChange = strategyChanges[i];
+                  Object.keys(earlierChange.changes).forEach(key => {
+                    fieldsInEarlierChanges.add(key);
+                  });
+                }
+                
+                // A field was added later if it appears in later changes but not in earlier ones
+                fieldsInLaterChanges.forEach(field => {
+                  if (!fieldsInEarlierChanges.has(field)) {
+                    fieldsAddedLater.add(field);
+                  }
+                });
+              }
+              
               // Apply all changes AFTER the selected one in reverse to undo them
               if (selectedIndex >= 0 && strategyChanges) {
                 for (let i = 0; i < selectedIndex; i++) {
@@ -1520,6 +1554,11 @@ function PerformanceOverview() {
               ];
               
               const formatValue = (val: any, key: string) => {
+                // Check if this field was added later (didn't exist at this point)
+                if (fieldsAddedLater.has(key)) {
+                  return 'N/A';
+                }
+                
                 if (val === null || val === undefined) return 'N/A';
                 if (typeof val === 'boolean') return val ? 'Yes' : 'No';
                 if (Array.isArray(val)) {
