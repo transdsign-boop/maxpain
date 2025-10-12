@@ -3205,7 +3205,9 @@ export class StrategyEngine extends EventEmitter {
   // Ensure position exists and return it (create or update as needed)
   // This must be called BEFORE creating fills so we have the position ID
   private async ensurePositionForFill(order: Order, fillPrice: number, fillQuantity: number): Promise<Position> {
-    let position = await storage.getPositionBySymbol(order.sessionId, order.symbol);
+    // CRITICAL: Must check BOTH symbol AND side for hedge mode compatibility
+    const positionSide = order.side === 'buy' ? 'long' : 'short';
+    let position = await storage.getPositionBySymbolAndSide(order.sessionId, order.symbol, positionSide);
     
     if (!position) {
       // Find the strategy to get maxLayers and leverage settings
@@ -3224,7 +3226,6 @@ export class StrategyEngine extends EventEmitter {
       const actualMargin = notionalValue / leverage;
       
       // Retrieve q1 (base layer size) for consistent exponential sizing across all layers
-      const positionSide = order.side === 'buy' ? 'long' : 'short';
       const q1Key = `${order.sessionId}-${order.symbol}-${positionSide}`;
       const dcaBaseSize = this.pendingQ1Values.get(q1Key);
       const firstLayerData = this.pendingFirstLayerData.get(q1Key);
