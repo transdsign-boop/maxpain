@@ -2,6 +2,7 @@ import { db } from './db.js';
 import { positions, positionLayers } from '../shared/schema.js';
 import { eq, and, isNull } from 'drizzle-orm';
 import type { StrategyEngine } from './strategy-engine.js';
+import { calculateATRPercent } from './dca-calculator.js';
 
 export class ProtectiveOrderRecovery {
   private strategyEngine: StrategyEngine;
@@ -61,20 +62,93 @@ export class ProtectiveOrderRecovery {
               continue;
             }
 
-            // Place missing protective orders
+            // Recalculate TP/SL prices based on current ATR and market conditions
             try {
+              const apiKey = process.env.ASTER_API_KEY;
+              const secretKey = process.env.ASTER_SECRET_KEY;
+              
+              // Calculate current ATR
+              const currentATR = await calculateATRPercent(position.symbol, 10, apiKey, secretKey);
+              
+              // Fetch DCA parameters
+              const { getStrategyWithDCA } = await import('./dca-sql.js');
+              const strategyWithDCA = await getStrategyWithDCA(strategy.id);
+              
+              if (!strategyWithDCA) {
+                console.log(`❌ Could not load DCA settings for strategy ${strategy.id}`);
+                totalFailed++;
+                continue;
+              }
+              
+              const layerEntryPrice = parseFloat(layer.entryPrice);
+              let recalculatedTP: number;
+              let recalculatedSL: number;
+              
+              // Recalculate TP using same logic as DCA calculator
+              if (strategyWithDCA.adaptive_tp_enabled) {
+                const tpAtrMultiplier = parseFloat(String(strategyWithDCA.tp_atr_multiplier || '1.5'));
+                const minTpPercent = parseFloat(String(strategyWithDCA.min_tp_percent || '0.5'));
+                const maxTpPercent = parseFloat(String(strategyWithDCA.max_tp_percent || '5.0'));
+                
+                const rawTpPercent = currentATR * tpAtrMultiplier;
+                const clampedTpPercent = Math.max(minTpPercent, Math.min(maxTpPercent, rawTpPercent));
+                
+                recalculatedTP = position.side === 'long'
+                  ? layerEntryPrice * (1 + clampedTpPercent / 100)
+                  : layerEntryPrice * (1 - clampedTpPercent / 100);
+              } else {
+                // Fallback: Use exitCushion multiplier
+                const exitCushion = parseFloat(String(strategyWithDCA.dca_exit_cushion_multiplier));
+                const tpDistance = exitCushion * (currentATR / 100) * layerEntryPrice;
+                recalculatedTP = position.side === 'long' 
+                  ? layerEntryPrice + tpDistance
+                  : layerEntryPrice - tpDistance;
+              }
+              
+              // Recalculate SL using same logic as DCA calculator
+              if (strategyWithDCA.adaptive_sl_enabled) {
+                const slAtrMultiplier = parseFloat(String(strategyWithDCA.sl_atr_multiplier || '2.0'));
+                const minSlPercent = parseFloat(String(strategyWithDCA.min_sl_percent || '1.0'));
+                const maxSlPercent = parseFloat(String(strategyWithDCA.max_sl_percent || '5.0'));
+                
+                const rawSlPercent = currentATR * slAtrMultiplier;
+                const clampedSlPercent = Math.max(minSlPercent, Math.min(maxSlPercent, rawSlPercent));
+                
+                recalculatedSL = position.side === 'long'
+                  ? layerEntryPrice * (1 - clampedSlPercent / 100)
+                  : layerEntryPrice * (1 + clampedSlPercent / 100);
+              } else {
+                // Fallback: Use fixed stopLossPercent
+                const stopLossPercent = parseFloat(String(strategy.stopLossPercent));
+                recalculatedSL = position.side === 'long'
+                  ? layerEntryPrice * (1 - stopLossPercent / 100)
+                  : layerEntryPrice * (1 + stopLossPercent / 100);
+              }
+              
+              console.log(`🔄 Recalculated TP/SL: Entry=$${layerEntryPrice.toFixed(6)}, TP=$${recalculatedTP.toFixed(6)}, SL=$${recalculatedSL.toFixed(6)} (ATR=${currentATR.toFixed(2)}%)`);
+              
+              // Create modified layer with recalculated prices
+              const layerWithRecalculatedPrices = {
+                ...layer,
+                takeProfitPrice: recalculatedTP.toString(),
+                stopLossPrice: recalculatedSL.toString(),
+              };
+              
+              // Place protective orders with recalculated prices
               const orderResult = await (this.strategyEngine as any).placeLayerProtectiveOrders({
                 position,
-                layer,
+                layer: layerWithRecalculatedPrices,
                 strategy,
               });
 
               if (orderResult.success && orderResult.tpOrderId && orderResult.slOrderId) {
-                // Update layer with order IDs
+                // Update layer with order IDs AND recalculated prices
                 await db.update(positionLayers)
                   .set({
                     tpOrderId: orderResult.tpOrderId,
                     slOrderId: orderResult.slOrderId,
+                    takeProfitPrice: recalculatedTP.toString(),
+                    stopLossPrice: recalculatedSL.toString(),
                   })
                   .where(eq(positionLayers.id, layer.id));
 
