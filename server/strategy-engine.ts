@@ -591,11 +591,7 @@ export class StrategyEngine extends EventEmitter {
       if (timeSinceLastFill < this.fillCooldownMs) {
         const waitTime = ((this.fillCooldownMs - timeSinceLastFill) / 1000).toFixed(1);
         console.log(`⏸️ Entry cooldown active for ${liquidation.symbol} ${positionSide} - wait ${waitTime}s before new entry`);
-        wsBroadcaster.broadcastTradeBlock({
-          blocked: true,
-          reason: `Entry cooldown: ${liquidation.symbol} ${positionSide} - ${waitTime}s remaining`,
-          type: 'cooldown'
-        });
+        // Note: Cooldown is per-symbol/side filter, NOT a system-wide block
         return false;
       }
     }
@@ -766,12 +762,8 @@ export class StrategyEngine extends EventEmitter {
     // Get ALL historical liquidations for this symbol (not just lookback window)
     const symbolHistory = this.liquidationHistory.get(liquidation.symbol);
     if (!symbolHistory || symbolHistory.length === 0) {
-      console.log(`❌ No historical liquidations found for ${liquidation.symbol} - entry blocked`);
-      wsBroadcaster.broadcastTradeBlock({
-        blocked: true,
-        reason: `No historical data for ${liquidation.symbol}`,
-        type: 'no_history'
-      });
+      console.log(`❌ No historical liquidations found for ${liquidation.symbol} - entry filtered`);
+      // Note: No historical data is per-symbol filter, NOT a system-wide block
       return false;
     }
     
@@ -807,21 +799,11 @@ export class StrategyEngine extends EventEmitter {
       // This prevents race condition where two threads both pass the check before either sets cooldown
       this.lastFillTime.set(cooldownKey, Date.now());
       console.log(`🔒 Entry cooldown locked ATOMICALLY for ${liquidation.symbol} ${positionSide} (${this.fillCooldownMs / 1000}s)`);
-      
-      // Broadcast unblock signal - trade is allowed
-      wsBroadcaster.broadcastTradeBlock({
-        blocked: false,
-        reason: 'Trade allowed',
-        type: 'unblock'
-      });
     } else {
-      console.log(`❌ Percentile BLOCKED: $${currentLiquidationValue.toFixed(2)} is at ${currentPercentile}th percentile (< ${strategy.percentileThreshold}% threshold)`);
+      console.log(`❌ Percentile FILTERED: $${currentLiquidationValue.toFixed(2)} is at ${currentPercentile}th percentile (< ${strategy.percentileThreshold}% threshold)`);
       console.log(`   📊 Need at least ${strategy.percentileThreshold}th percentile to enter (currently in bottom ${strategy.percentileThreshold}%)`);
-      wsBroadcaster.broadcastTradeBlock({
-        blocked: true,
-        reason: `Percentile: ${currentPercentile}% < ${strategy.percentileThreshold}% threshold`,
-        type: 'percentile'
-      });
+      // Note: Percentile is a per-liquidation filter, NOT a system-wide block
+      // So we don't broadcast trade_block for percentile failures
     }
     
     return shouldEnter;
