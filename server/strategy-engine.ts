@@ -69,6 +69,7 @@ export class StrategyEngine extends EventEmitter {
   private lastFillTime: Map<string, number> = new Map(); // "sessionId-symbol-side" -> timestamp of last fill
   private fillCooldownMs: number = 30000; // 30 second cooldown between layers/entries
   private leverageSetForSymbols: Map<string, number> = new Map(); // symbol -> leverage value (track actual leverage configured on exchange)
+  private marginModeSetForSymbols: Map<string, 'isolated' | 'cross'> = new Map(); // symbol -> margin mode (track actual margin mode configured on exchange)
   private pendingQ1Values: Map<string, number> = new Map(); // "sessionId-symbol-side" -> q1 base layer size for position being created
   private pendingFirstLayerData: Map<string, { takeProfitPrice: number; stopLossPrice: number; entryPrice: number; quantity: number }> = new Map(); // "sessionId-symbol-side" -> first layer TP/SL data
   private protectiveOrderRecovery: ProtectiveOrderRecovery;
@@ -1400,6 +1401,32 @@ export class StrategyEngine extends EventEmitter {
         }
       }
 
+      // Set margin mode on exchange if margin mode has changed
+      const currentMarginMode = this.marginModeSetForSymbols.get(liquidation.symbol);
+      const targetMarginMode = (strategy.marginMode || 'isolated') as 'isolated' | 'cross';
+      if (currentMarginMode !== targetMarginMode) {
+        console.log(`⚙️ Setting ${liquidation.symbol} margin to ${targetMarginMode.toUpperCase()} on exchange...`);
+        const marginModeSet = await this.setMarginType(liquidation.symbol, targetMarginMode);
+        if (marginModeSet) {
+          this.marginModeSetForSymbols.set(liquidation.symbol, targetMarginMode);
+        } else {
+          console.error(`❌ Failed to set margin mode for ${liquidation.symbol}, aborting order to prevent trading with wrong margin mode`);
+          
+          // Log error to database for audit trail
+          await this.logTradeEntryError({
+            strategy,
+            symbol: liquidation.symbol,
+            side: positionSide,
+            attemptType: 'entry',
+            reason: 'margin_mode_set_failed',
+            errorDetails: `Failed to configure ${targetMarginMode} margin mode on exchange`,
+            liquidationValue: parseFloat(liquidation.value),
+          });
+          
+          throw new Error(`Failed to set margin mode for ${liquidation.symbol}`);
+        }
+      }
+
       // Apply order delay for smart placement
       if (strategy.orderDelayMs > 0) {
         console.log(`⏱️ Applying ${strategy.orderDelayMs}ms order delay...`);
@@ -2476,6 +2503,68 @@ export class StrategyEngine extends EventEmitter {
       return true;
     } catch (error) {
       console.error('❌ Error setting leverage:', error);
+      return false;
+    }
+  }
+
+  // Set margin type (isolated/cross) for a symbol on Aster DEX
+  private async setMarginType(symbol: string, marginMode: 'isolated' | 'cross'): Promise<boolean> {
+    try {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+      
+      if (!apiKey || !secretKey) {
+        console.error('❌ Aster DEX API keys not configured');
+        return false;
+      }
+      
+      // Convert our margin mode to Binance API format (ISOLATED or CROSSED)
+      const marginType = marginMode === 'isolated' ? 'ISOLATED' : 'CROSSED';
+      
+      const timestamp = Date.now();
+      const marginParams: Record<string, string | number> = {
+        symbol,
+        marginType,
+        timestamp,
+        recvWindow: 5000,
+      };
+      
+      const queryString = Object.entries(marginParams)
+        .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
+        .map(([k, v]) => `${k}=${v}`)
+        .join('&');
+      
+      const signature = createHmac('sha256', secretKey)
+        .update(queryString)
+        .digest('hex');
+      
+      const signedParams = `${queryString}&signature=${signature}`;
+      
+      const response = await fetch(`https://fapi.asterdex.com/fapi/v1/marginType?${signedParams}`, {
+        method: 'POST',
+        headers: {
+          'X-MBX-APIKEY': apiKey,
+        },
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        
+        // If margin type is already set to the requested value, that's fine (error code -4046)
+        if (errorText.includes('-4046') || errorText.includes('No need to change margin type')) {
+          console.log(`✅ ${symbol} margin already set to ${marginType}`);
+          return true;
+        }
+        
+        console.error(`❌ Failed to set margin type for ${symbol}: ${response.status} ${errorText}`);
+        return false;
+      }
+      
+      const result = await response.json();
+      console.log(`✅ Set ${symbol} margin to ${marginType}:`, result);
+      return true;
+    } catch (error) {
+      console.error('❌ Error setting margin type:', error);
       return false;
     }
   }
