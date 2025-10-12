@@ -741,8 +741,8 @@ function PerformanceOverview() {
             </div>
           </div>
 
-          {/* Available, Deposited & Realized */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+          {/* Available & Realized */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             <div className="space-y-3">
               <div className="text-sm text-muted-foreground uppercase tracking-wider">Available</div>
               <div className="text-4xl font-mono font-bold" data-testid="text-available-balance">
@@ -750,19 +750,6 @@ function PerformanceOverview() {
               </div>
               <div className="text-sm text-muted-foreground">
                 For trading
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex items-center gap-1.5">
-                <DollarSign className="h-4 w-4 text-muted-foreground" />
-                <div className="text-sm text-muted-foreground uppercase tracking-wider">Total Deposited</div>
-              </div>
-              <div className="text-4xl font-mono font-bold" data-testid="text-total-deposited">
-                ${totalDeposited.toFixed(2)}
-              </div>
-              <div className="text-sm text-muted-foreground">
-                {depositCount} {depositCount === 1 ? 'deposit' : 'deposits'}
               </div>
             </div>
 
