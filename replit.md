@@ -94,6 +94,35 @@ PERMANENT DATA PRESERVATION: ALL trading data MUST be preserved forever. The use
 - **Data Integrity**: Idempotency for orders, atomic cooldowns, permanent preservation of all trading data.
 - **Performance Metrics**: Comprehensive tracking including deposited capital, ROI, transfer markers, commissions, and funding fees.
 
+**Trade Blocking System:**
+The system implements comprehensive real-time trade blocking with WebSocket broadcasting and persistent UI indicators. The trade status light (green/red) reflects ALL blocking conditions and remains red until conditions clear.
+
+**9 Categories of Blocking Conditions:**
+1. **Cascade Auto-Blocking** (≥50% threshold): Blocks ALL trades when 50%+ of monitored symbols show orange/red cascade activity (high liquidation volume/velocity). All-or-nothing decision across all symbols.
+2. **Strategy-Level Blocks**: Strategy paused or inactive.
+3. **Risk Limits**: 
+   - Portfolio position limit exceeded
+   - Risk budget exhausted (multiple safety checks)
+   - Position value exceeds risk budget
+4. **Percentile Threshold**: Liquidation below configured percentile (e.g., 60% = only top 40% of liquidations)
+5. **Entry Cooldown**: 30-second cooldown between entries for same symbol/side
+6. **Max Layers**: DCA layer limit reached for position
+7. **DCA Configuration**: Missing or invalid DCA settings
+8. **Safety/Validation**: NaN/Infinity values, missing historical data
+9. **Exchange Execution**: Order placement failures, API errors
+
+**WebSocket Broadcasting:**
+- `trade_block` event type broadcasts blocking information to frontend
+- Blocking messages include: `blocked` (true/false), `reason` (human-readable), `type` (category)
+- Trade light turns RED when `blocked: true` and remains red until `blocked: false` signal received
+- Unblock signal sent when trades successfully pass all checks (percentile threshold met, no blocks active)
+
+**UI Behavior:**
+- ConnectionStatus component displays trade light with real-time blocking status
+- Tooltip shows detailed block reason, type, and cascade metrics
+- Red light persists until explicit unblock - no arbitrary timeouts
+- Block details include: reason, type, aggregate reversal quality, volatility regime, critical symbols
+
 ### External Dependencies
 
 **Core:**
