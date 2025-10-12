@@ -38,11 +38,19 @@ interface AggregateStatus {
   reason?: string;
 }
 
+interface TradeBlockInfo {
+  blocked: boolean;
+  reason: string;
+  type: string;
+  timestamp?: number;
+}
+
 export default function ConnectionStatus({ isConnected }: ConnectionStatusProps) {
   const [apiConnected, setApiConnected] = useState(true);
   const [latestError, setLatestError] = useState<ApiError | null>(null);
   const [cascadeStatuses, setCascadeStatuses] = useState<CascadeStatus[]>([]);
   const [aggregateStatus, setAggregateStatus] = useState<AggregateStatus | null>(null);
+  const [tradeBlock, setTradeBlock] = useState<TradeBlockInfo | null>(null);
 
   // Check API connection health and capture errors
   useEffect(() => {
@@ -109,9 +117,24 @@ export default function ConnectionStatus({ isConnected }: ConnectionStatusProps)
             const statuses = Array.isArray(message.data) ? message.data : [message.data];
             setCascadeStatuses(statuses);
           }
+        } else if (message.type === 'trade_block') {
+          // Handle trade block events
+          setTradeBlock({
+            ...message.data,
+            timestamp: message.timestamp || Date.now()
+          });
+          // Clear block after 5 seconds if trades are allowed again
+          setTimeout(() => {
+            setTradeBlock(prev => {
+              if (prev && prev.timestamp === (message.timestamp || Date.now())) {
+                return null;
+              }
+              return prev;
+            });
+          }, 5000);
         }
       } catch (error) {
-        console.error('Error parsing cascade status:', error);
+        console.error('Error parsing WebSocket message:', error);
       }
     };
 
@@ -120,9 +143,12 @@ export default function ConnectionStatus({ isConnected }: ConnectionStatusProps)
     };
   }, []);
 
-  // Use aggregate status from WebSocket (all-or-none blocking)
-  const tradesAllowed = aggregateStatus ? !aggregateStatus.blockAll : false;
+  // Use aggregate status from WebSocket (all-or-none blocking) OR trade block events
+  const tradesAllowed = tradeBlock?.blocked ? false : (aggregateStatus ? !aggregateStatus.blockAll : false);
   const autoEnabled = aggregateStatus?.autoEnabled ?? true;
+  
+  // Determine block reason - prioritize real-time trade blocks over cascade status
+  const blockReason = tradeBlock?.blocked ? tradeBlock.reason : (aggregateStatus?.blockAll ? aggregateStatus.reason : null);
   
   const getTradeStatusTitle = () => {
     if (!aggregateStatus) {
@@ -224,15 +250,22 @@ export default function ConnectionStatus({ isConnected }: ConnectionStatusProps)
                   </div>
                 </div>
               )}
-              {autoEnabled && aggregateStatus && aggregateStatus.blockAll && (
+              {!tradesAllowed && blockReason && (
                 <div className="text-xs text-red-600 dark:text-red-400">
                   <p>✗ ALL TRADES BLOCKED</p>
                   <div className="mt-1 space-y-0.5">
-                    <p>Reason: {aggregateStatus.reason}</p>
-                    <p className="text-muted-foreground">Aggregate RQ: {aggregateStatus.avgReversalQuality.toFixed(1)}/{aggregateStatus.avgRqThreshold.toFixed(1)}</p>
-                    <p className="text-muted-foreground">Volatility: {aggregateStatus.volatilityRegime.toUpperCase()}</p>
-                    {aggregateStatus.criticalSymbols.length > 0 && (
-                      <p className="text-muted-foreground text-xs">⚠️ High activity detected: {aggregateStatus.criticalSymbols.join(', ')} (monitoring only)</p>
+                    <p>Reason: {blockReason}</p>
+                    {tradeBlock?.type && (
+                      <p className="text-muted-foreground">Type: {tradeBlock.type.replace(/_/g, ' ')}</p>
+                    )}
+                    {aggregateStatus && (
+                      <>
+                        <p className="text-muted-foreground">Aggregate RQ: {aggregateStatus.avgReversalQuality.toFixed(1)}/{aggregateStatus.avgRqThreshold.toFixed(1)}</p>
+                        <p className="text-muted-foreground">Volatility: {aggregateStatus.volatilityRegime.toUpperCase()}</p>
+                        {aggregateStatus.criticalSymbols && aggregateStatus.criticalSymbols.length > 0 && (
+                          <p className="text-muted-foreground text-xs">⚠️ High activity: {aggregateStatus.criticalSymbols.join(', ')}</p>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>

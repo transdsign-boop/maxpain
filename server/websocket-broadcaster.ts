@@ -10,7 +10,8 @@ export type WebSocketEventType =
   | 'asset_performance_updated'
   | 'strategy_updated'
   | 'live_snapshot'
-  | 'order_update';
+  | 'order_update'
+  | 'trade_block';
 
 export interface WebSocketEvent {
   type: WebSocketEventType;
@@ -101,6 +102,14 @@ export class WebSocketBroadcaster {
     this.broadcast({
       type: 'strategy_updated',
       data: strategy,
+      timestamp: Date.now(),
+    });
+  }
+
+  broadcastTradeBlock(blockInfo: { blocked: boolean; reason: string; type: string }): void {
+    this.broadcast({
+      type: 'trade_block',
+      data: blockInfo,
       timestamp: Date.now(),
     });
   }

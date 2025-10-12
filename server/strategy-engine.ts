@@ -464,6 +464,19 @@ export class StrategyEngine extends EventEmitter {
 
     console.log(`🎯 Evaluating strategy "${strategy.name}" for ${liquidation.symbol}`);
 
+    // CASCADE AUTO-BLOCKING: Check if cascade detector is blocking all trades
+    const aggregateStatus = cascadeDetectorService.getAggregateStatus();
+    if (aggregateStatus.blockAll) {
+      console.log(`🚫 CASCADE AUTO-BLOCK: ${aggregateStatus.reason}`);
+      // Broadcast block status to frontend
+      wsBroadcaster.broadcastTradeBlock({
+        blocked: true,
+        reason: aggregateStatus.reason || 'Cascade auto-blocking active',
+        type: 'cascade_auto_block'
+      });
+      return;
+    }
+
     // Use configurable lookback window from strategy settings (convert hours to seconds)
     const lookbackSeconds = strategy.liquidationLookbackHours * 3600;
     const recentLiquidations = this.getRecentLiquidations(
@@ -578,6 +591,11 @@ export class StrategyEngine extends EventEmitter {
       if (timeSinceLastFill < this.fillCooldownMs) {
         const waitTime = ((this.fillCooldownMs - timeSinceLastFill) / 1000).toFixed(1);
         console.log(`⏸️ Entry cooldown active for ${liquidation.symbol} ${positionSide} - wait ${waitTime}s before new entry`);
+        wsBroadcaster.broadcastTradeBlock({
+          blocked: true,
+          reason: `Entry cooldown: ${liquidation.symbol} ${positionSide} - ${waitTime}s remaining`,
+          type: 'cooldown'
+        });
         return false;
       }
     }
@@ -589,6 +607,11 @@ export class StrategyEngine extends EventEmitter {
     // Must check if adding ONE MORE position would exceed the limit
     if (strategy.maxOpenPositions > 0 && portfolioRisk.openPositionCount + 1 > strategy.maxOpenPositions) {
       console.log(`🚫 PORTFOLIO LIMIT: Opening new position would exceed limit (${portfolioRisk.openPositionCount + 1} > ${strategy.maxOpenPositions})`);
+      wsBroadcaster.broadcastTradeBlock({
+        blocked: true,
+        reason: `Portfolio limit: ${portfolioRisk.openPositionCount + 1} > ${strategy.maxOpenPositions} positions`,
+        type: 'portfolio_limit'
+      });
       return false;
     }
     
@@ -608,6 +631,11 @@ export class StrategyEngine extends EventEmitter {
       // Check if there's any remaining risk budget (with 0.05% minimum threshold)
       if (remainingRiskPercent < 0.05) {
         console.log(`🚫 PORTFOLIO RISK LIMIT: No remaining risk budget (current: ${portfolioRisk.riskPercentage.toFixed(1)}%, max: ${maxRiskPercent}%, remaining: ${remainingRiskPercent.toFixed(2)}%)`);
+        wsBroadcaster.broadcastTradeBlock({
+          blocked: true,
+          reason: `Risk limit: ${portfolioRisk.riskPercentage.toFixed(1)}% of ${maxRiskPercent}% used`,
+          type: 'risk_limit'
+        });
         return false;
       }
       
@@ -664,6 +692,12 @@ export class StrategyEngine extends EventEmitter {
       if (projectedRiskPercentage > maxRiskPercent + 0.01) { // Allow 0.01% tolerance for float precision
         console.log(`🚫 PORTFOLIO RISK LIMIT: Projected risk still exceeds max after scaling (projected: ${projectedRiskPercentage.toFixed(1)}% > max: ${maxRiskPercent}%)`);
         
+        wsBroadcaster.broadcastTradeBlock({
+          blocked: true,
+          reason: `Risk limit: Projected ${projectedRiskPercentage.toFixed(1)}% > max ${maxRiskPercent}%`,
+          type: 'risk_limit'
+        });
+        
         // Log error to database for audit trail
         await this.logTradeEntryError({
           strategy,
@@ -688,6 +722,12 @@ export class StrategyEngine extends EventEmitter {
       
       if (remainingRiskPercent < 0.05) {
         console.log(`🚫 PORTFOLIO RISK LIMIT (Fallback): No remaining risk budget (remaining: ${remainingRiskPercent.toFixed(2)}%)`);
+        
+        wsBroadcaster.broadcastTradeBlock({
+          blocked: true,
+          reason: `Risk limit: No remaining budget (${remainingRiskPercent.toFixed(2)}%)`,
+          type: 'risk_limit'
+        });
         
         // Log error to database for audit trail
         await this.logTradeEntryError({
@@ -727,6 +767,11 @@ export class StrategyEngine extends EventEmitter {
     const symbolHistory = this.liquidationHistory.get(liquidation.symbol);
     if (!symbolHistory || symbolHistory.length === 0) {
       console.log(`❌ No historical liquidations found for ${liquidation.symbol} - entry blocked`);
+      wsBroadcaster.broadcastTradeBlock({
+        blocked: true,
+        reason: `No historical data for ${liquidation.symbol}`,
+        type: 'no_history'
+      });
       return false;
     }
     
@@ -765,6 +810,11 @@ export class StrategyEngine extends EventEmitter {
     } else {
       console.log(`❌ Percentile BLOCKED: $${currentLiquidationValue.toFixed(2)} is at ${currentPercentile}th percentile (< ${strategy.percentileThreshold}% threshold)`);
       console.log(`   📊 Need at least ${strategy.percentileThreshold}th percentile to enter (currently in bottom ${strategy.percentileThreshold}%)`);
+      wsBroadcaster.broadcastTradeBlock({
+        blocked: true,
+        reason: `Percentile: ${currentPercentile}% < ${strategy.percentileThreshold}% threshold`,
+        type: 'percentile'
+      });
     }
     
     return shouldEnter;
