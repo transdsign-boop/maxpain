@@ -89,6 +89,7 @@ PERMANENT DATA PRESERVATION: ALL trading data MUST be preserved forever. The use
 - **DCA System**: Integrated Dollar Cost Averaging with ATR-based volatility scaling, convex level spacing, exponential size growth, and liquidation-aware risk management. Parameters managed via Global Settings.
 - **SIMPLIFIED TP/SL APPROACH**: Position-level protective orders only. Each position has ONE TP and ONE SL order based on average entry price and total quantity. No individual layer TP/SL. Progressive layer monitoring DISABLED.
 - **Take Profit**: ATR-based dynamic TP calculation using exit cushion multiplier (default 0.6x ATR). Calculated from average entry price for entire position. Falls back to fixed percentage only if DCA not configured.
+- **Protective Order Safety (CRITICAL)**: Place-then-cancel pattern ensures protective orders are ALWAYS active. New TP/SL orders are placed BEFORE old ones are cancelled, eliminating dangerous gaps. Reconciliation runs every 30 seconds (reduced from 60s) for faster updates.
 - **Data Integrity**: Idempotency for orders, atomic cooldowns, permanent preservation of all trading data.
 - **Performance Metrics**: Comprehensive tracking including deposited capital, ROI, transfer markers, commissions, and funding fees.
 
