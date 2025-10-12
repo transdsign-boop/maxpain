@@ -206,6 +206,8 @@ export const positionLayers = pgTable("position_layers", {
   cost: decimal("cost", { precision: 18, scale: 8 }).notNull(), // Margin used for this layer
   takeProfitPrice: decimal("take_profit_price", { precision: 18, scale: 8 }).notNull(),
   stopLossPrice: decimal("stop_loss_price", { precision: 18, scale: 8 }).notNull(),
+  tpOrderId: varchar("tp_order_id"), // Exchange order ID for layer's TP LIMIT order
+  slOrderId: varchar("sl_order_id"), // Exchange order ID for layer's SL STOP_MARKET order
   isOpen: boolean("is_open").notNull().default(true),
   realizedPnl: decimal("realized_pnl", { precision: 18, scale: 8 }).notNull().default("0.0"),
   closedAt: timestamp("closed_at"),
