@@ -741,31 +741,52 @@ export class StrategyEngine extends EventEmitter {
       console.log(`✅ AUTO-GATING DISABLED [${liquidation.symbol}]: Bypassing aggregate quality gates (avg RQ: ${aggregateStatus.avgReversalQuality.toFixed(1)}, volatility: ${aggregateStatus.volatilityRegime})`);
     }
     
-    // Calculate percentile threshold: current liquidation must exceed specified percentile
+    // Calculate percentile threshold using ALL symbol history (same as UI badge)
+    // This ensures bot entry logic matches what user sees in the UI
     const currentLiquidationValue = parseFloat(liquidation.value);
     
-    if (recentLiquidations.length === 0) return false;
+    // Get ALL historical liquidations for this symbol (not just lookback window)
+    const symbolHistory = this.liquidationHistory.get(liquidation.symbol);
+    if (!symbolHistory || symbolHistory.length === 0) {
+      console.log(`❌ No historical liquidations found for ${liquidation.symbol} - entry blocked`);
+      return false;
+    }
     
-    // Get all liquidation values within the lookback window and sort them
-    const liquidationValues = recentLiquidations.map(liq => parseFloat(liq.value)).sort((a, b) => a - b);
+    // Sort all historical values to calculate percentile (same as UI)
+    const allHistoricalValues = symbolHistory.map(liq => parseFloat(liq.value)).sort((a, b) => a - b);
     
-    // Calculate the percentile value: find the value such that X% of liquidations are below it
-    // For 51% threshold with 10 liquidations, we want the value at position ceil(0.51 * 10) = 6
-    // This means 5 liquidations (50%) are strictly below it
-    const percentilePosition = Math.ceil((strategy.percentileThreshold / 100) * liquidationValues.length);
-    const percentileIndex = Math.max(0, percentilePosition - 1); // Convert to 0-based index
-    const percentileValue = liquidationValues[Math.min(percentileIndex, liquidationValues.length - 1)];
+    // Calculate current liquidation's percentile rank (same algorithm as UI)
+    // Binary search to find how many liquidations are strictly below current value
+    let left = 0, right = allHistoricalValues.length;
+    while (left < right) {
+      const mid = Math.floor((left + right) / 2);
+      if (allHistoricalValues[mid] <= currentLiquidationValue) {
+        left = mid + 1;
+      } else {
+        right = mid;
+      }
+    }
+    const belowCount = left;
+    const currentPercentile = allHistoricalValues.length > 1
+      ? Math.round((belowCount / allHistoricalValues.length) * 100)
+      : 100;
     
-    console.log(`📊 Percentile Analysis: Current liquidation $${currentLiquidationValue.toFixed(2)} vs ${strategy.percentileThreshold}% threshold $${percentileValue.toFixed(2)} (${liquidationValues.length} liquidations in ${strategy.liquidationLookbackHours}h window)`);
-    
-    // Check if we should enter based on percentile
-    const shouldEnter = currentLiquidationValue >= percentileValue;
+    // Check if current percentile meets or exceeds threshold
+    // Example: 60% threshold means only enter if at 60th percentile or higher (top 40%)
+    const shouldEnter = currentPercentile >= strategy.percentileThreshold;
     
     if (shouldEnter) {
+      console.log(`✅ Percentile PASSED: $${currentLiquidationValue.toFixed(2)} is at ${currentPercentile}th percentile (≥ ${strategy.percentileThreshold}% threshold)`);
+      console.log(`   📊 Compared against ${allHistoricalValues.length} historical ${liquidation.symbol} liquidations: range $${allHistoricalValues[0].toFixed(2)}-$${allHistoricalValues[allHistoricalValues.length-1].toFixed(2)}`);
+      console.log(`   ✨ Entering top ${100 - strategy.percentileThreshold}% of liquidations (${strategy.percentileThreshold}th percentile and above)`);
+      
       // ATOMICALLY set cooldown IMMEDIATELY when decision is made (before returning)
       // This prevents race condition where two threads both pass the check before either sets cooldown
       this.lastFillTime.set(cooldownKey, Date.now());
       console.log(`🔒 Entry cooldown locked ATOMICALLY for ${liquidation.symbol} ${positionSide} (${this.fillCooldownMs / 1000}s)`);
+    } else {
+      console.log(`❌ Percentile BLOCKED: $${currentLiquidationValue.toFixed(2)} is at ${currentPercentile}th percentile (< ${strategy.percentileThreshold}% threshold)`);
+      console.log(`   📊 Need at least ${strategy.percentileThreshold}th percentile to enter (currently in bottom ${strategy.percentileThreshold}%)`);
     }
     
     return shouldEnter;
@@ -952,29 +973,44 @@ export class StrategyEngine extends EventEmitter {
       console.log(`✅ AUTO-GATING DISABLED (Layer) [${liquidation.symbol}]: Bypassing aggregate quality gates (avg RQ: ${aggregateStatus.avgReversalQuality.toFixed(1)}, volatility: ${aggregateStatus.volatilityRegime})`);
     }
 
-    // Use configurable lookback window from strategy settings (convert hours to seconds)
-    const lookbackSeconds = strategy.liquidationLookbackHours * 3600;
-    const recentLiquidations = this.getRecentLiquidations(liquidation.symbol, lookbackSeconds);
-    
-    if (recentLiquidations.length === 0) return false;
-
+    // Calculate percentile using ALL symbol history (same as entry and UI badge)
     const currentLiquidationValue = parseFloat(liquidation.value);
-    const liquidationValues = recentLiquidations.map(liq => parseFloat(liq.value)).sort((a, b) => a - b);
     
-    // Calculate percentile using same logic as entry
-    const percentilePosition = Math.ceil((strategy.percentileThreshold / 100) * liquidationValues.length);
-    const percentileIndex = Math.max(0, percentilePosition - 1);
-    const percentileValue = liquidationValues[Math.min(percentileIndex, liquidationValues.length - 1)];
-
-    // Only proceed with layering if liquidation equals or exceeds percentile threshold
-    if (currentLiquidationValue < percentileValue) {
-      console.log(`📊 Layer blocked: Liquidation $${currentLiquidationValue.toFixed(2)} is below ${strategy.percentileThreshold}% threshold $${percentileValue.toFixed(2)}`);
+    // Get ALL historical liquidations for this symbol (not just lookback window)
+    const symbolHistory = this.liquidationHistory.get(liquidation.symbol);
+    if (!symbolHistory || symbolHistory.length === 0) {
+      console.log(`❌ No historical liquidations found for ${liquidation.symbol} - layer blocked`);
       return false;
     }
-
-    // Layer is allowed - liquidation equals or exceeds the percentile threshold
-    console.log(`📊 Layer approved: Liquidation $${currentLiquidationValue.toFixed(2)} meets/exceeds ${strategy.percentileThreshold}% threshold $${percentileValue.toFixed(2)}`);
-    return true;
+    
+    // Sort all historical values to calculate percentile (same as UI)
+    const allHistoricalValues = symbolHistory.map(liq => parseFloat(liq.value)).sort((a, b) => a - b);
+    
+    // Calculate current liquidation's percentile rank (same algorithm as UI and entry)
+    let left = 0, right = allHistoricalValues.length;
+    while (left < right) {
+      const mid = Math.floor((left + right) / 2);
+      if (allHistoricalValues[mid] <= currentLiquidationValue) {
+        left = mid + 1;
+      } else {
+        right = mid;
+      }
+    }
+    const belowCount = left;
+    const currentPercentile = allHistoricalValues.length > 1
+      ? Math.round((belowCount / allHistoricalValues.length) * 100)
+      : 100;
+    
+    // Check if current percentile meets or exceeds threshold
+    const shouldAddLayer = currentPercentile >= strategy.percentileThreshold;
+    
+    if (shouldAddLayer) {
+      console.log(`✅ Layer APPROVED: $${currentLiquidationValue.toFixed(2)} is at ${currentPercentile}th percentile (≥ ${strategy.percentileThreshold}% threshold)`);
+    } else {
+      console.log(`❌ Layer BLOCKED: $${currentLiquidationValue.toFixed(2)} is at ${currentPercentile}th percentile (< ${strategy.percentileThreshold}% threshold)`);
+    }
+    
+    return shouldAddLayer;
   }
 
   // Fetch available balance from exchange (for live trading)

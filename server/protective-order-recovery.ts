@@ -32,9 +32,14 @@ export class ProtectiveOrderRecovery {
         return;
       }
 
+      // Fetch all open orders from exchange ONCE for efficiency
+      const exchangeOrders = await this.fetchAllOpenOrders();
+      const exchangeOrderIds = new Set(exchangeOrders.map(o => o.orderId));
+
       let totalMissing = 0;
       let totalPlaced = 0;
       let totalFailed = 0;
+      let totalStaleCleared = 0;
 
       for (const position of openPositions) {
         // Get all layers for this position
@@ -47,8 +52,28 @@ export class ProtectiveOrderRecovery {
         }
 
         for (const layer of layers) {
-          const missingTP = !layer.tpOrderId;
-          const missingSL = !layer.slOrderId;
+          // CRITICAL FIX: Verify order IDs actually exist on exchange, not just database
+          let missingTP = !layer.tpOrderId;
+          let missingSL = !layer.slOrderId;
+          
+          // Check if stored IDs are stale (no longer on exchange)
+          if (layer.tpOrderId && !exchangeOrderIds.has(Number(layer.tpOrderId))) {
+            console.log(`⚠️ Stale TP order ID ${layer.tpOrderId} for ${position.symbol} ${position.side} Layer ${layer.layerNumber} - clearing`);
+            await db.update(positionLayers)
+              .set({ tpOrderId: null })
+              .where(eq(positionLayers.id, layer.id));
+            missingTP = true;
+            totalStaleCleared++;
+          }
+          
+          if (layer.slOrderId && !exchangeOrderIds.has(Number(layer.slOrderId))) {
+            console.log(`⚠️ Stale SL order ID ${layer.slOrderId} for ${position.symbol} ${position.side} Layer ${layer.layerNumber} - clearing`);
+            await db.update(positionLayers)
+              .set({ slOrderId: null })
+              .where(eq(positionLayers.id, layer.id));
+            missingSL = true;
+            totalStaleCleared++;
+          }
 
           if (missingTP || missingSL) {
             totalMissing++;
@@ -193,6 +218,10 @@ export class ProtectiveOrderRecovery {
         }
       }
 
+      if (totalStaleCleared > 0) {
+        console.log(`🧹 Cleared ${totalStaleCleared} stale order IDs from database`);
+      }
+      
       if (totalMissing === 0) {
         console.log('✅ All positions have protective orders in place');
       } else {
@@ -202,6 +231,55 @@ export class ProtectiveOrderRecovery {
       console.error('❌ Error in protective order recovery:', error);
     } finally {
       this.isRunning = false;
+    }
+  }
+
+  /**
+   * Fetch all open orders from exchange to verify stored order IDs
+   */
+  private async fetchAllOpenOrders(): Promise<Array<{ orderId: number; symbol: string; type: string }>> {
+    try {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+      
+      if (!apiKey || !secretKey) {
+        console.log('⚠️ Missing API credentials, cannot verify exchange orders');
+        return [];
+      }
+      
+      const timestamp = Date.now();
+      const params = `timestamp=${timestamp}`;
+      
+      const crypto = await import('crypto');
+      const signature = crypto.createHmac('sha256', secretKey)
+        .update(params)
+        .digest('hex');
+      
+      const response = await fetch(
+        `https://fapi.asterdex.com/fapi/v1/openOrders?${params}&signature=${signature}`,
+        {
+          headers: {
+            'X-MBX-APIKEY': apiKey,
+          },
+        }
+      );
+      
+      if (!response.ok) {
+        console.log(`⚠️ Failed to fetch exchange orders: ${response.status} ${response.statusText}`);
+        return [];
+      }
+      
+      const orders = await response.json();
+      console.log(`📊 Fetched ${orders.length} open orders from exchange for verification`);
+      
+      return orders.map((o: any) => ({
+        orderId: o.orderId,
+        symbol: o.symbol,
+        type: o.type
+      }));
+    } catch (error) {
+      console.error('❌ Error fetching exchange orders for verification:', error);
+      return [];
     }
   }
 
