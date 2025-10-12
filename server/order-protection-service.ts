@@ -606,7 +606,7 @@ export class OrderProtectionService {
         if (tpslOrders.length > 0) {
           console.log(`   Cancelling ${tpslOrders.length} stale position-level TP/SL order(s)...`);
           for (const order of tpslOrders) {
-            await this.cancelOrder(position.symbol, order.orderId);
+            await this.cancelExchangeOrder(position.symbol, order.orderId);
           }
         }
         
