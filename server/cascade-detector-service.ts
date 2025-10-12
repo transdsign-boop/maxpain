@@ -489,6 +489,10 @@ class CascadeDetectorService {
     return statuses;
   }
 
+  public getMonitoredSymbols(): string[] {
+    return Array.from(this.detectors.keys());
+  }
+
   public isBlocking(symbol: string): boolean {
     const status = this.getStatus(symbol);
     return status.autoBlock;

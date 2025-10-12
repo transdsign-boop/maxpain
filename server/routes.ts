@@ -5084,12 +5084,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(503).json({ error: 'Strategy engine not initialized' });
       }
 
-      // Get user settings to find cascade monitoring symbols
-      const settings = await storage.getUserSettings(DEFAULT_USER_ID);
-      const monitoredSymbols = settings?.cascadeMonitoringSymbols || [];
+      // Get monitored symbols from cascade detector service (already loaded and active)
+      const monitoredSymbols = cascadeDetectorService.getMonitoredSymbols();
 
       if (monitoredSymbols.length === 0) {
-        return res.json({ limits: [], message: 'No symbols configured for cascade monitoring' });
+        return res.json({ limits: [], message: 'No assets being monitored for cascade detection' });
       }
 
       // Get symbol precision data from strategy engine cache using public getter
