@@ -560,18 +560,18 @@ class CascadeDetectorService {
     let reason: string | undefined;
     
     // CASCADE AUTO-BLOCKING: Based on cascade detector signals (orange/red lights)
-    // When cascade activity is detected across monitored symbols, sit out
+    // When 50%+ of monitored symbols show cascade activity, sit out
     // Reversal quality is informational only - NOT used for gating
     
     if (autoEnabled && statuses.length > 0) {
       // Calculate what percentage of symbols are showing cascade activity
       const cascadePercentage = (criticalSymbols.length / statuses.length) * 100;
       
-      // Block when ANY symbol shows cascade activity (orange/red light)
-      // This indicates high cascade risk in the market
-      if (criticalSymbols.length > 0) {
+      // Block when 50% or more symbols show cascade activity (orange/red light)
+      // This indicates widespread cascade risk across the market
+      if (cascadePercentage >= 50) {
         blockAll = true;
-        reason = `Cascade activity detected on ${criticalSymbols.length}/${statuses.length} symbols (${cascadePercentage.toFixed(0)}%): ${criticalSymbols.join(', ')}`;
+        reason = `Widespread cascade activity: ${criticalSymbols.length}/${statuses.length} symbols (${cascadePercentage.toFixed(0)}%) - ${criticalSymbols.join(', ')}`;
       }
     }
     
