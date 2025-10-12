@@ -202,37 +202,34 @@ function PerformanceOverview() {
   const rawSourceData = useMemo(() => {
     if (!realizedPnlEvents || realizedPnlEvents.length === 0) return [];
     
-    // Create a map of closed positions by symbol and close time for quick lookup
-    const closedPosMap = new Map<string, any>();
-    if (closedPositions && closedPositions.length > 0) {
-      closedPositions.forEach(pos => {
-        if (pos.closedAt) {
-          const closeTime = new Date(pos.closedAt).getTime();
-          const key = `${pos.symbol}-${closeTime}`;
-          closedPosMap.set(key, pos);
-        }
-      });
-    }
+    // Create array of closed positions with timestamps for matching
+    const closedPosArray = closedPositions?.filter(pos => pos.closedAt).map(pos => ({
+      ...pos,
+      closeTime: new Date(pos.closedAt).getTime()
+    })) || [];
     
     let cumulativePnl = 0;
-    return realizedPnlEvents.map((event, index) => {
+    let matchCount = 0;
+    
+    const chartData = realizedPnlEvents.map((event, index) => {
       const pnl = parseFloat(event.income || '0');
       cumulativePnl += pnl;
       
       // Try to match P&L event with closed position to get actual side
-      // Match by symbol and timestamp (within 5 second window)
+      // Match by symbol and timestamp (within 30 second window for more flexibility)
       let actualSide = 'unknown';
       const eventTime = event.time;
       
-      // Look for matching position within ±5 seconds
-      for (let offset = -5000; offset <= 5000; offset += 1000) {
-        const checkTime = eventTime + offset;
-        const key = `${event.symbol}-${checkTime}`;
-        const matchedPos = closedPosMap.get(key);
-        if (matchedPos) {
-          actualSide = matchedPos.side;
-          break;
-        }
+      // Search for matching position by symbol and close time window
+      const matchedPos = closedPosArray.find(pos => {
+        if (pos.symbol !== event.symbol) return false;
+        const timeDiff = Math.abs(pos.closeTime - eventTime);
+        return timeDiff <= 30000; // Within 30 seconds
+      });
+      
+      if (matchedPos) {
+        actualSide = matchedPos.side;
+        matchCount++;
       }
       
       return {
@@ -246,6 +243,8 @@ function PerformanceOverview() {
         quantity: 0, // Not available from P&L events
       };
     });
+    
+    return chartData;
   }, [realizedPnlEvents, closedPositions]);
   
   // Apply date range filter
