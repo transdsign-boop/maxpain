@@ -17,6 +17,7 @@ import { calculateNextLayer, calculateATRPercent } from './dca-calculator';
 import { userDataStreamManager } from './user-data-stream';
 import { liveDataOrchestrator } from './live-data-orchestrator';
 import { syncCompletedTrades } from './exchange-sync';
+import { ProtectiveOrderRecovery } from './protective-order-recovery';
 
 // Aster DEX fee schedule
 const ASTER_MAKER_FEE_PERCENT = 0.01;  // 0.01% for limit orders (adds liquidity) 
@@ -69,9 +70,11 @@ export class StrategyEngine extends EventEmitter {
   private leverageSetForSymbols: Map<string, number> = new Map(); // symbol -> leverage value (track actual leverage configured on exchange)
   private pendingQ1Values: Map<string, number> = new Map(); // "sessionId-symbol-side" -> q1 base layer size for position being created
   private pendingFirstLayerData: Map<string, { takeProfitPrice: number; stopLossPrice: number; entryPrice: number; quantity: number }> = new Map(); // "sessionId-symbol-side" -> first layer TP/SL data
+  private protectiveOrderRecovery: ProtectiveOrderRecovery;
 
   constructor() {
     super();
+    this.protectiveOrderRecovery = new ProtectiveOrderRecovery(this);
     this.setupEventHandlers();
   }
 
@@ -4131,6 +4134,9 @@ export class StrategyEngine extends EventEmitter {
         
         // 3. Verify all open positions have correct TP/SL orders (self-healing)
         await orderProtectionService.verifyAllPositions(session.id, strategy);
+        
+        // 3.5. Check for and place missing DCA layer protective orders
+        await this.protectiveOrderRecovery.checkAndPlaceMissingOrders();
         
         // 4. Sync completed trades from exchange (automatic reconciliation)
         const syncResult = await syncCompletedTrades(session.id);
