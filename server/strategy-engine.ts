@@ -4111,19 +4111,26 @@ export class StrategyEngine extends EventEmitter {
         const strategy = await storage.getOrCreateDefaultStrategy(DEFAULT_USER_ID);
         const session = await storage.getOrCreateActiveSession(DEFAULT_USER_ID);
         
-        // 1. Clean up orphaned orders (orders for closed positions)
+        // 1. Sync orphan positions from exchange (positions not in DB)
+        const { syncOpenPositions } = await import('./exchange-sync');
+        const orphanSyncResult = await syncOpenPositions(session.id);
+        if (orphanSyncResult.success && orphanSyncResult.addedCount > 0) {
+          console.log(`  ✓ Synced ${orphanSyncResult.addedCount} orphan positions from exchange`);
+        }
+        
+        // 2. Clean up orphaned orders (orders for closed positions)
         const orphanedCount = await orderProtectionService.reconcileOrphanedOrders(session.id);
         
-        // 2. Verify all open positions have correct TP/SL orders (self-healing)
+        // 3. Verify all open positions have correct TP/SL orders (self-healing)
         await orderProtectionService.verifyAllPositions(session.id, strategy);
         
-        // 3. Sync completed trades from exchange (automatic reconciliation)
+        // 4. Sync completed trades from exchange (automatic reconciliation)
         const syncResult = await syncCompletedTrades(session.id);
         if (syncResult.success && syncResult.addedCount > 0) {
           console.log(`  ✓ Synced ${syncResult.addedCount} completed trades from exchange`);
         }
         
-        // 4. Keep data retention active (delete old liquidations)
+        // 5. Keep data retention active (delete old liquidations)
         const deletedCount = await storage.deleteOldLiquidations(30);
         if (deletedCount > 0) {
           console.log(`  ✓ Deleted ${deletedCount} liquidations older than 30 days`);
