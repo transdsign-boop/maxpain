@@ -81,6 +81,7 @@ PERMANENT DATA PRESERVATION: ALL trading data MUST be preserved forever. The use
 - **WebSocket**: Live connection to Aster DEX for real-time liquidation streaming and user data (ACCOUNT_UPDATE, ORDER_TRADE_UPDATE).
 - **Live Data Orchestrator**: Caches and broadcasts real-time account/position data to the frontend via WebSocket. Eliminates API polling.
 - **Cascade Detection**: Dynamic monitoring of selected assets, syncing on startup and configuration changes, with aggregate-based trade filtering (all-or-none decisions across all monitored symbols).
+- **Percentile Threshold**: Entry and layer decisions use percentile rank calculated from ALL historical liquidations for each symbol (matching UI badge calculation). 60% threshold = only enter liquidations at 60th percentile or higher (top 40%).
 - **Cascade Detector Polling (Critical - DO NOT MODIFY)**: Highly optimized polling architecture for price updates and open interest to prevent rate limits (10-second tick interval, rotating OI fetch, 60-second OI cache).
 - **Cascade Detector Logging**: Ultra-minimal logging that only outputs when liquidation notional >$100k or quality is excellent, reducing backend noise from ~400 lines/min to ~20 lines/min.
 - **Trading System**: Live-only trading with HMAC-SHA256 authentication, automatic ATR-based TP/SL management, queue-based locking for updates, and session-based tracking.
