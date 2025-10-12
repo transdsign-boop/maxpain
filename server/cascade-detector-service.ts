@@ -559,13 +559,17 @@ class CascadeDetectorService {
     let blockAll = false;
     let reason: string | undefined;
     
-    // REVERSAL QUALITY IS NOW INFORMATIONAL ONLY - NOT USED FOR GATING
-    // CASCADE BLOCKING now based on critical symbols (high activity detection)
-    // Individual symbols with orange/red lights indicate cascade risk
+    // CASCADE AUTO-BLOCKING: Based on aggregate average across ALL symbols
+    // When the overall market shows cascade risk (all average RQ < threshold), sit out
+    // Individual symbol reversal quality is informational only
     
-    if (autoEnabled && criticalSymbols.length > 0) {
-      blockAll = true;
-      reason = `High cascade risk on ${criticalSymbols.length} symbol${criticalSymbols.length > 1 ? 's' : ''}: ${criticalSymbols.join(', ')}`;
+    if (autoEnabled) {
+      // Block ALL if aggregate average reversal quality is below aggregate threshold
+      // This detects overall cascade risk across the entire monitored basket
+      if (avgReversalQuality < avgRqThreshold) {
+        blockAll = true;
+        reason = `Cascade risk detected - Aggregate RQ ${avgReversalQuality.toFixed(1)} < threshold ${avgRqThreshold.toFixed(1)}`;
+      }
     }
     
     return {
