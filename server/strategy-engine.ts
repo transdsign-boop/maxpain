@@ -3271,32 +3271,9 @@ export class StrategyEngine extends EventEmitter {
           });
           console.log(`📊 Created Layer 1 record: Entry=$${firstLayerData.entryPrice.toFixed(6)}, TP=$${firstLayerData.takeProfitPrice.toFixed(6)}, SL=$${firstLayerData.stopLossPrice.toFixed(6)}`);
           
-          // Find the strategy for this session to pass to placeLayerProtectiveOrders
-          let strategy: Strategy | undefined;
-          for (const [strategyId, strat] of this.activeStrategies) {
-            const session = this.activeSessions.get(strategyId);
-            if (session && session.id === order.sessionId) {
-              strategy = strat;
-              break;
-            }
-          }
-          
-          // Place LIMIT TP and STOP_MARKET SL orders on the exchange order book
-          if (strategy) {
-            const orderResult = await this.placeLayerProtectiveOrders({
-              position,
-              layer,
-              strategy,
-            });
-            
-            if (orderResult.success && orderResult.tpOrderId && orderResult.slOrderId) {
-              // Update layer with order IDs
-              await storage.updateLayerOrderIds(layer.id, orderResult.tpOrderId, orderResult.slOrderId);
-              console.log(`✅ Layer 1 protective orders placed: TP=${orderResult.tpOrderId}, SL=${orderResult.slOrderId}`);
-            } else {
-              console.error(`❌ Failed to place protective orders for Layer 1:`, orderResult.error);
-            }
-          }
+          // SIMPLIFIED: No longer placing individual layer TP/SL orders
+          // Position-level TP/SL will be managed by OrderProtectionService based on average entry
+          console.log(`📊 Position-level protective orders will be managed by OrderProtectionService`);
           
           // Clean up only after successful layer creation
           this.pendingFirstLayerData.delete(q1Key);
@@ -3387,32 +3364,9 @@ export class StrategyEngine extends EventEmitter {
       });
       console.log(`📊 Created Layer ${nextLayerNumber} record: Entry=$${layerData.entryPrice.toFixed(6)}, TP=$${layerData.takeProfitPrice.toFixed(6)}, SL=$${layerData.stopLossPrice.toFixed(6)}`);
       
-      // Find the strategy for this position to pass to placeLayerProtectiveOrders
-      let strategy: Strategy | undefined;
-      for (const [strategyId, strat] of this.activeStrategies) {
-        const session = this.activeSessions.get(strategyId);
-        if (session && session.id === position.sessionId) {
-          strategy = strat;
-          break;
-        }
-      }
-      
-      // Place LIMIT TP and STOP_MARKET SL orders on the exchange order book
-      if (strategy) {
-        const orderResult = await this.placeLayerProtectiveOrders({
-          position,
-          layer,
-          strategy,
-        });
-        
-        if (orderResult.success && orderResult.tpOrderId && orderResult.slOrderId) {
-          // Update layer with order IDs
-          await storage.updateLayerOrderIds(layer.id, orderResult.tpOrderId, orderResult.slOrderId);
-          console.log(`✅ Layer ${nextLayerNumber} protective orders placed: TP=${orderResult.tpOrderId}, SL=${orderResult.slOrderId}`);
-        } else {
-          console.error(`❌ Failed to place protective orders for Layer ${nextLayerNumber}:`, orderResult.error);
-        }
-      }
+      // SIMPLIFIED: No longer placing individual layer TP/SL orders
+      // Position-level TP/SL will be managed by OrderProtectionService based on average entry
+      console.log(`📊 Position-level protective orders will be managed by OrderProtectionService`);
       
       // Clean up after use
       this.pendingFirstLayerData.delete(layerKey);
@@ -3421,32 +3375,10 @@ export class StrategyEngine extends EventEmitter {
     }
   }
 
-  // Start monitoring positions for progressive layer exits
+  // SIMPLIFIED: Progressive layer monitoring disabled - using position-level TP/SL only
   private startExitMonitoring() {
-    this.orderMonitorInterval = setInterval(async () => {
-      if (!this.isRunning) return;
-      
-      // Re-entrancy guard: skip if previous check is still running
-      if (this.isCheckingLayers) {
-        return;
-      }
-      
-      this.isCheckingLayers = true;
-      try {
-        // Check all active sessions for progressive layer exits
-        for (const [strategyId, session] of this.activeSessions) {
-          const positions = await storage.getOpenPositions(session.id);
-          
-          for (const position of positions) {
-            await this.checkLayersForExit(position);
-          }
-        }
-      } catch (error) {
-        console.error('❌ Error in layer exit monitoring:', error);
-      } finally {
-        this.isCheckingLayers = false;
-      }
-    }, 2000); // Check every 2 seconds for progressive exits
+    console.log(`📊 Progressive layer monitoring disabled - using position-level TP/SL managed by OrderProtectionService`);
+    // No monitoring needed - TP/SL orders are on the exchange order book
   }
 
   // Check individual layers for progressive TP/SL exits
