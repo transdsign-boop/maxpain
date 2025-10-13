@@ -471,20 +471,20 @@ export default function Dashboard() {
           <div className="flex items-center gap-8">
             <ConnectionStatus isConnected={isConnected} />
             
-            {/* Start/Stop Button */}
+            {/* Pause/Resume Button */}
             {activeStrategy && (
               <Button
-                variant={activeStrategy.isActive ? "outline" : "default"}
+                variant={activeStrategy.paused ? "default" : "outline"}
                 size="icon"
-                onClick={() => activeStrategy.isActive ? stopMutation.mutate() : startMutation.mutate()}
-                disabled={stopMutation.isPending || startMutation.isPending}
-                data-testid="button-start-stop"
-                title={activeStrategy.isActive ? "Stop Trading" : "Start Trading"}
+                onClick={() => activeStrategy.paused ? resumeMutation.mutate() : pauseMutation.mutate()}
+                disabled={pauseMutation.isPending || resumeMutation.isPending}
+                data-testid="button-pause-resume"
+                title={activeStrategy.paused ? "Resume Trading" : "Pause Trading"}
               >
-                {activeStrategy.isActive ? (
-                  <Pause className="h-4 w-4" />
-                ) : (
+                {activeStrategy.paused ? (
                   <Play className="h-4 w-4" />
+                ) : (
+                  <Pause className="h-4 w-4" />
                 )}
               </Button>
             )}
@@ -557,17 +557,17 @@ export default function Dashboard() {
               
               {activeStrategy && (
                 <Button
-                  variant={activeStrategy.isActive ? "outline" : "default"}
+                  variant={activeStrategy.paused ? "default" : "outline"}
                   size="icon"
                   className="h-7 w-7"
-                  onClick={() => activeStrategy.isActive ? stopMutation.mutate() : startMutation.mutate()}
-                  disabled={stopMutation.isPending || startMutation.isPending}
-                  data-testid="button-start-stop-mobile"
+                  onClick={() => activeStrategy.paused ? resumeMutation.mutate() : pauseMutation.mutate()}
+                  disabled={pauseMutation.isPending || resumeMutation.isPending}
+                  data-testid="button-pause-resume-mobile"
                 >
-                  {activeStrategy.isActive ? (
-                    <Pause className="h-3 w-3" />
-                  ) : (
+                  {activeStrategy.paused ? (
                     <Play className="h-3 w-3" />
+                  ) : (
+                    <Pause className="h-3 w-3" />
                   )}
                 </Button>
               )}
