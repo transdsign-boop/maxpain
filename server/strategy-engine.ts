@@ -1740,9 +1740,13 @@ export class StrategyEngine extends EventEmitter {
         await new Promise(resolve => setTimeout(resolve, strategy.orderDelayMs));
       }
 
+      let exchangeConfirmed = false;
+      let storageSuccess = false;
+      
       try {
         // Place layer order with price chasing
-        // Only pass positionSide if the EXCHANGE is in dual mode (not based on strategy settings)
+        // Pass callback to set cooldown IMMEDIATELY after exchange accepts order
+        // This atomic operation prevents duplicates even if storage operations fail
         await this.placeOrderWithRetry({
           strategy,
           session,
@@ -1754,29 +1758,38 @@ export class StrategyEngine extends EventEmitter {
           triggerLiquidationId: liquidation.id,
           layerNumber: nextLayer,
           positionId: position.id,
-          positionSide: this.exchangePositionMode === 'dual' ? positionSide : undefined, // Only include if EXCHANGE is in dual mode
+          positionSide: this.exchangePositionMode === 'dual' ? positionSide : undefined,
+          onExchangeConfirmation: () => {
+            // CRITICAL: Set cooldown IMMEDIATELY when exchange confirms (atomic with order acceptance)
+            // This prevents duplicates even if subsequent storage operations fail
+            this.lastFillTime.set(cooldownKey, Date.now());
+            exchangeConfirmed = true;
+            console.log(`🔒 Layer cooldown set ATOMICALLY for ${liquidation.symbol} ${positionSide} (${this.fillCooldownMs / 1000}s) at exchange confirmation`);
+          }
         });
 
-        // CRITICAL: Increment layersPlaced immediately after order is placed
+        // CRITICAL: Increment layersPlaced after order is placed
         // This prevents rapid liquidations from triggering the same layer twice
         await storage.updatePosition(position.id, {
           layersPlaced: nextLayer
         });
         console.log(`📊 Updated layersPlaced=${nextLayer} for ${liquidation.symbol} (prevents duplicate layer triggers)`);
 
-        // Set cooldown AFTER successful order placement to prevent duplicate layers
-        this.lastFillTime.set(cooldownKey, Date.now());
-        console.log(`🔒 Layer cooldown set for ${liquidation.symbol} ${positionSide} (${this.fillCooldownMs / 1000}s) after successful placement`);
-
+        storageSuccess = true;
         console.log(`✅ Layer ${nextLayer} completed for ${liquidation.symbol}`);
       } finally {
-        // Remove the pending layer marker regardless of success/failure
-        const layers = this.pendingLayerOrders.get(position.id);
-        if (layers) {
-          layers.delete(nextLayer);
-          if (layers.size === 0) {
-            this.pendingLayerOrders.delete(position.id);
+        // CRITICAL: Only clear pending marker if storage succeeded
+        // If exchange confirmed but storage failed, keep marker to block duplicates until reconciliation
+        if (storageSuccess || !exchangeConfirmed) {
+          const layers = this.pendingLayerOrders.get(position.id);
+          if (layers) {
+            layers.delete(nextLayer);
+            if (layers.size === 0) {
+              this.pendingLayerOrders.delete(position.id);
+            }
           }
+        } else {
+          console.warn(`⚠️ ORPHANED LAYER: Exchange confirmed layer ${nextLayer} for ${liquidation.symbol} but storage failed - pending marker kept for reconciliation`);
         }
       }
     } catch (error) {
@@ -1797,6 +1810,7 @@ export class StrategyEngine extends EventEmitter {
     layerNumber: number;
     positionId?: string;
     positionSide?: string; // 'long' or 'short' for hedge mode
+    onExchangeConfirmation?: () => void; // Callback to set cooldown immediately after exchange confirms
   }) {
     const { strategy, session, symbol, side, orderSide, quantity, targetPrice, triggerLiquidationId, layerNumber, positionId, positionSide } = params;
     const maxRetryDuration = strategy.maxRetryDurationMs;
@@ -1868,6 +1882,12 @@ export class StrategyEngine extends EventEmitter {
           
           console.log(`✅ LIVE ORDER EXECUTED on Aster DEX: ${quantity.toFixed(4)} ${symbol} at $${orderPrice}`);
           console.log(`📝 Order ID: ${liveOrderResult.orderId || 'N/A'}`);
+          
+          // CRITICAL: Signal exchange confirmation immediately (sets cooldown)
+          // This MUST happen BEFORE storage operations to prevent duplicates even if storage fails
+          if (params.onExchangeConfirmation) {
+            params.onExchangeConfirmation();
+          }
           
           // Track live order execution locally for position management
           const order = await storage.placePaperOrder({
