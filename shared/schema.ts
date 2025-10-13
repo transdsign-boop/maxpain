@@ -184,12 +184,14 @@ export const positions = pgTable("positions", {
   totalCost: decimal("total_cost", { precision: 18, scale: 8 }).notNull(), // Actual margin used (notional / leverage)
   unrealizedPnl: decimal("unrealized_pnl", { precision: 18, scale: 8 }).notNull().default("0.0"),
   realizedPnl: decimal("realized_pnl", { precision: 18, scale: 8 }).notNull().default("0.0"),
-  layersFilled: integer("layers_filled").notNull().default(1),
+  layersFilled: integer("layers_filled").notNull().default(1), // Layers that have FILLED (updated after fill settles)
+  layersPlaced: integer("layers_placed").notNull().default(1), // Layers that have been PLACED as orders (incremented immediately)
   maxLayers: integer("max_layers").notNull(),
   lastLayerPrice: decimal("last_layer_price", { precision: 18, scale: 8 }),
   leverage: integer("leverage").notNull().default(1), // Leverage multiplier (1-125x)
   initialEntryPrice: decimal("initial_entry_price", { precision: 18, scale: 8 }), // First layer entry price (P0) - anchor for DCA calculations
   dcaBaseSize: decimal("dca_base_size", { precision: 18, scale: 8 }), // q1 - base layer size used for exponential sizing
+  dcaSchedule: jsonb("dca_schedule"), // Complete DCA schedule: { levels: [{price, quantity, tp, sl}], effectiveGrowthFactor, q1 }
   isOpen: boolean("is_open").notNull().default(true),
   openedAt: timestamp("opened_at").notNull().defaultNow(),
   closedAt: timestamp("closed_at"),

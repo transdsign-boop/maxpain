@@ -427,17 +427,20 @@ export function calculateDCALevels(
 
 /**
  * Calculate the next layer for an existing position
- * This recalculates DCA levels dynamically based on current position state
+ * Uses stored DCA schedule if available, otherwise recalculates
  * 
  * @param strategy - The trading strategy
  * @param currentBalance - Current account balance
  * @param leverage - Position leverage
  * @param symbol - Trading symbol
  * @param side - Position side (long/short)
- * @param currentLayer - Current layer number
+ * @param currentLayer - Current layer number (layers PLACED, not filled)
  * @param initialEntryPrice - Original entry price (P0)
+ * @param storedQ1 - q1 from initial calculation (for fallback)
+ * @param dcaSchedule - Stored DCA schedule from position (prevents recalculation)
  * @param apiKey - Aster DEX API key (optional for ATR calculation)
  * @param secretKey - Aster DEX secret key (optional for ATR calculation)
+ * @param maxRiskOverride - Optional override for max risk %
  * @returns Next layer price and quantity, or null if no more layers
  */
 export async function calculateNextLayer(
@@ -448,10 +451,11 @@ export async function calculateNextLayer(
   side: 'long' | 'short',
   currentLayer: number,
   initialEntryPrice: number,
-  storedQ1: number | null, // q1 from initial calculation - ensures consistent sizing
+  storedQ1: number | null,
+  dcaSchedule: { levels: any[]; effectiveGrowthFactor: number; q1: number } | null,
   apiKey?: string,
   secretKey?: string,
-  maxRiskOverride?: number  // Optional override for max risk % (uses remaining portfolio budget)
+  maxRiskOverride?: number
 ): Promise<{ price: number; quantity: number; level: number; takeProfitPrice: number; stopLossPrice: number } | null> {
   // Check if we've reached max layers
   if (currentLayer >= strategy.maxLayers) {
@@ -461,7 +465,30 @@ export async function calculateNextLayer(
   
   const nextLayer = currentLayer + 1;
   
-  // Calculate current ATR for volatility scaling
+  // PRIORITY 1: Use stored DCA schedule if available (no recalculation needed)
+  if (dcaSchedule && dcaSchedule.levels && dcaSchedule.levels.length > 0) {
+    const nextLevelIndex = nextLayer - 1; // Levels are 0-indexed
+    const nextLevel = dcaSchedule.levels[nextLevelIndex];
+    
+    if (nextLevel) {
+      console.log(`✅ Using stored DCA schedule for Layer ${nextLayer}`);
+      console.log(`   Level ${nextLayer}: price=$${nextLevel.price.toFixed(4)}, qty=${nextLevel.quantity.toFixed(6)}, TP=$${nextLevel.takeProfitPrice.toFixed(4)}, SL=$${nextLevel.stopLossPrice.toFixed(4)}`);
+      
+      return {
+        price: nextLevel.price,
+        quantity: nextLevel.quantity,
+        level: nextLayer,
+        takeProfitPrice: nextLevel.takeProfitPrice,
+        stopLossPrice: nextLevel.stopLossPrice,
+      };
+    } else {
+      console.warn(`⚠️ Layer ${nextLayer} not found in stored schedule (has ${dcaSchedule.levels.length} levels)`);
+    }
+  } else {
+    console.warn(`⚠️ No DCA schedule stored, will recalculate (may cause sizing inconsistency)`);
+  }
+  
+  // Calculate current ATR for volatility scaling (needed for recalculation fallback)
   const atrPercent = await calculateATRPercent(symbol, 10, apiKey, secretKey);
   
   // Fetch DCA parameters from SQL wrapper (bypasses Drizzle cache)
