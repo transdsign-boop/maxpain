@@ -14,18 +14,19 @@ export class ErrorBoundary extends Component<Props, State> {
     this.state = { hasError: false };
   }
 
-  static getDerivedStateFromError() {
+  static getDerivedStateFromError(error: Error) {
+    // Don't show error UI for Vite HMR WebSocket errors - these are expected in Replit
+    if (error?.message?.includes('WebSocket') || error?.message?.includes('localhost:undefined')) {
+      console.warn('Suppressed Vite HMR WebSocket error');
+      return { hasError: false };
+    }
     return { hasError: true };
   }
 
   componentDidCatch(error: Error, errorInfo: any) {
-    console.error('ErrorBoundary caught error:', error, errorInfo);
-    
-    // Don't show error UI for Vite HMR WebSocket errors - these are expected in Replit
-    if (error.message?.includes('WebSocket') && error.message?.includes('localhost:undefined')) {
-      // Suppress this specific error and reset boundary
-      this.setState({ hasError: false });
-      return;
+    // Only log non-Vite errors
+    if (!error.message?.includes('WebSocket') && !error.message?.includes('localhost:undefined')) {
+      console.error('ErrorBoundary caught error:', error, errorInfo);
     }
   }
 
