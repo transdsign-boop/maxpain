@@ -1347,9 +1347,9 @@ export const StrategyStatus = memo(function StrategyStatus() {
             </TabsTrigger>
             <TabsTrigger value="completed" data-testid="tab-completed-positions">
               Completed Trades
-              {realizedPnlCount > 0 && (
+              {closedPositions && closedPositions.length > 0 && (
                 <Badge variant="secondary" className="ml-2 text-xs">
-                  {realizedPnlCount}
+                  {closedPositions.length}
                 </Badge>
               )}
             </TabsTrigger>
@@ -1394,25 +1394,38 @@ export const StrategyStatus = memo(function StrategyStatus() {
           <TabsContent value="completed" className="mt-3 md:mt-4">
             <div className="mb-2">
               <p className="text-xs text-muted-foreground">
-                Showing {realizedPnlCount} realized P&L events from exchange (source of truth)
+                Showing {closedPositions?.length || 0} completed positions (expand to see layers)
               </p>
             </div>
-            {realizedPnlLoading ? (
-              <div className="text-center py-6">
-                <p className="text-sm text-muted-foreground">Loading completed trades...</p>
-              </div>
-            ) : realizedPnlEvents && realizedPnlEvents.length > 0 ? (
+            {closedPositions && closedPositions.length > 0 ? (
               <div className="space-y-2 max-h-96 overflow-y-auto overflow-x-hidden pr-2 custom-scrollbar">
-                {realizedPnlEvents
-                  .sort((a: any, b: any) => b.time - a.time)
-                  .map((event: any) => (
-                    <RealizedPnlEventCard 
-                      key={event.tradeId} 
-                      event={event} 
-                      formatCurrency={formatCurrency} 
-                      getPnlColor={getPnlColor} 
-                    />
-                  ))}
+                {closedPositions
+                  .sort((a, b) => {
+                    const aTime = a.closedAt ? new Date(a.closedAt).getTime() : 0;
+                    const bTime = b.closedAt ? new Date(b.closedAt).getTime() : 0;
+                    return bTime - aTime;
+                  })
+                  .map((position) => {
+                    const hedgeSymbol = position.symbol;
+                    const hedgeSide = position.side === 'long' ? 'short' : 'long';
+                    const isHedge = closedPositions.some(p => 
+                      p.symbol === hedgeSymbol && 
+                      p.side === hedgeSide && 
+                      p.id !== position.id &&
+                      Math.abs(new Date(p.openedAt).getTime() - new Date(position.openedAt).getTime()) < 60000
+                    );
+                    
+                    return (
+                      <CompletedTradeCard 
+                        key={position.id} 
+                        position={position} 
+                        formatCurrency={formatCurrency} 
+                        formatPercentage={formatPercentage}
+                        getPnlColor={getPnlColor}
+                        isHedge={isHedge}
+                      />
+                    );
+                  })}
               </div>
             ) : (
               <div className="text-center py-6">
