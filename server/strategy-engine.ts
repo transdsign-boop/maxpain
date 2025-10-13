@@ -1313,19 +1313,43 @@ export class StrategyEngine extends EventEmitter {
         }
       }
       
-      // Count UNIQUE positions (deduped by symbol+side)
-      const openPositionCount = uniquePositions.size;
       const deduplicatedPositions = Array.from(uniquePositions.values());
       
-      // Log what positions we're calculating risk for
-      console.log(`🔍 Portfolio Risk Calculation: Found ${openPositions.length} records (${openPositionCount} unique positions)`);
+      // Count UNIQUE SYMBOLS (hedged positions count as 1)
+      // If ASTERUSDT has both long and short, that's 1 position toward the limit
+      const uniqueSymbols = new Set<string>();
+      const hedgedSymbols = new Set<string>();
+      
+      // Detect hedged positions (same symbol with both long and short)
+      const symbolSides = new Map<string, Set<string>>();
       deduplicatedPositions.forEach(pos => {
-        console.log(`   - ${pos.symbol} ${pos.side}: qty=${pos.totalQuantity}, avgPrice=${pos.avgEntryPrice}, id=${pos.id}`);
+        if (!symbolSides.has(pos.symbol)) {
+          symbolSides.set(pos.symbol, new Set());
+        }
+        symbolSides.get(pos.symbol)!.add(pos.side);
+        uniqueSymbols.add(pos.symbol);
+      });
+      
+      // Identify hedged symbols
+      symbolSides.forEach((sides, symbol) => {
+        if (sides.has('long') && sides.has('short')) {
+          hedgedSymbols.add(symbol);
+        }
+      });
+      
+      const openPositionCount = uniqueSymbols.size;
+      
+      // Log what positions we're calculating risk for
+      console.log(`🔍 Portfolio Risk Calculation: Found ${openPositions.length} records (${openPositionCount} unique symbols, ${hedgedSymbols.size} hedged)`);
+      deduplicatedPositions.forEach(pos => {
+        const isHedged = hedgedSymbols.has(pos.symbol);
+        const hedgeIndicator = isHedged ? ' [HEDGED]' : '';
+        console.log(`   - ${pos.symbol} ${pos.side}${hedgeIndicator}: qty=${pos.totalQuantity}, avgPrice=${pos.avgEntryPrice}, id=${pos.id}`);
       });
       
       // Warn if duplicates detected
-      if (openPositions.length > openPositionCount) {
-        console.warn(`⚠️ DUPLICATE POSITIONS DETECTED: ${openPositions.length} records but only ${openPositionCount} unique symbol/side combinations`);
+      if (openPositions.length > deduplicatedPositions.length) {
+        console.warn(`⚠️ DUPLICATE POSITIONS DETECTED: ${openPositions.length} records but only ${deduplicatedPositions.length} unique symbol/side combinations`);
       }
       
       // If no positions, return zero risk
