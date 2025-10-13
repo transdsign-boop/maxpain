@@ -282,19 +282,24 @@ export class StrategyEngine extends EventEmitter {
   private async loadActiveStrategies() {
     try {
       const DEFAULT_USER_ID = "personal_user";
-      console.log('📚 Loading default trading strategy...');
+      console.log('📚 Loading active trading strategy...');
       
-      // Get or create the single default strategy for this user
-      const strategy = await storage.getOrCreateDefaultStrategy(DEFAULT_USER_ID);
+      // Get the active strategy (NEVER auto-create)
+      const strategy = await storage.getActiveStrategy(DEFAULT_USER_ID);
+      
+      if (!strategy) {
+        console.log('⚠️ No active strategy found - trading disabled');
+        return;
+      }
       
       if (strategy.isActive) {
         await this.registerStrategy(strategy);
-        console.log(`✅ Loaded default strategy: ${strategy.name}`);
+        console.log(`✅ Loaded active strategy: ${strategy.name}`);
       } else {
-        console.log(`⏸️ Default strategy is inactive, not registering`);
+        console.log(`⏸️ Strategy exists but is inactive, not registering`);
       }
     } catch (error) {
-      console.error('❌ Error loading default strategy:', error);
+      console.error('❌ Error loading strategy:', error);
     }
   }
 
@@ -306,6 +311,12 @@ export class StrategyEngine extends EventEmitter {
     // Get or create the singleton session for this user
     // This ensures there's always exactly one persistent session
     const session = await storage.getOrCreateActiveSession(strategy.userId);
+    
+    if (!session) {
+      console.error('❌ Cannot register strategy - no active strategy found for session creation');
+      this.activeStrategies.delete(strategy.id);
+      return;
+    }
     
     // Store by both strategy ID and session ID for easy lookup
     this.activeSessions.set(strategy.id, session);
@@ -4416,8 +4427,14 @@ export class StrategyEngine extends EventEmitter {
         
         // Get active session and strategy
         const DEFAULT_USER_ID = "personal_user";
-        const strategy = await storage.getOrCreateDefaultStrategy(DEFAULT_USER_ID);
+        const strategy = await storage.getActiveStrategy(DEFAULT_USER_ID);
         const session = await storage.getOrCreateActiveSession(DEFAULT_USER_ID);
+        
+        // Skip if no active strategy
+        if (!strategy || !session) {
+          console.log('⚠️ No active strategy/session - skipping reconciliation');
+          return;
+        }
         
         // 1. Sync orphan positions from exchange (positions not in DB)
         const { syncOpenPositions } = await import('./exchange-sync');
