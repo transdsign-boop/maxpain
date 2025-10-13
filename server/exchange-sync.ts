@@ -102,6 +102,117 @@ export async function fetchAccountTrades(params: {
   }
 }
 
+// Fetch ALL account trades with pagination (no limit)
+export async function fetchAllAccountTrades(params: {
+  symbol?: string;
+  startTime?: number;
+  endTime?: number;
+}): Promise<{
+  success: boolean;
+  trades: Array<{
+    symbol: string;
+    id: number;
+    orderId: number;
+    side: 'BUY' | 'SELL';
+    price: string;
+    qty: string;
+    realizedPnl: string;
+    marginAsset: string;
+    quoteQty: string;
+    commission: string;
+    commissionAsset: string;
+    time: number;
+    positionSide: 'LONG' | 'SHORT' | 'BOTH';
+    maker: boolean;
+    buyer: boolean;
+  }>;
+  error?: string;
+}> {
+  try {
+    const apiKey = process.env.ASTER_API_KEY;
+    const secretKey = process.env.ASTER_SECRET_KEY;
+    
+    if (!apiKey || !secretKey) {
+      return { success: false, trades: [], error: 'API keys not configured' };
+    }
+    
+    let allTrades: any[] = [];
+    let currentEndTime = params.endTime || Date.now();
+    const startTime = params.startTime || 0;
+    const limit = 1000; // Max limit per request
+    
+    // Paginate backwards from endTime to startTime
+    while (true) {
+      const timestamp = Date.now();
+      const queryParams: Record<string, string | number> = {
+        timestamp,
+        recvWindow: 60000,
+        limit,
+        startTime,
+        endTime: currentEndTime,
+      };
+      
+      if (params.symbol) {
+        queryParams.symbol = params.symbol;
+      }
+      
+      // Create query string (sorted alphabetically)
+      const queryString = Object.entries(queryParams)
+        .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
+        .map(([k, v]) => `${k}=${v}`)
+        .join('&');
+      
+      // Generate signature
+      const signature = createHmac('sha256', secretKey)
+        .update(queryString)
+        .digest('hex');
+      
+      const signedParams = `${queryString}&signature=${signature}`;
+      
+      const response = await fetch(`https://fapi.asterdex.com/fapi/v1/userTrades?${signedParams}`, {
+        method: 'GET',
+        headers: {
+          'X-MBX-APIKEY': apiKey,
+        },
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ Failed to fetch account trades: ${response.status} ${errorText}`);
+        return { success: false, trades: [], error: `HTTP ${response.status}: ${errorText}` };
+      }
+      
+      const batch = await response.json();
+      
+      if (batch.length === 0) {
+        break; // No more records
+      }
+      
+      allTrades.push(...batch);
+      
+      // If we got fewer records than the limit, we've reached the end
+      if (batch.length < limit) {
+        break;
+      }
+      
+      // Move endTime to the oldest trade's timestamp minus 1ms for next batch
+      currentEndTime = batch[batch.length - 1].time - 1;
+      
+      // Stop if we've gone past startTime
+      if (currentEndTime <= startTime) {
+        break;
+      }
+    }
+    
+    console.log(`✅ Fetched ${allTrades.length} total account trades from exchange (paginated)`);
+    
+    return { success: true, trades: allTrades };
+  } catch (error) {
+    console.error('❌ Error fetching account trades:', error);
+    return { success: false, trades: [], error: String(error) };
+  }
+}
+
 // Group trades into positions (entry and exit pairs)
 function groupTradesIntoPositions(trades: Array<{
   symbol: string;
