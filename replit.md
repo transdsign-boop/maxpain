@@ -79,6 +79,7 @@ PERMANENT DATA PRESERVATION: ALL trading data MUST be preserved forever. The use
 - **Schema**: 14 core tables for liquidations, strategies, trade sessions, positions, fills, orders, etc.
 - **Schema Changes**: Manual SQL scripts are exclusively used for schema updates.
 - **Data Retention**: Liquidation data for 30 days; trading data and financial records are permanently preserved through archiving.
+- **Trade Sync Pagination (Oct 13, 2025)**: Historical trade synchronization overcomes exchange API's 7-day maximum time window limitation through chunked pagination. System automatically breaks large date ranges into 7-day chunks, then paginates within each chunk using backward cursor pagination (1000-record batches). Fetches all trades from October 1st, 2025 onwards, converting individual trade executions into complete position records for performance analysis.
 
 ## External Dependencies
 
