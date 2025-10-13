@@ -25,18 +25,8 @@ interface CascadeStatus {
   rq_threshold_adjusted: number;
 }
 
-interface AggregateStatus {
-  blockAll: boolean;
-  autoEnabled: boolean;
-  reason?: string;
-  avgScore: number;
-  symbolCount: number;
-  criticalSymbols: string[];
-}
-
 export default function CascadeRiskIndicator() {
   const [statuses, setStatuses] = useState<CascadeStatus[]>([]);
-  const [backendAggregate, setBackendAggregate] = useState<AggregateStatus | null>(null);
   const { toast } = useToast();
 
   // Aggregate metrics across all assets for overall market view
@@ -79,10 +69,8 @@ export default function CascadeRiskIndicator() {
     else if (roundedScore <= 4) aggregatedLight = 'orange';
     else aggregatedLight = 'red';
 
-    // Use backend's blockAll flag if available (ensures consistency with TRADE light)
-    // Otherwise fall back to local calculation based on aggregated light
-    const aggregatedAutoBlock = backendAggregate?.blockAll ?? 
-      (statuses[0]?.autoEnabled && (aggregatedLight === 'orange' || aggregatedLight === 'red'));
+    // Auto-block if ANY asset is blocked
+    const anyAutoBlock = statuses.some(s => s.autoBlock);
 
     // Determine RQ bucket based on average (use range checks for floats)
     let rq_bucket: 'poor' | 'ok' | 'good' | 'excellent';
@@ -112,7 +100,7 @@ export default function CascadeRiskIndicator() {
       RET: avgRET,
       OI: avgOI,
       light: aggregatedLight,
-      autoBlock: aggregatedAutoBlock,
+      autoBlock: anyAutoBlock,
       autoEnabled: statuses[0]?.autoEnabled ?? true,
       medianLiq: avgMedianLiq,
       dOI_1m: avgDOI1m,
@@ -142,10 +130,6 @@ export default function CascadeRiskIndicator() {
           // New format: { symbols: [...], aggregate: {...} }
           if (message.data.symbols && Array.isArray(message.data.symbols)) {
             setStatuses(message.data.symbols);
-            // Store backend's aggregate for consistent blocking logic
-            if (message.data.aggregate) {
-              setBackendAggregate(message.data.aggregate);
-            }
           } else {
             // Fallback for old format
             const data = Array.isArray(message.data) ? message.data : [message.data];

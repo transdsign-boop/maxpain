@@ -162,8 +162,7 @@ export default function ConnectionStatus({ isConnected, tradeBlockStatus }: Conn
   const effectiveTradeBlock = tradeBlockStatus || tradeBlock;
   
   // Use aggregate status from WebSocket (all-or-none blocking) OR trade block events
-  // Default to TRUE (trades allowed) when no status data available yet
-  const tradesAllowed = effectiveTradeBlock?.blocked ? false : (aggregateStatus ? !aggregateStatus.blockAll : true);
+  const tradesAllowed = effectiveTradeBlock?.blocked ? false : (aggregateStatus ? !aggregateStatus.blockAll : false);
   const autoEnabled = aggregateStatus?.autoEnabled ?? true;
   
   // Determine block reason - prioritize real-time trade blocks over cascade status

@@ -1249,7 +1249,7 @@ function PerformanceOverview() {
                     const yPosition = cumulativePnlDomain[1]; // Position at top of chart
                     
                     return (
-                      <g key={change.id}>
+                      <Fragment key={change.id}>
                         <ReferenceLine
                           x={tradeNumber}
                           yAxisId="left"
@@ -1269,7 +1269,7 @@ function PerformanceOverview() {
                           onClick={() => setSelectedChange(change)}
                           data-testid={`strategy-change-dot-${change.id}`}
                         />
-                      </g>
+                      </Fragment>
                     );
                   }
                   return null;
