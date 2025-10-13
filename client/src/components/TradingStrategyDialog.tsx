@@ -118,7 +118,7 @@ function DcaSizeGrowthField({ strategyId, formValues, handleInputChange }: {
   handleInputChange: (field: keyof DCASettings, value: string | boolean) => void;
 }) {
   const { data: previewData } = useQuery({
-    queryKey: ['/api/strategies', strategyId, 'dca', 'preview'],
+    queryKey: [`/api/strategies/${strategyId}/dca/preview`],
     enabled: !!strategyId,
     refetchInterval: 5000, // Refresh every 5 seconds
   });
