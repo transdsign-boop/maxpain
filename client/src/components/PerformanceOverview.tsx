@@ -1197,7 +1197,7 @@ function PerformanceOverview() {
                 {/* Day grouping blocks - date labels at top */}
                 {dayGroups.map((group, index) => (
                   <ReferenceArea
-                    key={`day-date-${group.dateTimestamp}`}
+                    key={`day-date-${index}-${group.dateTimestamp}`}
                     x1={group.startTrade}
                     x2={group.endTrade}
                     yAxisId="left"
@@ -1217,9 +1217,9 @@ function PerformanceOverview() {
                 ))}
                 
                 {/* Day grouping blocks - trade count at bottom */}
-                {dayGroups.map((group) => (
+                {dayGroups.map((group, index) => (
                   <ReferenceArea
-                    key={`day-count-${group.dateTimestamp}`}
+                    key={`day-count-${index}-${group.dateTimestamp}`}
                     x1={group.startTrade}
                     x2={group.endTrade}
                     yAxisId="left"
