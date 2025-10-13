@@ -266,14 +266,18 @@ function PerformanceOverview() {
   
   // Handle pagination and zoom based on date filter
   useEffect(() => {
-    if (sourceChartData.length === 0) return;
-    
     const hasFilter = !!(dateRange.start || dateRange.end);
     setIsDateFiltered(hasFilter);
     
-    // Always show all trades in the range (zoom to fit)
+    // Optimize for large datasets: cap display at 2000 trades for performance
+    // For datasets > 2000, show the most recent 2000 trades
+    const MAX_DISPLAY_TRADES = 2000;
+    const displayCount = Math.min(sourceChartData.length, MAX_DISPLAY_TRADES);
+    
+    // Always show all trades in the range (zoom to fit), up to max limit
+    // Update even if sourceChartData.length is 0 to show empty chart
     setChartEndIndex(sourceChartData.length);
-    setTradesPerPage(sourceChartData.length);
+    setTradesPerPage(displayCount || 1); // Minimum 1 to prevent division by zero
   }, [dateRange, sourceChartData.length]);
   
   // Update chart when new trades arrive and user is viewing latest
@@ -1155,6 +1159,14 @@ function PerformanceOverview() {
                 </Badge>
               )}
             </div>
+
+            {/* Performance Limit Indicator - shown when displaying subset */}
+            {totalTrades > 2000 && (
+              <Badge variant="outline" className="gap-1" data-testid="badge-chart-limit">
+                <LineChart className="h-3 w-3" />
+                Showing most recent {Math.min(totalTrades, 2000).toLocaleString()} of {totalTrades.toLocaleString()} trades
+              </Badge>
+            )}
           </div>
           
           <div className="relative h-64 md:h-80 -mx-8" style={{
