@@ -74,6 +74,7 @@ export class StrategyEngine extends EventEmitter {
   private pendingQ1Values: Map<string, number> = new Map(); // "sessionId-symbol-side" -> q1 base layer size for position being created
   private pendingFirstLayerData: Map<string, { takeProfitPrice: number; stopLossPrice: number; entryPrice: number; quantity: number }> = new Map(); // "sessionId-symbol-side" -> first layer TP/SL data
   private pendingDCASchedules: Map<string, { levels: any[]; effectiveGrowthFactor: number; q1: number }> = new Map(); // "sessionId-symbol-side" -> complete DCA schedule
+  private processedLiquidations: Set<string> = new Set(); // Track processed liquidation IDs to prevent duplicates
   private protectiveOrderRecovery: ProtectiveOrderRecovery;
 
   constructor() {
@@ -487,6 +488,16 @@ export class StrategyEngine extends EventEmitter {
 
   // Evaluate if a liquidation triggers a trading signal for a strategy
   private async evaluateStrategySignal(strategy: Strategy, liquidation: Liquidation) {
+    // CRITICAL: Check if we've already processed this liquidation (deduplication)
+    // This ensures 1 order per liquidation, maximum
+    if (this.processedLiquidations.has(liquidation.id)) {
+      console.log(`⏭️ SKIPPING: Liquidation ${liquidation.id} already processed (deduplication)`);
+      return;
+    }
+    
+    // Mark this liquidation as processed immediately to prevent duplicates
+    this.processedLiquidations.add(liquidation.id);
+    
     // Double-check strategy is still active (prevents race condition during unregister)
     if (!this.activeStrategies.has(strategy.id)) return;
     
@@ -4434,6 +4445,15 @@ export class StrategyEngine extends EventEmitter {
         const deletedCount = await storage.deleteOldLiquidations(30);
         if (deletedCount > 0) {
           console.log(`  ✓ Deleted ${deletedCount} liquidations older than 30 days`);
+        }
+        
+        // 6. Clean up processed liquidation IDs to prevent memory growth
+        // Keep only last 1000 IDs (prevents duplicates for ~5-10 minutes of trading)
+        if (this.processedLiquidations.size > 1000) {
+          const idsToKeep = Array.from(this.processedLiquidations).slice(-1000);
+          this.processedLiquidations.clear();
+          idsToKeep.forEach(id => this.processedLiquidations.add(id));
+          console.log(`  ✓ Cleaned processed liquidation IDs (kept last 1000)`);
         }
         
         console.log(`✅ Reconciliation complete: ${orphanedCount} orphaned orders cleaned`);
