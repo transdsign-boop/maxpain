@@ -111,6 +111,79 @@ interface DCASettings {
   maxSlPercent: string;
 }
 
+// DCA Size Growth Field with real-time effective growth factor display
+function DcaSizeGrowthField({ strategyId, formValues, handleInputChange }: {
+  strategyId: string | undefined;
+  formValues: DCASettings;
+  handleInputChange: (field: keyof DCASettings, value: string | boolean) => void;
+}) {
+  const { data: previewData } = useQuery({
+    queryKey: ['/api/strategies', strategyId, 'dca', 'preview'],
+    enabled: !!strategyId,
+    refetchInterval: 5000, // Refresh every 5 seconds
+  });
+
+  const configured = parseFloat(formValues.dcaSizeGrowth || '1.8');
+  const effective = previewData?.effectiveGrowthFactor;
+  const isAdjusted = previewData?.growthFactorAdjusted;
+  
+  return (
+    <div className="space-y-2">
+      <Label htmlFor="dcaSizeGrowth" data-testid="label-dca-size-growth">
+        Size Growth Ratio
+      </Label>
+      <Input
+        id="dcaSizeGrowth"
+        data-testid="input-dca-size-growth"
+        type="number"
+        step="0.1"
+        min="1.0"
+        max="3.0"
+        value={formValues.dcaSizeGrowth || ''}
+        onChange={(e) => handleInputChange('dcaSizeGrowth', e.target.value)}
+        placeholder="1.8"
+      />
+      <div className="text-xs text-muted-foreground">
+        <strong>How much each layer's size multiplies.</strong> 1.0 = all layers same size. 1.8 = each layer is 1.8× bigger (e.g., $10, $18, $32...). Higher ratios mean deeper layers bring your average entry price down faster, but use capital more aggressively.
+      </div>
+      
+      {/* Real-time effective growth factor display */}
+      {effective !== undefined && (
+        <div className={`mt-2 p-2 rounded-md border ${
+          isAdjusted 
+            ? 'bg-orange-500/10 dark:bg-orange-500/20 border-orange-500/30' 
+            : 'bg-green-500/10 dark:bg-green-500/20 border-green-500/30'
+        }`}>
+          <div className={`text-xs ${
+            isAdjusted 
+              ? 'text-orange-700 dark:text-orange-300' 
+              : 'text-green-700 dark:text-green-300'
+          }`}>
+            {isAdjusted ? (
+              <>
+                <strong>⚠️ Currently Effective: {effective.toFixed(2)}x</strong> (reduced from {configured.toFixed(2)}x configured)
+                <div className="mt-1 opacity-90">
+                  On your current balance (${previewData.currentBalance.toFixed(2)}), Layer 1 needs scaling to meet $5 minimum. Growth factor is automatically reduced to maintain your {formValues.dcaMaxRiskPercent}% risk cap.
+                </div>
+              </>
+            ) : (
+              <strong>✅ Using configured value: {configured.toFixed(2)}x</strong>
+            )}
+          </div>
+        </div>
+      )}
+      
+      {!effective && (
+        <div className="mt-2 p-2 rounded-md bg-blue-500/10 dark:bg-blue-500/20 border border-blue-500/30">
+          <div className="text-xs text-blue-700 dark:text-blue-300">
+            <strong>💡 Dynamic Adjustment:</strong> On small accounts, the system may reduce this growth factor automatically to maintain your risk cap when Layer 1 is scaled up to meet the exchange's $5 minimum order size. As your account grows, it returns to your configured value.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // DCA Settings Component
 function ExchangeLimitsSection() {
   const [isOpen, setIsOpen] = useState(false);
@@ -337,30 +410,11 @@ function DCASettingsSection({ strategyId, isStrategyRunning, saveTrigger }: { st
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="dcaSizeGrowth" data-testid="label-dca-size-growth">
-                  Size Growth Ratio
-                </Label>
-                <Input
-                  id="dcaSizeGrowth"
-                  data-testid="input-dca-size-growth"
-                  type="number"
-                  step="0.1"
-                  min="1.0"
-                  max="3.0"
-                  value={formValues.dcaSizeGrowth || ''}
-                  onChange={(e) => handleInputChange('dcaSizeGrowth', e.target.value)}
-                  placeholder="1.8"
-                />
-                <div className="text-xs text-muted-foreground">
-                  <strong>How much each layer's size multiplies.</strong> 1.0 = all layers same size. 1.8 = each layer is 1.8× bigger (e.g., $10, $18, $32...). Higher ratios mean deeper layers bring your average entry price down faster, but use capital more aggressively.
-                </div>
-                <div className="mt-2 p-2 rounded-md bg-blue-500/10 dark:bg-blue-500/20 border border-blue-500/30">
-                  <div className="text-xs text-blue-700 dark:text-blue-300">
-                    <strong>💡 Dynamic Adjustment:</strong> On small accounts, the system may reduce this growth factor automatically to maintain your risk cap when Layer 1 is scaled up to meet the exchange's $5 minimum order size. As your account grows, it returns to your configured value.
-                  </div>
-                </div>
-              </div>
+              <DcaSizeGrowthField 
+                strategyId={strategyId}
+                formValues={formValues}
+                handleInputChange={handleInputChange}
+              />
 
               <div className="space-y-2">
                 <Label htmlFor="dcaMaxRiskPercent" data-testid="label-dca-max-risk">
