@@ -184,6 +184,7 @@ export const positions = pgTable("positions", {
   totalCost: decimal("total_cost", { precision: 18, scale: 8 }).notNull(), // Actual margin used (notional / leverage)
   unrealizedPnl: decimal("unrealized_pnl", { precision: 18, scale: 8 }).notNull().default("0.0"),
   realizedPnl: decimal("realized_pnl", { precision: 18, scale: 8 }).notNull().default("0.0"),
+  totalFees: decimal("total_fees", { precision: 18, scale: 8 }).notNull().default("0.0"), // Total entry + exit fees
   layersFilled: integer("layers_filled").notNull().default(1), // Layers that have FILLED (updated after fill settles)
   layersPlaced: integer("layers_placed").notNull().default(1), // Layers that have been PLACED as orders (incremented immediately)
   maxLayers: integer("max_layers").notNull(),

@@ -1272,12 +1272,59 @@ export class StrategyEngine extends EventEmitter {
         if (!livePos) {
           console.log(`🧹 Auto-closing stale position: ${dbPos.symbol} ${dbPos.side} (closed on exchange but open in DB)`);
           
-          // Close the position in the database
-          await storage.updatePosition(dbPos.id, {
-            isOpen: false,
-            closedAt: new Date(),
-            unrealizedPnl: '0', // Already realized on exchange
-          });
+          // Calculate P&L from entry and exit fills
+          const entryFills = await storage.getFillsByOrder(`entry-${dbPos.id}`);
+          const exitFills = await storage.getFillsByOrder(`exit-${dbPos.id}`);
+          
+          // If we have exit fills, we can calculate exact P&L
+          if (exitFills.length > 0) {
+            let totalEntryValue = 0;
+            let totalEntryFees = 0;
+            let totalExitValue = 0;
+            let totalExitFees = 0;
+            
+            for (const fill of entryFills) {
+              totalEntryValue += parseFloat(fill.value);
+              totalEntryFees += parseFloat(fill.fee);
+            }
+            
+            for (const fill of exitFills) {
+              totalExitValue += parseFloat(fill.value);
+              totalExitFees += parseFloat(fill.fee);
+            }
+            
+            // Calculate gross P&L (price difference only)
+            const grossPnl = dbPos.side === 'long' 
+              ? totalExitValue - totalEntryValue  // Long: profit when exit > entry
+              : totalEntryValue - totalExitValue; // Short: profit when entry > exit
+            
+            // Calculate net P&L (gross - all fees)
+            const totalFees = totalEntryFees + totalExitFees;
+            const netPnl = grossPnl - totalFees;
+            const pnlPercent = (grossPnl / totalEntryValue) * 100; // Use gross for % (before fees)
+            
+            console.log(`💰 Stale position ${dbPos.symbol} ${dbPos.side}: Gross=$${grossPnl.toFixed(2)}, Fees=$${totalFees.toFixed(4)}, Net=$${netPnl.toFixed(2)} (${pnlPercent.toFixed(2)}%)`);
+            
+            // Properly close position with NET P&L
+            await storage.closePosition(dbPos.id, new Date(), netPnl, pnlPercent);
+            
+            // Update totalFees separately (storage.closePosition doesn't set it)
+            await storage.updatePosition(dbPos.id, {
+              totalFees: totalFees.toString()
+            });
+          } else {
+            // No exit fills found - position closed externally without our tracking
+            // Use unrealized P&L as best estimate
+            const unrealizedPnl = parseFloat(dbPos.unrealizedPnl || '0');
+            const totalCost = parseFloat(dbPos.totalCost);
+            const leverage = (dbPos as any).leverage || 1;
+            const notionalValue = totalCost * leverage;
+            const estimatedPnl = (unrealizedPnl / 100) * notionalValue;
+            
+            console.log(`⚠️ No exit fills found - using unrealized P&L estimate: $${estimatedPnl.toFixed(2)} (${unrealizedPnl.toFixed(2)}%)`);
+            
+            await storage.closePosition(dbPos.id, new Date(), estimatedPnl, unrealizedPnl);
+          }
           
           closedCount++;
         }
@@ -4139,6 +4186,7 @@ export class StrategyEngine extends EventEmitter {
       let actualExitPrice = exitPrice;
       let actualExitQty = quantity;
       let actualExitFee = exitFee;
+      let actualExitTimestamp: number | undefined;
       
       // Place the actual exit order on Aster DEX
       {
@@ -4184,8 +4232,6 @@ export class StrategyEngine extends EventEmitter {
           retryCount++;
         }
         
-        let actualExitTimestamp: number | undefined;
-        
         if (actualFillsData && actualFillsData.length > 0) {
           // Aggregate multiple fills (handles partial fills correctly)
           const aggregated = aggregateFills(actualFillsData);
@@ -4230,10 +4276,25 @@ export class StrategyEngine extends EventEmitter {
         value: actualExitValue // ✅ Use actual value
       });
 
+      // Calculate total fees (entry + exit)
+      const entryFills = await storage.getFillsByOrder(`entry-${position.id}`);
+      let totalEntryFees = 0;
+      for (const fill of entryFills) {
+        totalEntryFees += parseFloat(fill.fee);
+      }
+      const totalFees = totalEntryFees + actualExitFee;
+      
+      console.log(`💰 Position ${position.symbol} total fees: Entry $${totalEntryFees.toFixed(4)} + Exit $${actualExitFee.toFixed(4)} = $${totalFees.toFixed(4)}`);
+      
       // Close position in database with dollar P&L and percentage (preserve percentage for display)
       // Use exchange timestamp if available, otherwise use current time
       const closedAtTimestamp = actualExitTimestamp ? new Date(actualExitTimestamp) : new Date();
       await storage.closePosition(position.id, closedAtTimestamp, dollarPnl, realizedPnlPercent);
+      
+      // Update totalFees separately (storage.closePosition doesn't set it)
+      await storage.updatePosition(position.id, {
+        totalFees: totalFees.toString()
+      });
 
       // Always fetch latest session from database (not memory) to update stats
       const latestSession = await storage.getTradeSession(position.sessionId);
