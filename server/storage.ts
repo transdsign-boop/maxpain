@@ -103,8 +103,8 @@ export interface IStorage {
   deleteStrategy(id: string): Promise<void>;
   
   // Singleton strategy and session
-  getOrCreateDefaultStrategy(userId: string): Promise<Strategy>;
-  getOrCreateActiveSession(userId: string): Promise<TradeSession>;
+  getActiveStrategy(userId: string): Promise<Strategy | null>;
+  getOrCreateActiveSession(userId: string): Promise<TradeSession | null>;
   updateSessionBalance(sessionId: string, newBalance: number): Promise<TradeSession>;
 
   // Trade Session operations
@@ -428,8 +428,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Singleton strategy and session operations
-  async getOrCreateDefaultStrategy(userId: string): Promise<Strategy> {
-    // Try to get existing active strategy for this user using raw SQL
+  async getActiveStrategy(userId: string): Promise<Strategy | null> {
+    // Get existing active strategy for this user using raw SQL
     const existing = await sql`
       SELECT * FROM strategies 
       WHERE user_id = ${userId} AND is_active = true 
@@ -440,49 +440,18 @@ export class DatabaseStorage implements IStorage {
       return convertKeysToCamelCase(existing[0]) as Strategy;
     }
 
-    // Create default strategy if doesn't exist
-    const query = `
-      INSERT INTO strategies (
-        user_id, name, selected_assets, is_active,
-        percentile_threshold, liquidation_lookback_hours, stop_loss_percent,
-        profit_target_percent, max_layers, order_delay_ms, order_type,
-        max_retry_duration_ms, slippage_tolerance_percent,
-        dca_start_step_percent, dca_spacing_convexity, dca_size_growth,
-        dca_max_risk_percent, dca_volatility_ref, dca_exit_cushion_multiplier
-      ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19
-      )
-      RETURNING *
-    `;
-    
-    const result = await sql(query, [
-      userId,
-      "Liquidation Counter-Trade",
-      ["BTCUSDT"],
-      true,
-      90,
-      1,
-      "2.00",
-      "3.00",
-      5,
-      1000,
-      "market",
-      30000,
-      "0.50",
-      "0.4",   // dcaStartStepPercent
-      "1.2",   // dcaSpacingConvexity
-      "1.8",   // dcaSizeGrowth
-      "1.0",   // dcaMaxRiskPercent
-      "1.0",   // dcaVolatilityRef
-      "0.6"    // dcaExitCushionMultiplier
-    ]);
-    
-    return convertKeysToCamelCase(result[0]) as Strategy;
+    // NEVER auto-create strategies - return null if none exists
+    return null;
   }
 
-  async getOrCreateActiveSession(userId: string): Promise<TradeSession> {
-    // Get the user's default strategy
-    const strategy = await this.getOrCreateDefaultStrategy(userId);
+  async getOrCreateActiveSession(userId: string): Promise<TradeSession | null> {
+    // Get the user's active strategy - NEVER auto-create
+    const strategy = await this.getActiveStrategy(userId);
+    
+    if (!strategy) {
+      console.log('⚠️ No active strategy found - cannot create session');
+      return null;
+    }
 
     // Try to get existing active session for this strategy
     const existing = await db.select().from(tradeSessions)
