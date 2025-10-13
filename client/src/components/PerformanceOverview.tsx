@@ -1260,7 +1260,7 @@ function PerformanceOverview() {
                         <ReferenceDot
                           x={tradeNumber}
                           y={yPosition}
-                          yAxisId="right"
+                          yAxisId="left"
                           r={6}
                           fill="hsl(var(--primary))"
                           stroke="hsl(var(--background))"
