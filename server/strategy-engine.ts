@@ -350,7 +350,7 @@ export class StrategyEngine extends EventEmitter {
             // CRITICAL: Immediately update protective orders when position changes from trade fill
             console.log(`🚨 TRADE FILL detected for ${order.symbol} ${order.positionSide} - triggering immediate protective order update`);
             try {
-              const session = this.activeSessions.get(activeStrategy!.id);
+              const session = this.activeSessions.get(strategy.id);
               if (!session) {
                 console.log('⏭️ No active session, skipping protective order update');
                 return;
@@ -366,7 +366,7 @@ export class StrategyEngine extends EventEmitter {
 
               if (position && position.isOpen) {
                 // Update protective orders ONLY for the position that just filled
-                await orderProtectionService.updateProtectiveOrders(position, activeStrategy!);
+                await orderProtectionService.updateProtectiveOrders(position, strategy);
                 console.log(`✅ Protective orders updated immediately for ${order.symbol} ${positionSide}`);
               } else {
                 console.log(`⏭️ No open ${order.symbol} ${positionSide} position found`);
