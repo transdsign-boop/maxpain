@@ -3082,68 +3082,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/strategies/:id/start", async (req, res) => {
-    try {
-      const strategyId = req.params.id;
-      
-      // Verify strategy exists
-      const strategy = await storage.getStrategy(strategyId);
-      if (!strategy) {
-        return res.status(404).json({ error: "Strategy not found" });
-      }
-      
-      // Update strategy to active status (using fixed 60-second liquidation window)
-      await storage.updateStrategy(strategyId, { 
-        isActive: true
-      });
-      
-      // Register with strategy engine to create trade session
-      await strategyEngine.registerStrategy(strategy);
-      
-      // Initialize WebSocket-only cache (NO POLLING)
-      const { liveDataOrchestrator } = await import('./live-data-orchestrator');
-      liveDataOrchestrator.start(strategyId);
-      
-      // Return updated strategy for easier frontend sync
-      const updatedStrategy = await storage.getStrategy(strategyId);
-      res.status(200).json(updatedStrategy);
-    } catch (error) {
-      console.error('Error starting strategy:', error);
-      res.status(500).json({ error: "Failed to start strategy" });
-    }
-  });
-
-  app.post("/api/strategies/:id/stop", async (req, res) => {
-    try {
-      const strategyId = req.params.id;
-      
-      // Verify strategy exists
-      const strategy = await storage.getStrategy(strategyId);
-      if (!strategy) {
-        return res.status(404).json({ error: "Strategy not found" });
-      }
-      
-      // Update strategy to inactive status 
-      await storage.updateStrategy(strategyId, { 
-        isActive: false
-      });
-      
-      // Unregister from strategy engine and end trade session
-      await strategyEngine.unregisterStrategy(strategyId);
-      
-      // Clear WebSocket cache
-      const { liveDataOrchestrator } = await import('./live-data-orchestrator');
-      liveDataOrchestrator.stop(strategyId);
-      
-      // Return updated strategy for easier frontend sync
-      const updatedStrategy = await storage.getStrategy(strategyId);
-      res.status(200).json(updatedStrategy);
-    } catch (error) {
-      console.error('Error stopping strategy:', error);
-      res.status(500).json({ error: "Failed to stop strategy" });
-    }
-  });
-
   // Pause strategy route (temporarily stop processing without deactivating)
   app.post("/api/strategies/:id/pause", async (req, res) => {
     try {
