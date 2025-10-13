@@ -21,12 +21,18 @@ THIS APPLICATION USES NEON DATABASE EXCLUSIVELY
 - 📝 Process: Update `shared/schema.ts` → Write SQL script → Execute in Neon SQL Editor
 
 🚨 CRITICAL: STRATEGY CREATION POLICY 🚨
-🛑 NEVER AUTO-CREATE STRATEGIES 🛑
+✅ FIXED (Oct 13, 2025): Strategy persistence through stop/start cycles
 
-- ❌ NEVER automatically create a new strategy under any circumstances
-- ❌ NEVER create a strategy as a "fallback" or "default" behavior
-- ✅ ONLY create strategies when user explicitly uses the UI to create one (future feature)
-- ✅ FAIL GRACEFULLY - If an operation expects a strategy but none exists, return an error
+**Previous Bug (FIXED):**
+- `getOrCreateDefaultStrategy` was creating NEW strategies with defaults when stopped strategy existed
+- Caused settings reset (asset list changed from 18 assets to just BTCUSDT)
+- UI showed confusing Pause icon but actually called STOP endpoint
+
+**Fix Applied:**
+- Modified `getOrCreateDefaultStrategy` in `server/storage.ts` to reuse ANY existing strategy (not just active ones)
+- Returns most recently updated strategy instead of creating new one with defaults
+- UI icons changed from Pause to Square (stop) on both desktop and mobile for clarity
+- Settings now persist correctly through stop/start cycles
 
 PERMANENT DATA PRESERVATION: ALL trading data MUST be preserved forever. The user requires complete access to historical trading records at any time.
 - NEVER DELETE any positions, fills, or trade session data.
