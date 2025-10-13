@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useWebSocketData } from "./useWebSocketData";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { queryClient } from "@/lib/queryClient";
 
 /**
@@ -168,6 +168,58 @@ export function useStrategyData() {
 
   const snapshot = liveSnapshotQuery.data;
 
+  // Enrich closed positions with exchange P&L (match by symbol and timestamp)
+  const closedPositionsWithExchangePnl = useMemo(() => {
+    const positions = closedPositionsQuery.data || [];
+    const pnlEvents = realizedPnlEventsQuery.data?.events || [];
+    
+    if (positions.length === 0 || pnlEvents.length === 0) return positions;
+    
+    // Track which events have been matched to prevent reuse
+    const usedEventIndices = new Set<number>();
+    
+    return positions.map(position => {
+      if (!position.closedAt) return position;
+      
+      const closeTime = new Date(position.closedAt).getTime();
+      
+      // Find best matching P&L event by symbol and close time
+      // Only match events that haven't been used yet
+      let bestMatchEvent: any = null;
+      let bestMatchIndex = -1;
+      let bestTimeDiff = Infinity;
+      
+      pnlEvents.forEach((event, index) => {
+        if (usedEventIndices.has(index)) return; // Skip already matched events
+        if (event.symbol !== position.symbol) return;
+        
+        const timeDiff = Math.abs(event.time - closeTime);
+        if (timeDiff > 30000) return; // Outside 30-second window
+        
+        // Keep the closest match
+        if (timeDiff < bestTimeDiff) {
+          bestMatchEvent = event;
+          bestMatchIndex = index;
+          bestTimeDiff = timeDiff;
+        }
+      });
+      
+      if (bestMatchEvent && bestMatchIndex >= 0) {
+        // Mark this event as used
+        usedEventIndices.add(bestMatchIndex);
+        
+        // Use exchange P&L instead of database value
+        return {
+          ...position,
+          realizedPnl: bestMatchEvent.income, // Exchange P&L in dollars
+          exchangePnlMatched: true,
+        };
+      }
+      
+      return position;
+    });
+  }, [closedPositionsQuery.data, realizedPnlEventsQuery.data]);
+
   return {
     // WebSocket connection status
     wsConnected,
@@ -207,7 +259,7 @@ export function useStrategyData() {
     assetPerformanceLoading: assetPerformanceQuery.isLoading,
     assetPerformanceError: assetPerformanceQuery.error,
 
-    closedPositions: closedPositionsQuery.data,
+    closedPositions: closedPositionsWithExchangePnl,
     closedPositionsLoading: closedPositionsQuery.isLoading,
     closedPositionsError: closedPositionsQuery.error,
 
