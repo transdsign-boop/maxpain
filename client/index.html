@@ -1,14 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <script>
-      window.addEventListener('unhandledrejection', (event) => {
-        if (event.reason?.message?.includes('WebSocket') && event.reason?.message?.includes('localhost:undefined')) {
-          console.log('Suppressed Vite HMR WebSocket error (expected in Replit environment)');
-          event.preventDefault();
-        }
-      });
-    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
     <title>Max Pain - Liquidation Counter Trading Platform</title>
