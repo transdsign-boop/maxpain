@@ -2892,9 +2892,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { getStrategyWithDCA } = await import('./dca-sql');
       const { calculateDCALevels } = await import('./dca-calculator');
       
-      const strategy = await getStrategyWithDCA(strategyId);
+      const dbStrategy = await getStrategyWithDCA(strategyId);
       
-      if (!strategy) {
+      if (!dbStrategy) {
         return res.status(404).json({ error: "Strategy not found" });
       }
       
@@ -2906,6 +2906,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const samplePrice = 100;
       const atrPercent = 1.0; // Sample ATR
       
+      // Transform database result to match calculator expectations (snake_case → camelCase)
+      const strategy = {
+        ...dbStrategy,
+        dcaStartStepPercent: dbStrategy.dca_start_step_percent,
+        dcaSpacingConvexity: dbStrategy.dca_spacing_convexity,
+        dcaSizeGrowth: dbStrategy.dca_size_growth,
+        dcaMaxRiskPercent: dbStrategy.dca_max_risk_percent,
+        dcaVolatilityRef: dbStrategy.dca_volatility_ref,
+        dcaExitCushionMultiplier: dbStrategy.dca_exit_cushion_multiplier,
+        maxLayers: dbStrategy.max_layers,
+        stopLossPercent: dbStrategy.stop_loss_percent,
+        marginAmount: dbStrategy.margin_amount, // Add this missing field
+      };
+      
       // Calculate DCA levels to get effective growth factor
       const dcaResult = calculateDCALevels(
         strategy as any,
@@ -2913,7 +2927,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           entryPrice: samplePrice,
           side: 'long',
           currentBalance: balance,
-          leverage: strategy.leverage,
+          leverage: dbStrategy.leverage,
           atrPercent,
         }
       );
