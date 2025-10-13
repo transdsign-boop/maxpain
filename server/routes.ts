@@ -2890,7 +2890,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const strategyId = req.params.id;
       const { getStrategyWithDCA } = await import('./dca-sql');
-      const { calculateDCALevels } = await import('./dca-calculator');
+      const { calculateDCALevels, calculateATRPercent } = await import('./dca-calculator');
       
       const dbStrategy = await getStrategyWithDCA(strategyId);
       
@@ -2902,9 +2902,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const snapshot = liveDataOrchestrator.getSnapshot(strategyId);
       const balance = (snapshot.account as any)?.totalWalletBalance || 0;
       
-      // Use a sample price for preview calculation (doesn't matter for growth factor calculation)
-      const samplePrice = 100;
-      const atrPercent = 1.0; // Sample ATR
+      // Get real price and ATR data from monitored symbols
+      // Parse selected_assets - it might be a string representation or array
+      let monitoredSymbols: string[] = [];
+      if (Array.isArray(dbStrategy.selected_assets)) {
+        monitoredSymbols = dbStrategy.selected_assets;
+      } else if (typeof dbStrategy.selected_assets === 'string') {
+        try {
+          monitoredSymbols = JSON.parse(dbStrategy.selected_assets);
+        } catch {
+          monitoredSymbols = [];
+        }
+      }
+      
+      let avgPrice = 100; // Fallback
+      let avgATR = 1.0; // Fallback
+      
+      console.log(`📊 DCA Preview: Found ${monitoredSymbols.length} monitored symbols:`, monitoredSymbols.slice(0, 5));
+      
+      if (monitoredSymbols.length > 0) {
+        // Get recent liquidations to extract current prices
+        const recentLiqs = await storage.getLiquidationsBySymbol(monitoredSymbols, 1000);
+        
+        const symbolPrices: Record<string, number> = {};
+        const symbolATRs: Record<string, number> = {};
+        
+        // Extract most recent price for each symbol from liquidations
+        for (const symbol of monitoredSymbols) {
+          const symbolLiqs = recentLiqs
+            .filter(l => l.symbol === symbol)
+            .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+          
+          if (symbolLiqs.length > 0) {
+            symbolPrices[symbol] = parseFloat(symbolLiqs[0].price.toString());
+          }
+        }
+        
+        // Calculate real ATR for symbols with API keys
+        const apiKey = process.env.ASTER_API_KEY;
+        const secretKey = process.env.ASTER_SECRET_KEY;
+        
+        if (apiKey && secretKey) {
+          // Calculate ATR for symbols we have prices for
+          for (const symbol of Object.keys(symbolPrices)) {
+            try {
+              const atr = await calculateATRPercent(symbol, 10, apiKey, secretKey);
+              symbolATRs[symbol] = atr;
+            } catch (error) {
+              console.error(`Failed to calculate ATR for ${symbol}:`, error);
+              symbolATRs[symbol] = 1.2; // Fallback
+            }
+          }
+        }
+        
+        // Calculate weighted average (by recent activity)
+        const validSymbols = Object.keys(symbolPrices);
+        if (validSymbols.length > 0) {
+          avgPrice = validSymbols.reduce((sum, sym) => sum + symbolPrices[sym], 0) / validSymbols.length;
+          avgATR = validSymbols.reduce((sum, sym) => sum + (symbolATRs[sym] || 1.2), 0) / validSymbols.length;
+          
+          console.log(`📊 DCA Preview using real data: avg price=$${avgPrice.toFixed(4)}, avg ATR=${avgATR.toFixed(2)}%`);
+          console.log(`   Symbols analyzed:`, validSymbols.map(s => `${s}=$${symbolPrices[s].toFixed(4)}`).join(', '));
+        }
+      }
       
       // Transform database result to match calculator expectations (snake_case → camelCase)
       const strategy = {
@@ -2917,18 +2977,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         dcaExitCushionMultiplier: dbStrategy.dca_exit_cushion_multiplier,
         maxLayers: dbStrategy.max_layers,
         stopLossPercent: dbStrategy.stop_loss_percent,
-        marginAmount: dbStrategy.margin_amount, // Add this missing field
+        marginAmount: dbStrategy.margin_amount,
       };
       
-      // Calculate DCA levels to get effective growth factor
+      // Calculate DCA levels to get effective growth factor using REAL price and ATR
       const dcaResult = calculateDCALevels(
         strategy as any,
         {
-          entryPrice: samplePrice,
+          entryPrice: avgPrice,
           side: 'long',
           currentBalance: balance,
           leverage: dbStrategy.leverage,
-          atrPercent,
+          atrPercent: avgATR,
         }
       );
       
