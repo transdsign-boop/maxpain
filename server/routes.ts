@@ -3408,8 +3408,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         where: (strategies, { eq }) => eq(strategies.isActive, true)
       });
       
+      console.log('🔍 DEBUG: activeStrategy found:', !!activeStrategy);
       if (activeStrategy) {
+        console.log('🔍 DEBUG: activeStrategy.id =', activeStrategy.id, 'paused =', activeStrategy.paused);
+        
         const snapshot = liveDataOrchestrator.getSnapshot(activeStrategy.id);
+        console.log('🔍 DEBUG: snapshot found:', !!snapshot, 'has account:', !!(snapshot && snapshot.account));
         
         if (snapshot && snapshot.account) {
           ws.send(JSON.stringify({
@@ -3421,7 +3425,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         
         // Send current pause status to set trade light correctly
-        console.log('🔍 DEBUG: activeStrategy.paused =', activeStrategy.paused, 'type:', typeof activeStrategy.paused);
+        console.log('🔍 DEBUG: Checking pause status - paused =', activeStrategy.paused, 'type:', typeof activeStrategy.paused);
         if (activeStrategy.paused) {
           ws.send(JSON.stringify({
             type: 'trade_block',
@@ -3436,6 +3440,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } else {
           console.log('⚠️ Strategy NOT paused, skipping pause message');
         }
+      } else {
+        console.log('⚠️ No active strategy found for WebSocket init');
       }
     } catch (error) {
       console.error('Error sending initial snapshot:', error);
