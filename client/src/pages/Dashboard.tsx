@@ -311,9 +311,14 @@ export default function Dashboard() {
                 duration: 3000,
               });
             } else if (message.type === 'trade_block' && message.data) {
-              // Handle trade block status (pause/resume)
+              // Handle trade block status (uses blockAll from aggregate auto-block system)
               console.log('🔴 Dashboard received trade_block:', message.data);
-              setTradeBlockStatus(message.data.blocked ? message.data : null);
+              // Normalize: backend sends blockAll, frontend expects blocked for compatibility
+              const normalizedData = {
+                ...message.data,
+                blocked: message.data.blockAll ?? message.data.blocked ?? false
+              };
+              setTradeBlockStatus(normalizedData.blocked ? normalizedData : null);
             }
           } catch (error) {
             console.error('Failed to parse WebSocket message:', error);
