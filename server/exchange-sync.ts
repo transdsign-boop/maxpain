@@ -445,19 +445,18 @@ export async function syncCompletedTrades(sessionId: string): Promise<{
       return { success: false, addedCount: 0, error: 'Session not found' };
     }
     
-    // Fetch recent trades from exchange (last 7 days to respect API limits)
+    // Fetch ALL trades from exchange (using pagination to fetch beyond 1000 limit)
     // Note: Exchange API may only return trades for currently open positions
     const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
     const startTime = Date.now() - SEVEN_DAYS;
     const endTime = session.endedAt ? new Date(session.endedAt).getTime() : Date.now();
     
-    const result = await fetchAccountTrades({
+    const result = await fetchAllAccountTrades({
       startTime,
       endTime,
-      limit: 1000,
     });
     
-    if (!result.success || !result.trades) {
+    if (!result.success) {
       return { success: false, addedCount: 0, error: result.error };
     }
     
