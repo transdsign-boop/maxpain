@@ -73,6 +73,7 @@ export class StrategyEngine extends EventEmitter {
   private marginModeSetForSymbols: Map<string, 'isolated' | 'cross'> = new Map(); // symbol -> margin mode (track actual margin mode configured on exchange)
   private pendingQ1Values: Map<string, number> = new Map(); // "sessionId-symbol-side" -> q1 base layer size for position being created
   private pendingFirstLayerData: Map<string, { takeProfitPrice: number; stopLossPrice: number; entryPrice: number; quantity: number }> = new Map(); // "sessionId-symbol-side" -> first layer TP/SL data
+  private pendingDCASchedules: Map<string, { levels: any[]; effectiveGrowthFactor: number; q1: number }> = new Map(); // "sessionId-symbol-side" -> complete DCA schedule
   private protectiveOrderRecovery: ProtectiveOrderRecovery;
 
   constructor() {
@@ -930,16 +931,30 @@ export class StrategyEngine extends EventEmitter {
       
       console.log(`💰 Layer Risk Budget: current=${portfolioRisk.riskPercentage.toFixed(1)}%, max=${maxRiskPercent}%, remaining=${remainingRiskPercent.toFixed(1)}%, effective=${effectiveMaxRisk.toFixed(1)}% (${effectiveMaxRisk < strategyMaxLayerRisk ? 'SCALED DOWN' : 'normal'})`);
       
+      // Parse stored DCA schedule if available
+      let parsedSchedule = null;
+      if (position.dcaSchedule) {
+        try {
+          parsedSchedule = typeof position.dcaSchedule === 'string' 
+            ? JSON.parse(position.dcaSchedule) 
+            : position.dcaSchedule;
+        } catch (e) {
+          console.warn(`⚠️ Failed to parse DCA schedule:`, e);
+        }
+      }
+      
       // Calculate the next layer parameters with risk override if needed
+      // CRITICAL: Use layersPlaced (not layersFilled) to prevent duplicate layer triggers
       const nextLayerResult = await calculateNextLayer(
         strategy,
         currentBalance,
         position.leverage,
         position.symbol,
         position.side as 'long' | 'short',
-        position.layersFilled,
+        position.layersPlaced, // Use layersPlaced to track orders PLACED, not filled
         parseFloat(position.initialEntryPrice || position.avgEntryPrice),
         position.dcaBaseSize ? parseFloat(position.dcaBaseSize) : null,
+        parsedSchedule, // Pass stored DCA schedule to avoid recalculation
         process.env.ASTER_API_KEY,
         process.env.ASTER_SECRET_KEY,
         effectiveMaxRisk < strategyMaxLayerRisk ? effectiveMaxRisk : undefined
@@ -1397,6 +1412,14 @@ export class StrategyEngine extends EventEmitter {
         quantity: firstLevel.quantity
       });
       console.log(`💾 Stored Layer 1 TP/SL: TP=$${firstLevel.takeProfitPrice.toFixed(6)}, SL=$${firstLevel.stopLossPrice.toFixed(6)}`);
+      
+      // Store complete DCA schedule for this position
+      this.pendingDCASchedules.set(q1Key, {
+        levels: dcaResult.levels,
+        effectiveGrowthFactor: dcaResult.effectiveGrowthFactor,
+        q1: dcaResult.q1
+      });
+      console.log(`💾 Stored complete DCA schedule with ${dcaResult.levels.length} levels (effective growth: ${dcaResult.effectiveGrowthFactor.toFixed(2)}x)`);
 
       // CRITICAL SAFETY CHECK: Validate position size is valid
       if (!Number.isFinite(quantity) || isNaN(quantity) || quantity <= 0) {
@@ -1653,6 +1676,13 @@ export class StrategyEngine extends EventEmitter {
           positionId: position.id,
           positionSide: this.exchangePositionMode === 'dual' ? positionSide : undefined, // Only include if EXCHANGE is in dual mode
         });
+
+        // CRITICAL: Increment layersPlaced immediately after order is placed
+        // This prevents rapid liquidations from triggering the same layer twice
+        await storage.updatePosition(position.id, {
+          layersPlaced: nextLayer
+        });
+        console.log(`📊 Updated layersPlaced=${nextLayer} for ${liquidation.symbol} (prevents duplicate layer triggers)`);
 
         console.log(`✅ Layer ${nextLayer} completed for ${liquidation.symbol}`);
       } finally {
@@ -3481,6 +3511,7 @@ export class StrategyEngine extends EventEmitter {
       const q1Key = `${order.sessionId}-${order.symbol}-${positionSide}`;
       const dcaBaseSize = this.pendingQ1Values.get(q1Key);
       const firstLayerData = this.pendingFirstLayerData.get(q1Key);
+      const dcaSchedule = this.pendingDCASchedules.get(q1Key);
       
       if (dcaBaseSize) {
         console.log(`✅ Retrieved q1=${dcaBaseSize.toFixed(6)} for ${order.symbol} ${positionSide}`);
@@ -3488,6 +3519,12 @@ export class StrategyEngine extends EventEmitter {
         this.pendingQ1Values.delete(q1Key);
       } else {
         console.warn(`⚠️ No q1 found for ${q1Key}, DCA sizing may be inconsistent`);
+      }
+      
+      if (dcaSchedule) {
+        console.log(`✅ Retrieved DCA schedule with ${dcaSchedule.levels.length} levels (effective growth: ${dcaSchedule.effectiveGrowthFactor.toFixed(2)}x)`);
+      } else {
+        console.warn(`⚠️ No DCA schedule found for ${q1Key}, will need to recalculate on next layer`);
       }
 
       console.log(`🔍 POSITION CREATE DEBUG: order.side=${order.side}, derived positionSide=${positionSide}`);
@@ -3502,8 +3539,10 @@ export class StrategyEngine extends EventEmitter {
           avgEntryPrice: fillPrice.toString(),
           initialEntryPrice: fillPrice.toString(), // P0: Store initial entry price for DCA calculations
           dcaBaseSize: dcaBaseSize?.toString(), // q1: Base layer size for exponential growth
+          dcaSchedule: dcaSchedule ? JSON.stringify(dcaSchedule) : null, // Complete DCA schedule for reuse
           totalCost: actualMargin.toString(), // Actual margin = notional / leverage
           layersFilled: 1,
+          layersPlaced: 1, // Track layers placed immediately (not after fill)
           maxLayers,
           leverage,
           lastLayerPrice: fillPrice.toString(),
@@ -3528,6 +3567,7 @@ export class StrategyEngine extends EventEmitter {
           
           // Clean up only after successful layer creation
           this.pendingFirstLayerData.delete(q1Key);
+          this.pendingDCASchedules.delete(q1Key); // Clean up DCA schedule
         } else {
           console.warn(`⚠️ No first layer TP/SL data found for ${q1Key}, position layer not created`);
         }
