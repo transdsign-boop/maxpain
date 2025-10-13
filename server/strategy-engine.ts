@@ -1625,11 +1625,6 @@ export class StrategyEngine extends EventEmitter {
         }
       }
       
-      // ATOMICALLY set cooldown IMMEDIATELY after passing check
-      // This prevents race condition where two threads both pass the check before either sets cooldown
-      this.lastFillTime.set(cooldownKey, Date.now());
-      console.log(`🔒 Layer cooldown locked ATOMICALLY for ${liquidation.symbol} ${positionSide} (${this.fillCooldownMs / 1000}s)`);
-      
       const side = position.side === 'long' ? 'buy' : 'sell';
       const nextLayer = position.layersFilled + 1;
       
@@ -1768,6 +1763,10 @@ export class StrategyEngine extends EventEmitter {
           layersPlaced: nextLayer
         });
         console.log(`📊 Updated layersPlaced=${nextLayer} for ${liquidation.symbol} (prevents duplicate layer triggers)`);
+
+        // Set cooldown AFTER successful order placement to prevent duplicate layers
+        this.lastFillTime.set(cooldownKey, Date.now());
+        console.log(`🔒 Layer cooldown set for ${liquidation.symbol} ${positionSide} (${this.fillCooldownMs / 1000}s) after successful placement`);
 
         console.log(`✅ Layer ${nextLayer} completed for ${liquidation.symbol}`);
       } finally {
