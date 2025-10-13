@@ -633,8 +633,6 @@ export class StrategyEngine extends EventEmitter {
     });
     this.positionCreationLocks.set(lockKey, lockPromise);
     
-    // Lock acquired - cooldown will be set atomically when exchange confirms the order
-    // This prevents self-blocking: approved layers can execute, and cooldown prevents duplicates
     console.log(`🔒 Lock acquired for ${liquidation.symbol} ${positionSide} - evaluating trade signal...`);
     
     try {
@@ -646,6 +644,7 @@ export class StrategyEngine extends EventEmitter {
         if (actualPosition && actualPosition.isOpen && actualPosition.side === positionSide) {
           const shouldLayer = await this.shouldAddLayer(currentStrategy, actualPosition, liquidation);
           if (shouldLayer) {
+            // LAYER 2+: Cooldown set in exchange callback to prevent self-blocking
             await this.executeLayer(currentStrategy, session, actualPosition, liquidation, positionSide);
           }
           return;
@@ -661,6 +660,7 @@ export class StrategyEngine extends EventEmitter {
         if (existingPosition.side === positionSide) {
           const shouldLayer = await this.shouldAddLayer(currentStrategy, existingPosition, liquidation);
           if (shouldLayer) {
+            // LAYER 2+: Cooldown set in exchange callback to prevent self-blocking
             await this.executeLayer(currentStrategy, session, existingPosition, liquidation, positionSide);
           }
         } else {
@@ -668,11 +668,15 @@ export class StrategyEngine extends EventEmitter {
         }
       } else {
         // No open position - evaluate if we should enter
-        // NOTE: We already set cooldown above, so shouldEnterPosition won't set it again
         const shouldEnter = await this.shouldEnterPositionWithoutCooldown(currentStrategy, liquidation, recentLiquidations, session, positionSide);
         if (shouldEnter) {
-          // Execute entry and track position in memory BEFORE DB commit
-          const positionId = await this.executeEntry(currentStrategy, session, liquidation, positionSide);
+          // LAYER 1 (INITIAL ENTRY): Pass callback to set cooldown atomically with exchange confirmation
+          // This prevents both duplicate positions AND false blocking if executeEntry fails before order placement
+          const positionId = await this.executeEntry(currentStrategy, session, liquidation, positionSide, () => {
+            this.lastFillTime.set(cooldownKey, Date.now());
+            console.log(`🔒 Layer 1 cooldown set ATOMICALLY for ${liquidation.symbol} ${positionSide} (${this.fillCooldownMs / 1000}s) at exchange confirmation`);
+          });
+          
           if (positionId) {
             this.inMemoryPositions.set(lockKey, {
               positionId,
@@ -1412,7 +1416,13 @@ export class StrategyEngine extends EventEmitter {
   }
 
   // Execute initial position entry with smart order placement
-  private async executeEntry(strategy: Strategy, session: TradeSession, liquidation: Liquidation, positionSide: string): Promise<string | null> {
+  private async executeEntry(
+    strategy: Strategy, 
+    session: TradeSession, 
+    liquidation: Liquidation, 
+    positionSide: string,
+    onExchangeConfirmation?: () => void
+  ): Promise<string | null> {
     try {
       // Counter-trade: if LONG liquidated → go LONG (buy the dip), if SHORT liquidated → go SHORT (sell the rally)
       const side = liquidation.side === 'long' ? 'buy' : 'sell';
@@ -1605,6 +1615,7 @@ export class StrategyEngine extends EventEmitter {
 
       // Place order with price chasing
       // Only pass positionSide if the EXCHANGE is in dual mode (not based on strategy settings)
+      // Pass callback to set cooldown atomically when exchange confirms (prevents duplicate positions)
       await this.placeOrderWithRetry({
         strategy,
         session,
@@ -1616,6 +1627,7 @@ export class StrategyEngine extends EventEmitter {
         triggerLiquidationId: liquidation.id,
         layerNumber: 1,
         positionSide: this.exchangePositionMode === 'dual' ? positionSide : undefined, // Only include if EXCHANGE is in dual mode
+        onExchangeConfirmation, // Set cooldown atomically with exchange confirmation
       });
 
       // Return a tracking ID to indicate order was placed successfully
