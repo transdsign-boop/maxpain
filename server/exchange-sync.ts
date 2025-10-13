@@ -957,7 +957,8 @@ export async function fetchRealizedPnlEvents(params: {
       }
       
       // Move endTime to the oldest record's timestamp minus 1ms for next batch
-      const nextEndTime = batch[batch.length - 1].time - 1;
+      // Exchange returns events in ASCENDING order, so batch[0] = oldest
+      const nextEndTime = batch[0].time - 1;
       console.log(`➡️ Next batch: Moving endTime from ${currentEndTime} to ${nextEndTime}`);
       currentEndTime = nextEndTime;
       
