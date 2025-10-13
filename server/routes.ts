@@ -3141,6 +3141,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await strategyEngine.registerStrategy(updatedStrategy);
       }
       
+      // Broadcast pause status to frontend (turn trade light red)
+      wsBroadcaster.broadcastTradeBlock({
+        blocked: true,
+        reason: "Strategy paused by user",
+        type: "user_pause"
+      });
+      
       res.status(200).json(updatedStrategy);
     } catch (error) {
       console.error('Error pausing strategy:', error);
@@ -3169,6 +3176,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (updatedStrategy && updatedStrategy.isActive) {
         await strategyEngine.registerStrategy(updatedStrategy);
       }
+      
+      // Broadcast resume status to frontend (turn trade light green)
+      wsBroadcaster.broadcastTradeBlock({
+        blocked: false,
+        reason: "",
+        type: ""
+      });
       
       res.status(200).json(updatedStrategy);
     } catch (error) {
@@ -3404,6 +3418,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
             timestamp: Date.now()
           }));
           console.log('📤 Sent cached snapshot to new client (balance: $' + snapshot.account.usdtBalance + ')');
+        }
+        
+        // Send current pause status to set trade light correctly
+        if (activeStrategy.paused) {
+          ws.send(JSON.stringify({
+            type: 'trade_block',
+            data: {
+              blocked: true,
+              reason: "Strategy paused by user",
+              type: "user_pause"
+            },
+            timestamp: Date.now()
+          }));
+          console.log('📤 Sent pause status to new client (paused: true)');
         }
       }
     } catch (error) {
