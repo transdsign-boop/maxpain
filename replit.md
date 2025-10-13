@@ -51,6 +51,7 @@ PERMANENT DATA PRESERVATION: ALL trading data MUST be preserved forever. The use
 - **Database ORM**: Drizzle ORM (raw SQL for critical operations).
 - **API**: RESTful endpoints with `/api` prefix. All strategy changes are immediately saved to the Neon database and then loaded into memory.
 - **Real-time Data**: WebSocket connection to Aster DEX for live liquidation streaming and user data (ACCOUNT_UPDATE, ORDER_TRADE_UPDATE). A Live Data Orchestrator caches and broadcasts real-time account/position data.
+- **Vite HMR Error Handling (Oct 13, 2025)**: Global error handler in `client/src/main.tsx` suppresses Vite HMR WebSocket errors (`wss://localhost:undefined`) that occur in Replit environment. These errors are expected due to Replit's hosting configuration and are safely ignored to prevent React from crashing. ErrorBoundary component provides fallback UI for any unhandled errors.
 - **Cascade Detection**: Dynamic monitoring of selected assets, aggregate-based trade filtering (blocking triggers when ≥50% of monitored symbols show cascade activity). Reversal Quality is informational only.
 - **Percentile Threshold**: All percentile calculations use database records, not in-memory cache, for accuracy.
 - **Automatic Position Reconciliation**: Database positions are reconciled with live exchange positions before every portfolio risk calculation to prevent ghost positions.
