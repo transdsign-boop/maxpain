@@ -3421,6 +3421,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         
         // Send current pause status to set trade light correctly
+        console.log('🔍 DEBUG: activeStrategy.paused =', activeStrategy.paused, 'type:', typeof activeStrategy.paused);
         if (activeStrategy.paused) {
           ws.send(JSON.stringify({
             type: 'trade_block',
@@ -3432,6 +3433,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             timestamp: Date.now()
           }));
           console.log('📤 Sent pause status to new client (paused: true)');
+        } else {
+          console.log('⚠️ Strategy NOT paused, skipping pause message');
         }
       }
     } catch (error) {
