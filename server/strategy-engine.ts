@@ -633,9 +633,9 @@ export class StrategyEngine extends EventEmitter {
     });
     this.positionCreationLocks.set(lockKey, lockPromise);
     
-    // IMMEDIATELY set cooldown after acquiring lock (before any DB queries) to prevent duplicate entries
-    this.lastFillTime.set(cooldownKey, Date.now());
-    console.log(`🔒 Lock acquired + Cooldown set ATOMICALLY for ${liquidation.symbol} ${positionSide} (${this.fillCooldownMs / 1000}s)`);
+    // Lock acquired - cooldown will be set atomically when exchange confirms the order
+    // This prevents self-blocking: approved layers can execute, and cooldown prevents duplicates
+    console.log(`🔒 Lock acquired for ${liquidation.symbol} ${positionSide} - evaluating trade signal...`);
     
     try {
       // Check in-memory positions first (before DB query)
