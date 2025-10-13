@@ -8,6 +8,7 @@ import {
 
 interface ConnectionStatusProps {
   isConnected: boolean;
+  tradeBlockStatus?: {blocked: boolean; reason?: string} | null;
 }
 
 interface ApiError {
@@ -45,7 +46,7 @@ interface TradeBlockInfo {
   timestamp?: number;
 }
 
-export default function ConnectionStatus({ isConnected }: ConnectionStatusProps) {
+export default function ConnectionStatus({ isConnected, tradeBlockStatus }: ConnectionStatusProps) {
   const [apiConnected, setApiConnected] = useState(true);
   const [latestError, setLatestError] = useState<ApiError | null>(null);
   const [cascadeStatuses, setCascadeStatuses] = useState<CascadeStatus[]>([]);
@@ -100,11 +101,24 @@ export default function ConnectionStatus({ isConnected }: ConnectionStatusProps)
 
   // Listen for cascade status updates via WebSocket
   useEffect(() => {
-    const ws = new WebSocket(
-      `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`
-    );
+    const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`;
+    console.log('🔌 ConnectionStatus: Creating WebSocket connection to:', wsUrl);
+    const ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+      console.log('✅ ConnectionStatus: WebSocket connected');
+    };
+
+    ws.onclose = () => {
+      console.log('❌ ConnectionStatus: WebSocket closed');
+    };
+
+    ws.onerror = (error) => {
+      console.error('💥 ConnectionStatus: WebSocket error:', error);
+    };
 
     ws.onmessage = (event) => {
+      console.log('📨 ConnectionStatus: Received message:', event.data);
       try {
         const message = JSON.parse(event.data);
         if (message.type === 'cascade_status') {
@@ -118,6 +132,7 @@ export default function ConnectionStatus({ isConnected }: ConnectionStatusProps)
             setCascadeStatuses(statuses);
           }
         } else if (message.type === 'trade_block') {
+          console.log('🔴 TRADE_BLOCK message received:', message.data);
           // Handle trade block events
           if (message.data.blocked) {
             // Set block - will remain until explicitly cleared
@@ -125,9 +140,11 @@ export default function ConnectionStatus({ isConnected }: ConnectionStatusProps)
               ...message.data,
               timestamp: message.timestamp || Date.now()
             });
+            console.log('🔴 Trade light should now be RED (blocked)');
           } else {
             // Clear block - explicit unblock signal
             setTradeBlock(null);
+            console.log('🟢 Trade light should now be GREEN (unblocked)');
           }
         }
       } catch (error) {
@@ -140,12 +157,16 @@ export default function ConnectionStatus({ isConnected }: ConnectionStatusProps)
     };
   }, []);
 
+  // Prioritize tradeBlockStatus prop from Dashboard (real-time pause status from main WebSocket)
+  // Fall back to local tradeBlock state from ConnectionStatus WebSocket
+  const effectiveTradeBlock = tradeBlockStatus || tradeBlock;
+  
   // Use aggregate status from WebSocket (all-or-none blocking) OR trade block events
-  const tradesAllowed = tradeBlock?.blocked ? false : (aggregateStatus ? !aggregateStatus.blockAll : false);
+  const tradesAllowed = effectiveTradeBlock?.blocked ? false : (aggregateStatus ? !aggregateStatus.blockAll : false);
   const autoEnabled = aggregateStatus?.autoEnabled ?? true;
   
   // Determine block reason - prioritize real-time trade blocks over cascade status
-  const blockReason = tradeBlock?.blocked ? tradeBlock.reason : (aggregateStatus?.blockAll ? aggregateStatus.reason : null);
+  const blockReason = effectiveTradeBlock?.blocked ? effectiveTradeBlock.reason : (aggregateStatus?.blockAll ? aggregateStatus.reason : null);
   
   const getTradeStatusTitle = () => {
     if (!aggregateStatus) {

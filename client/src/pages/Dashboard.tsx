@@ -51,6 +51,9 @@ export default function Dashboard() {
   const [isEmergencyStopDialogOpen, setIsEmergencyStopDialogOpen] = useState(false);
   const [emergencyStopPin, setEmergencyStopPin] = useState("");
   
+  // Trade block status from WebSocket
+  const [tradeBlockStatus, setTradeBlockStatus] = useState<{blocked: boolean; reason?: string} | null>(null);
+  
   // Real liquidation data from WebSocket and API
   const [liquidations, setLiquidations] = useState<Liquidation[]>([]);
   
@@ -307,6 +310,10 @@ export default function Dashboard() {
                 description: `${sideLabel} @ $${price.toFixed(4)} • Value: $${value.toFixed(2)}`,
                 duration: 3000,
               });
+            } else if (message.type === 'trade_block' && message.data) {
+              // Handle trade block status (pause/resume)
+              console.log('🔴 Dashboard received trade_block:', message.data);
+              setTradeBlockStatus(message.data.blocked ? message.data : null);
             }
           } catch (error) {
             console.error('Failed to parse WebSocket message:', error);
@@ -469,7 +476,7 @@ export default function Dashboard() {
           </div>
 
           <div className="flex items-center gap-8">
-            <ConnectionStatus isConnected={isConnected} />
+            <ConnectionStatus isConnected={isConnected} tradeBlockStatus={tradeBlockStatus} />
             
             {/* Pause/Resume Button */}
             {activeStrategy && (
@@ -552,7 +559,7 @@ export default function Dashboard() {
             {/* Right: Critical Actions */}
             <div className="flex items-center gap-1 flex-shrink-0">
               <div className="scale-90 origin-right">
-                <ConnectionStatus isConnected={isConnected} />
+                <ConnectionStatus isConnected={isConnected} tradeBlockStatus={tradeBlockStatus} />
               </div>
               
               {activeStrategy && (
