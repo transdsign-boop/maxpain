@@ -62,6 +62,7 @@ PERMANENT DATA PRESERVATION: ALL trading data MUST be preserved forever. The use
 - **Simplified TP/SL**: Position-level protective orders only (one TP and one SL per position).
 - **Protective Order Safety**: Place-then-cancel pattern for TP/SL orders, scheduled and WebSocket-triggered reconciliation, per-position locking, and automatic retry on `ReduceOnly` rejection.
 - **Data Integrity**: Idempotency for orders, atomic cooldowns, and permanent preservation of all trading data.
+- **Race Condition Prevention (Oct 2025)**: Multi-layer defense system prevents duplicate position creation during rapid liquidation cascades. Pre-lock cooldown check (30s) blocks duplicates before processing, atomic lock acquisition prevents simultaneous entry, immediate cooldown stamping after lock prevents slippage, in-memory position tracking (5s cleanup) catches duplicates before DB commit, and post-wait cooldown recheck provides additional safety. Fixed critical bug where 8 separate positions were created instead of 1 position with 8 DCA layers.
 - **Performance Metrics**: Tracking of deposited capital, ROI, transfer markers, commissions, and funding fees.
 - **Portfolio Limit**: Position counting uses unique symbol/side deduplication for hedge mode compatibility.
 
