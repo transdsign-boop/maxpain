@@ -113,45 +113,45 @@ export default function Dashboard() {
     }
   }, [livePositionsError]);
 
-  // Stop trading mutation
-  const stopMutation = useMutation({
+  // Pause trading mutation
+  const pauseMutation = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest('POST', `/api/strategies/${activeStrategy?.id}/stop`);
+      const response = await apiRequest('POST', `/api/strategies/${activeStrategy?.id}/pause`);
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/strategies'] });
       toast({
-        title: "Trading Stopped",
-        description: "Bot has been stopped. All trading is now inactive.",
+        title: "Trading Paused",
+        description: "Bot is paused. Resume anytime to continue trading.",
       });
     },
     onError: () => {
       toast({
         title: "Error",
-        description: "Failed to stop trading",
+        description: "Failed to pause trading",
         variant: "destructive",
       });
     },
   });
 
-  // Start trading mutation
-  const startMutation = useMutation({
+  // Resume trading mutation
+  const resumeMutation = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest('POST', `/api/strategies/${activeStrategy?.id}/start`);
+      const response = await apiRequest('POST', `/api/strategies/${activeStrategy?.id}/resume`);
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/strategies'] });
       toast({
-        title: "Trading Started",
-        description: "Bot is now active and will process liquidations.",
+        title: "Trading Resumed",
+        description: "Bot is active and processing liquidations.",
       });
     },
     onError: () => {
       toast({
         title: "Error",
-        description: "Failed to start trading",
+        description: "Failed to resume trading",
         variant: "destructive",
       });
     },
