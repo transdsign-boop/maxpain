@@ -111,13 +111,21 @@ interface DCASettings {
   maxSlPercent: string;
 }
 
+// DCA Preview Response Type
+interface DCAPreviewResponse {
+  effectiveGrowthFactor: number;
+  configuredGrowthFactor: number;
+  growthFactorAdjusted: boolean;
+  currentBalance: string;
+}
+
 // DCA Size Growth Field with real-time effective growth factor display
 function DcaSizeGrowthField({ strategyId, formValues, handleInputChange }: {
   strategyId: string | undefined;
-  formValues: DCASettings;
+  formValues: Partial<DCASettings>;
   handleInputChange: (field: keyof DCASettings, value: string | boolean) => void;
 }) {
-  const { data: previewData } = useQuery({
+  const { data: previewData } = useQuery<DCAPreviewResponse>({
     queryKey: [`/api/strategies/${strategyId}/dca/preview`],
     enabled: !!strategyId,
     refetchInterval: 5000, // Refresh every 5 seconds
@@ -163,11 +171,16 @@ function DcaSizeGrowthField({ strategyId, formValues, handleInputChange }: {
               <>
                 <strong>⚠️ Currently Effective: {effective.toFixed(2)}x</strong> (reduced from {configured.toFixed(2)}x configured)
                 <div className="mt-1 opacity-90">
-                  On your current balance (${previewData.currentBalance.toFixed(2)}), Layer 1 needs scaling to meet $5 minimum. Growth factor is automatically reduced to maintain your {formValues.dcaMaxRiskPercent}% risk cap.
+                  On your current balance (${parseFloat(previewData.currentBalance).toFixed(2)}), Layer 1 needs scaling to meet $5 minimum. Growth factor is automatically reduced to maintain your {formValues.dcaMaxRiskPercent}% risk cap.
                 </div>
               </>
             ) : (
-              <strong>✅ Using configured value: {configured.toFixed(2)}x</strong>
+              <>
+                <strong>✅ Using configured value: {configured.toFixed(2)}x</strong>
+                <div className="mt-1 opacity-90">
+                  Current balance: ${parseFloat(previewData?.currentBalance || '0').toFixed(2)}
+                </div>
+              </>
             )}
           </div>
         </div>
@@ -184,11 +197,21 @@ function DcaSizeGrowthField({ strategyId, formValues, handleInputChange }: {
   );
 }
 
+// Exchange Limits Response Type
+interface ExchangeLimitsResponse {
+  limits: Array<{
+    symbol: string;
+    minNotional: string;
+    pricePrecision: number;
+    quantityPrecision: number;
+  }>;
+}
+
 // DCA Settings Component
 function ExchangeLimitsSection() {
   const [isOpen, setIsOpen] = useState(false);
   
-  const { data: limitsData, isLoading } = useQuery({
+  const { data: limitsData, isLoading } = useQuery<ExchangeLimitsResponse>({
     queryKey: ['/api/exchange-limits'],
     refetchInterval: 30000, // Refresh every 30 seconds
   });
