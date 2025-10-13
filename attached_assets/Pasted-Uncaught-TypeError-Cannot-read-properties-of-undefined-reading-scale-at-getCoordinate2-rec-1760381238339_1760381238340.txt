@@ -1,0 +1,156 @@
+Uncaught TypeError: Cannot read properties of undefined (reading 'scale')
+    at getCoordinate2 (recharts.js?v=62b24a41:26000:14)
+    at ReferenceDot2.render (recharts.js?v=62b24a41:26030:24)
+    at finishClassComponent (chunk-RPCDYKBN.js?v=62b24a41:14699:39)
+    at updateClassComponent (chunk-RPCDYKBN.js?v=62b24a41:14664:32)
+    at beginWork (chunk-RPCDYKBN.js?v=62b24a41:15930:22)
+    at HTMLUnknownElement.callCallback2 (chunk-RPCDYKBN.js?v=62b24a41:3674:22)
+    at Object.invokeGuardedCallbackDev (chunk-RPCDYKBN.js?v=62b24a41:3699:24)
+    at invokeGuardedCallback (chunk-RPCDYKBN.js?v=62b24a41:3733:39)
+    at beginWork$1 (chunk-RPCDYKBN.js?v=62b24a41:19765:15)
+    at performUnitOfWork (chunk-RPCDYKBN.js?v=62b24a41:19198:20)
+getCoordinate2 @ recharts.js?v=62b24a41:26000
+render @ recharts.js?v=62b24a41:26030
+finishClassComponent @ chunk-RPCDYKBN.js?v=62b24a41:14699
+updateClassComponent @ chunk-RPCDYKBN.js?v=62b24a41:14664
+beginWork @ chunk-RPCDYKBN.js?v=62b24a41:15930
+callCallback2 @ chunk-RPCDYKBN.js?v=62b24a41:3674
+invokeGuardedCallbackDev @ chunk-RPCDYKBN.js?v=62b24a41:3699
+invokeGuardedCallback @ chunk-RPCDYKBN.js?v=62b24a41:3733
+beginWork$1 @ chunk-RPCDYKBN.js?v=62b24a41:19765
+performUnitOfWork @ chunk-RPCDYKBN.js?v=62b24a41:19198
+workLoopSync @ chunk-RPCDYKBN.js?v=62b24a41:19137
+renderRootSync @ chunk-RPCDYKBN.js?v=62b24a41:19116
+performConcurrentWorkOnRoot @ chunk-RPCDYKBN.js?v=62b24a41:18678
+workLoop @ chunk-RPCDYKBN.js?v=62b24a41:197
+flushWork @ chunk-RPCDYKBN.js?v=62b24a41:176
+performWorkUntilDeadline @ chunk-RPCDYKBN.js?v=62b24a41:384Understand this error
+35recharts.js?v=62b24a41:26000 Uncaught TypeError: Cannot read properties of undefined (reading 'scale')
+    at getCoordinate2 (recharts.js?v=62b24a41:26000:14)
+    at ReferenceDot2.render (recharts.js?v=62b24a41:26030:24)
+    at finishClassComponent (chunk-RPCDYKBN.js?v=62b24a41:14699:39)
+    at updateClassComponent (chunk-RPCDYKBN.js?v=62b24a41:14664:32)
+    at beginWork (chunk-RPCDYKBN.js?v=62b24a41:15930:22)
+    at HTMLUnknownElement.callCallback2 (chunk-RPCDYKBN.js?v=62b24a41:3674:22)
+    at Object.invokeGuardedCallbackDev (chunk-RPCDYKBN.js?v=62b24a41:3699:24)
+    at invokeGuardedCallback (chunk-RPCDYKBN.js?v=62b24a41:3733:39)
+    at beginWork$1 (chunk-RPCDYKBN.js?v=62b24a41:19765:15)
+    at performUnitOfWork (chunk-RPCDYKBN.js?v=62b24a41:19198:20)
+getCoordinate2 @ recharts.js?v=62b24a41:26000
+render @ recharts.js?v=62b24a41:26030
+finishClassComponent @ chunk-RPCDYKBN.js?v=62b24a41:14699
+updateClassComponent @ chunk-RPCDYKBN.js?v=62b24a41:14664
+beginWork @ chunk-RPCDYKBN.js?v=62b24a41:15930
+callCallback2 @ chunk-RPCDYKBN.js?v=62b24a41:3674
+invokeGuardedCallbackDev @ chunk-RPCDYKBN.js?v=62b24a41:3699
+invokeGuardedCallback @ chunk-RPCDYKBN.js?v=62b24a41:3733
+beginWork$1 @ chunk-RPCDYKBN.js?v=62b24a41:19765
+performUnitOfWork @ chunk-RPCDYKBN.js?v=62b24a41:19198
+workLoopSync @ chunk-RPCDYKBN.js?v=62b24a41:19137
+renderRootSync @ chunk-RPCDYKBN.js?v=62b24a41:19116
+recoverFromConcurrentError @ chunk-RPCDYKBN.js?v=62b24a41:18736
+performConcurrentWorkOnRoot @ chunk-RPCDYKBN.js?v=62b24a41:18684
+workLoop @ chunk-RPCDYKBN.js?v=62b24a41:197
+flushWork @ chunk-RPCDYKBN.js?v=62b24a41:176
+performWorkUntilDeadline @ chunk-RPCDYKBN.js?v=62b24a41:384Understand this error
+35injected.js:27 The above error occurred in the <ReferenceDot> component:
+
+    at ReferenceDot2 (https://8e0cbcbd-702e-4bbd-9129-65b4b7bc8bfc-00-teqjc7qv7nz7.worf.replit.dev:5000/@fs/home/runner/workspace/node_modules/.vite/deps/recharts.js?v=62b24a41:26016:5)
+    at g
+    at svg
+    at Surface (https://8e0cbcbd-702e-4bbd-9129-65b4b7bc8bfc-00-teqjc7qv7nz7.worf.replit.dev:5000/@fs/home/runner/workspace/node_modules/.vite/deps/recharts.js?v=62b24a41:6054:25)
+    at div
+    at ChartLayoutContextProvider2 (https://8e0cbcbd-702e-4bbd-9129-65b4b7bc8bfc-00-teqjc7qv7nz7.worf.replit.dev:5000/@fs/home/runner/workspace/node_modules/.vite/deps/recharts.js?v=62b24a41:25484:28)
+    at CategoricalChartWrapper2 (https://8e0cbcbd-702e-4bbd-9129-65b4b7bc8bfc-00-teqjc7qv7nz7.worf.replit.dev:5000/@fs/home/runner/workspace/node_modules/.vite/deps/recharts.js?v=62b24a41:30766:7)
+    at CategoricalChart2
+    at div
+    at https://8e0cbcbd-702e-4bbd-9129-65b4b7bc8bfc-00-teqjc7qv7nz7.worf.replit.dev:5000/@fs/home/runner/workspace/node_modules/.vite/deps/recharts.js?v=62b24a41:9258:21
+    at div
+    at div
+    at div
+    at _c9 (https://8e0cbcbd-702e-4bbd-9129-65b4b7bc8bfc-00-teqjc7qv7nz7.worf.replit.dev:5000/src/components/ui/card.tsx:114:12)
+    at div
+    at _c (https://8e0cbcbd-702e-4bbd-9129-65b4b7bc8bfc-00-teqjc7qv7nz7.worf.replit.dev:5000/src/components/ui/card.tsx:20:11)
+    at PerformanceOverview (https://8e0cbcbd-702e-4bbd-9129-65b4b7bc8bfc-00-teqjc7qv7nz7.worf.replit.dev:5000/src/components/PerformanceOverview.tsx?t=1760380951265:34:37)
+    at main
+    at div
+    at Dashboard (https://8e0cbcbd-702e-4bbd-9129-65b4b7bc8bfc-00-teqjc7qv7nz7.worf.replit.dev:5000/src/pages/Dashboard.tsx?t=1760380951265:41:41)
+    at Route (https://8e0cbcbd-702e-4bbd-9129-65b4b7bc8bfc-00-teqjc7qv7nz7.worf.replit.dev:5000/@fs/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=62b24a41:323:16)
+    at Switch (https://8e0cbcbd-702e-4bbd-9129-65b4b7bc8bfc-00-teqjc7qv7nz7.worf.replit.dev:5000/@fs/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=62b24a41:379:17)
+    at Router
+    at Provider (https://8e0cbcbd-702e-4bbd-9129-65b4b7bc8bfc-00-teqjc7qv7nz7.worf.replit.dev:5000/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-VFYO4PQK.js?v=62b24a41:38:15)
+    at TooltipProvider (https://8e0cbcbd-702e-4bbd-9129-65b4b7bc8bfc-00-teqjc7qv7nz7.worf.replit.dev:5000/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=62b24a41:61:5)
+    at QueryClientProvider (https://8e0cbcbd-702e-4bbd-9129-65b4b7bc8bfc-00-teqjc7qv7nz7.worf.replit.dev:5000/@fs/home/runner/workspace/node_modules/.vite/deps/@tanstack_react-query.js?v=62b24a41:2805:3)
+    at App
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+(anonymous) @ injected.js:27
+(anonymous) @ injected.js:27
+(anonymous) @ injected.js:27
+(anonymous) @ injected.js:27
+(anonymous) @ injected.js:27
+(anonymous) @ injected.js:27
+(anonymous) @ injected.js:27
+(anonymous) @ injected.js:27
+(anonymous) @ injected.js:27
+(anonymous) @ injected.js:27
+(anonymous) @ injected.js:27
+(anonymous) @ injected.js:27
+(anonymous) @ injected.js:27
+(anonymous) @ injected.js:27
+(anonymous) @ injected.js:27
+(anonymous) @ injected.js:27
+(anonymous) @ injected.js:27
+(anonymous) @ injected.js:27
+logCapturedError @ chunk-RPCDYKBN.js?v=62b24a41:14032
+update.callback @ chunk-RPCDYKBN.js?v=62b24a41:14052
+callCallback @ chunk-RPCDYKBN.js?v=62b24a41:11248
+commitUpdateQueue @ chunk-RPCDYKBN.js?v=62b24a41:11265
+commitLayoutEffectOnFiber @ chunk-RPCDYKBN.js?v=62b24a41:17093
+commitLayoutMountEffects_complete @ chunk-RPCDYKBN.js?v=62b24a41:17980
+commitLayoutEffects_begin @ chunk-RPCDYKBN.js?v=62b24a41:17969
+commitLayoutEffects @ chunk-RPCDYKBN.js?v=62b24a41:17920
+commitRootImpl @ chunk-RPCDYKBN.js?v=62b24a41:19353
+commitRoot @ chunk-RPCDYKBN.js?v=62b24a41:19277
+finishConcurrentRender @ chunk-RPCDYKBN.js?v=62b24a41:18760
+performConcurrentWorkOnRoot @ chunk-RPCDYKBN.js?v=62b24a41:18718
+workLoop @ chunk-RPCDYKBN.js?v=62b24a41:197
+flushWork @ chunk-RPCDYKBN.js?v=62b24a41:176
+performWorkUntilDeadline @ chunk-RPCDYKBN.js?v=62b24a41:384Understand this error
+chunk-RPCDYKBN.js?v=62b24a41:19413 Uncaught TypeError: Cannot read properties of undefined (reading 'scale')
+    at getCoordinate2 (recharts.js?v=62b24a41:26000:14)
+    at ReferenceDot2.render (recharts.js?v=62b24a41:26030:24)
+    at finishClassComponent (chunk-RPCDYKBN.js?v=62b24a41:14699:39)
+    at updateClassComponent (chunk-RPCDYKBN.js?v=62b24a41:14664:32)
+    at beginWork (chunk-RPCDYKBN.js?v=62b24a41:15930:22)
+    at beginWork$1 (chunk-RPCDYKBN.js?v=62b24a41:19753:22)
+    at performUnitOfWork (chunk-RPCDYKBN.js?v=62b24a41:19198:20)
+    at workLoopSync (chunk-RPCDYKBN.js?v=62b24a41:19137:13)
+    at renderRootSync (chunk-RPCDYKBN.js?v=62b24a41:19116:15)
+    at recoverFromConcurrentError (chunk-RPCDYKBN.js?v=62b24a41:18736:28)
+getCoordinate2 @ recharts.js?v=62b24a41:26000
+render @ recharts.js?v=62b24a41:26030
+finishClassComponent @ chunk-RPCDYKBN.js?v=62b24a41:14699
+updateClassComponent @ chunk-RPCDYKBN.js?v=62b24a41:14664
+beginWork @ chunk-RPCDYKBN.js?v=62b24a41:15930
+beginWork$1 @ chunk-RPCDYKBN.js?v=62b24a41:19753
+performUnitOfWork @ chunk-RPCDYKBN.js?v=62b24a41:19198
+workLoopSync @ chunk-RPCDYKBN.js?v=62b24a41:19137
+renderRootSync @ chunk-RPCDYKBN.js?v=62b24a41:19116
+recoverFromConcurrentError @ chunk-RPCDYKBN.js?v=62b24a41:18736
+performConcurrentWorkOnRoot @ chunk-RPCDYKBN.js?v=62b24a41:18684
+workLoop @ chunk-RPCDYKBN.js?v=62b24a41:197
+flushWork @ chunk-RPCDYKBN.js?v=62b24a41:176
+performWorkUntilDeadline @ chunk-RPCDYKBN.js?v=62b24a41:384Understand this error
+injected.js:27 Disconnected from trading data WebSocket
+injected.js:27 Reconnecting in 1000ms (attempt 1/10)...
+injected.js:27 ❌ ConnectionStatus: WebSocket closed
+injected.js:27 Disconnected from trading data WebSocket
+injected.js:27 Reconnecting in 1000ms (attempt 1/10)...
+injected.js:27 ❌ ConnectionStatus: WebSocket closed
+injected.js:27 Disconnected from trading data WebSocket
+injected.js:27 Reconnecting in 1000ms (attempt 1/10)...
+injected.js:27 Cascade detector WebSocket closed
+3injected.js:27 Connected to trading data WebSocket
+main.MTE0NjY3MDc0MQ.js:1  POST https://analytics.tiktok.com/api/v2/pixel/act 504 (Gateway Timeout)
