@@ -27,6 +27,9 @@ export interface DCAResult {
   takeProfitPrice: number;
   totalRiskDollars: number;
   maxNotional: number; // Total notional if all levels fill
+  effectiveGrowthFactor: number; // Actual growth factor used (may be reduced from configured)
+  growthFactorAdjusted: boolean; // True if growth factor was reduced to maintain risk cap
+  configuredGrowthFactor: number; // Original configured growth factor
 }
 
 /**
@@ -168,7 +171,7 @@ export function calculateDCALevels(
   // Step 3: Calculate geometric size weights
   // wk = g^(k-1)
   const weights = levels.map(({ level }) => Math.pow(g, level - 1));
-  const totalWeight = weights.reduce((sum, w) => sum + w, 0);
+  let totalWeight = weights.reduce((sum, w) => sum + w, 0);
   
   console.log(`   Size weights:`, weights.map((w, i) => `L${i+1}=${w.toFixed(2)}`).join(', '));
   console.log(`   Total weight: ${totalWeight.toFixed(2)}`);
@@ -179,7 +182,7 @@ export function calculateDCALevels(
   for (let i = 0; i < levelPrices.length; i++) {
     weightedSum += weights[i] * levelPrices[i].price;
   }
-  const avgEntryPrice = weightedSum / totalWeight;
+  let avgEntryPrice = weightedSum / totalWeight;
   
   console.log(`   Weighted avg entry: $${avgEntryPrice.toFixed(4)}`);
   
@@ -200,7 +203,7 @@ export function calculateDCALevels(
   const maxRiskDollars = (Rmax / 100) * currentBalance; // Risk on entire account, not just available margin
   
   // Dollar loss per unit size at stop
-  const lossPerUnit = Math.abs(avgEntryPrice - stopPrice);
+  let lossPerUnit = Math.abs(avgEntryPrice - stopPrice);
   
   // Solve for q1 in base currency (not notional)
   // We need to account for leverage: notional = baseSize * price * leverage
@@ -209,15 +212,91 @@ export function calculateDCALevels(
   let q1 = maxRiskDollars / (lossPerUnit * totalWeight);
   
   // CRITICAL: Ensure Layer 1 meets exchange minimum notional
-  // Note: minNotional should always be provided from strategy-engine (fetched from exchange)
+  // If q1 needs to be scaled up, we must reduce growth factor to maintain risk cap
   const MIN_NOTIONAL = config.minNotional ?? 5.0; // Fallback should never be used
   const layer1Notional = q1 * entryPrice;
+  
+  let effectiveG = g; // Start with configured growth factor
+  let growthFactorAdjusted = false;
   
   if (layer1Notional < MIN_NOTIONAL) {
     const oldQ1 = q1;
     q1 = MIN_NOTIONAL / entryPrice; // Scale up to meet minimum
+    
+    // Now solve for new growth factor that maintains the same total risk
+    // Original: totalRisk = q1_old * totalWeight_old * lossPerUnit = maxRiskDollars
+    // New: totalRisk = q1_new * totalWeight_new * lossPerUnit = maxRiskDollars
+    // Therefore: totalWeight_new = (q1_old * totalWeight_old) / q1_new
+    
+    const targetTotalWeight = (oldQ1 * totalWeight) / q1;
+    
+    // Solve for g: Σ[g^(k-1)] = targetTotalWeight for k=1 to N
+    // This is geometric series: sum = (1 - g^N) / (1 - g) for g≠1, or N for g=1
+    // We'll use binary search to find the right g
+    
+    let gLow = 1.0;
+    let gHigh = g; // Start from configured value
+    let newG = 1.0;
+    
+    for (let iter = 0; iter < 50; iter++) {
+      const gMid = (gLow + gHigh) / 2;
+      let sumWeights = 0;
+      for (let k = 1; k <= N; k++) {
+        sumWeights += Math.pow(gMid, k - 1);
+      }
+      
+      if (Math.abs(sumWeights - targetTotalWeight) < 0.001) {
+        newG = gMid;
+        break;
+      }
+      
+      if (sumWeights < targetTotalWeight) {
+        gLow = gMid;
+      } else {
+        gHigh = gMid;
+      }
+      newG = gMid;
+    }
+    
+    effectiveG = newG;
+    growthFactorAdjusted = true;
+    
     console.log(`   ⚠️ Layer 1 notional $${layer1Notional.toFixed(2)} < $${MIN_NOTIONAL} minimum (exchange requirement)`);
     console.log(`   📈 Adjusted q1: ${oldQ1.toFixed(6)} → ${q1.toFixed(6)} units to meet minimum`);
+    console.log(`   📉 Reduced growth factor: ${g.toFixed(3)}x → ${effectiveG.toFixed(3)}x to maintain ${Rmax}% risk cap`);
+    console.log(`   ✅ Total weight adjusted: ${totalWeight.toFixed(2)} → ${targetTotalWeight.toFixed(2)} to preserve risk`);
+    
+    // Recalculate weights and total weight with new growth factor
+    weights.length = 0; // Clear array
+    let newTotalWeight = 0;
+    for (let k = 1; k <= N; k++) {
+      const weight = Math.pow(effectiveG, k - 1);
+      weights.push(weight);
+      newTotalWeight += weight;
+    }
+    
+    console.log(`   🔄 Updated weights:`, weights.map((w, i) => `L${i+1}=${w.toFixed(2)}`).join(', '));
+    
+    // Recalculate weighted average entry price with new weights
+    let newWeightedSum = 0;
+    for (let i = 0; i < levelPrices.length; i++) {
+      newWeightedSum += weights[i] * levelPrices[i].price;
+    }
+    const newAvgEntryPrice = newWeightedSum / newTotalWeight;
+    
+    console.log(`   🔄 Recalculated weighted avg entry: $${newAvgEntryPrice.toFixed(4)} (was $${avgEntryPrice.toFixed(4)})`);
+    
+    // CRITICAL: Assign recalculated values back to main variables for downstream calculations
+    totalWeight = newTotalWeight;
+    avgEntryPrice = newAvgEntryPrice;
+    
+    // Recalculate loss per unit with new average entry price
+    lossPerUnit = Math.abs(avgEntryPrice - stopPrice);
+    console.log(`   🔄 Recalculated loss per unit: $${lossPerUnit.toFixed(4)}`);
+    
+    // VERIFICATION: Check that total risk is still within cap
+    const verifyTotalRisk = q1 * totalWeight * lossPerUnit;
+    console.log(`   ✅ VERIFIED total risk: $${verifyTotalRisk.toFixed(2)} (cap: $${maxRiskDollars.toFixed(2)}) - ${verifyTotalRisk <= maxRiskDollars ? 'PASS' : 'FAIL'}`);
   }
   
   console.log(`   Available capital: $${availableCapital.toFixed(2)}`);
@@ -340,6 +419,9 @@ export function calculateDCALevels(
     takeProfitPrice,
     totalRiskDollars: maxRiskDollars,
     maxNotional: totalNotional,
+    effectiveGrowthFactor: effectiveG,
+    growthFactorAdjusted,
+    configuredGrowthFactor: g,
   };
 }
 
@@ -400,11 +482,11 @@ export async function calculateNextLayer(
     dcaMaxRiskPercent: String(strategyWithDCA.dca_max_risk_percent),
     dcaVolatilityRef: String(strategyWithDCA.dca_volatility_ref),
     dcaExitCushionMultiplier: String(strategyWithDCA.dca_exit_cushion_multiplier),
-    adaptiveTpEnabled: strategyWithDCA.adaptive_tp_enabled ?? false,
+    adaptiveTpEnabled: Boolean(strategyWithDCA.adaptive_tp_enabled),
     tpAtrMultiplier: String(strategyWithDCA.tp_atr_multiplier ?? '1.5'),
     minTpPercent: String(strategyWithDCA.min_tp_percent ?? '0.5'),
     maxTpPercent: String(strategyWithDCA.max_tp_percent ?? '5.0'),
-    adaptiveSlEnabled: strategyWithDCA.adaptive_sl_enabled ?? false,
+    adaptiveSlEnabled: Boolean(strategyWithDCA.adaptive_sl_enabled),
     slAtrMultiplier: String(strategyWithDCA.sl_atr_multiplier ?? '2.0'),
     minSlPercent: String(strategyWithDCA.min_sl_percent ?? '1.0'),
     maxSlPercent: String(strategyWithDCA.max_sl_percent ?? '5.0'),

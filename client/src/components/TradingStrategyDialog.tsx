@@ -355,6 +355,11 @@ function DCASettingsSection({ strategyId, isStrategyRunning, saveTrigger }: { st
                 <div className="text-xs text-muted-foreground">
                   <strong>How much each layer's size multiplies.</strong> 1.0 = all layers same size. 1.8 = each layer is 1.8× bigger (e.g., $10, $18, $32...). Higher ratios mean deeper layers bring your average entry price down faster, but use capital more aggressively.
                 </div>
+                <div className="mt-2 p-2 rounded-md bg-blue-500/10 dark:bg-blue-500/20 border border-blue-500/30">
+                  <div className="text-xs text-blue-700 dark:text-blue-300">
+                    <strong>💡 Dynamic Adjustment:</strong> On small accounts, the system may reduce this growth factor automatically to maintain your risk cap when Layer 1 is scaled up to meet the exchange's $5 minimum order size. As your account grows, it returns to your configured value.
+                  </div>
+                </div>
               </div>
 
               <div className="space-y-2">
