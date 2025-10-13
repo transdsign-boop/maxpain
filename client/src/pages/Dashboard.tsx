@@ -482,7 +482,7 @@ export default function Dashboard() {
                 title={activeStrategy.isActive ? "Stop Trading" : "Start Trading"}
               >
                 {activeStrategy.isActive ? (
-                  <Pause className="h-4 w-4" />
+                  <Square className="h-4 w-4" />
                 ) : (
                   <Play className="h-4 w-4" />
                 )}
@@ -565,7 +565,7 @@ export default function Dashboard() {
                   data-testid="button-start-stop-mobile"
                 >
                   {activeStrategy.isActive ? (
-                    <Pause className="h-3 w-3" />
+                    <Square className="h-3 w-3" />
                   ) : (
                     <Play className="h-3 w-3" />
                   )}
