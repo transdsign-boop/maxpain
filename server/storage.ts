@@ -429,11 +429,10 @@ export class DatabaseStorage implements IStorage {
 
   // Singleton strategy and session operations
   async getOrCreateDefaultStrategy(userId: string): Promise<Strategy> {
-    // Try to get existing strategy for this user (active or inactive) using raw SQL
+    // Try to get existing active strategy for this user using raw SQL
     const existing = await sql`
       SELECT * FROM strategies 
-      WHERE user_id = ${userId}
-      ORDER BY updated_at DESC
+      WHERE user_id = ${userId} AND is_active = true 
       LIMIT 1
     `;
     
