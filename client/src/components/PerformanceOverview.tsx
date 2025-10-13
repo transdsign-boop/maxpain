@@ -1236,7 +1236,7 @@ function PerformanceOverview() {
                 ))}
                 
                 {/* Vertical lines for strategy changes with clickable dots */}
-                {chartData.length > 0 && strategyChanges?.map((change) => {
+                {strategyChanges?.map((change) => {
                   const changeTime = new Date(change.changedAt).getTime();
                   let tradeIndex = chartData.findIndex(trade => trade.timestamp >= changeTime);
                   
@@ -1244,7 +1244,7 @@ function PerformanceOverview() {
                     tradeIndex = chartData.length - 1;
                   }
                   
-                  if (tradeIndex >= 0 && cumulativePnlDomain[1] !== undefined) {
+                  if (tradeIndex >= 0) {
                     const tradeNumber = chartData[tradeIndex].tradeNumber;
                     const yPosition = cumulativePnlDomain[1]; // Position at top of chart
                     
@@ -1260,7 +1260,7 @@ function PerformanceOverview() {
                         <ReferenceDot
                           x={tradeNumber}
                           y={yPosition}
-                          yAxisId="left"
+                          yAxisId="right"
                           r={6}
                           fill="hsl(var(--primary))"
                           stroke="hsl(var(--background))"
