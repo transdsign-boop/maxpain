@@ -2885,6 +2885,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // DCA Preview endpoint - calculates effective growth factor with current balance
+  app.get("/api/strategies/:id/dca/preview", async (req, res) => {
+    try {
+      const strategyId = req.params.id;
+      const { getStrategyWithDCA } = await import('./dca-sql');
+      const { calculateDCALevels } = await import('./dca-calculator');
+      
+      const strategy = await getStrategyWithDCA(strategyId);
+      
+      if (!strategy) {
+        return res.status(404).json({ error: "Strategy not found" });
+      }
+      
+      // Get current account balance from live data orchestrator
+      const snapshot = liveDataOrchestrator.getSnapshot(strategyId);
+      const balance = (snapshot.account as any)?.totalWalletBalance || 0;
+      
+      // Use a sample price for preview calculation (doesn't matter for growth factor calculation)
+      const samplePrice = 100;
+      const atrPercent = 1.0; // Sample ATR
+      
+      // Calculate DCA levels to get effective growth factor
+      const dcaResult = calculateDCALevels(
+        strategy as any,
+        {
+          entryPrice: samplePrice,
+          side: 'long',
+          currentBalance: balance,
+          leverage: strategy.leverage,
+          atrPercent,
+        }
+      );
+      
+      res.json({
+        effectiveGrowthFactor: dcaResult.effectiveGrowthFactor,
+        configuredGrowthFactor: dcaResult.configuredGrowthFactor,
+        growthFactorAdjusted: dcaResult.growthFactorAdjusted,
+        currentBalance: balance,
+      });
+    } catch (error) {
+      console.error('Error calculating DCA preview:', error);
+      res.status(500).json({ error: "Failed to calculate DCA preview" });
+    }
+  });
+
   app.put("/api/strategies/:id/dca", async (req, res) => {
     try {
       const strategyId = req.params.id;
