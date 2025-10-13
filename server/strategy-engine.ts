@@ -513,16 +513,22 @@ export class StrategyEngine extends EventEmitter {
     // Double-check strategy is still active (prevents race condition during unregister)
     if (!this.activeStrategies.has(strategy.id)) return;
     
-    // Check if strategy is paused
-    if (strategy.paused) {
-      console.log(`⏸️ Strategy "${strategy.name}" is paused, skipping liquidation processing`);
+    // CRITICAL RACE CONDITION FIX: Always check pause status from CURRENT in-memory strategy
+    // This prevents a bug where liquidations in-flight continue with old strategy object
+    // after user pauses (old object still has paused=false)
+    const currentStrategy = this.activeStrategies.get(strategy.id);
+    if (!currentStrategy) return;
+    
+    if (currentStrategy.paused) {
+      console.log(`⏸️ Strategy "${currentStrategy.name}" is paused, skipping liquidation processing`);
       return;
     }
     
-    const session = this.activeSessions.get(strategy.id);
+    // Use currentStrategy for all subsequent checks to ensure we have latest values
+    const session = this.activeSessions.get(currentStrategy.id);
     if (!session || !session.isActive) return;
 
-    console.log(`🎯 Evaluating strategy "${strategy.name}" for ${liquidation.symbol}`);
+    console.log(`🎯 Evaluating strategy "${currentStrategy.name}" for ${liquidation.symbol}`);
 
     // CASCADE AUTO-BLOCKING: Check if cascade detector is blocking all trades
     const aggregateStatus = cascadeDetectorService.getAggregateStatus();
@@ -538,13 +544,13 @@ export class StrategyEngine extends EventEmitter {
     }
 
     // Use configurable lookback window from strategy settings (convert hours to seconds)
-    const lookbackSeconds = strategy.liquidationLookbackHours * 3600;
+    const lookbackSeconds = currentStrategy.liquidationLookbackHours * 3600;
     const recentLiquidations = this.getRecentLiquidations(
       liquidation.symbol, 
       lookbackSeconds
     );
 
-    console.log(`📈 Found ${recentLiquidations.length} liquidations in last ${strategy.liquidationLookbackHours}h for ${liquidation.symbol}`);
+    console.log(`📈 Found ${recentLiquidations.length} liquidations in last ${currentStrategy.liquidationLookbackHours}h for ${liquidation.symbol}`);
 
     if (recentLiquidations.length === 0) return;
 
@@ -554,7 +560,7 @@ export class StrategyEngine extends EventEmitter {
 
     // Create lock key for this session + symbol (+ side if hedge mode enabled) to prevent duplicate positions
     // In hedge mode, we allow both long and short positions on the same symbol, so include side in lock key
-    const lockKey = strategy.hedgeMode 
+    const lockKey = currentStrategy.hedgeMode 
       ? `${session.id}-${liquidation.symbol}-${positionSide}`
       : `${session.id}-${liquidation.symbol}`;
     
@@ -574,7 +580,7 @@ export class StrategyEngine extends EventEmitter {
     // ATOMIC lock acquisition: Try to acquire lock, if already exists, wait and re-evaluate
     const existingLock = this.positionCreationLocks.get(lockKey);
     if (existingLock) {
-      console.log(`🔄 Waiting for concurrent position processing: ${liquidation.symbol} ${strategy.hedgeMode ? positionSide : ''}`);
+      console.log(`🔄 Waiting for concurrent position processing: ${liquidation.symbol} ${currentStrategy.hedgeMode ? positionSide : ''}`);
       await existingLock; // Wait for it to finish
       
       // After waiting, check cooldown again (the concurrent process might have set it)
@@ -595,23 +601,23 @@ export class StrategyEngine extends EventEmitter {
         // Fetch the actual position from DB to get full details
         const actualPosition = await storage.getPosition(inMemoryPos.positionId);
         if (actualPosition && actualPosition.isOpen && actualPosition.side === positionSide) {
-          const shouldLayer = await this.shouldAddLayer(strategy, actualPosition, liquidation);
+          const shouldLayer = await this.shouldAddLayer(currentStrategy, actualPosition, liquidation);
           if (shouldLayer) {
-            await this.executeLayer(strategy, session, actualPosition, liquidation, positionSide);
+            await this.executeLayer(currentStrategy, session, actualPosition, liquidation, positionSide);
           }
           return;
         }
       }
       
       // Re-check DB after waiting
-      const positionAfterWait = strategy.hedgeMode
+      const positionAfterWait = currentStrategy.hedgeMode
         ? await storage.getPositionBySymbolAndSide(session.id, liquidation.symbol, positionSide)
         : await storage.getPositionBySymbol(session.id, liquidation.symbol);
       if (positionAfterWait && positionAfterWait.isOpen) {
         if (positionAfterWait.side === positionSide) {
-          const shouldLayer = await this.shouldAddLayer(strategy, positionAfterWait, liquidation);
+          const shouldLayer = await this.shouldAddLayer(currentStrategy, positionAfterWait, liquidation);
           if (shouldLayer) {
-            await this.executeLayer(strategy, session, positionAfterWait, liquidation, positionSide);
+            await this.executeLayer(currentStrategy, session, positionAfterWait, liquidation, positionSide);
           }
         } else {
           console.log(`⏭️ Skipping layer (concurrent): Existing ${positionAfterWait.side} position doesn't match ${positionSide} liquidation signal`);
@@ -638,24 +644,24 @@ export class StrategyEngine extends EventEmitter {
         console.log(`🔍 Found in-memory position: ${inMemoryPos.positionId} (created ${Date.now() - inMemoryPos.createdAt}ms ago)`);
         const actualPosition = await storage.getPosition(inMemoryPos.positionId);
         if (actualPosition && actualPosition.isOpen && actualPosition.side === positionSide) {
-          const shouldLayer = await this.shouldAddLayer(strategy, actualPosition, liquidation);
+          const shouldLayer = await this.shouldAddLayer(currentStrategy, actualPosition, liquidation);
           if (shouldLayer) {
-            await this.executeLayer(strategy, session, actualPosition, liquidation, positionSide);
+            await this.executeLayer(currentStrategy, session, actualPosition, liquidation, positionSide);
           }
           return;
         }
       }
       
       // Now check database for existing position
-      const existingPosition = strategy.hedgeMode
+      const existingPosition = currentStrategy.hedgeMode
         ? await storage.getPositionBySymbolAndSide(session.id, liquidation.symbol, positionSide)
         : await storage.getPositionBySymbol(session.id, liquidation.symbol);
       
       if (existingPosition && existingPosition.isOpen) {
         if (existingPosition.side === positionSide) {
-          const shouldLayer = await this.shouldAddLayer(strategy, existingPosition, liquidation);
+          const shouldLayer = await this.shouldAddLayer(currentStrategy, existingPosition, liquidation);
           if (shouldLayer) {
-            await this.executeLayer(strategy, session, existingPosition, liquidation, positionSide);
+            await this.executeLayer(currentStrategy, session, existingPosition, liquidation, positionSide);
           }
         } else {
           console.log(`⏭️ Skipping layer: Existing ${existingPosition.side} position doesn't match ${positionSide} liquidation signal`);
@@ -663,10 +669,10 @@ export class StrategyEngine extends EventEmitter {
       } else {
         // No open position - evaluate if we should enter
         // NOTE: We already set cooldown above, so shouldEnterPosition won't set it again
-        const shouldEnter = await this.shouldEnterPositionWithoutCooldown(strategy, liquidation, recentLiquidations, session, positionSide);
+        const shouldEnter = await this.shouldEnterPositionWithoutCooldown(currentStrategy, liquidation, recentLiquidations, session, positionSide);
         if (shouldEnter) {
           // Execute entry and track position in memory BEFORE DB commit
-          const positionId = await this.executeEntry(strategy, session, liquidation, positionSide);
+          const positionId = await this.executeEntry(currentStrategy, session, liquidation, positionSide);
           if (positionId) {
             this.inMemoryPositions.set(lockKey, {
               positionId,
