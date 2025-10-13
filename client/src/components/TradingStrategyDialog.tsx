@@ -1063,25 +1063,24 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
     }
   });
 
-  // Stop strategy mutation
-  const stopStrategyMutation = useMutation({
+  // Pause strategy mutation
+  const pauseStrategyMutation = useMutation({
     mutationFn: async (strategyId: string) => {
-      const response = await apiRequest('POST', `/api/strategies/${strategyId}/stop`);
+      const response = await apiRequest('POST', `/api/strategies/${strategyId}/pause`);
       return await response.json() as Strategy;
     },
     onSuccess: (updatedStrategy) => {
-      setIsStrategyRunning(false);
       setActiveStrategy(updatedStrategy);
       toast({
-        title: "Strategy Stopped",
-        description: "Trading strategy has been stopped.",
+        title: "Strategy Paused",
+        description: "Trading strategy has been paused. Resume anytime to continue.",
       });
       queryClient.invalidateQueries({ queryKey: ['/api/strategies'] });
     },
     onError: () => {
       toast({
         title: "Error",
-        description: "Failed to stop strategy. Please try again.",
+        description: "Failed to pause strategy. Please try again.",
         variant: "destructive",
       });
     }
@@ -1290,9 +1289,9 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
     }
   };
 
-  const handleStopStrategy = () => {
+  const handlePauseStrategy = () => {
     if (activeStrategy) {
-      stopStrategyMutation.mutate(activeStrategy.id);
+      pauseStrategyMutation.mutate(activeStrategy.id);
     }
   };
 

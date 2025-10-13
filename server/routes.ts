@@ -3082,6 +3082,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Start strategy route (activate strategy for trading)
+  app.post("/api/strategies/:id/start", async (req, res) => {
+    try {
+      const strategyId = req.params.id;
+      
+      // Verify strategy exists
+      const strategy = await storage.getStrategy(strategyId);
+      if (!strategy) {
+        return res.status(404).json({ error: "Strategy not found" });
+      }
+      
+      // Update strategy to active status and ensure it's not paused
+      await storage.updateStrategy(strategyId, { 
+        isActive: true,
+        paused: false  // Ensure not paused when starting
+      });
+      
+      // Fetch the updated strategy with fresh isActive and paused values
+      const updatedStrategy = await storage.getStrategy(strategyId);
+      if (!updatedStrategy) {
+        return res.status(404).json({ error: "Strategy not found after update" });
+      }
+      
+      // Register with strategy engine using the FRESH strategy data
+      await strategyEngine.registerStrategy(updatedStrategy);
+      
+      // Initialize WebSocket-only cache (NO POLLING)
+      const { liveDataOrchestrator } = await import('./live-data-orchestrator');
+      liveDataOrchestrator.start(strategyId);
+      
+      res.status(200).json(updatedStrategy);
+    } catch (error) {
+      console.error('Error starting strategy:', error);
+      res.status(500).json({ error: "Failed to start strategy" });
+    }
+  });
+
   // Pause strategy route (temporarily stop processing without deactivating)
   app.post("/api/strategies/:id/pause", async (req, res) => {
     try {
