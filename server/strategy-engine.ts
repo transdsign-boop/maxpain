@@ -75,6 +75,7 @@ export class StrategyEngine extends EventEmitter {
   private pendingFirstLayerData: Map<string, { takeProfitPrice: number; stopLossPrice: number; entryPrice: number; quantity: number }> = new Map(); // "sessionId-symbol-side" -> first layer TP/SL data
   private pendingDCASchedules: Map<string, { levels: any[]; effectiveGrowthFactor: number; q1: number }> = new Map(); // "sessionId-symbol-side" -> complete DCA schedule
   private processedLiquidations: Set<string> = new Set(); // Track processed liquidation IDs to prevent duplicates
+  private inMemoryPositions: Map<string, { positionId: string; side: string; symbol: string; createdAt: number }> = new Map(); // "sessionId-symbol-side" -> in-memory position tracking (before DB commit)
   private protectiveOrderRecovery: ProtectiveOrderRecovery;
 
   constructor() {
@@ -557,22 +558,59 @@ export class StrategyEngine extends EventEmitter {
       ? `${session.id}-${liquidation.symbol}-${positionSide}`
       : `${session.id}-${liquidation.symbol}`;
     
-    // ATOMIC check-and-lock: Check if another liquidation is already processing this symbol/side
+    // CRITICAL FIX: ATOMIC COOLDOWN CHECK - Must happen BEFORE lock acquisition to prevent race condition
+    // Check cooldown FIRST before any processing - this is the first line of defense
+    const cooldownKey = `${session.id}-${liquidation.symbol}-${positionSide}`;
+    const lastFill = this.lastFillTime.get(cooldownKey);
+    if (lastFill) {
+      const timeSinceLastFill = Date.now() - lastFill;
+      if (timeSinceLastFill < this.fillCooldownMs) {
+        const waitTime = ((this.fillCooldownMs - timeSinceLastFill) / 1000).toFixed(1);
+        console.log(`⏸️ COOLDOWN BLOCK (Pre-Lock): ${liquidation.symbol} ${positionSide} - wait ${waitTime}s before processing`);
+        return;
+      }
+    }
+    
+    // ATOMIC lock acquisition: Try to acquire lock, if already exists, wait and re-evaluate
     const existingLock = this.positionCreationLocks.get(lockKey);
     if (existingLock) {
       console.log(`🔄 Waiting for concurrent position processing: ${liquidation.symbol} ${strategy.hedgeMode ? positionSide : ''}`);
       await existingLock; // Wait for it to finish
-      // After waiting, re-check if position was created
+      
+      // After waiting, check cooldown again (the concurrent process might have set it)
+      const lastFillAfterWait = this.lastFillTime.get(cooldownKey);
+      if (lastFillAfterWait) {
+        const timeSinceLastFill = Date.now() - lastFillAfterWait;
+        if (timeSinceLastFill < this.fillCooldownMs) {
+          const waitTime = ((this.fillCooldownMs - timeSinceLastFill) / 1000).toFixed(1);
+          console.log(`⏸️ COOLDOWN BLOCK (Post-Wait): ${liquidation.symbol} ${positionSide} - wait ${waitTime}s`);
+          return;
+        }
+      }
+      
+      // Check in-memory positions (might exist before DB commit)
+      const inMemoryPos = this.inMemoryPositions.get(lockKey);
+      if (inMemoryPos) {
+        console.log(`🔍 Found in-memory position: ${inMemoryPos.positionId} (${inMemoryPos.side})`);
+        // Fetch the actual position from DB to get full details
+        const actualPosition = await storage.getPosition(inMemoryPos.positionId);
+        if (actualPosition && actualPosition.isOpen && actualPosition.side === positionSide) {
+          const shouldLayer = await this.shouldAddLayer(strategy, actualPosition, liquidation);
+          if (shouldLayer) {
+            await this.executeLayer(strategy, session, actualPosition, liquidation, positionSide);
+          }
+          return;
+        }
+      }
+      
+      // Re-check DB after waiting
       const positionAfterWait = strategy.hedgeMode
         ? await storage.getPositionBySymbolAndSide(session.id, liquidation.symbol, positionSide)
         : await storage.getPositionBySymbol(session.id, liquidation.symbol);
       if (positionAfterWait && positionAfterWait.isOpen) {
-        // CRITICAL: Verify position direction matches liquidation direction
         if (positionAfterWait.side === positionSide) {
-          // Position was created by the concurrent process, check if we should layer
           const shouldLayer = await this.shouldAddLayer(strategy, positionAfterWait, liquidation);
           if (shouldLayer) {
-            // NOTE: executeLayer() atomically checks and sets cooldown at the start
             await this.executeLayer(strategy, session, positionAfterWait, liquidation, positionSide);
           }
         } else {
@@ -582,45 +620,75 @@ export class StrategyEngine extends EventEmitter {
       return;
     }
     
-    // Create a lock promise for this symbol/side
+    // ATOMIC LOCK CREATION: Create lock promise and set it IMMEDIATELY (before any async operations)
     let releaseLock: () => void;
     const lockPromise = new Promise<void>((resolve) => {
       releaseLock = resolve;
     });
     this.positionCreationLocks.set(lockKey, lockPromise);
     
+    // IMMEDIATELY set cooldown after acquiring lock (before any DB queries) to prevent duplicate entries
+    this.lastFillTime.set(cooldownKey, Date.now());
+    console.log(`🔒 Lock acquired + Cooldown set ATOMICALLY for ${liquidation.symbol} ${positionSide} (${this.fillCooldownMs / 1000}s)`);
+    
     try {
-      // Now we have the lock, check if we have an open position for this symbol (and side if hedge mode)
+      // Check in-memory positions first (before DB query)
+      const inMemoryPos = this.inMemoryPositions.get(lockKey);
+      if (inMemoryPos) {
+        console.log(`🔍 Found in-memory position: ${inMemoryPos.positionId} (created ${Date.now() - inMemoryPos.createdAt}ms ago)`);
+        const actualPosition = await storage.getPosition(inMemoryPos.positionId);
+        if (actualPosition && actualPosition.isOpen && actualPosition.side === positionSide) {
+          const shouldLayer = await this.shouldAddLayer(strategy, actualPosition, liquidation);
+          if (shouldLayer) {
+            await this.executeLayer(strategy, session, actualPosition, liquidation, positionSide);
+          }
+          return;
+        }
+      }
+      
+      // Now check database for existing position
       const existingPosition = strategy.hedgeMode
         ? await storage.getPositionBySymbolAndSide(session.id, liquidation.symbol, positionSide)
         : await storage.getPositionBySymbol(session.id, liquidation.symbol);
       
       if (existingPosition && existingPosition.isOpen) {
-        // CRITICAL: Verify position direction matches liquidation direction
-        // Only add layers if position side matches the intended positionSide from liquidation
         if (existingPosition.side === positionSide) {
-          // We have an open position in the CORRECT direction - check if we should add a layer
           const shouldLayer = await this.shouldAddLayer(strategy, existingPosition, liquidation);
           if (shouldLayer) {
-            // NOTE: executeLayer() atomically checks and sets cooldown at the start
             await this.executeLayer(strategy, session, existingPosition, liquidation, positionSide);
           }
         } else {
           console.log(`⏭️ Skipping layer: Existing ${existingPosition.side} position doesn't match ${positionSide} liquidation signal`);
         }
       } else {
-        // No open position - check if we should enter a new position
-        // NOTE: shouldEnterPosition() atomically sets cooldown if it returns true
-        const shouldEnter = await this.shouldEnterPosition(strategy, liquidation, recentLiquidations, session, positionSide);
+        // No open position - evaluate if we should enter
+        // NOTE: We already set cooldown above, so shouldEnterPosition won't set it again
+        const shouldEnter = await this.shouldEnterPositionWithoutCooldown(strategy, liquidation, recentLiquidations, session, positionSide);
         if (shouldEnter) {
-          await this.executeEntry(strategy, session, liquidation, positionSide);
+          // Execute entry and track position in memory BEFORE DB commit
+          const positionId = await this.executeEntry(strategy, session, liquidation, positionSide);
+          if (positionId) {
+            this.inMemoryPositions.set(lockKey, {
+              positionId,
+              side: positionSide,
+              symbol: liquidation.symbol,
+              createdAt: Date.now()
+            });
+            console.log(`📝 Tracked position ${positionId} in-memory for ${lockKey}`);
+          }
         }
       }
     } finally {
       // ALWAYS release the lock and clean up
       releaseLock!();
-      // Clean up after a short delay to allow waiting processes to finish
-      setTimeout(() => this.positionCreationLocks.delete(lockKey), 100);
+      // Clean up lock after delay
+      setTimeout(() => {
+        this.positionCreationLocks.delete(lockKey);
+      }, 100);
+      // Clean up in-memory position after 5 seconds (enough time for DB commit)
+      setTimeout(() => {
+        this.inMemoryPositions.delete(lockKey);
+      }, 5000);
     }
   }
 
@@ -633,27 +701,16 @@ export class StrategyEngine extends EventEmitter {
     return history.filter(liq => liq.timestamp >= cutoffTime);
   }
 
-  // Determine if we should enter a new position based on percentile threshold
-  // ATOMIC OPERATION: This function checks conditions AND sets cooldown if passing
-  private async shouldEnterPosition(
+  // NEW: Entry position check WITHOUT cooldown (cooldown now checked at lock acquisition)
+  private async shouldEnterPositionWithoutCooldown(
     strategy: Strategy, 
     liquidation: Liquidation, 
     recentLiquidations: Liquidation[],
     session: TradeSession,
     positionSide: string
   ): Promise<boolean> {
-    // ATOMIC COOLDOWN CHECK: Must be first check to prevent race conditions
-    const cooldownKey = `${session.id}-${liquidation.symbol}-${positionSide}`;
-    const lastFill = this.lastFillTime.get(cooldownKey);
-    if (lastFill) {
-      const timeSinceLastFill = Date.now() - lastFill;
-      if (timeSinceLastFill < this.fillCooldownMs) {
-        const waitTime = ((this.fillCooldownMs - timeSinceLastFill) / 1000).toFixed(1);
-        console.log(`⏸️ Entry cooldown active for ${liquidation.symbol} ${positionSide} - wait ${waitTime}s before new entry`);
-        // Note: Cooldown is per-symbol/side filter, NOT a system-wide block
-        return false;
-      }
-    }
+    // NOTE: Cooldown is now checked BEFORE lock acquisition in evaluateStrategySignal
+    // This function only checks portfolio risk and percentile thresholds
     
     // PORTFOLIO RISK LIMITS CHECK: Block new entries if they WOULD exceed limits
     const portfolioRisk = await this.calculatePortfolioRisk(strategy, session);
@@ -882,11 +939,7 @@ export class StrategyEngine extends EventEmitter {
       console.log(`✅ Percentile PASSED: $${currentLiquidationValue.toFixed(2)} is at ${currentPercentile}th percentile (≥ ${strategy.percentileThreshold}% threshold)`);
       console.log(`   📊 Compared against ${allHistoricalValues.length} historical ${liquidation.symbol} liquidations: range $${allHistoricalValues[0].toFixed(2)}-$${allHistoricalValues[allHistoricalValues.length-1].toFixed(2)}`);
       console.log(`   ✨ Entering top ${100 - strategy.percentileThreshold}% of liquidations (${strategy.percentileThreshold}th percentile and above)`);
-      
-      // ATOMICALLY set cooldown IMMEDIATELY when decision is made (before returning)
-      // This prevents race condition where two threads both pass the check before either sets cooldown
-      this.lastFillTime.set(cooldownKey, Date.now());
-      console.log(`🔒 Entry cooldown locked ATOMICALLY for ${liquidation.symbol} ${positionSide} (${this.fillCooldownMs / 1000}s)`);
+      // NOTE: Cooldown is now set at lock acquisition (line 634) - no need to set it here
     } else {
       console.log(`❌ Percentile FILTERED: $${currentLiquidationValue.toFixed(2)} is at ${currentPercentile}th percentile (< ${strategy.percentileThreshold}% threshold)`);
       console.log(`   📊 Need at least ${strategy.percentileThreshold}th percentile to enter (currently in bottom ${strategy.percentileThreshold}%)`);
@@ -1329,7 +1382,7 @@ export class StrategyEngine extends EventEmitter {
   }
 
   // Execute initial position entry with smart order placement
-  private async executeEntry(strategy: Strategy, session: TradeSession, liquidation: Liquidation, positionSide: string) {
+  private async executeEntry(strategy: Strategy, session: TradeSession, liquidation: Liquidation, positionSide: string): Promise<string | null> {
     try {
       // Counter-trade: if LONG liquidated → go LONG (buy the dip), if SHORT liquidated → go SHORT (sell the rally)
       const side = liquidation.side === 'long' ? 'buy' : 'sell';
@@ -1363,7 +1416,7 @@ export class StrategyEngine extends EventEmitter {
       const strategyWithDCA = await getStrategyWithDCA(strategy.id);
       if (!strategyWithDCA) {
         console.error(`⚠️  Strategy ${strategy.id} missing DCA parameters, skipping entry`);
-        return;
+        return null;
       }
       
       // SAFETY CHECK: Validate all DCA parameters are configured (not null)
@@ -1379,7 +1432,7 @@ export class StrategyEngine extends EventEmitter {
         console.error(`   Values: startStep=${strategyWithDCA.dca_start_step_percent}, convexity=${strategyWithDCA.dca_spacing_convexity}, growth=${strategyWithDCA.dca_size_growth}`);
         console.error(`   Risk: maxRisk=${strategyWithDCA.dca_max_risk_percent}, volatility=${strategyWithDCA.dca_volatility_ref}, cushion=${strategyWithDCA.dca_exit_cushion_multiplier}`);
         console.error(`   ⚠️  SKIPPING TRADE - Configure DCA settings in Global Settings to enable trading`);
-        return;
+        return null;
       }
       
       // Build full strategy with DCA params and adaptive TP/SL settings
@@ -1398,7 +1451,7 @@ export class StrategyEngine extends EventEmitter {
       if (!symbolPrecision?.minNotional) {
         console.error(`❌ Missing MIN_NOTIONAL for ${liquidation.symbol} - cannot trade without exchange limits`);
         console.error(`   ⚠️  ABORTING TRADE - Exchange limits are required for safe position sizing`);
-        return;
+        return null;
       }
       
       const minNotional = symbolPrecision.minNotional;
@@ -1416,7 +1469,7 @@ export class StrategyEngine extends EventEmitter {
       const firstLevel = dcaResult.levels[0];
       if (!firstLevel) {
         console.error(`⚠️  DCA calculator failed to generate Level 1, skipping entry`);
-        return;
+        return null;
       }
       
       const quantity = firstLevel.quantity;
@@ -1448,7 +1501,7 @@ export class StrategyEngine extends EventEmitter {
         console.error(`❌ INVALID POSITION SIZE calculated: ${quantity}`);
         console.error(`   This indicates a problem with DCA parameters or calculations`);
         console.error(`   ⚠️  ABORTING TRADE - Will not execute order with invalid size`);
-        return;
+        return null;
       }
       
       // SAFETY CHECK: Ensure position size is reasonable (not accidentally huge)
@@ -1458,7 +1511,7 @@ export class StrategyEngine extends EventEmitter {
         console.error(`❌ POSITION SIZE TOO LARGE: ${quantity} units = $${notionalValue.toFixed(2)} notional (${percentOfBalance.toFixed(1)}% of balance)`);
         console.error(`   Expected starting size should be < 5% of balance`);
         console.error(`   ⚠️  ABORTING TRADE - Position size exceeds safety threshold`);
-        return;
+        return null;
       }
 
       console.log(`🎯 Entering ${orderSide} position for ${liquidation.symbol} at $${price} using DCA Layer 1 (qty: ${quantity.toFixed(6)} units)`);
@@ -1535,8 +1588,12 @@ export class StrategyEngine extends EventEmitter {
         positionSide: this.exchangePositionMode === 'dual' ? positionSide : undefined, // Only include if EXCHANGE is in dual mode
       });
 
+      // Return a tracking ID to indicate order was placed successfully
+      return `order-placed-${liquidation.id}`;
+
     } catch (error) {
       console.error('❌ Error executing entry:', error);
+      return null;
     }
   }
 
