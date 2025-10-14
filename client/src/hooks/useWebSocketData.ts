@@ -62,6 +62,10 @@ export function useWebSocketData(options: UseWebSocketDataOptions = {}) {
               if (snapshot?.positions) {
                 queryClient.setQueryData(['/api/live/positions'], snapshot.positions);
               }
+              // Cache portfolio risk metrics for UI risk meter
+              if (snapshot?.positionsSummary) {
+                queryClient.setQueryData(['/api/live/positions-summary'], snapshot.positionsSummary);
+              }
               break;
             
             case 'position_opened':
