@@ -168,57 +168,114 @@ export function useStrategyData() {
 
   const snapshot = liveSnapshotQuery.data;
 
-  // Enrich closed positions with exchange P&L (match by symbol and timestamp)
-  const closedPositionsWithExchangePnl = useMemo(() => {
+  // Enrich closed positions with exchange P&L and fees (match by symbol and timestamp)
+  const closedPositionsWithExchangeData = useMemo(() => {
     const positions = closedPositionsQuery.data || [];
     const pnlEvents = realizedPnlEventsQuery.data?.events || [];
+    const commissionRecords = commissionsQuery.data?.records || [];
     
-    if (positions.length === 0 || pnlEvents.length === 0) return positions;
+    if (positions.length === 0) return positions;
     
     // Track which events have been matched to prevent reuse
-    const usedEventIndices = new Set<number>();
+    const usedPnlIndices = new Set<number>();
+    const usedCommissionIndices = new Set<number>();
     
-    return positions.map(position => {
-      if (!position.closedAt) return position;
+    // CRITICAL: Process positions in REVERSE chronological order (newest first)
+    // This prevents newer position fees from being stolen by older positions
+    const sortedPositions = [...positions].sort((a, b) => {
+      const timeA = a.closedAt ? new Date(a.closedAt).getTime() : 0;
+      const timeB = b.closedAt ? new Date(b.closedAt).getTime() : 0;
+      return timeB - timeA; // Newest first
+    });
+    
+    const enrichedMap = new Map();
+    
+    sortedPositions.forEach(position => {
+      if (!position.closedAt) {
+        enrichedMap.set(position.id, position);
+        return;
+      }
       
       const closeTime = new Date(position.closedAt).getTime();
+      const openTime = new Date(position.openedAt).getTime();
       
       // Find best matching P&L event by symbol and close time
-      // Only match events that haven't been used yet
-      let bestMatchEvent: any = null;
-      let bestMatchIndex = -1;
-      let bestTimeDiff = Infinity;
+      let bestPnlEvent: any = null;
+      let bestPnlIndex = -1;
+      let bestPnlTimeDiff = Infinity;
       
-      pnlEvents.forEach((event, index) => {
-        if (usedEventIndices.has(index)) return; // Skip already matched events
-        if (event.symbol !== position.symbol) return;
+      if (pnlEvents.length > 0) {
+        pnlEvents.forEach((event, index) => {
+          if (usedPnlIndices.has(index)) return;
+          if (event.symbol !== position.symbol) return;
+          
+          const timeDiff = Math.abs(event.time - closeTime);
+          if (timeDiff > 30000) return; // Outside 30-second window
+          
+          if (timeDiff < bestPnlTimeDiff) {
+            bestPnlEvent = event;
+            bestPnlIndex = index;
+            bestPnlTimeDiff = timeDiff;
+          }
+        });
+      }
+      
+      // Find all matching commission events for this position
+      // Use tight time windows to prevent cross-position contamination:
+      // - Entry fees: within 10s of open time
+      // - Exit fees: within 10s of close time
+      const matchedCommissions: any[] = [];
+      commissionRecords.forEach((record, index) => {
+        if (usedCommissionIndices.has(index)) return;
+        if (record.symbol !== position.symbol) return;
         
-        const timeDiff = Math.abs(event.time - closeTime);
-        if (timeDiff > 30000) return; // Outside 30-second window
+        const commissionTime = record.time;
         
-        // Keep the closest match
-        if (timeDiff < bestTimeDiff) {
-          bestMatchEvent = event;
-          bestMatchIndex = index;
-          bestTimeDiff = timeDiff;
+        // Check if commission is near open time (entry fee) - within 10 seconds
+        const nearOpen = Math.abs(commissionTime - openTime) <= 10000;
+        
+        // Check if commission is near close time (exit fee) - within 10 seconds
+        const nearClose = Math.abs(commissionTime - closeTime) <= 10000;
+        
+        if (nearOpen || nearClose) {
+          matchedCommissions.push({ record, index });
         }
       });
       
-      if (bestMatchEvent && bestMatchIndex >= 0) {
-        // Mark this event as used
-        usedEventIndices.add(bestMatchIndex);
-        
-        // Use exchange P&L instead of database value
-        return {
-          ...position,
-          realizedPnl: bestMatchEvent.income, // Exchange P&L in dollars
-          exchangePnlMatched: true,
-        };
+      // Calculate total fees from matched commissions
+      const totalFees = matchedCommissions.reduce((sum, { record }) => {
+        return sum + Math.abs(parseFloat(record.income || '0'));
+      }, 0);
+      
+      // Mark matched commissions as used
+      matchedCommissions.forEach(({ index }) => {
+        usedCommissionIndices.add(index);
+      });
+      
+      // Mark P&L event as used if matched
+      if (bestPnlEvent && bestPnlIndex >= 0) {
+        usedPnlIndices.add(bestPnlIndex);
       }
       
-      return position;
+      // Return enriched position
+      const enriched: any = { ...position };
+      
+      if (bestPnlEvent) {
+        enriched.realizedPnl = bestPnlEvent.income; // Exchange P&L in dollars
+        enriched.exchangePnlMatched = true;
+      }
+      
+      if (totalFees > 0) {
+        enriched.totalFees = totalFees.toString();
+        enriched.exchangeFeesMatched = true;
+      }
+      
+      enrichedMap.set(position.id, enriched);
     });
-  }, [closedPositionsQuery.data, realizedPnlEventsQuery.data]);
+    
+    // Return positions in original order with enrichments applied
+    return positions.map(p => enrichedMap.get(p.id) || p);
+  }, [closedPositionsQuery.data, realizedPnlEventsQuery.data, commissionsQuery.data]);
 
   return {
     // WebSocket connection status
@@ -259,7 +316,7 @@ export function useStrategyData() {
     assetPerformanceLoading: assetPerformanceQuery.isLoading,
     assetPerformanceError: assetPerformanceQuery.error,
 
-    closedPositions: closedPositionsWithExchangePnl,
+    closedPositions: closedPositionsWithExchangeData,
     closedPositionsLoading: closedPositionsQuery.isLoading,
     closedPositionsError: closedPositionsQuery.error,
 
