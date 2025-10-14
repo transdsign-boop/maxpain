@@ -63,6 +63,32 @@ Redesigned the position sizing system to correctly use Start Step % for Layer 1 
 - **Default Start Step**: Changed from 0.4% to 0.1% to meet $5 minimum notional at 10x leverage
 - **Database Update Required**: Run `update_start_step_default.sql` in Neon SQL Editor to update existing strategies
 
+### Configurable DCA Layer Delay
+Added user-configurable time delay between DCA layer fills on the same symbol to prevent rapid-fire entries during cascading liquidations.
+
+**Key Features:**
+- **Configurable Delay**: User-adjustable delay from 0 to 5 minutes (default 30 seconds) via UI slider
+- **Per-Symbol Tracking**: Each symbol independently tracks its last fill timestamp
+- **Independent of Order Delay**: DCA Layer Delay is separate from the general Order Delay setting
+- **Database Field**: New `dcaLayerDelayMs` column in strategies table (0-300000ms range)
+- **UI Integration**: Slider in Global Settings shows seconds, stores milliseconds
+
+**Implementation:**
+- Schema: Added `dcaLayerDelayMs` to strategies table with default 30000ms
+- Backend: StrategyEngine uses `strategy.dcaLayerDelayMs` instead of hardcoded 30s cooldown
+- Frontend: "DCA Layer Delay" slider with 0-300s range (1s increments)
+- Migration: `add_dca_layer_delay.sql` executed in Neon SQL Editor
+
+**Database Migration:**
+```sql
+ALTER TABLE strategies 
+ADD COLUMN IF NOT EXISTS dca_layer_delay_ms INTEGER NOT NULL DEFAULT 30000;
+
+UPDATE strategies 
+SET dca_layer_delay_ms = 30000 
+WHERE dca_layer_delay_ms IS NULL;
+```
+
 ## User Preferences
 Preferred communication style: Simple, everyday language.
 
