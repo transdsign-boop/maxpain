@@ -3065,14 +3065,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
               
               // Always recalculate, even without API keys (function has ATR fallback)
               const updatedStrategyForRecalc = await storage.getStrategy(strategyId);
-              if (updatedStrategyForRecalc) {
+              if (updatedStrategyForRecalc && strategyEngine) {
                 const { recalculateReservedRiskForSession } = await import('./dca-calculator');
                 await recalculateReservedRiskForSession(
                   activeSession.id,
                   updatedStrategyForRecalc,
                   currentBalance,
                   apiKey || '',
-                  secretKey || ''
+                  secretKey || '',
+                  (symbol: string) => strategyEngine.getSymbolPrecision(symbol)?.minNotional
                 );
                 
                 // Broadcast update notification via WebSocket
@@ -3241,6 +3242,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         marginAmount: dbStrategy.margin_amount,
       };
       
+      // Get minimum minNotional from monitored symbols (for preview calculation)
+      let minNotional = 5.0; // Fallback
+      if (strategyEngine && monitoredSymbols.length > 0) {
+        const notionals = monitoredSymbols
+          .map(sym => strategyEngine.getSymbolPrecision(sym)?.minNotional)
+          .filter((n): n is number => n !== undefined);
+        if (notionals.length > 0) {
+          minNotional = Math.min(...notionals); // Use lowest minimum across all symbols
+        }
+      }
+      
       // Calculate DCA levels to get effective growth factor using REAL price and ATR
       const dcaResult = calculateDCALevels(
         strategy as any,
@@ -3250,6 +3262,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           currentBalance: balance,
           leverage: dbStrategy.leverage,
           atrPercent: avgATR,
+          minNotional,
         }
       );
       

@@ -212,6 +212,8 @@ export function calculateDCALevels(
   const MIN_NOTIONAL = config.minNotional ?? 5.0; // Fallback should never be used
   const layer1Notional = q1 * entryPrice;
   
+  console.log(`   🔍 MIN_NOTIONAL check: received=${config.minNotional}, using=${MIN_NOTIONAL}, layer1Notional=${layer1Notional.toFixed(2)}`);
+  
   let effectiveG = g; // Start with configured growth factor
   let growthFactorAdjusted = false;
   
@@ -602,6 +604,7 @@ export async function calculateNextLayer(
     currentBalance,
     leverage,
     atrPercent,
+    minNotional: config.minNotional, // Pass through the exchange minimum
   });
   
   // Get the next level's price, quantity, and TP/SL
@@ -629,7 +632,8 @@ export async function recalculateReservedRiskForSession(
   strategy: Strategy,
   currentBalance: number,
   apiKey: string,
-  secretKey: string
+  secretKey: string,
+  getSymbolMinNotional?: (symbol: string) => number | undefined
 ): Promise<void> {
   const { storage } = await import('./storage');
   
@@ -648,6 +652,9 @@ export async function recalculateReservedRiskForSession(
         secretKey
       );
       
+      // Get symbol-specific minNotional (fallback to 5.0 if not available)
+      const minNotional = getSymbolMinNotional?.(position.symbol) ?? 5.0;
+      
       // Calculate full DCA potential with current strategy settings
       const dcaResult = calculateDCALevels(strategy, {
         entryPrice: parseFloat(position.avgEntryPrice),
@@ -655,6 +662,7 @@ export async function recalculateReservedRiskForSession(
         currentBalance,
         leverage: parseFloat(strategy.leverage),
         atrPercent,
+        minNotional,
       });
       
       const reservedRiskDollars = dcaResult.totalRiskDollars;
