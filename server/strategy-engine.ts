@@ -770,14 +770,16 @@ export class StrategyEngine extends EventEmitter {
       }
       
       const maxRiskPercent = parseFloat(strategy.maxPortfolioRiskPercent);
-      const remainingRiskPercent = maxRiskPercent - portfolioRisk.riskPercentage;
+      // Use RESERVED risk (total allocated for full DCA schedules) not filled risk
+      const currentReservedRisk = portfolioRisk.reservedRiskPercentage;
+      const remainingRiskPercent = maxRiskPercent - currentReservedRisk;
       
       // Check if there's any remaining risk budget (with 0.05% minimum threshold)
       if (remainingRiskPercent < 0.05) {
-        console.log(`🚫 PORTFOLIO RISK LIMIT: No remaining risk budget (current: ${portfolioRisk.riskPercentage.toFixed(1)}%, max: ${maxRiskPercent}%, remaining: ${remainingRiskPercent.toFixed(2)}%)`);
+        console.log(`🚫 PORTFOLIO RISK LIMIT: No remaining risk budget (reserved: ${currentReservedRisk.toFixed(1)}%, max: ${maxRiskPercent}%, remaining: ${remainingRiskPercent.toFixed(2)}%)`);
         wsBroadcaster.broadcastTradeBlock({
           blocked: true,
-          reason: `Risk limit: ${portfolioRisk.riskPercentage.toFixed(1)}% of ${maxRiskPercent}% used`,
+          reason: `Risk limit: ${currentReservedRisk.toFixed(1)}% of ${maxRiskPercent}% used`,
           type: 'risk_limit'
         });
         return false;
@@ -811,7 +813,7 @@ export class StrategyEngine extends EventEmitter {
       const strategyMaxRisk = parseFloat(fullStrategy.dcaMaxRiskPercent);
       const effectiveMaxRisk = Math.min(strategyMaxRisk, remainingRiskPercent);
       
-      console.log(`💰 Risk Budget: current=${portfolioRisk.riskPercentage.toFixed(1)}%, max=${maxRiskPercent}%, remaining=${remainingRiskPercent.toFixed(1)}%, effective=${effectiveMaxRisk.toFixed(1)}% (${effectiveMaxRisk < strategyMaxRisk ? 'SCALED DOWN' : 'normal'})`);
+      console.log(`💰 Risk Budget: filled=${portfolioRisk.filledRiskPercentage.toFixed(1)}%, reserved=${currentReservedRisk.toFixed(1)}%, max=${maxRiskPercent}%, remaining=${remainingRiskPercent.toFixed(1)}%, effective=${effectiveMaxRisk.toFixed(1)}% (${effectiveMaxRisk < strategyMaxRisk ? 'SCALED DOWN' : 'normal'})`);
       
       // Get symbol precision (includes exchange-specific minimum notional)
       const symbolPrecision = this.symbolPrecisionCache.get(liquidation.symbol);
@@ -853,7 +855,8 @@ export class StrategyEngine extends EventEmitter {
       // Get total risk from DCA calculation (this is the max risk across all layers)
       const newPositionRiskDollars = dcaResult.totalRiskDollars;
       const newPositionRiskPercent = (newPositionRiskDollars / currentBalance) * 100;
-      const projectedRiskPercentage = portfolioRisk.riskPercentage + newPositionRiskPercent;
+      // Project total reserved risk: current reserved + new position's full DCA risk
+      const projectedRiskPercentage = currentReservedRisk + newPositionRiskPercent;
       
       // CRITICAL: Validate that calculations produced finite numbers (not NaN or Infinity)
       if (!Number.isFinite(newPositionRiskPercent) || !Number.isFinite(projectedRiskPercentage)) {
@@ -890,7 +893,8 @@ export class StrategyEngine extends EventEmitter {
       console.error('⚠️ Error calculating projected risk, using conservative fallback:', error);
       // MANDATORY fallback check - always enforce risk limit even if DCA calculation fails
       const maxRiskPercent = parseFloat(strategy.maxPortfolioRiskPercent);
-      const remainingRiskPercent = maxRiskPercent - portfolioRisk.riskPercentage;
+      const currentReservedRisk = portfolioRisk.reservedRiskPercentage;
+      const remainingRiskPercent = maxRiskPercent - currentReservedRisk;
       
       if (remainingRiskPercent < 0.05) {
         console.log(`🚫 PORTFOLIO RISK LIMIT (Fallback): No remaining risk budget (remaining: ${remainingRiskPercent.toFixed(2)}%)`);
@@ -1362,7 +1366,15 @@ export class StrategyEngine extends EventEmitter {
   }
 
   // Calculate current portfolio risk metrics for gating decisions
-  private async calculatePortfolioRisk(strategy: Strategy, session: TradeSession): Promise<{ openPositionCount: number; riskPercentage: number; totalRisk: number }> {
+  private async calculatePortfolioRisk(strategy: Strategy, session: TradeSession): Promise<{ 
+    openPositionCount: number; 
+    riskPercentage: number; 
+    totalRisk: number;
+    filledRisk: number;
+    filledRiskPercentage: number;
+    reservedRisk: number;
+    reservedRiskPercentage: number;
+  }> {
     try {
       // AUTOMATIC POSITION RECONCILIATION: Close stale database positions before calculating risk
       // This prevents ghost positions (closed on exchange but open in DB) from blocking trades
@@ -1427,7 +1439,15 @@ export class StrategyEngine extends EventEmitter {
       
       // If no positions, return zero risk
       if (openPositionCount === 0) {
-        return { openPositionCount: 0, riskPercentage: 0, totalRisk: 0 };
+        return { 
+          openPositionCount: 0, 
+          riskPercentage: 0, 
+          totalRisk: 0,
+          filledRisk: 0,
+          filledRiskPercentage: 0,
+          reservedRisk: 0,
+          reservedRiskPercentage: 0
+        };
       }
       
       // Get current account balance (use exchange balance for accuracy)
@@ -1439,7 +1459,15 @@ export class StrategyEngine extends EventEmitter {
       
       if (currentBalance <= 0) {
         console.warn('⚠️ Invalid account balance for risk calculation');
-        return { openPositionCount, riskPercentage: 0, totalRisk: 0 };
+        return { 
+          openPositionCount, 
+          riskPercentage: 0, 
+          totalRisk: 0,
+          filledRisk: 0,
+          filledRiskPercentage: 0,
+          reservedRisk: 0,
+          reservedRiskPercentage: 0
+        };
       }
       
       console.log(`   Balance: $${currentBalance.toFixed(2)}, SL%: ${strategy.stopLossPercent}%`);
@@ -1447,31 +1475,14 @@ export class StrategyEngine extends EventEmitter {
       // Calculate stop loss percentage from strategy
       const stopLossPercent = parseFloat(strategy.stopLossPercent);
       
-      // Calculate total potential loss across all UNIQUE positions (use deduplicated array)
-      // CRITICAL: Use FULL DCA SCHEDULE risk, not just filled layers
-      const totalPotentialLoss = deduplicatedPositions.reduce((sum, position) => {
+      // Calculate BOTH filled risk (current exposure) and reserved risk (full DCA potential)
+      let totalFilledLoss = 0;
+      let totalReservedLoss = 0;
+      
+      deduplicatedPositions.forEach(position => {
         const entryPrice = parseFloat(position.avgEntryPrice);
         const isLong = position.side === 'long';
-        
-        // Parse DCA schedule to get FULL potential quantity (all layers)
-        let fullPotentialQuantity = Math.abs(parseFloat(position.totalQuantity)); // Fallback
-        let scheduleSource = 'filled qty';
-        
-        if (position.dcaSchedule) {
-          try {
-            const schedule = typeof position.dcaSchedule === 'string' 
-              ? JSON.parse(position.dcaSchedule) 
-              : position.dcaSchedule;
-            
-            // Calculate full potential quantity if all layers fill: q1 × totalWeight
-            if (schedule.q1 && schedule.totalWeight) {
-              fullPotentialQuantity = schedule.q1 * schedule.totalWeight;
-              scheduleSource = `DCA (${schedule.levels?.length || strategy.maxLayers} layers)`;
-            }
-          } catch (error) {
-            console.warn(`⚠️ Failed to parse DCA schedule for ${position.symbol}:`, error);
-          }
-        }
+        const filledQuantity = Math.abs(parseFloat(position.totalQuantity));
         
         // Calculate stop loss price based on entry price and strategy SL%
         const stopLossPrice = isLong 
@@ -1483,24 +1494,69 @@ export class StrategyEngine extends EventEmitter {
           ? entryPrice - stopLossPrice
           : stopLossPrice - entryPrice;
         
-        // Calculate total position loss using FULL potential quantity
-        const positionLoss = lossPerUnit * fullPotentialQuantity;
-        console.log(`   ${position.symbol}: ${scheduleSource}, fullQty=${fullPotentialQuantity.toFixed(4)}, lossPerUnit=$${lossPerUnit.toFixed(4)}, totalLoss=$${positionLoss.toFixed(2)}`);
-        return sum + positionLoss;
-      }, 0);
+        // Filled risk: risk from currently filled layers only
+        const filledLoss = lossPerUnit * filledQuantity;
+        totalFilledLoss += filledLoss;
+        
+        // Reserved risk: Use stored reserved risk OR calculate from DCA schedule
+        let reservedLoss = filledLoss; // Default to filled risk
+        let scheduleSource = 'filled qty';
+        
+        // Try to get pre-calculated reserved risk from position
+        if (position.reservedRiskDollars) {
+          reservedLoss = parseFloat(position.reservedRiskDollars);
+          scheduleSource = 'stored reserve';
+        } 
+        // Otherwise calculate from DCA schedule
+        else if (position.dcaSchedule) {
+          try {
+            const schedule = typeof position.dcaSchedule === 'string' 
+              ? JSON.parse(position.dcaSchedule) 
+              : position.dcaSchedule;
+            
+            // Calculate full potential quantity if all layers fill: q1 × totalWeight
+            if (schedule.q1 && schedule.totalWeight) {
+              const fullPotentialQuantity = schedule.q1 * schedule.totalWeight;
+              reservedLoss = lossPerUnit * fullPotentialQuantity;
+              scheduleSource = `DCA (${schedule.levels?.length || strategy.maxLayers} layers)`;
+            }
+          } catch (error) {
+            console.warn(`⚠️ Failed to parse DCA schedule for ${position.symbol}:`, error);
+          }
+        }
+        
+        totalReservedLoss += reservedLoss;
+        
+        console.log(`   ${position.symbol} ${position.side}: filled=$${filledLoss.toFixed(2)}, reserved=$${reservedLoss.toFixed(2)} (${scheduleSource})`);
+      });
       
-      // Calculate risk as percentage of account balance
-      const riskPercentage = (totalPotentialLoss / currentBalance) * 100;
-      console.log(`   💰 Total Risk: $${totalPotentialLoss.toFixed(2)} = ${riskPercentage.toFixed(1)}% of balance`);
+      // Calculate risk percentages
+      const filledRiskPercentage = (totalFilledLoss / currentBalance) * 100;
+      const reservedRiskPercentage = (totalReservedLoss / currentBalance) * 100;
+      
+      console.log(`   💰 Filled Risk: $${totalFilledLoss.toFixed(2)} = ${filledRiskPercentage.toFixed(1)}% of balance`);
+      console.log(`   🔒 Reserved Risk: $${totalReservedLoss.toFixed(2)} = ${reservedRiskPercentage.toFixed(1)}% of balance`);
       
       return { 
         openPositionCount, 
-        riskPercentage, 
-        totalRisk: totalPotentialLoss 
+        riskPercentage: reservedRiskPercentage, // Use reserved risk as the main risk metric
+        totalRisk: totalReservedLoss,
+        filledRisk: totalFilledLoss,
+        filledRiskPercentage,
+        reservedRisk: totalReservedLoss,
+        reservedRiskPercentage
       };
     } catch (error) {
       console.error('❌ Error calculating portfolio risk:', error);
-      return { openPositionCount: 0, riskPercentage: 0, totalRisk: 0 };
+      return { 
+        openPositionCount: 0, 
+        riskPercentage: 0, 
+        totalRisk: 0,
+        filledRisk: 0,
+        filledRiskPercentage: 0,
+        reservedRisk: 0,
+        reservedRiskPercentage: 0
+      };
     }
   }
 
