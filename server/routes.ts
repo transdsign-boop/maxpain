@@ -233,6 +233,94 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ONE-TIME FIX: Backfill layersFilled for all closed positions based on actual fills
+  app.post("/api/admin/backfill-layers", async (req, res) => {
+    try {
+      console.log('🔧 Starting layersFilled backfill for all closed positions...');
+      
+      // Get all sessions
+      const allSessions = await storage.getAllTradeSessions(DEFAULT_USER_ID);
+      
+      let totalProcessed = 0;
+      let totalUpdated = 0;
+      const sampleUpdates: Array<{
+        symbol: string;
+        side: string;
+        oldLayers: number;
+        newLayers: number;
+      }> = [];
+      
+      // Process each session
+      for (const session of allSessions) {
+        const closedPositions = await storage.getClosedPositions(session.id);
+        
+        for (const position of closedPositions) {
+          totalProcessed++;
+          
+          // Get all fills for this position
+          const allFills = await storage.getFillsByPosition(position.id);
+          
+          // Try counting entry fills with layerNumber > 0 first
+          let entryFills = allFills.filter(f => f.layerNumber > 0);
+          
+          // FALLBACK: If no layerNumber data, count by fill side
+          // For LONG positions: entry fills are 'buy', for SHORT positions: entry fills are 'sell'
+          if (entryFills.length === 0 && allFills.length > 0) {
+            const entrySide = position.side === 'long' ? 'buy' : 'sell';
+            entryFills = allFills.filter(f => f.side === entrySide);
+          }
+          
+          const actualLayersFilled = entryFills.length || 1; // Default to 1 if no fills data
+          
+          // Debug logging for first 3 positions to understand the data
+          if (totalProcessed <= 3) {
+            console.log(`📊 Position ${totalProcessed}: ${position.symbol} ${position.side}`);
+            console.log(`   All fills: ${allFills.length}, Entry fills: ${entryFills.length}`);
+            console.log(`   Current layersFilled: ${position.layersFilled}, Calculated: ${actualLayersFilled}`);
+          }
+          
+          // Only update if different from current value
+          if (actualLayersFilled !== position.layersFilled) {
+            await storage.updatePosition(position.id, {
+              layersFilled: actualLayersFilled
+            });
+            
+            totalUpdated++;
+            
+            // Collect sample for response (max 20)
+            if (sampleUpdates.length < 20) {
+              sampleUpdates.push({
+                symbol: position.symbol,
+                side: position.side,
+                oldLayers: position.layersFilled,
+                newLayers: actualLayersFilled,
+                totalFills: allFills.length,
+                entryFills: entryFills.length
+              });
+            }
+            
+            if (totalUpdated % 100 === 0) {
+              console.log(`   ✅ Updated ${totalUpdated} positions...`);
+            }
+          }
+        }
+      }
+      
+      console.log(`✅ Backfill complete: Updated ${totalUpdated} of ${totalProcessed} closed positions`);
+      
+      res.json({
+        message: `Updated layersFilled for ${totalUpdated} of ${totalProcessed} closed positions`,
+        totalProcessed,
+        totalUpdated,
+        sampleUpdates: sampleUpdates.length > 0 ? sampleUpdates : undefined
+      });
+      
+    } catch (error) {
+      console.error('❌ Failed to backfill layers:', error);
+      res.status(500).json({ error: "Backfill failed" });
+    }
+  });
+
   // Repair P&L and fees for all closed positions using corrected logic
   app.post("/api/admin/repair-pnl-and-fees", async (req, res) => {
     try {
