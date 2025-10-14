@@ -216,7 +216,8 @@ function PerformanceOverview() {
       cumulativePnl += pnl;
       
       // Try to match P&L event with closed position to get actual side
-      // Match by symbol and timestamp (within 30 second window for more flexibility)
+      // Match by symbol and timestamp (within 5 minute window to accommodate exchange delays)
+      // Exchange P&L events can arrive minutes after we mark position closed
       let actualSide = 'unknown';
       const eventTime = event.time;
       
@@ -224,7 +225,7 @@ function PerformanceOverview() {
       const matchedPos = closedPosArray.find(pos => {
         if (pos.symbol !== event.symbol) return false;
         const timeDiff = Math.abs(pos.closeTime - eventTime);
-        return timeDiff <= 30000; // Within 30 seconds
+        return timeDiff <= 300000; // Within 5 minutes (300 seconds)
       });
       
       if (matchedPos) {
