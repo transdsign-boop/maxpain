@@ -86,6 +86,7 @@ export const strategies = pgTable("strategies", {
   leverage: integer("leverage").notNull().default(1), // 1-125x leverage
   // Smart Order Placement
   orderDelayMs: integer("order_delay_ms").notNull().default(1000), // Delay before placing orders (milliseconds)
+  dcaLayerDelayMs: integer("dca_layer_delay_ms").notNull().default(30000), // Minimum time between DCA layer fills on same symbol (milliseconds, 0-300000ms)
   slippageTolerancePercent: decimal("slippage_tolerance_percent", { precision: 5, scale: 2 }).notNull().default("0.5"), // Max slippage %
   orderType: text("order_type").notNull().default("limit"), // "market" or "limit"
   maxRetryDurationMs: integer("max_retry_duration_ms").notNull().default(30000), // How long to chase price before giving up (milliseconds)
@@ -251,6 +252,7 @@ export const frontendStrategySchema = z.object({
   leverage: z.number().min(1).max(125).default(1), // 1-125x leverage
   // Smart Order Placement
   orderDelayMs: z.number().min(100).max(30000).default(10000), // 100ms to 30s
+  dcaLayerDelayMs: z.number().min(0).max(300000).default(30000), // 0ms to 5min (0 = no delay)
   slippageTolerancePercent: z.string().refine((val) => {
     const num = parseFloat(val);
     return !isNaN(num) && num >= 0.1 && num <= 5;
