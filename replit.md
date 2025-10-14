@@ -5,6 +5,26 @@ The Aster DEX Liquidations Dashboard is a real-time monitoring and trading platf
 
 ## Recent Changes (October 14, 2025)
 
+### Trade Consolidation Fix
+Fixed a critical bug where the Completed Trades list was showing only 951 trades instead of all 1,448 historical trades. The issue was in the `/api/strategies/:strategyId/positions/closed` endpoint which was consolidating ALL positions (including historical sync positions from the income API).
+
+**Root Cause:**
+- The API grouped positions by symbol+side and merged positions that opened/closed within 5 seconds
+- This consolidation logic was designed for live DCA trading (multiple layers = one trade)
+- But it was also consolidating sync positions (each representing ONE P&L event from exchange)
+- Result: 1,448 individual trades → 951 "consolidated trades"
+
+**Solution:**
+- Separated sync positions (quantity=0) from live positions (quantity>0)  
+- Sync positions are now displayed individually without consolidation
+- Only live DCA positions are consolidated (preserving the intended UX)
+- OrderId pattern: Sync positions use `sync-pnl-{tradeId}` format
+
+**Impact:**
+- UI now correctly shows all ~1,400+ historical trades from the exchange
+- Each realized P&L event = exactly ONE position in the Completed Trades list
+- Live DCA positions still consolidate correctly for better UX
+
 ### Reserved Risk Budget System
 Implemented upfront DCA budget reservation to prevent layer blocking. When a position opens, the system now reserves the FULL potential DCA risk (all 10 layers) upfront, preventing subsequent layers from being blocked by portfolio risk limits.
 
