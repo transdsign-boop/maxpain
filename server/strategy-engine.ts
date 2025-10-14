@@ -68,7 +68,6 @@ export class StrategyEngine extends EventEmitter {
   private cleanupInProgress: boolean = false; // Prevent overlapping cleanup runs
   private exchangePositionMode: 'one-way' | 'dual' | null = null; // Cache exchange position mode
   private lastFillTime: Map<string, number> = new Map(); // "sessionId-symbol-side" -> timestamp of last fill
-  private fillCooldownMs: number = 30000; // 30 second cooldown between layers/entries
   private leverageSetForSymbols: Map<string, number> = new Map(); // symbol -> leverage value (track actual leverage configured on exchange)
   private marginModeSetForSymbols: Map<string, 'isolated' | 'cross'> = new Map(); // symbol -> margin mode (track actual margin mode configured on exchange)
   private pendingQ1Values: Map<string, number> = new Map(); // "sessionId-symbol-side" -> q1 base layer size for position being created
@@ -582,8 +581,8 @@ export class StrategyEngine extends EventEmitter {
     const lastFill = this.lastFillTime.get(cooldownKey);
     if (lastFill) {
       const timeSinceLastFill = Date.now() - lastFill;
-      if (timeSinceLastFill < this.fillCooldownMs) {
-        const waitTime = ((this.fillCooldownMs - timeSinceLastFill) / 1000).toFixed(1);
+      if (timeSinceLastFill < currentStrategy.dcaLayerDelayMs) {
+        const waitTime = ((currentStrategy.dcaLayerDelayMs - timeSinceLastFill) / 1000).toFixed(1);
         console.log(`⏸️ COOLDOWN BLOCK (Pre-Lock): ${liquidation.symbol} ${positionSide} - wait ${waitTime}s before processing`);
         return;
       }
@@ -599,8 +598,8 @@ export class StrategyEngine extends EventEmitter {
       const lastFillAfterWait = this.lastFillTime.get(cooldownKey);
       if (lastFillAfterWait) {
         const timeSinceLastFill = Date.now() - lastFillAfterWait;
-        if (timeSinceLastFill < this.fillCooldownMs) {
-          const waitTime = ((this.fillCooldownMs - timeSinceLastFill) / 1000).toFixed(1);
+        if (timeSinceLastFill < currentStrategy.dcaLayerDelayMs) {
+          const waitTime = ((currentStrategy.dcaLayerDelayMs - timeSinceLastFill) / 1000).toFixed(1);
           console.log(`⏸️ COOLDOWN BLOCK (Post-Wait): ${liquidation.symbol} ${positionSide} - wait ${waitTime}s`);
           return;
         }
@@ -649,7 +648,7 @@ export class StrategyEngine extends EventEmitter {
     // This prevents queued liquidations from passing cooldown check while we're processing entry
     // If entry fails, we'll clear this cooldown in the catch block
     this.lastFillTime.set(cooldownKey, Date.now());
-    console.log(`🔒 Lock acquired for ${liquidation.symbol} ${positionSide} - PROVISIONAL cooldown set (${this.fillCooldownMs / 1000}s)`);
+    console.log(`🔒 Lock acquired for ${liquidation.symbol} ${positionSide} - PROVISIONAL cooldown set (${currentStrategy.dcaLayerDelayMs / 1000}s)`);
     
     try {
       // Check in-memory positions first (before DB query)
@@ -698,7 +697,7 @@ export class StrategyEngine extends EventEmitter {
           console.log(`✅ DEBUG: Proceeding with entry for ${liquidation.symbol} ${positionSide}`);
           const positionId = await this.executeEntry(currentStrategy, session, liquidation, positionSide, () => {
             this.lastFillTime.set(cooldownKey, Date.now());
-            console.log(`🔒 Layer 1 cooldown REFRESHED for ${liquidation.symbol} ${positionSide} (${this.fillCooldownMs / 1000}s) at exchange confirmation`);
+            console.log(`🔒 Layer 1 cooldown REFRESHED for ${liquidation.symbol} ${positionSide} (${currentStrategy.dcaLayerDelayMs / 1000}s) at exchange confirmation`);
           });
           
           if (positionId) {
@@ -1805,8 +1804,8 @@ export class StrategyEngine extends EventEmitter {
       const lastFill = this.lastFillTime.get(cooldownKey);
       if (lastFill) {
         const timeSinceLastFill = Date.now() - lastFill;
-        if (timeSinceLastFill < this.fillCooldownMs) {
-          const waitTime = ((this.fillCooldownMs - timeSinceLastFill) / 1000).toFixed(1);
+        if (timeSinceLastFill < strategy.dcaLayerDelayMs) {
+          const waitTime = ((strategy.dcaLayerDelayMs - timeSinceLastFill) / 1000).toFixed(1);
           console.log(`⏸️ Layer cooldown active for ${liquidation.symbol} ${positionSide} - wait ${waitTime}s before next layer`);
           return;
         }
@@ -1951,7 +1950,7 @@ export class StrategyEngine extends EventEmitter {
             // This prevents duplicates even if subsequent storage operations fail
             this.lastFillTime.set(cooldownKey, Date.now());
             exchangeConfirmed = true;
-            console.log(`🔒 Layer cooldown set ATOMICALLY for ${liquidation.symbol} ${positionSide} (${this.fillCooldownMs / 1000}s) at exchange confirmation`);
+            console.log(`🔒 Layer cooldown set ATOMICALLY for ${liquidation.symbol} ${positionSide} (${strategy.dcaLayerDelayMs / 1000}s) at exchange confirmation`);
           }
         });
 
