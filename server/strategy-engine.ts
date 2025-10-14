@@ -688,10 +688,14 @@ export class StrategyEngine extends EventEmitter {
         }
       } else {
         // No open position - evaluate if we should enter
+        console.log(`🔍 DEBUG: No existing position for ${liquidation.symbol} ${positionSide}, checking entry conditions...`);
         const shouldEnter = await this.shouldEnterPositionWithoutCooldown(currentStrategy, liquidation, recentLiquidations, session, positionSide);
+        console.log(`🔍 DEBUG: shouldEnterPositionWithoutCooldown returned: ${shouldEnter} for ${liquidation.symbol} ${positionSide}`);
+        
         if (shouldEnter) {
           // LAYER 1 (INITIAL ENTRY): Cooldown already set at lock acquisition (line 642)
           // We refresh it here when exchange confirms to ensure full 30s from confirmation
+          console.log(`✅ DEBUG: Proceeding with entry for ${liquidation.symbol} ${positionSide}`);
           const positionId = await this.executeEntry(currentStrategy, session, liquidation, positionSide, () => {
             this.lastFillTime.set(cooldownKey, Date.now());
             console.log(`🔒 Layer 1 cooldown REFRESHED for ${liquidation.symbol} ${positionSide} (${this.fillCooldownMs / 1000}s) at exchange confirmation`);
@@ -756,8 +760,12 @@ export class StrategyEngine extends EventEmitter {
     // NOTE: Cooldown is now checked BEFORE lock acquisition in evaluateStrategySignal
     // This function only checks portfolio risk and percentile thresholds
     
+    console.log(`🔍 DEBUG [shouldEnter]: START evaluation for ${liquidation.symbol} ${positionSide} $${parseFloat(liquidation.value).toFixed(2)}`);
+    
     // PORTFOLIO RISK LIMITS CHECK: Block new entries if they WOULD exceed limits
+    console.log(`🔍 DEBUG [shouldEnter]: Calculating portfolio risk...`);
     const portfolioRisk = await this.calculatePortfolioRisk(strategy, session);
+    console.log(`🔍 DEBUG [shouldEnter]: Portfolio risk calculated - positions: ${portfolioRisk.openPositionCount}, reserved: ${portfolioRisk.reservedRiskPercentage.toFixed(1)}%`);
     
     // Check max open positions limit (0 = unlimited)
     // Must check if adding ONE MORE position would exceed the limit
