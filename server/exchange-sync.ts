@@ -459,137 +459,96 @@ export async function syncCompletedTrades(sessionId: string): Promise<{
       return { success: false, addedCount: 0, error: 'Session not found' };
     }
     
-    // Fetch ALL trades from exchange (using pagination to fetch beyond 1000 limit)
-    // Use October 1st, 2025 as start date to match chart data
+    // Fetch ALL trades with full details
     const startTime = new Date('2025-10-01T00:00:00Z').getTime();
     const endTime = session.endedAt ? new Date(session.endedAt).getTime() : Date.now();
     
     console.log(`📅 Syncing trades from October 1st: ${new Date(startTime).toISOString()} to ${new Date(endTime).toISOString()}`);
     
-    const result = await fetchAllAccountTrades({
+    const tradesResult = await fetchAllAccountTrades({
       startTime,
       endTime,
     });
     
-    if (!result.success) {
-      return { success: false, addedCount: 0, error: result.error };
+    if (!tradesResult.success) {
+      return { success: false, addedCount: 0, error: tradesResult.error };
     }
     
-    // Use ALL trades (including entry trades with realizedPnl = 0)
-    console.log(`📊 Processing ${result.trades.length} total trades from exchange`);
-    
-    // Group trades into positions
-    const exchangePositions = groupTradesIntoPositions(result.trades);
-    
-    console.log(`📊 Grouped into ${exchangePositions.length} complete positions`);
-    
-    // Get existing positions from database
-    const existingPositions = await storage.getClosedPositions(sessionId);
+    console.log(`📊 Processing ${tradesResult.trades.length} trades - creating one position per realized P&L event`);
     
     let addedCount = 0;
+    const strategy = await storage.getStrategyBySession(sessionId);
+    const leverage = strategy?.leverage || 1;
     
-    // Add missing positions
-    for (const exPos of exchangePositions) {
-      // Check if a similar position already exists (within 5 seconds of close time)
-      const isDuplicate = existingPositions.some(existing => {
-        if (existing.symbol !== exPos.symbol || existing.side !== exPos.side) {
-          return false;
-        }
-        
-        // Check if closed times are within 5 seconds of each other
-        const existingClosedTime = existing.closedAt ? new Date(existing.closedAt).getTime() : 0;
-        const exPosClosedTime = exPos.closedAt.getTime();
-        const timeDiff = Math.abs(existingClosedTime - exPosClosedTime);
-        
-        // Check if quantities match (within 0.1% tolerance for floating point)
-        const existingQty = parseFloat(existing.totalQuantity);
-        const exPosQty = exPos.totalQuantity;
-        const qtyDiff = Math.abs(existingQty - exPosQty) / exPosQty;
-        
-        return timeDiff < 5000 && qtyDiff < 0.001;
+    // Create ONE position for each trade that has realized P&L (exit trades)
+    for (const trade of tradesResult.trades) {
+      const realizedPnl = parseFloat(trade.realizedPnl);
+      
+      // Skip entry trades (no realized P&L)
+      if (realizedPnl === 0) {
+        continue;
+      }
+      
+      // Check if already synced
+      const syncOrderId = `sync-trade-${trade.id}`;
+      const existingFill = await storage.getFillsByOrder(syncOrderId);
+      
+      if (existingFill.length > 0) {
+        continue;
+      }
+      
+      console.log(`➕ Creating position for trade: ${trade.symbol} ${trade.side} qty=${trade.qty} P&L=${realizedPnl} (id: ${trade.id})`);
+      
+      // Determine position side
+      const side: 'long' | 'short' = trade.positionSide === 'LONG' ? 'long' : 
+                                      trade.positionSide === 'SHORT' ? 'short' :
+                                      (trade.side === 'BUY' ? 'long' : 'short');
+      
+      const qty = parseFloat(trade.qty);
+      const price = parseFloat(trade.price);
+      const notional = price * qty;
+      const margin = notional / leverage;
+      
+      // Create position for this single exit trade
+      const position = await storage.createPosition({
+        sessionId,
+        symbol: trade.symbol,
+        side,
+        totalQuantity: trade.qty,
+        avgEntryPrice: trade.price,
+        totalCost: margin.toString(),
+        unrealizedPnl: '0',
+        realizedPnl: realizedPnl.toString(),
+        layersFilled: 1,
+        maxLayers: 1,
+        leverage,
+        isOpen: false,
       });
       
-      if (!isDuplicate) {
-        // Check if fills already exist for these trades (prevents duplicate position creation)
-        const entryOrderId = `sync-entry-${exPos.entryTrades[0].time}-0`;
-        const existingFill = await storage.getFillsByOrder(entryOrderId);
-        
-        console.log(`🔍 Checking for existing fills: orderId=${entryOrderId}, found=${existingFill.length}`);
-        
-        if (existingFill.length > 0) {
-          console.log(`⏭️ Skipping position - fills already exist for ${exPos.symbol} ${exPos.side} (orderId: ${entryOrderId})`);
-          continue;
-        }
-        
-        console.log(`➕ Adding missing position: ${exPos.symbol} ${exPos.side} closed at ${exPos.closedAt.toISOString()}`);
-        
-        // Create position
-        const notionalValue = exPos.avgEntryPrice * exPos.totalQuantity;
-        const strategy = await storage.getStrategyBySession(sessionId);
-        const leverage = strategy?.leverage || 1;
-        const margin = notionalValue / leverage;
-        
-        const position = await storage.createPosition({
-          sessionId,
-          symbol: exPos.symbol,
-          side: exPos.side,
-          totalQuantity: exPos.totalQuantity.toString(),
-          avgEntryPrice: exPos.avgEntryPrice.toString(),
-          totalCost: margin.toString(),
-          unrealizedPnl: '0',
-          realizedPnl: exPos.realizedPnl.toString(),
-          layersFilled: exPos.entryTrades.length,
-          maxLayers: exPos.entryTrades.length,
-          leverage,
-          isOpen: false,
-        });
-        
-        // Update timestamps to match exchange data (direct DB update since these fields are omitted from InsertPosition)
-        await db.update(positions)
-          .set({ 
-            openedAt: exPos.openedAt,
-            closedAt: exPos.closedAt,
-          })
-          .where(eq(positions.id, position.id));
-        
-        // Create fills for entry trades
-        for (let i = 0; i < exPos.entryTrades.length; i++) {
-          const trade = exPos.entryTrades[i];
-          await storage.applyFill({
-            orderId: `sync-entry-${trade.time}-${i}`,
-            sessionId,
-            positionId: position.id,
-            symbol: trade.symbol,
-            side: trade.side.toLowerCase() as 'buy' | 'sell',
-            quantity: trade.qty,
-            price: trade.price,
-            value: (parseFloat(trade.price) * parseFloat(trade.qty)).toString(),
-            fee: trade.commission,
-            layerNumber: i + 1,
-            filledAt: new Date(trade.time),
-          });
-        }
-        
-        // Create fills for exit trades
-        for (let i = 0; i < exPos.exitTrades.length; i++) {
-          const trade = exPos.exitTrades[i];
-          await storage.applyFill({
-            orderId: `sync-exit-${trade.time}-${i}`,
-            sessionId,
-            positionId: position.id,
-            symbol: trade.symbol,
-            side: trade.side.toLowerCase() as 'buy' | 'sell',
-            quantity: trade.qty,
-            price: trade.price,
-            value: (parseFloat(trade.price) * parseFloat(trade.qty)).toString(),
-            fee: trade.commission,
-            layerNumber: 0,
-            filledAt: new Date(trade.time),
-          });
-        }
-        
-        addedCount++;
-      }
+      // Set timestamps
+      await db.update(positions)
+        .set({ 
+          openedAt: new Date(trade.time),
+          closedAt: new Date(trade.time),
+        })
+        .where(eq(positions.id, position.id));
+      
+      // Create fill record
+      await storage.applyFill({
+        orderId: syncOrderId,
+        sessionId,
+        positionId: position.id,
+        symbol: trade.symbol,
+        side: trade.side.toLowerCase() as 'buy' | 'sell',
+        quantity: trade.qty,
+        price: trade.price,
+        value: notional.toString(),
+        fee: trade.commission,
+        layerNumber: 1,
+        filledAt: new Date(trade.time),
+      });
+      
+      addedCount++;
     }
     
     console.log(`✅ Sync complete: added ${addedCount} missing positions`);
