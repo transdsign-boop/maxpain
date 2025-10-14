@@ -1035,15 +1035,16 @@ export async function fetchRealizedPnlEvents(params: {
     }
     
     let allRecords: any[] = [];
-    let currentEndTime = params.endTime || Date.now();
-    const startTime = params.startTime || 0;
+    let currentStartTime = params.startTime || 0;
+    const endTime = params.endTime || Date.now();
     const limit = 1000;
     
-    // Paginate backwards from endTime to startTime
+    // Paginate forwards from startTime to endTime
+    // Exchange returns newest 1000 events in range, so we move startTime forward after each batch
     let batchCount = 0;
     while (true) {
       const timestamp = Date.now();
-      const queryParams = `incomeType=REALIZED_PNL&startTime=${startTime}&endTime=${currentEndTime}&limit=${limit}&timestamp=${timestamp}`;
+      const queryParams = `incomeType=REALIZED_PNL&startTime=${currentStartTime}&endTime=${endTime}&limit=${limit}&timestamp=${timestamp}`;
       
       const signature = createHmac('sha256', secretKey)
         .update(queryParams)
@@ -1066,7 +1067,7 @@ export async function fetchRealizedPnlEvents(params: {
       const batch = await response.json();
       batchCount++;
       
-      console.log(`📥 P&L Batch ${batchCount}: Fetched ${batch.length} events (startTime=${startTime}, endTime=${currentEndTime})`);
+      console.log(`📥 P&L Batch ${batchCount}: Fetched ${batch.length} events (startTime=${currentStartTime}, endTime=${endTime})`);
       
       if (batch.length === 0) {
         console.log(`🛑 Stopping: Empty batch received`);
@@ -1080,14 +1081,15 @@ export async function fetchRealizedPnlEvents(params: {
         break;
       }
       
-      // Move endTime to the oldest record's timestamp minus 1ms for next batch
-      // Exchange returns events in ASCENDING order, so batch[0] = oldest
-      const nextEndTime = batch[0].time - 1;
-      console.log(`➡️ Next batch: Moving endTime from ${currentEndTime} to ${nextEndTime}`);
-      currentEndTime = nextEndTime;
+      // Exchange returns events in ASCENDING order (oldest first in the batch)
+      // To get next batch, move startTime to the newest event's timestamp + 1ms
+      const newestEventInBatch = batch[batch.length - 1];
+      const nextStartTime = newestEventInBatch.time + 1;
+      console.log(`➡️ Next batch: Moving startTime from ${currentStartTime} to ${nextStartTime}`);
+      currentStartTime = nextStartTime;
       
-      if (currentEndTime <= startTime) {
-        console.log(`🛑 Stopping: currentEndTime (${currentEndTime}) <= startTime (${startTime})`);
+      if (currentStartTime >= endTime) {
+        console.log(`🛑 Stopping: currentStartTime (${currentStartTime}) >= endTime (${endTime})`);
         break;
       }
     }
