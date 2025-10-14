@@ -23,10 +23,10 @@ interface LiveAccountBalance {
 async function fetchLiveAccountBalance(): Promise<number> {
   try {
     const apiKey = process.env.ASTER_API_KEY;
-    const apiSecret = process.env.ASTER_API_SECRET;
+    const apiSecret = process.env.ASTER_SECRET_KEY;
 
     if (!apiKey || !apiSecret) {
-      throw new Error('Missing ASTER_API_KEY or ASTER_API_SECRET');
+      throw new Error('Missing ASTER_API_KEY or ASTER_SECRET_KEY');
     }
 
     const timestamp = Date.now();

@@ -31,7 +31,7 @@ Optional: Specify strategy ID and session ID manually by passing them as argumen
 
 **Requirements:**
 - `ASTER_API_KEY` environment variable must be set
-- `ASTER_API_SECRET` environment variable must be set
+- `ASTER_SECRET_KEY` environment variable must be set
 - Active trading strategy must exist in database
 - At least one trade session must exist
 
