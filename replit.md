@@ -3,6 +3,13 @@
 ## Overview
 The Aster DEX Liquidations Dashboard is a real-time monitoring and trading platform for the Aster DEX exchange. It provides live liquidation data, advanced filtering, and analysis tools for cryptocurrency and tokenized stock pairs. The project aims to be a robust, production-ready system for real-money trading, offering comprehensive safety checks, detailed performance tracking, and a sophisticated Dollar Cost Averaging (DCA) system. The business vision is to provide a powerful tool for traders, enabling informed decisions and automated, risk-managed trading strategies within the Aster DEX ecosystem.
 
+## Recent Changes (October 14, 2025)
+**Critical DCA Position Sizing Fix**: Redesigned the position sizing system to correctly use Start Step % for Layer 1 sizing instead of Max Risk %. Previously, the 14.5% max portfolio risk was incorrectly used to SIZE positions, creating massive positions (e.g., $1,325 exposure on $802 account). Now:
+- **Layer 1 Sizing**: Based on Start Step % (default 0.1%) → Formula: `Notional = (Balance × Margin% × StartStep% × Leverage) / 10,000`
+- **Max Portfolio Risk (14.5%)**: Acts purely as a trade BLOCKER, preventing new entries when total portfolio risk exceeds limit
+- **Default Start Step**: Changed from 0.4% to 0.1% to meet $5 minimum notional at 10x leverage
+- **Database Update Required**: Run `update_start_step_default.sql` in Neon SQL Editor to update existing strategies
+
 ## User Preferences
 Preferred communication style: Simple, everyday language.
 
