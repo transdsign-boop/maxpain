@@ -460,11 +460,11 @@ export async function syncCompletedTrades(sessionId: string): Promise<{
     }
     
     // Fetch ALL trades from exchange (using pagination to fetch beyond 1000 limit)
-    // Use session start date to ensure we get all historical trades
-    const startTime = new Date(session.startedAt).getTime();
+    // Use October 1st, 2025 as start date to match chart data
+    const startTime = new Date('2025-10-01T00:00:00Z').getTime();
     const endTime = session.endedAt ? new Date(session.endedAt).getTime() : Date.now();
     
-    console.log(`📅 Syncing trades from session start: ${new Date(startTime).toISOString()} to ${new Date(endTime).toISOString()}`);
+    console.log(`📅 Syncing trades from October 1st: ${new Date(startTime).toISOString()} to ${new Date(endTime).toISOString()}`);
     
     const result = await fetchAllAccountTrades({
       startTime,
