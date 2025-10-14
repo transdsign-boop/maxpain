@@ -619,3 +619,58 @@ export async function calculateNextLayer(
     stopLossPrice: nextLevel.stopLossPrice,
   };
 }
+
+/**
+ * Recalculate reserved risk for all open positions in a session
+ * Used when max layers or other DCA parameters change
+ */
+export async function recalculateReservedRiskForSession(
+  sessionId: string,
+  strategy: Strategy,
+  currentBalance: number,
+  apiKey: string,
+  secretKey: string
+): Promise<void> {
+  const { storage } = await import('./storage');
+  
+  console.log(`♻️ Recalculating reserved risk for all open positions in session ${sessionId}...`);
+  
+  const openPositions = await storage.getOpenPositions(sessionId);
+  console.log(`📊 Found ${openPositions.length} open positions to update`);
+  
+  for (const position of openPositions) {
+    try {
+      // Calculate current ATR for the symbol
+      const atrPercent = await calculateATRPercent(
+        position.symbol,
+        parseFloat(strategy.atrPeriod),
+        apiKey,
+        secretKey
+      );
+      
+      // Calculate full DCA potential with current strategy settings
+      const dcaResult = calculateDCALevels(strategy, {
+        entryPrice: parseFloat(position.avgEntryPrice),
+        side: position.side as 'long' | 'short',
+        currentBalance,
+        leverage: parseFloat(strategy.leverage),
+        atrPercent,
+      });
+      
+      const reservedRiskDollars = dcaResult.totalRiskDollars;
+      const reservedRiskPercent = (reservedRiskDollars / currentBalance) * 100;
+      
+      console.log(`   ✅ ${position.symbol} ${position.side}: Reserved risk $${reservedRiskDollars.toFixed(2)} (${reservedRiskPercent.toFixed(1)}%)`);
+      
+      // Update position with new reserved risk values
+      await storage.updatePosition(position.id, {
+        reservedRiskDollars: reservedRiskDollars.toString(),
+        reservedRiskPercent: reservedRiskPercent.toString(),
+      });
+    } catch (error) {
+      console.error(`❌ Failed to recalculate reserved risk for position ${position.id}:`, error);
+    }
+  }
+  
+  console.log(`✅ Reserved risk recalculation complete for session ${sessionId}`);
+}

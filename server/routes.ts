@@ -3013,6 +3013,84 @@ export async function registerRoutes(app: Express): Promise<Server> {
             changes: changes as any,
           });
           console.log(`📋 Recorded ${Object.keys(changes).length} strategy changes for session ${activeSession.id}`);
+          
+          // Check if any DCA-affecting parameters changed
+          // These fields affect calculateDCALevels() or reserved risk calculations
+          const dcaAffectingFields = [
+            'maxLayers', 'leverage', 'stopLossPercent', 'marginAmount',
+            'atrPeriod', // ATR calculation period
+            'dcaStartStepPercent', 'dcaSpacingConvexity', 'dcaSizeGrowth', // DCA layer sizing
+            'dcaMaxRiskPercent', 'dcaVolatilityRef', 'dcaExitCushionMultiplier', // Risk management
+            'adaptiveTpEnabled', 'tpAtrMultiplier', 'minTpPercent', 'maxTpPercent', // Adaptive TP
+            'adaptiveSlEnabled', 'slAtrMultiplier', 'minSlPercent', 'maxSlPercent', // Adaptive SL
+            'retHighThreshold', 'retMediumThreshold' // Risk/entry thresholds
+          ];
+          const dcaParamChanged = dcaAffectingFields.some(field => changes[field]);
+          
+          if (dcaParamChanged) {
+            const changedParams = dcaAffectingFields.filter(f => changes[f]).map(f => `${f}: ${changes[f]?.old} → ${changes[f]?.new}`).join(', ');
+            console.log(`♻️ DCA parameters changed (${changedParams}), recalculating reserved risk...`);
+            
+            try {
+              const apiKey = process.env.ASTER_API_KEY;
+              const secretKey = process.env.ASTER_SECRET_KEY;
+              let currentBalance = 1000; // Fallback balance for development
+              
+              // Try to fetch live balance if API keys available
+              if (apiKey && secretKey) {
+                try {
+                  const timestamp = Date.now();
+                  const queryString = `timestamp=${timestamp}`;
+                  const crypto = require('crypto');
+                  const signature = crypto.createHmac('sha256', secretKey).update(queryString).digest('hex');
+                  
+                  const balanceResponse = await fetch(
+                    `https://fapi.asterdex.com/fapi/v2/account?${queryString}&signature=${signature}`,
+                    { headers: { 'X-MBX-APIKEY': apiKey } }
+                  );
+                  
+                  if (balanceResponse.ok) {
+                    const balanceData = await balanceResponse.json() as { totalWalletBalance: string; totalUnrealizedProfit: string };
+                    currentBalance = parseFloat(balanceData.totalWalletBalance || '0') + parseFloat(balanceData.totalUnrealizedProfit || '0');
+                    console.log(`💰 Fetched live balance: $${currentBalance.toFixed(2)}`);
+                  } else {
+                    console.warn('⚠️ Failed to fetch live balance, using fallback: $1000');
+                  }
+                } catch (balanceError) {
+                  console.warn('⚠️ Balance fetch error, using fallback: $1000', balanceError);
+                }
+              } else {
+                console.log('💡 No API keys, using fallback balance: $1000');
+              }
+              
+              // Always recalculate, even without API keys (function has ATR fallback)
+              const updatedStrategyForRecalc = await storage.getStrategy(strategyId);
+              if (updatedStrategyForRecalc) {
+                const { recalculateReservedRiskForSession } = await import('./dca-calculator');
+                await recalculateReservedRiskForSession(
+                  activeSession.id,
+                  updatedStrategyForRecalc,
+                  currentBalance,
+                  apiKey || '',
+                  secretKey || ''
+                );
+                
+                // Broadcast update notification via WebSocket
+                wsBroadcaster.broadcast({
+                  type: 'reserved_risk_updated',
+                  data: {
+                    sessionId: activeSession.id,
+                    changes: changedParams
+                  }
+                });
+                
+                console.log(`✅ Reserved risk recalculation complete`);
+              }
+            } catch (error) {
+              console.error('❌ Failed to recalculate reserved risk:', error);
+              // Don't fail the strategy update if recalculation fails
+            }
+          }
         }
       }
       
