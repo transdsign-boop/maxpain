@@ -1555,7 +1555,6 @@ function PerformanceOverview() {
                     { key: 'percentileThreshold', label: 'Percentile Threshold', suffix: '%' },
                     { key: 'maxOpenPositions', label: 'Max Open Positions' },
                     { key: 'maxPortfolioRiskPercent', label: 'Max Portfolio Risk', suffix: '%' },
-                    { key: 'riskLevel', label: 'Risk Level' },
                   ]
                 },
                 {
