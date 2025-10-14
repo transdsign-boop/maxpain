@@ -24,14 +24,10 @@ Retroactively calculates reserved risk for existing positions that were created 
 - **Portfolio Summary**: Displays before/after portfolio risk comparison
 
 **Usage:**
-```
-npx tsx server/scripts/backfill-reserved-risk.ts
-```
 
-Optional: Specify strategy ID and session ID manually:
-```
-npx tsx server/scripts/backfill-reserved-risk.ts <strategyId> <sessionId>
-```
+Run: `npx tsx server/scripts/backfill-reserved-risk.ts`
+
+Optional: Specify strategy ID and session ID manually by passing them as arguments.
 
 **Requirements:**
 - `ASTER_API_KEY` environment variable must be set
