@@ -633,13 +633,19 @@ export class StrategyEngine extends EventEmitter {
     });
     this.positionCreationLocks.set(lockKey, lockPromise);
     
-    console.log(`🔒 Lock acquired for ${liquidation.symbol} ${positionSide} - evaluating trade signal...`);
+    // CRITICAL FIX: Set cooldown IMMEDIATELY on lock acquisition to prevent duplicate positions
+    // This prevents queued liquidations from passing cooldown check while we're processing entry
+    // If entry fails, we'll clear this cooldown in the catch block
+    this.lastFillTime.set(cooldownKey, Date.now());
+    console.log(`🔒 Lock acquired for ${liquidation.symbol} ${positionSide} - PROVISIONAL cooldown set (${this.fillCooldownMs / 1000}s)`);
     
     try {
       // Check in-memory positions first (before DB query)
       const inMemoryPos = this.inMemoryPositions.get(lockKey);
       if (inMemoryPos) {
         console.log(`🔍 Found in-memory position: ${inMemoryPos.positionId} (created ${Date.now() - inMemoryPos.createdAt}ms ago)`);
+        // ROLLBACK: Position exists, clear provisional cooldown (we'll set layer cooldown if needed)
+        this.lastFillTime.delete(cooldownKey);
         const actualPosition = await storage.getPosition(inMemoryPos.positionId);
         if (actualPosition && actualPosition.isOpen && actualPosition.side === positionSide) {
           const shouldLayer = await this.shouldAddLayer(currentStrategy, actualPosition, liquidation);
@@ -657,6 +663,8 @@ export class StrategyEngine extends EventEmitter {
         : await storage.getPositionBySymbol(session.id, liquidation.symbol);
       
       if (existingPosition && existingPosition.isOpen) {
+        // ROLLBACK: Position exists, clear provisional cooldown (we'll set layer cooldown if needed)
+        this.lastFillTime.delete(cooldownKey);
         if (existingPosition.side === positionSide) {
           const shouldLayer = await this.shouldAddLayer(currentStrategy, existingPosition, liquidation);
           if (shouldLayer) {
@@ -670,11 +678,11 @@ export class StrategyEngine extends EventEmitter {
         // No open position - evaluate if we should enter
         const shouldEnter = await this.shouldEnterPositionWithoutCooldown(currentStrategy, liquidation, recentLiquidations, session, positionSide);
         if (shouldEnter) {
-          // LAYER 1 (INITIAL ENTRY): Pass callback to set cooldown atomically with exchange confirmation
-          // This prevents both duplicate positions AND false blocking if executeEntry fails before order placement
+          // LAYER 1 (INITIAL ENTRY): Cooldown already set at lock acquisition (line 642)
+          // We refresh it here when exchange confirms to ensure full 30s from confirmation
           const positionId = await this.executeEntry(currentStrategy, session, liquidation, positionSide, () => {
             this.lastFillTime.set(cooldownKey, Date.now());
-            console.log(`🔒 Layer 1 cooldown set ATOMICALLY for ${liquidation.symbol} ${positionSide} (${this.fillCooldownMs / 1000}s) at exchange confirmation`);
+            console.log(`🔒 Layer 1 cooldown REFRESHED for ${liquidation.symbol} ${positionSide} (${this.fillCooldownMs / 1000}s) at exchange confirmation`);
           });
           
           if (positionId) {
@@ -685,9 +693,23 @@ export class StrategyEngine extends EventEmitter {
               createdAt: Date.now()
             });
             console.log(`📝 Tracked position ${positionId} in-memory for ${lockKey}`);
+          } else {
+            // ROLLBACK: Entry failed, clear provisional cooldown to allow retry
+            this.lastFillTime.delete(cooldownKey);
+            console.log(`🔓 ROLLBACK: Cleared provisional cooldown for ${liquidation.symbol} ${positionSide} (entry failed)`);
           }
+        } else {
+          // ROLLBACK: Didn't enter (risk limits, etc.), clear provisional cooldown
+          this.lastFillTime.delete(cooldownKey);
+          console.log(`🔓 ROLLBACK: Cleared provisional cooldown for ${liquidation.symbol} ${positionSide} (entry not triggered)`);
         }
       }
+    } catch (error) {
+      // ROLLBACK: Any error during evaluation, clear provisional cooldown
+      this.lastFillTime.delete(cooldownKey);
+      console.error(`❌ Error evaluating strategy signal for ${liquidation.symbol}:`, error);
+      console.log(`🔓 ROLLBACK: Cleared provisional cooldown for ${liquidation.symbol} ${positionSide} (error occurred)`);
+      throw error;
     } finally {
       // ALWAYS release the lock and clean up
       releaseLock!();
