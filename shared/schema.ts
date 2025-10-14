@@ -120,8 +120,6 @@ export const strategies = pgTable("strategies", {
   // Portfolio Risk Management
   maxOpenPositions: integer("max_open_positions").notNull().default(5), // Maximum number of simultaneous open positions (0 = unlimited)
   maxPortfolioRiskPercent: decimal("max_portfolio_risk_percent", { precision: 5, scale: 2 }).notNull().default("15.0"), // Maximum total risk across all positions as % of account
-  // Risk Level Preset (1=Very Conservative, 2=Conservative, 3=Balanced, 4=Aggressive, 5=Very Aggressive)
-  riskLevel: integer("risk_level").notNull().default(3), // Controls how selective the system is about entering trades
   // Manual Financial Adjustments (for correcting exchange API limitations)
   manualCommissionAdjustment: decimal("manual_commission_adjustment", { precision: 18, scale: 8 }).notNull().default("0.0"), // Manual commission adjustment (e.g., missing historical data from exchange API)
   manualFundingAdjustment: decimal("manual_funding_adjustment", { precision: 18, scale: 8 }).notNull().default("0.0"), // Manual funding fee adjustment (e.g., correcting API vs UI discrepancies)
@@ -304,8 +302,6 @@ export const frontendStrategySchema = z.object({
     const num = parseFloat(val);
     return !isNaN(num) && num >= 1 && num <= 100;
   }, "Max portfolio risk must be between 1% and 100%").default("15.0"),
-  // Entry Selectivity (Risk Level)
-  riskLevel: z.number().min(1).max(5).default(3), // 1=Very Conservative, 2=Conservative, 3=Balanced, 4=Aggressive, 5=Very Aggressive
 });
 
 // Update schema for partial updates
