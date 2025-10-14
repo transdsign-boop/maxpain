@@ -194,6 +194,8 @@ export const positions = pgTable("positions", {
   initialEntryPrice: decimal("initial_entry_price", { precision: 18, scale: 8 }), // First layer entry price (P0) - anchor for DCA calculations
   dcaBaseSize: decimal("dca_base_size", { precision: 18, scale: 8 }), // q1 - base layer size used for exponential sizing
   dcaSchedule: jsonb("dca_schedule"), // Complete DCA schedule: { levels: [{price, quantity, tp, sl}], effectiveGrowthFactor, q1 }
+  reservedRiskDollars: decimal("reserved_risk_dollars", { precision: 18, scale: 8 }), // Total risk reserved for full DCA schedule (calculated at position open)
+  reservedRiskPercent: decimal("reserved_risk_percent", { precision: 5, scale: 2 }), // Reserved risk as % of account balance
   isOpen: boolean("is_open").notNull().default(true),
   openedAt: timestamp("opened_at").notNull().defaultNow(),
   closedAt: timestamp("closed_at"),
