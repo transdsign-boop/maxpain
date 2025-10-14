@@ -459,93 +459,79 @@ export async function syncCompletedTrades(sessionId: string): Promise<{
       return { success: false, addedCount: 0, error: 'Session not found' };
     }
     
-    // Fetch ALL trades with full details
+    // Fetch realized P&L events from income API - this is the SOURCE OF TRUTH
+    // Each event = exactly ONE position (1,129 events = 1,129 positions)
     const startTime = new Date('2025-10-01T00:00:00Z').getTime();
     const endTime = session.endedAt ? new Date(session.endedAt).getTime() : Date.now();
     
-    console.log(`📅 Syncing trades from October 1st: ${new Date(startTime).toISOString()} to ${new Date(endTime).toISOString()}`);
+    console.log(`📅 Syncing P&L events from October 1st: ${new Date(startTime).toISOString()} to ${new Date(endTime).toISOString()}`);
     
-    const tradesResult = await fetchAllAccountTrades({
+    const pnlResult = await fetchRealizedPnlEvents({
       startTime,
       endTime,
     });
     
-    if (!tradesResult.success) {
-      return { success: false, addedCount: 0, error: tradesResult.error };
+    if (!pnlResult.success) {
+      return { success: false, addedCount: 0, error: pnlResult.error };
     }
     
-    console.log(`📊 Processing ${tradesResult.trades.length} trades - creating one position per realized P&L event`);
+    console.log(`📊 Processing ${pnlResult.count} realized P&L events - each event = ONE position`);
     
     let addedCount = 0;
     const strategy = await storage.getStrategyBySession(sessionId);
     const leverage = strategy?.leverage || 1;
     
-    // Create ONE position for each trade that has realized P&L (exit trades)
-    for (const trade of tradesResult.trades) {
-      const realizedPnl = parseFloat(trade.realizedPnl);
-      
-      // Skip entry trades (no realized P&L)
-      if (realizedPnl === 0) {
-        continue;
-      }
-      
-      // Check if already synced
-      const syncOrderId = `sync-trade-${trade.id}`;
+    // Create ONE position for each P&L event (no grouping!)
+    for (const event of pnlResult.events) {
+      // Check if already synced using tradeId from income API
+      const syncOrderId = `sync-pnl-${event.tradeId}`;
       const existingFill = await storage.getFillsByOrder(syncOrderId);
       
       if (existingFill.length > 0) {
         continue;
       }
       
-      console.log(`➕ Creating position for trade: ${trade.symbol} ${trade.side} qty=${trade.qty} P&L=${realizedPnl} (id: ${trade.id})`);
+      const income = parseFloat(event.income);
+      console.log(`➕ Creating position for P&L event: ${event.symbol} income=${income.toFixed(4)} (tradeId: ${event.tradeId})`);
       
-      // Determine position side
-      const side: 'long' | 'short' = trade.positionSide === 'LONG' ? 'long' : 
-                                      trade.positionSide === 'SHORT' ? 'short' :
-                                      (trade.side === 'BUY' ? 'long' : 'short');
-      
-      const qty = parseFloat(trade.qty);
-      const price = parseFloat(trade.price);
-      const notional = price * qty;
-      const margin = notional / leverage;
-      
-      // Create position for this single exit trade
+      // Create position for this P&L event
+      // Note: We don't have full trade details from income API, so we create simplified records
       const position = await storage.createPosition({
         sessionId,
-        symbol: trade.symbol,
-        side,
-        totalQuantity: trade.qty,
-        avgEntryPrice: trade.price,
-        totalCost: margin.toString(),
+        symbol: event.symbol,
+        side: 'long', // Default - income API doesn't provide direction
+        totalQuantity: '0', // Income API doesn't provide quantity
+        avgEntryPrice: '0', // Income API doesn't provide price
+        totalCost: '0',
         unrealizedPnl: '0',
-        realizedPnl: realizedPnl.toString(),
+        realizedPnl: income.toString(),
         layersFilled: 1,
         maxLayers: 1,
         leverage,
         isOpen: false,
       });
       
-      // Set timestamps
+      // Set timestamps to match P&L event
       await db.update(positions)
         .set({ 
-          openedAt: new Date(trade.time),
-          closedAt: new Date(trade.time),
+          openedAt: new Date(event.time),
+          closedAt: new Date(event.time),
         })
         .where(eq(positions.id, position.id));
       
-      // Create fill record
+      // Create fill record to track this P&L event
       await storage.applyFill({
         orderId: syncOrderId,
         sessionId,
         positionId: position.id,
-        symbol: trade.symbol,
-        side: trade.side.toLowerCase() as 'buy' | 'sell',
-        quantity: trade.qty,
-        price: trade.price,
-        value: notional.toString(),
-        fee: trade.commission,
+        symbol: event.symbol,
+        side: 'sell', // Exit fill
+        quantity: '0',
+        price: '0',
+        value: income.toString(),
+        fee: '0',
         layerNumber: 1,
-        filledAt: new Date(trade.time),
+        filledAt: new Date(event.time),
       });
       
       addedCount++;
