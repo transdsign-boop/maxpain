@@ -762,14 +762,15 @@ export async function fetchCommissions(params: {
     }
     
     let allRecords: any[] = [];
-    let currentEndTime = params.endTime || Date.now();
-    const startTime = params.startTime || 0;
+    let currentStartTime = params.startTime || 0;
+    const endTime = params.endTime || Date.now();
     const limit = 1000; // Max limit per request
     
-    // Paginate backwards from endTime to startTime
+    // Paginate forwards from startTime to endTime
+    // Exchange returns newest 1000 events in range, so we move startTime forward after each batch
     while (true) {
       const timestamp = Date.now();
-      const queryParams = `incomeType=COMMISSION&startTime=${startTime}&endTime=${currentEndTime}&limit=${limit}&timestamp=${timestamp}`;
+      const queryParams = `incomeType=COMMISSION&startTime=${currentStartTime}&endTime=${endTime}&limit=${limit}&timestamp=${timestamp}`;
       
       const signature = createHmac('sha256', secretKey)
         .update(queryParams)
@@ -802,11 +803,14 @@ export async function fetchCommissions(params: {
         break;
       }
       
-      // Move endTime to the oldest record's timestamp minus 1ms for next batch
-      currentEndTime = batch[batch.length - 1].time - 1;
+      // Exchange returns events in ASCENDING order (oldest first in the batch)
+      // To get next batch, move startTime to the newest event's timestamp + 1ms
+      const newestEventInBatch = batch[batch.length - 1];
+      const nextStartTime = newestEventInBatch.time + 1;
+      currentStartTime = nextStartTime;
       
-      // Stop if we've gone past startTime
-      if (currentEndTime <= startTime) {
+      // Stop if we've reached or passed endTime
+      if (currentStartTime >= endTime) {
         break;
       }
     }
@@ -849,14 +853,15 @@ export async function fetchFundingFees(params: {
     }
     
     let allRecords: any[] = [];
-    let currentEndTime = params.endTime || Date.now();
-    const startTime = params.startTime || 0;
+    let currentStartTime = params.startTime || 0;
+    const endTime = params.endTime || Date.now();
     const limit = 1000; // Max limit per request
     
-    // Paginate backwards from endTime to startTime
+    // Paginate forwards from startTime to endTime
+    // Exchange returns newest 1000 events in range, so we move startTime forward after each batch
     while (true) {
       const timestamp = Date.now();
-      const queryParams = `incomeType=FUNDING_FEE&startTime=${startTime}&endTime=${currentEndTime}&limit=${limit}&timestamp=${timestamp}`;
+      const queryParams = `incomeType=FUNDING_FEE&startTime=${currentStartTime}&endTime=${endTime}&limit=${limit}&timestamp=${timestamp}`;
       
       const signature = createHmac('sha256', secretKey)
         .update(queryParams)
@@ -889,11 +894,14 @@ export async function fetchFundingFees(params: {
         break;
       }
       
-      // Move endTime to the oldest record's timestamp minus 1ms for next batch
-      currentEndTime = batch[batch.length - 1].time - 1;
+      // Exchange returns events in ASCENDING order (oldest first in the batch)
+      // To get next batch, move startTime to the newest event's timestamp + 1ms
+      const newestEventInBatch = batch[batch.length - 1];
+      const nextStartTime = newestEventInBatch.time + 1;
+      currentStartTime = nextStartTime;
       
-      // Stop if we've gone past startTime
-      if (currentEndTime <= startTime) {
+      // Stop if we've reached or passed endTime
+      if (currentStartTime >= endTime) {
         break;
       }
     }
