@@ -24,11 +24,12 @@ Retroactively calculates reserved risk for existing positions that were created 
 - **Portfolio Summary**: Displays before/after portfolio risk comparison
 
 **Usage:**
-```bash
-# Auto-detect strategy and session (recommended)
+```
 npx tsx server/scripts/backfill-reserved-risk.ts
+```
 
-# Or specify strategy and session IDs manually
+Optional: Specify strategy ID and session ID manually:
+```
 npx tsx server/scripts/backfill-reserved-risk.ts <strategyId> <sessionId>
 ```
 
