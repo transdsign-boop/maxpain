@@ -113,12 +113,23 @@ export class StrategyEngine extends EventEmitter {
         const minNotionalFilter = symbol.filters?.find((f: any) => f.filterType === 'MIN_NOTIONAL');
         
         if (lotSizeFilter && priceFilter) {
+          const parsedMinNotional = minNotionalFilter?.notional ? parseFloat(minNotionalFilter.notional) : 5.0;
+          
+          // Debug logging for HYPE to trace minNotional value
+          if (symbol.symbol === 'HYPEUSDT') {
+            console.log(`🔍 HYPE minNotional parsing:`, {
+              filterFound: !!minNotionalFilter,
+              filterValue: minNotionalFilter?.notional,
+              parsed: parsedMinNotional
+            });
+          }
+          
           this.symbolPrecisionCache.set(symbol.symbol, {
             quantityPrecision: symbol.quantityPrecision || 8,
             pricePrecision: symbol.pricePrecision || 8,
             stepSize: lotSizeFilter.stepSize || '1',
             tickSize: priceFilter.tickSize || '0.01',
-            minNotional: minNotionalFilter?.notional ? parseFloat(minNotionalFilter.notional) : 5.0, // Use exchange value or fallback to $5
+            minNotional: parsedMinNotional, // Use exchange value or fallback to $5
           });
         }
       }

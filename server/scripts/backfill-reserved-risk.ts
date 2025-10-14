@@ -136,12 +136,15 @@ async function backfillReservedRisk(strategyId?: string, sessionId?: string) {
       console.log(`   ATR: ${atrPercent.toFixed(2)}%`);
 
       // Calculate full DCA potential
+      // TODO: Fetch symbol-specific minNotional from exchange if available
+      // For now using standard $5 minimum (accurate for most symbols)
       const dcaResult = calculateDCALevels(activeStrategy, {
         entryPrice: parseFloat(position.avgEntryPrice),
         side: position.side as 'long' | 'short',
         currentBalance,
         leverage: parseFloat(activeStrategy.leverage),
         atrPercent,
+        minNotional: 5.0, // Standard minimum (may vary by symbol)
       });
 
       const reservedRiskDollars = dcaResult.totalRiskDollars;
