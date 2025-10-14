@@ -864,9 +864,10 @@ export async function getGlobalCommissionCutoff(): Promise<number | undefined> {
   
   if (result.success && result.records.length > 0) {
     // The first record in ascending order is the oldest (global cutoff)
-    cachedCommissionCutoff = result.records[0].time;
-    console.log(`📌 Global commission cutoff cached: ${new Date(cachedCommissionCutoff).toISOString()}`);
-    return cachedCommissionCutoff;
+    const cutoff = result.records[0].time;
+    cachedCommissionCutoff = cutoff;
+    console.log(`📌 Global commission cutoff cached: ${new Date(cutoff).toISOString()}`);
+    return cutoff;
   }
   
   console.log(`⚠️ No commission records found, cutoff remains undefined`);
@@ -885,9 +886,10 @@ export async function getGlobalFundingCutoff(): Promise<number | undefined> {
   
   if (result.success && result.records.length > 0) {
     // The first record in ascending order is the oldest (global cutoff)
-    cachedFundingCutoff = result.records[0].time;
-    console.log(`📌 Global funding cutoff cached: ${new Date(cachedFundingCutoff).toISOString()}`);
-    return cachedFundingCutoff;
+    const cutoff = result.records[0].time;
+    cachedFundingCutoff = cutoff;
+    console.log(`📌 Global funding cutoff cached: ${new Date(cutoff).toISOString()}`);
+    return cutoff;
   }
   
   console.log(`⚠️ No funding records found, cutoff remains undefined`);
@@ -1199,8 +1201,7 @@ export async function fetchRealizedPnlEvents(params: {
       success: true, 
       events: allRecords,
       total,
-      count: allRecords.length,
-      dateRange
+      count: allRecords.length
     };
   } catch (error) {
     console.error('❌ Error fetching realized P&L events:', error);
