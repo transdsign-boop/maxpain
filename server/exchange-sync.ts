@@ -751,6 +751,7 @@ export async function fetchCommissions(params: {
   success: boolean;
   records: any[];
   total: number;
+  cutoffDate?: number;
   error?: string;
 }> {
   try {
@@ -827,7 +828,12 @@ export async function fetchCommissions(params: {
 
     const total = allRecords.reduce((sum: number, item: any) => sum + Math.abs(parseFloat(item.income || '0')), 0);
     
-    return { success: true, records: allRecords, total };
+    // Find the oldest (earliest) timestamp in the records - this is the API cutoff date
+    const cutoffDate = allRecords.length > 0 
+      ? Math.min(...allRecords.map((r: any) => r.time))
+      : undefined;
+    
+    return { success: true, records: allRecords, total, cutoffDate };
   } catch (error) {
     return { success: false, records: [], total: 0, error: String(error) };
   }
@@ -852,6 +858,7 @@ export async function fetchFundingFees(params: {
   success: boolean;
   records: any[];
   total: number;
+  cutoffDate?: number;
   error?: string;
 }> {
   try {
@@ -918,7 +925,12 @@ export async function fetchFundingFees(params: {
 
     const total = allRecords.reduce((sum: number, item: any) => sum + parseFloat(item.income || '0'), 0);
     
-    return { success: true, records: allRecords, total };
+    // Find the oldest (earliest) timestamp in the records - this is the API cutoff date
+    const cutoffDate = allRecords.length > 0 
+      ? Math.min(...allRecords.map((r: any) => r.time))
+      : undefined;
+    
+    return { success: true, records: allRecords, total, cutoffDate };
   } catch (error) {
     return { success: false, records: [], total: 0, error: String(error) };
   }
