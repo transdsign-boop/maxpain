@@ -13,6 +13,7 @@ import type { Strategy, Position } from '@shared/schema';
 import { db } from '../db';
 import { strategies, tradeSessions } from '@shared/schema';
 import { desc, eq } from 'drizzle-orm';
+import { createHmac } from 'crypto';
 
 interface LiveAccountBalance {
   totalWalletBalance: string;
@@ -30,8 +31,7 @@ async function fetchLiveAccountBalance(): Promise<number> {
 
     const timestamp = Date.now();
     const queryString = `timestamp=${timestamp}`;
-    const signature = require('crypto')
-      .createHmac('sha256', apiSecret)
+    const signature = createHmac('sha256', apiSecret)
       .update(queryString)
       .digest('hex');
 
