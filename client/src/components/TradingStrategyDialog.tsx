@@ -1585,15 +1585,15 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                       <div className="text-sm text-orange-800 dark:text-orange-200 space-y-2">
                         <p>Aster DEX requires a <strong>minimum $5.00 notional value</strong> per order.</p>
                         <div className="bg-orange-200/50 dark:bg-orange-900/30 p-3 rounded space-y-1">
-                          <p className="font-semibold">Formula: q1 = (Balance × Max Risk %) × (Start Step % / 100)</p>
+                          <p className="font-semibold">Formula: Notional = (Balance × Margin% × StartStep% × Leverage) / 10,000</p>
                           <p className="text-xs">
-                            • With ${currentBalance.toFixed(0)} usable balance and default settings (2% Max Risk, 0.4% Start Step), q1 = ${(currentBalance * 0.02 * 0.004).toFixed(2)}
+                            • Layer 1 sized by Start Step % (default 0.1%), NOT Max Risk %
                           </p>
                           <p className="text-xs">
-                            • If q1 &lt; $5, <strong>increase Max Risk %</strong> in DCA Settings below
+                            • Example: $802 balance, 80% margin, 0.1% step, 10x leverage = $6.42 notional ✓
                           </p>
                           <p className="text-xs">
-                            • Example: For ${currentBalance.toFixed(0)} balance, need ~{((5 / (currentBalance * 0.004)) * 100).toFixed(1)}% Max Risk to meet $5 minimum
+                            • <strong>Increase Start Step %</strong> in DCA Settings for larger Layer 1 positions
                           </p>
                         </div>
                       </div>
