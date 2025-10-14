@@ -3,92 +3,6 @@
 ## Overview
 The Aster DEX Liquidations Dashboard is a real-time monitoring and trading platform for the Aster DEX exchange. It provides live liquidation data, advanced filtering, and analysis tools for cryptocurrency and tokenized stock pairs. The project aims to be a robust, production-ready system for real-money trading, offering comprehensive safety checks, detailed performance tracking, and a sophisticated Dollar Cost Averaging (DCA) system. The business vision is to provide a powerful tool for traders, enabling informed decisions and automated, risk-managed trading strategies within the Aster DEX ecosystem.
 
-## Recent Changes (October 14, 2025)
-
-### Trade Consolidation Fix
-Fixed a critical bug where the Completed Trades list was not showing the exact count of historical P&L events from the income API. The `/api/strategies/:strategyId/positions/closed` endpoint now returns ONLY sync positions (income API P&L events).
-
-**Root Cause:**
-- The API was consolidating ALL positions (including sync positions from income API)
-- Sync positions were being mixed with live trading positions
-- Result: Inconsistent trade count that didn't match income API P&L events
-
-**Solution:**
-- **Completed Trades now shows ONLY sync positions** (from income API P&L events)
-- Each P&L event from the exchange = exactly ONE position in the list
-- Filter by orderId pattern `sync-pnl-{tradeId}` to identify income API positions
-- Excludes old sync positions (sync-entry/sync-exit pattern) and live trading positions
-
-**Impact:**
-- UI now shows exactly 1,140 trades = exactly 1,140 P&L events from exchange income API
-- Each realized P&L event = exactly ONE position in the Completed Trades list
-- Live trading positions are excluded from this list
-
-### Reserved Risk Budget System
-Implemented upfront DCA budget reservation to prevent layer blocking. When a position opens, the system now reserves the FULL potential DCA risk (all 10 layers) upfront, preventing subsequent layers from being blocked by portfolio risk limits.
-
-**Key Features:**
-- **Upfront Reservation**: Full DCA budget calculated and reserved when Layer 1 opens, stored in `reservedRiskDollars` and `reservedRiskPercent` fields
-- **Dual-Ring Visualization**: UI displays both filled risk (inner ring, color-coded by P&L) and reserved risk (outer ring, blue) for each position
-- **Legacy Position Handling**: Pre-implementation positions (missing `reservedRiskDollars`) use filled risk as fallback in calculations
-- **WebSocket Broadcasting**: Real-time metrics broadcast both `filledRiskPercentage` (actual layers) and `reservedRiskPercentage` (full DCA budget)
-
-**Backfill Script** (`server/scripts/backfill-reserved-risk.ts`):
-Retroactively calculates reserved risk for existing positions that were created before the Reserved Risk system was implemented.
-
-- **Auto-Detection**: Automatically finds active strategy and latest session using database queries
-- **ATR Calculation**: Fetches live ATR data for each position from exchange API
-- **DCA Recalculation**: Uses `calculateDCALevels()` to determine full potential risk based on current strategy settings
-- **Database Update**: Updates positions with accurate `reservedRiskDollars` and `reservedRiskPercent` values
-- **Portfolio Summary**: Displays before/after portfolio risk comparison
-
-**Usage:**
-
-Run: `npx tsx server/scripts/backfill-reserved-risk.ts`
-
-Optional: Specify strategy ID and session ID manually by passing them as arguments.
-
-**Requirements:**
-- `ASTER_API_KEY` environment variable must be set
-- `ASTER_SECRET_KEY` environment variable must be set
-- Active trading strategy must exist in database
-- At least one trade session must exist
-
-### Critical DCA Position Sizing Fix
-Redesigned the position sizing system to correctly use Start Step % for Layer 1 sizing instead of Max Risk %. Previously, the 14.5% max portfolio risk was incorrectly used to SIZE positions, creating massive positions (e.g., $1,325 exposure on $802 account).
-
-**Changes:**
-- **Layer 1 Sizing**: Based on Start Step % (default 0.1%) → Formula: `Notional = (Balance × Margin% × StartStep% × Leverage) / 10,000`
-- **Max Portfolio Risk (14.5%)**: Acts purely as a trade BLOCKER, preventing new entries when total portfolio risk exceeds limit
-- **Default Start Step**: Changed from 0.4% to 0.1% to meet $5 minimum notional at 10x leverage
-- **Database Update Required**: Run `update_start_step_default.sql` in Neon SQL Editor to update existing strategies
-
-### Configurable DCA Layer Delay
-Added user-configurable time delay between DCA layer fills on the same symbol to prevent rapid-fire entries during cascading liquidations.
-
-**Key Features:**
-- **Configurable Delay**: User-adjustable delay from 0 to 5 minutes (default 30 seconds) via UI slider
-- **Per-Symbol Tracking**: Each symbol independently tracks its last fill timestamp
-- **Independent of Order Delay**: DCA Layer Delay is separate from the general Order Delay setting
-- **Database Field**: New `dcaLayerDelayMs` column in strategies table (0-300000ms range)
-- **UI Integration**: Slider in Global Settings shows seconds, stores milliseconds
-
-**Implementation:**
-- Schema: Added `dcaLayerDelayMs` to strategies table with default 30000ms
-- Backend: StrategyEngine uses `strategy.dcaLayerDelayMs` instead of hardcoded 30s cooldown
-- Frontend: "DCA Layer Delay" slider with 0-300s range (1s increments)
-- Migration: `add_dca_layer_delay.sql` executed in Neon SQL Editor
-
-**Database Migration:**
-```sql
-ALTER TABLE strategies 
-ADD COLUMN IF NOT EXISTS dca_layer_delay_ms INTEGER NOT NULL DEFAULT 30000;
-
-UPDATE strategies 
-SET dca_layer_delay_ms = 30000 
-WHERE dca_layer_delay_ms IS NULL;
-```
-
 ## User Preferences
 Preferred communication style: Simple, everyday language.
 
@@ -132,37 +46,29 @@ PERMANENT DATA PRESERVATION: ALL trading data MUST be preserved forever. The use
 **Technical Implementations:**
 - **Frontend State Management**: React hooks with TanStack Query.
 - **Routing**: Wouter.
-- **Backend Runtime**: Node.js with Express.js.
-- **Backend Language**: TypeScript.
+- **Backend Runtime**: Node.js with Express.js (TypeScript).
 - **Database ORM**: Drizzle ORM (raw SQL for critical operations).
-- **API**: RESTful endpoints with `/api` prefix. Strategy changes save to Neon DB and load into memory.
-- **Real-time Data**: WebSocket connection to Aster DEX for live liquidation streaming and user data (ACCOUNT_UPDATE, ORDER_TRADE_UPDATE). A Live Data Orchestrator caches and broadcasts real-time account/position data.
-- **Cascade Detection**: Dynamic monitoring of selected assets, aggregate-based trade filtering (blocking triggers when ≥50% of monitored symbols show cascade activity).
-- **Percentile Threshold**: All percentile calculations use database records for accuracy.
-- **Automatic Position Reconciliation**: Database positions reconciled with live exchange positions before every portfolio risk calculation to prevent ghost positions.
-- **Trade Blocking System**: Comprehensive real-time trade blocking with WebSocket broadcasting and persistent UI indicators. Includes system-wide blocks (cascade auto-blocking, risk limits, strategy-level blocks, missing exchange limits, safety issues, exchange failures) and per-liquidation filters (percentile threshold, entry cooldown, max layers, missing historical data).
-- **Trading System**: Live-only trading with HMAC-SHA256 authentication, automatic ATR-based TP/SL, queue-based locking, and session-based tracking. **Pause/Resume Controls**: User-facing controls to pause/resume trading without stopping the strategy. The `paused` flag halts trade execution while keeping the session active and data streaming.
-- **Margin Mode**: System configures isolated/cross margin on exchange before placing orders, defaulting to isolated.
-- **Hedge Mode Orders**: All protective orders include `positionSide` parameter for hedge mode compatibility.
-- **DCA System**: Integrated Dollar Cost Averaging with ATR-based volatility scaling, convex level spacing, exponential size growth, and liquidation-aware risk management. Includes dynamic growth factor adjustment to maintain risk cap, accurate DCA preview using real market data, and strict minimum notional enforcement via exchange-specific MIN_NOTIONAL values. Position sizing for Layer 1 uses Start Step %; Max Portfolio Risk acts as a trade blocker. Full potential DCA risk is reserved upfront when Layer 1 opens (`reservedRiskDollars`, `reservedRiskPercent`), visible in UI.
-- **Simplified TP/SL**: Position-level protective orders only (one TP and one SL per position).
-- **Protective Order Safety**: Place-then-cancel pattern for TP/SL orders, scheduled and WebSocket-triggered reconciliation, per-position locking, and automatic retry.
-- **Data Integrity**: Idempotency for orders, atomic cooldowns, and permanent preservation of all trading data.
-- **Race Condition Prevention**: Multi-layer defense system prevents duplicate position creation during rapid liquidation cascades, including pre-lock cooldown, atomic lock acquisition, in-memory position tracking, and post-wait cooldown recheck. Fixes ensure pause commands are immediately respected and prevents duplicate initial positions via atomic `onExchangeConfirmation` callback for cooldowns.
-- **Performance Metrics**: Tracking of deposited capital, ROI, transfer markers, commissions, and funding fees. Manual commission/funding adjustments apply conditionally based on global API cutoff dates.
-- **Portfolio Limit**: Position counting uses unique symbol deduplication; hedged positions count as 1 position towards max limit.
+- **API**: RESTful endpoints with `/api` prefix for strategy management and data.
+- **Real-time Data**: WebSocket connection to Aster DEX for live liquidation streaming and user data (ACCOUNT_UPDATE, ORDER_TRADE_UPDATE), managed by a Live Data Orchestrator.
+- **Trade Logic**: Includes cascade detection, percentile threshold filtering, automatic position reconciliation, comprehensive real-time trade blocking (system-wide and per-liquidation filters), and a robust DCA system.
+- **DCA System**: Integrates ATR-based volatility scaling, convex level spacing, exponential size growth, and liquidation-aware risk management. Position sizing for Layer 1 uses Start Step %; Max Portfolio Risk acts as a trade blocker. Full potential DCA risk is reserved upfront, visible in UI. Configurable DCA layer delay prevents rapid-fire entries. Atomic cooldown checks prevent race conditions.
+- **Protective Orders**: Simplified position-level TP/SL orders with place-then-cancel pattern, scheduled reconciliation, and automatic retry.
+- **Trading System**: Live-only trading with HMAC-SHA256 authentication, automatic ATR-based TP/SL, queue-based locking, and session-based tracking. Features user-facing Pause/Resume controls. Configures isolated/cross margin and uses `positionSide` for hedge mode.
+- **Data Integrity**: Idempotency for orders, atomic cooldowns, and permanent preservation of all trading data. Multi-layer race condition prevention.
+- **Performance Metrics**: Tracks deposited capital, ROI, transfer markers, commissions, and funding fees from exchange API.
+- **Portfolio Limit**: Counts unique symbols; hedged positions count as 1.
 
 **Feature Specifications:**
-- **Financial Metrics**: Realized P&L, commissions, and funding fees fetched directly from exchange API (e.g., `/fapi/v1/income`), not stored in DB. Conditional manual adjustments apply for historical data.
-- **WebSocket Broadcasting**: `trade_block` event broadcasts system-wide blocking information to the frontend.
-- **Exchange Limits UI**: Global Settings dialog displays real-time MIN_NOTIONAL, price precision, and quantity precision for all monitored symbols via `/api/exchange-limits` endpoint.
+- **Financial Metrics**: Realized P&L, commissions, and funding fees fetched directly from exchange API (e.g., `/fapi/v1/income`), not stored in DB.
+- **WebSocket Broadcasting**: `trade_block` event broadcasts system-wide blocking information.
+- **Exchange Limits UI**: Global Settings dialog displays real-time MIN_NOTIONAL, price precision, and quantity precision.
 
 **System Design Choices:**
 - **Data Persistence**: PostgreSQL via Neon serverless hosting.
 - **Schema**: 14 core tables for liquidations, strategies, trade sessions, positions, fills, orders, etc.
-- **Schema Changes**: Manual SQL scripts are exclusively used for schema updates.
+- **Schema Changes**: Exclusively manual SQL scripts.
 - **Data Retention**: Liquidation data for 30 days; trading data and financial records are permanently preserved through archiving.
-- **Trade Sync Pagination**: Historical trade synchronization handles exchange API limitations by chunking large date ranges into 7-day segments and using backward cursor pagination within chunks.
+- **Trade Sync Pagination**: Handles exchange API limitations by chunking large date ranges into 7-day segments with backward cursor pagination.
 
 ## External Dependencies
 
