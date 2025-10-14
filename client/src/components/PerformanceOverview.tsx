@@ -491,16 +491,9 @@ function PerformanceOverview() {
       maxDrawdownPercent: 0,
     };
 
-    // Sum commissions and funding fees (already filtered by date range from API)
-    const commissionRecords = commissions?.records || [];
-    const totalCommissions = commissionRecords.reduce((sum: number, c: any) => 
-      sum + Math.abs(parseFloat(c.income || '0')), 0
-    );
-
-    const fundingFeeRecords = fundingFees?.records || [];
-    const totalFundingFees = fundingFeeRecords.reduce((sum: number, f: any) => 
-      sum + parseFloat(f.income || '0'), 0
-    );
+    // Use adjusted totals from API (includes manual adjustments for exchange API limitations)
+    const totalCommissions = commissions?.total || 0;
+    const totalFundingFees = fundingFees?.total || 0;
 
     // Use realized P&L events from exchange as source of truth for trade counts
     // Filter by date range if active
