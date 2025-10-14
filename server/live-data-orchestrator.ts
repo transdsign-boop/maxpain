@@ -1,7 +1,7 @@
 import { wsBroadcaster } from './websocket-broadcaster';
 import { db } from './db';
-import { strategies } from '@shared/schema';
-import { eq } from 'drizzle-orm';
+import { strategies, tradeSessions } from '@shared/schema';
+import { eq, and } from 'drizzle-orm';
 
 interface LiveSnapshot {
   account: {
@@ -10,6 +10,11 @@ interface LiveSnapshot {
     canDeposit: boolean;
     canWithdraw: boolean;
     updateTime: number;
+    totalWalletBalance?: string;
+    totalUnrealizedProfit?: string;
+    totalMarginBalance?: string;
+    totalInitialMargin?: string;
+    availableBalance?: string;
     usdcBalance: string;
     usdtBalance: string;
     assets: Array<{
@@ -27,6 +32,10 @@ interface LiveSnapshot {
     realizedPnl: number;
     currentBalance: number;
     startingBalance: number;
+    filledRiskDollars: number;
+    filledRiskPercentage: number;
+    reservedRiskDollars: number;
+    reservedRiskPercentage: number;
   } | null;
   timestamp: number;
   error: string | null;
@@ -135,12 +144,47 @@ class LiveDataOrchestrator {
       }
 
       // Get account balance from cache
-      const currentBalance = snapshot.account?.totalWalletBalance || 0;
+      const currentBalance = parseFloat(snapshot.account?.totalWalletBalance || '0');
       
       // Simple calculation
       const realizedPnl = 0; // Placeholder for now
       const totalPnl = realizedPnl + unrealizedPnl;
       const startingBalance = currentBalance - totalPnl;
+
+      // Calculate portfolio risk (both filled and reserved)
+      let filledRiskDollars = 0;
+      let filledRiskPercentage = 0;
+      let reservedRiskDollars = 0;
+      let reservedRiskPercentage = 0;
+
+      try {
+        // Get active strategy and active session
+        const strategy = await db.query.strategies.findFirst({
+          where: eq(strategies.id, strategyId)
+        });
+
+        if (strategy) {
+          const session = await db.query.tradeSessions.findFirst({
+            where: and(
+              eq(tradeSessions.strategyId, strategyId),
+              eq(tradeSessions.isActive, true)
+            )
+          });
+
+          if (session) {
+            // Import strategyEngine singleton to access calculatePortfolioRisk
+            const { strategyEngine } = await import('./strategy-engine');
+            const portfolioRisk = await strategyEngine.calculatePortfolioRisk(strategy, session);
+            filledRiskDollars = portfolioRisk.filledRisk;
+            filledRiskPercentage = portfolioRisk.filledRiskPercentage;
+            reservedRiskDollars = portfolioRisk.reservedRisk;
+            reservedRiskPercentage = portfolioRisk.reservedRiskPercentage;
+          }
+        }
+      } catch (riskError: any) {
+        console.error(`⚠️ Error calculating portfolio risk:`, riskError.message);
+        // Continue with zero risk values
+      }
 
       snapshot.positionsSummary = {
         totalExposure,
@@ -148,7 +192,11 @@ class LiveDataOrchestrator {
         unrealizedPnl,
         realizedPnl,
         currentBalance,
-        startingBalance
+        startingBalance,
+        filledRiskDollars,
+        filledRiskPercentage,
+        reservedRiskDollars,
+        reservedRiskPercentage
       };
       
       // Broadcast update

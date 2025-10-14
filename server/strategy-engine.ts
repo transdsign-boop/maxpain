@@ -73,7 +73,8 @@ export class StrategyEngine extends EventEmitter {
   private marginModeSetForSymbols: Map<string, 'isolated' | 'cross'> = new Map(); // symbol -> margin mode (track actual margin mode configured on exchange)
   private pendingQ1Values: Map<string, number> = new Map(); // "sessionId-symbol-side" -> q1 base layer size for position being created
   private pendingFirstLayerData: Map<string, { takeProfitPrice: number; stopLossPrice: number; entryPrice: number; quantity: number }> = new Map(); // "sessionId-symbol-side" -> first layer TP/SL data
-  private pendingDCASchedules: Map<string, { levels: any[]; effectiveGrowthFactor: number; q1: number }> = new Map(); // "sessionId-symbol-side" -> complete DCA schedule
+  private pendingDCASchedules: Map<string, { levels: any[]; effectiveGrowthFactor: number; q1: number; totalWeight: number }> = new Map(); // "sessionId-symbol-side" -> complete DCA schedule
+  private pendingReservedRisk: Map<string, { dollars: number; percent: number }> = new Map(); // "sessionId-symbol-side" -> reserved risk for full DCA potential
   private processedLiquidations: Set<string> = new Set(); // Track processed liquidation IDs to prevent duplicates
   private inMemoryPositions: Map<string, { positionId: string; side: string; symbol: string; createdAt: number }> = new Map(); // "sessionId-symbol-side" -> in-memory position tracking (before DB commit)
   private protectiveOrderRecovery: ProtectiveOrderRecovery;
@@ -1002,8 +1003,8 @@ export class StrategyEngine extends EventEmitter {
       return false;
     }
 
-    // PORTFOLIO RISK LIMITS CHECK: Block new layers if they WOULD exceed risk limit
-    // Note: Position count limit doesn't apply to layers (we're adding to existing position)
+    // RESERVED RISK CHECK: Verify layer fits within position's reserved budget
+    // NO global portfolio risk check - position already has reserved risk allocated
     let layerRiskCheckPassed = false;
     try {
       const session = await storage.getTradeSession(position.sessionId);
@@ -1011,36 +1012,38 @@ export class StrategyEngine extends EventEmitter {
         throw new Error('Session not found for risk check');
       }
       
-      const portfolioRisk = await this.calculatePortfolioRisk(strategy, session);
-      
-      // Calculate ACTUAL projected risk using DCA calculator
+      // Get current balance
       let currentBalance = parseFloat(session.currentBalance);
       const exchangeBalance = await this.getExchangeAvailableBalance(strategy);
       if (exchangeBalance !== null) {
         currentBalance = exchangeBalance;
       }
       
-      const maxRiskPercent = parseFloat(strategy.maxPortfolioRiskPercent);
-      const remainingRiskPercent = maxRiskPercent - portfolioRisk.riskPercentage;
+      // Get position's reserved risk (total allocated for full DCA schedule)
+      const reservedRiskDollars = position.reservedRiskDollars 
+        ? parseFloat(position.reservedRiskDollars) 
+        : null;
       
-      // Check if there's any remaining risk budget (with 0.05% minimum threshold)
-      if (remainingRiskPercent < 0.05) {
-        console.log(`🚫 PORTFOLIO RISK LIMIT (Layer): No remaining risk budget (current: ${portfolioRisk.riskPercentage.toFixed(1)}%, max: ${maxRiskPercent}%, remaining: ${remainingRiskPercent.toFixed(2)}%)`);
-        return false;
+      if (!reservedRiskDollars) {
+        console.warn(`⚠️ Position ${position.id} has no reserved risk - this is a legacy position`);
+        console.log(`   Falling back to global risk check for safety`);
+        // For legacy positions without reserved risk, we need to check global limits
+        const portfolioRisk = await this.calculatePortfolioRisk(strategy, session);
+        const maxRiskPercent = parseFloat(strategy.maxPortfolioRiskPercent);
+        const remainingRiskPercent = maxRiskPercent - portfolioRisk.reservedRiskPercentage;
+        
+        if (remainingRiskPercent < 0.05) {
+          console.log(`🚫 PORTFOLIO RISK LIMIT (Layer/Legacy): No remaining risk budget (current: ${portfolioRisk.reservedRiskPercentage.toFixed(1)}%, max: ${maxRiskPercent}%, remaining: ${remainingRiskPercent.toFixed(2)}%)`);
+          return false;
+        }
       }
       
       // Import DCA function
       const { calculateNextLayer } = await import('./dca-calculator');
       const { getStrategyWithDCA } = await import('./dca-sql');
       
-      // Fetch DCA parameters to get strategy's max layer risk
+      // Fetch DCA parameters
       const strategyWithDCA = await getStrategyWithDCA(strategy.id);
-      const strategyMaxLayerRisk = strategyWithDCA?.dca_max_risk_percent ? parseFloat(String(strategyWithDCA.dca_max_risk_percent)) : 10.0;
-      
-      // Determine effective max risk for this layer
-      const effectiveMaxRisk = Math.min(strategyMaxLayerRisk, remainingRiskPercent);
-      
-      console.log(`💰 Layer Risk Budget: current=${portfolioRisk.riskPercentage.toFixed(1)}%, max=${maxRiskPercent}%, remaining=${remainingRiskPercent.toFixed(1)}%, effective=${effectiveMaxRisk.toFixed(1)}% (${effectiveMaxRisk < strategyMaxLayerRisk ? 'SCALED DOWN' : 'normal'})`);
       
       // Parse stored DCA schedule if available
       let parsedSchedule = null;
@@ -1054,7 +1057,7 @@ export class StrategyEngine extends EventEmitter {
         }
       }
       
-      // Calculate the next layer parameters with risk override if needed
+      // Calculate the next layer parameters
       // CRITICAL: Use layersPlaced (not layersFilled) to prevent duplicate layer triggers
       const nextLayerResult = await calculateNextLayer(
         strategy,
@@ -1068,83 +1071,57 @@ export class StrategyEngine extends EventEmitter {
         parsedSchedule, // Pass stored DCA schedule to avoid recalculation
         process.env.ASTER_API_KEY,
         process.env.ASTER_SECRET_KEY,
-        effectiveMaxRisk < strategyMaxLayerRisk ? effectiveMaxRisk : undefined
+        undefined // No risk override - position already has reserved budget
       );
       
       if (!nextLayerResult) {
         throw new Error('DCA calculator could not calculate next layer');
       }
       
-      const { price: nextLayerPrice, quantity: nextLayerQuantity, takeProfitPrice, stopLossPrice } = nextLayerResult;
+      const { price: nextLayerPrice, quantity: nextLayerQuantity, stopLossPrice } = nextLayerResult;
       
-      // Calculate dollar risk for this layer
+      // Calculate dollar risk for this new layer
       const lossPerUnit = position.side === 'long'
         ? nextLayerPrice - stopLossPrice
         : stopLossPrice - nextLayerPrice;
       
-      const layerRiskDollars = lossPerUnit * nextLayerQuantity;
-      const layerRiskPercent = (layerRiskDollars / currentBalance) * 100;
-      const projectedRiskPercentage = portfolioRisk.riskPercentage + layerRiskPercent;
+      const newLayerRiskDollars = lossPerUnit * nextLayerQuantity;
       
-      // CRITICAL: Validate that calculations produced finite numbers (not NaN or Infinity)
-      if (!Number.isFinite(layerRiskPercent) || !Number.isFinite(projectedRiskPercentage)) {
-        throw new Error(`Invalid layer risk calculation: layerRisk=${layerRiskPercent}, projected=${projectedRiskPercentage}`);
+      // CRITICAL: Validate calculations
+      if (!Number.isFinite(newLayerRiskDollars) || newLayerRiskDollars < 0) {
+        throw new Error(`Invalid layer risk calculation: layerRisk=$${newLayerRiskDollars}`);
       }
       
-      // Final safety check: ensure projected risk doesn't exceed max (account for float precision)
-      if (projectedRiskPercentage > maxRiskPercent + 0.01) { // Allow 0.01% tolerance for float precision
-        console.log(`🚫 PORTFOLIO RISK LIMIT (Layer): Projected risk still exceeds max after scaling (projected: ${projectedRiskPercentage.toFixed(1)}% > max: ${maxRiskPercent}%)`);
+      // For positions with reserved risk: Check if layer fits within reserved budget
+      if (reservedRiskDollars) {
+        // Calculate current filled risk for THIS position
+        const currentQuantity = Math.abs(parseFloat(position.totalQuantity));
+        const avgEntry = parseFloat(position.avgEntryPrice);
+        const currentStopLoss = position.side === 'long'
+          ? avgEntry * (1 - parseFloat(strategy.stopLossPercent) / 100)
+          : avgEntry * (1 + parseFloat(strategy.stopLossPercent) / 100);
+        const currentLossPerUnit = position.side === 'long'
+          ? avgEntry - currentStopLoss
+          : currentStopLoss - avgEntry;
+        const currentFilledRiskDollars = currentLossPerUnit * currentQuantity;
         
-        // Log error to database for audit trail
-        await this.logTradeEntryError({
-          strategy,
-          symbol: liquidation.symbol,
-          side: position.side,
-          attemptType: 'layer',
-          reason: 'risk_limit_exceeded',
-          errorDetails: `Projected risk ${projectedRiskPercentage.toFixed(1)}% exceeds max ${maxRiskPercent}%`,
-          liquidationValue: parseFloat(liquidation.value),
-        });
+        // Check if new layer fits within reserved budget
+        const projectedPositionRisk = currentFilledRiskDollars + newLayerRiskDollars;
         
-        return false;
+        if (projectedPositionRisk > reservedRiskDollars * 1.01) { // 1% tolerance for float precision
+          console.log(`🚫 RESERVED BUDGET EXCEEDED: New layer $${newLayerRiskDollars.toFixed(2)} would exceed position's reserved budget`);
+          console.log(`   Current filled: $${currentFilledRiskDollars.toFixed(2)}, Reserved: $${reservedRiskDollars.toFixed(2)}, Projected: $${projectedPositionRisk.toFixed(2)}`);
+          return false;
+        }
+        
+        console.log(`✅ Layer fits within reserved budget: filled=$${currentFilledRiskDollars.toFixed(2)}, +layer=$${newLayerRiskDollars.toFixed(2)}, reserved=$${reservedRiskDollars.toFixed(2)}`);
       }
-      
-      console.log(`✅ Layer risk check passed: projected=${projectedRiskPercentage.toFixed(1)}% ≤ max=${maxRiskPercent}%`);
       
       layerRiskCheckPassed = true;
     } catch (error) {
-      console.error('⚠️ Error calculating layer risk, using conservative fallback:', error);
-      // MANDATORY fallback check - always enforce risk limit even if DCA calculation fails
-      try {
-        const session = await storage.getTradeSession(position.sessionId);
-        if (session) {
-          const portfolioRisk = await this.calculatePortfolioRisk(strategy, session);
-          const maxRiskPercent = parseFloat(strategy.maxPortfolioRiskPercent);
-          const remainingRiskPercent = maxRiskPercent - portfolioRisk.riskPercentage;
-          
-          if (remainingRiskPercent < 0.05) {
-            console.log(`🚫 PORTFOLIO RISK LIMIT (Layer/Fallback): No remaining risk budget (remaining: ${remainingRiskPercent.toFixed(2)}%)`);
-            
-            // Log error to database for audit trail
-            await this.logTradeEntryError({
-              strategy,
-              symbol: liquidation.symbol,
-              side: position.side,
-              attemptType: 'layer',
-              reason: 'risk_limit_exceeded',
-              errorDetails: `No remaining risk budget (fallback check): ${remainingRiskPercent.toFixed(2)}%`,
-              liquidationValue: parseFloat(liquidation.value),
-            });
-            
-            return false;
-          }
-          
-          console.log(`✅ Layer risk check passed (Fallback): remaining budget ${remainingRiskPercent.toFixed(1)}% available`);
-          layerRiskCheckPassed = true; // Fallback check passed
-        }
-      } catch (fallbackError) {
-        console.error('❌ CRITICAL: Fallback risk check failed for layer:', fallbackError);
-      }
+      console.error('⚠️ Error calculating layer risk:', error);
+      console.error('   ❌ Cannot add layer without successful risk calculation - blocking for safety');
+      return false;
     }
     
     // Ensure risk check was performed
@@ -1366,7 +1343,7 @@ export class StrategyEngine extends EventEmitter {
   }
 
   // Calculate current portfolio risk metrics for gating decisions
-  private async calculatePortfolioRisk(strategy: Strategy, session: TradeSession): Promise<{ 
+  public async calculatePortfolioRisk(strategy: Strategy, session: TradeSession): Promise<{ 
     openPositionCount: number; 
     riskPercentage: number; 
     totalRisk: number;
@@ -1677,9 +1654,19 @@ export class StrategyEngine extends EventEmitter {
       this.pendingDCASchedules.set(q1Key, {
         levels: dcaResult.levels,
         effectiveGrowthFactor: dcaResult.effectiveGrowthFactor,
-        q1: dcaResult.q1
+        q1: dcaResult.q1,
+        totalWeight: dcaResult.totalWeight
       });
       console.log(`💾 Stored complete DCA schedule with ${dcaResult.levels.length} levels (effective growth: ${dcaResult.effectiveGrowthFactor.toFixed(2)}x)`);
+      
+      // Store reserved risk for this position (full DCA potential)
+      const reservedRiskDollars = dcaResult.totalRiskDollars;
+      const reservedRiskPercent = (reservedRiskDollars / currentBalance) * 100;
+      this.pendingReservedRisk.set(q1Key, {
+        dollars: reservedRiskDollars,
+        percent: reservedRiskPercent
+      });
+      console.log(`💾 Stored reserved risk: $${reservedRiskDollars.toFixed(2)} (${reservedRiskPercent.toFixed(1)}% of balance)`);
 
       // CRITICAL SAFETY CHECK: Validate position size is valid
       if (!Number.isFinite(quantity) || isNaN(quantity) || quantity <= 0) {
@@ -3796,6 +3783,7 @@ export class StrategyEngine extends EventEmitter {
       const dcaBaseSize = this.pendingQ1Values.get(q1Key);
       const firstLayerData = this.pendingFirstLayerData.get(q1Key);
       const dcaSchedule = this.pendingDCASchedules.get(q1Key);
+      const reservedRisk = this.pendingReservedRisk.get(q1Key);
       
       if (dcaBaseSize) {
         console.log(`✅ Retrieved q1=${dcaBaseSize.toFixed(6)} for ${order.symbol} ${positionSide}`);
@@ -3809,6 +3797,12 @@ export class StrategyEngine extends EventEmitter {
         console.log(`✅ Retrieved DCA schedule with ${dcaSchedule.levels.length} levels (effective growth: ${dcaSchedule.effectiveGrowthFactor.toFixed(2)}x)`);
       } else {
         console.warn(`⚠️ No DCA schedule found for ${q1Key}, will need to recalculate on next layer`);
+      }
+      
+      if (reservedRisk) {
+        console.log(`✅ Retrieved reserved risk: $${reservedRisk.dollars.toFixed(2)} (${reservedRisk.percent.toFixed(1)}%)`);
+      } else {
+        console.warn(`⚠️ No reserved risk found for ${q1Key}, will calculate from DCA schedule`);
       }
 
       console.log(`🔍 POSITION CREATE DEBUG: order.side=${order.side}, derived positionSide=${positionSide}`);
@@ -3830,6 +3824,8 @@ export class StrategyEngine extends EventEmitter {
           maxLayers,
           leverage,
           lastLayerPrice: fillPrice.toString(),
+          reservedRiskDollars: reservedRisk?.dollars.toString(), // Total risk if all DCA layers fill
+          reservedRiskPercent: reservedRisk?.percent.toString(), // % of balance reserved for this position
         });
         
         // Create position layer record for Layer 1
@@ -3852,6 +3848,7 @@ export class StrategyEngine extends EventEmitter {
           // Clean up only after successful layer creation
           this.pendingFirstLayerData.delete(q1Key);
           this.pendingDCASchedules.delete(q1Key); // Clean up DCA schedule
+          this.pendingReservedRisk.delete(q1Key); // Clean up reserved risk
         } else {
           console.warn(`⚠️ No first layer TP/SL data found for ${q1Key}, position layer not created`);
         }

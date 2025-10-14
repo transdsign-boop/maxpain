@@ -111,6 +111,7 @@ function PerformanceOverview() {
     realizedPnlTotal,
     realizedPnlCount,
     realizedPnlLoading,
+    portfolioRisk,
   } = useStrategyData();
 
   // Fetch commissions and funding fees with date range filtering
@@ -407,9 +408,22 @@ function PerformanceOverview() {
     return groups;
   }, [chartData]);
 
-  // Calculate total risk (live-only mode)
-  const { totalRisk, riskPercentage } = useMemo(() => {
-    if (!activeStrategy) return { totalRisk: 0, riskPercentage: 0 };
+  // Calculate total risk (WebSocket data preferred, fallback to local calculation)
+  const { totalRisk, riskPercentage, filledRisk, reservedRisk, filledRiskPercentage, reservedRiskPercentage } = useMemo(() => {
+    // Try to use WebSocket risk data first (includes filled vs reserved metrics)
+    if (portfolioRisk?.filledRiskDollars !== undefined) {
+      return {
+        totalRisk: portfolioRisk.filledRiskDollars,
+        riskPercentage: portfolioRisk.filledRiskPercentage,
+        filledRisk: portfolioRisk.filledRiskDollars,
+        reservedRisk: portfolioRisk.reservedRiskDollars,
+        filledRiskPercentage: portfolioRisk.filledRiskPercentage,
+        reservedRiskPercentage: portfolioRisk.reservedRiskPercentage,
+      };
+    }
+
+    // Fallback: Calculate risk locally (legacy behavior)
+    if (!activeStrategy) return { totalRisk: 0, riskPercentage: 0, filledRisk: 0, reservedRisk: 0, filledRiskPercentage: 0, reservedRiskPercentage: 0 };
 
     const stopLossPercent = Number(activeStrategy.stopLossPercent) || 2;
     const positions = livePositions ? livePositions.filter(p => parseFloat(p.positionAmt) !== 0) : [];
@@ -436,8 +450,15 @@ function PerformanceOverview() {
     }, 0);
 
     const riskPct = totalBalance > 0 ? (totalPotentialLoss / totalBalance) * 100 : 0;
-    return { totalRisk: totalPotentialLoss, riskPercentage: riskPct };
-  }, [activeStrategy, livePositions, liveAccount]);
+    return { 
+      totalRisk: totalPotentialLoss, 
+      riskPercentage: riskPct,
+      filledRisk: totalPotentialLoss,
+      reservedRisk: totalPotentialLoss,
+      filledRiskPercentage: riskPct,
+      reservedRiskPercentage: riskPct,
+    };
+  }, [activeStrategy, livePositions, liveAccount, portfolioRisk]);
 
   // Mutation to update max portfolio risk
   const updateRiskMutation = useMutation({
@@ -814,30 +835,54 @@ function PerformanceOverview() {
             </div>
           </div>
 
-          {/* Risk Pressure Meter - Circular */}
+          {/* Risk Pressure Meter - Dual Ring (Filled vs Reserved) */}
           <div className="flex flex-col items-center gap-3 lg:border-l lg:pl-6" data-testid="container-risk-bar">
-            <div className="text-xs text-muted-foreground uppercase tracking-wider text-center whitespace-nowrap">Total Risk</div>
+            <div className="text-xs text-muted-foreground uppercase tracking-wider text-center whitespace-nowrap">Portfolio Risk</div>
             <div className="relative flex flex-col items-center">
-              {/* Circular Meter */}
+              {/* Dual Ring Meter */}
               <div className="relative w-28 h-28">
                 <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
-                  {/* Background circle */}
+                  {/* Outer ring background (reserved risk) */}
                   <circle
                     cx="50"
                     cy="50"
-                    r="40"
+                    r="42"
                     fill="none"
                     stroke="currentColor"
-                    strokeWidth="8"
-                    className="text-muted opacity-20"
+                    strokeWidth="4"
+                    className="text-muted opacity-15"
                   />
-                  {/* Progress circle */}
+                  {/* Outer ring progress (reserved risk) */}
                   <circle
                     cx="50"
                     cy="50"
-                    r="40"
+                    r="42"
                     fill="none"
-                    strokeWidth="8"
+                    strokeWidth="4"
+                    strokeLinecap="round"
+                    className="stroke-blue-500 dark:stroke-blue-400 opacity-50 transition-all duration-300"
+                    strokeDasharray={`${2 * Math.PI * 42}`}
+                    strokeDashoffset={`${2 * Math.PI * 42 * (1 - Math.min(100, reservedRiskPercentage) / 100)}`}
+                    data-testid="bar-reserved-risk"
+                  />
+                  
+                  {/* Inner ring background (filled risk) */}
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="36"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="6"
+                    className="text-muted opacity-20"
+                  />
+                  {/* Inner ring progress (filled risk) */}
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="36"
+                    fill="none"
+                    strokeWidth="6"
                     strokeLinecap="round"
                     className={`transition-all duration-300 ${
                       (() => {
@@ -845,27 +890,29 @@ function PerformanceOverview() {
                         const redThreshold = maxRisk * 0.9;
                         const orangeThreshold = maxRisk * 0.75;
                         
-                        return riskPercentage >= redThreshold ? 'stroke-red-600 dark:stroke-red-500' :
-                          riskPercentage >= orangeThreshold ? 'stroke-orange-500 dark:stroke-orange-400' :
+                        return filledRiskPercentage >= redThreshold ? 'stroke-red-600 dark:stroke-red-500' :
+                          filledRiskPercentage >= orangeThreshold ? 'stroke-orange-500 dark:stroke-orange-400' :
                           'stroke-lime-600 dark:stroke-lime-500';
                       })()
                     }`}
-                    strokeDasharray={`${2 * Math.PI * 40}`}
-                    strokeDashoffset={`${2 * Math.PI * 40 * (1 - Math.min(100, riskPercentage) / 100)}`}
-                    data-testid="bar-risk-fill"
+                    strokeDasharray={`${2 * Math.PI * 36}`}
+                    strokeDashoffset={`${2 * Math.PI * 36 * (1 - Math.min(100, filledRiskPercentage) / 100)}`}
+                    data-testid="bar-filled-risk"
                   />
                 </svg>
                 {/* Centered content */}
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <div className="text-xl font-mono font-bold">{riskPercentage.toFixed(1)}%</div>
-                  <div className="text-xs font-mono font-bold text-red-600 dark:text-red-400 mt-0.5" data-testid="text-risk-amount">
-                    -${totalRisk.toFixed(2)}
+                  <div className="text-sm font-mono text-muted-foreground">Filled</div>
+                  <div className="text-xl font-mono font-bold">{filledRiskPercentage.toFixed(1)}%</div>
+                  <div className="text-[10px] font-mono text-blue-500 dark:text-blue-400 mt-0.5">
+                    Reserved: {reservedRiskPercentage.toFixed(1)}%
                   </div>
                 </div>
               </div>
               
               <div className="text-[10px] text-muted-foreground text-center mt-1">
-                if all SL hit
+                <div>Filled: ${filledRisk.toFixed(2)}</div>
+                <div className="text-blue-500 dark:text-blue-400">Reserved: ${reservedRisk.toFixed(2)}</div>
               </div>
               
               {/* Risk Limit Slider */}

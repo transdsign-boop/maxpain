@@ -84,6 +84,23 @@ export function useStrategyData() {
     staleTime: Infinity, // Never refetch - WebSocket provides updates
   });
 
+  // Fetch portfolio risk metrics from WebSocket cache (updated in real-time)
+  const portfolioRiskQuery = useQuery<any>({
+    queryKey: ['/api/live/positions-summary'],
+    queryFn: async () => {
+      // Fallback HTTP fetch if WebSocket hasn't populated the cache yet
+      const response = await fetch('/api/live/snapshot');
+      if (!response.ok) return null;
+      const data = await response.json();
+      return data?.snapshot?.positionsSummary || null;
+    },
+    staleTime: Infinity,
+    gcTime: Infinity,
+    retry: 1,
+    refetchOnMount: false, // Only fetch on initial mount
+    refetchOnWindowFocus: false, // WebSocket handles updates
+  });
+
   // Fetch strategy changes ONCE (no polling - WebSocket provides updates)
   const strategyChangesQuery = useQuery<any[]>({
     queryKey: ['/api/strategies', activeStrategy?.id, 'changes'],
@@ -339,5 +356,10 @@ export function useStrategyData() {
     fundingFees: fundingFeesQuery.data,
     fundingFeesLoading: fundingFeesQuery.isLoading,
     fundingFeesError: fundingFeesQuery.error,
+
+    // Portfolio risk metrics (filled vs reserved)
+    portfolioRisk: portfolioRiskQuery.data,
+    portfolioRiskLoading: portfolioRiskQuery.isLoading,
+    portfolioRiskError: portfolioRiskQuery.error,
   };
 }
