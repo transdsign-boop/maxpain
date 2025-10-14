@@ -429,7 +429,7 @@ function groupTradesIntoPositions(trades: Array<{
               avgEntryPrice: entryValue / entryQty,
               avgExitPrice: exitValue / exitQty,
               totalQuantity: Math.min(entryQty, exitQty),
-              realizedPnl: totalPnl - totalFees, // NET P&L (gross minus all fees)
+              realizedPnl: totalPnl, // Exchange's realizedPnl already includes fees (net P&L)
               totalFees,
             });
           }
