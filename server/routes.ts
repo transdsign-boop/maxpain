@@ -1501,8 +1501,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         where: eq(strategies.isActive, true)
       });
       
-      // Add manual commission adjustment (for missing historical data from exchange API)
-      const manualAdjustment = activeStrategy?.manualCommissionAdjustment 
+      // Only apply manual adjustment if viewing date range extends before API cutoff date
+      // This prevents double-counting when viewing recent complete data
+      const requestedStartTime = startTime || 0;
+      const apiCutoffDate = result.cutoffDate;
+      const shouldApplyAdjustment = apiCutoffDate && requestedStartTime < apiCutoffDate;
+      
+      const manualAdjustment = (shouldApplyAdjustment && activeStrategy?.manualCommissionAdjustment)
         ? parseFloat(activeStrategy.manualCommissionAdjustment) 
         : 0;
       const adjustedTotal = result.total + manualAdjustment;
@@ -1511,7 +1516,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         records: result.records, 
         total: adjustedTotal,
         apiTotal: result.total,
-        manualAdjustment 
+        manualAdjustment,
+        cutoffDate: apiCutoffDate,
+        adjustmentApplied: shouldApplyAdjustment
       });
     } catch (error: any) {
       console.error('❌ Error fetching commissions:', error);
@@ -1538,8 +1545,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         where: eq(strategies.isActive, true)
       });
       
-      // Add manual funding adjustment (for correcting API vs UI discrepancies)
-      const manualAdjustment = activeStrategy?.manualFundingAdjustment 
+      // Only apply manual adjustment if viewing date range extends before API cutoff date
+      // This prevents double-counting when viewing recent complete data
+      const requestedStartTime = startTime || 0;
+      const apiCutoffDate = result.cutoffDate;
+      const shouldApplyAdjustment = apiCutoffDate && requestedStartTime < apiCutoffDate;
+      
+      const manualAdjustment = (shouldApplyAdjustment && activeStrategy?.manualFundingAdjustment)
         ? parseFloat(activeStrategy.manualFundingAdjustment) 
         : 0;
       const adjustedTotal = result.total + manualAdjustment;
@@ -1548,7 +1560,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         records: result.records, 
         total: adjustedTotal,
         apiTotal: result.total,
-        manualAdjustment 
+        manualAdjustment,
+        cutoffDate: apiCutoffDate,
+        adjustmentApplied: shouldApplyAdjustment
       });
     } catch (error: any) {
       console.error('❌ Error fetching funding fees:', error);
