@@ -6,24 +6,23 @@ The Aster DEX Liquidations Dashboard is a real-time monitoring and trading platf
 ## Recent Changes (October 14, 2025)
 
 ### Trade Consolidation Fix
-Fixed a critical bug where the Completed Trades list was showing only 951 trades instead of all 1,448 historical trades. The issue was in the `/api/strategies/:strategyId/positions/closed` endpoint which was consolidating ALL positions (including historical sync positions from the income API).
+Fixed a critical bug where the Completed Trades list was not showing the exact count of historical P&L events from the income API. The `/api/strategies/:strategyId/positions/closed` endpoint now returns ONLY sync positions (income API P&L events).
 
 **Root Cause:**
-- The API grouped positions by symbol+side and merged positions that opened/closed within 5 seconds
-- This consolidation logic was designed for live DCA trading (multiple layers = one trade)
-- But it was also consolidating sync positions (each representing ONE P&L event from exchange)
-- Result: 1,448 individual trades → 951 "consolidated trades"
+- The API was consolidating ALL positions (including sync positions from income API)
+- Sync positions were being mixed with live trading positions
+- Result: Inconsistent trade count that didn't match income API P&L events
 
 **Solution:**
-- Separated sync positions (quantity=0) from live positions (quantity>0)  
-- Sync positions are now displayed individually without consolidation
-- Only live DCA positions are consolidated (preserving the intended UX)
-- OrderId pattern: Sync positions use `sync-pnl-{tradeId}` format
+- **Completed Trades now shows ONLY sync positions** (from income API P&L events)
+- Each P&L event from the exchange = exactly ONE position in the list
+- Filter by orderId pattern `sync-pnl-{tradeId}` to identify income API positions
+- Excludes old sync positions (sync-entry/sync-exit pattern) and live trading positions
 
 **Impact:**
-- UI now correctly shows all ~1,400+ historical trades from the exchange
+- UI now shows exactly 1,140 trades = exactly 1,140 P&L events from exchange income API
 - Each realized P&L event = exactly ONE position in the Completed Trades list
-- Live DCA positions still consolidate correctly for better UX
+- Live trading positions are excluded from this list
 
 ### Reserved Risk Budget System
 Implemented upfront DCA budget reservation to prevent layer blocking. When a position opens, the system now reserves the FULL potential DCA risk (all 10 layers) upfront, preventing subsequent layers from being blocked by portfolio risk limits.

@@ -4545,66 +4545,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         };
       });
       
-      // Separate sync positions from live positions
-      // Sync positions (from income API) should NOT be consolidated - each represents one P&L event
-      const syncPositions = closedPositionsWithFees.filter(p => 
-        parseFloat(p.totalQuantity || '0') === 0 // Sync positions have quantity=0
-      );
+      // ONLY return sync positions (from income API P&L events)
+      // Each P&L event = ONE position in Completed Trades list
+      // Filter by orderId pattern "sync-pnl-" to exclude old sync positions
+      const syncPositions = closedPositionsWithFees.filter(p => {
+        const positionFills = allFills.filter(f => f.positionId === p.id);
+        return positionFills.some(f => f.orderId.startsWith('sync-pnl-'));
+      });
       
-      const livePositions = closedPositionsWithFees.filter(p => 
-        parseFloat(p.totalQuantity || '0') !== 0 // Live positions have actual quantity
-      );
-      
-      // Consolidate ONLY live positions: Group by symbol+side and merge positions closed within 5 seconds
-      // This treats multiple layer entries/exits as a single trade
-      const consolidatedPositions: any[] = [...syncPositions]; // Start with all sync positions (no consolidation)
-      const positionGroups = new Map<string, any[]>();
-      
-      // Group live positions by symbol and side
-      for (const position of livePositions) {
-        const key = `${position.symbol}-${position.side}`;
-        if (!positionGroups.has(key)) {
-          positionGroups.set(key, []);
-        }
-        positionGroups.get(key)!.push(position);
-      }
-      
-      // For each group, merge positions that opened OR closed within 5 seconds
-      // This consolidates DCA layers that were entered/exited as part of the same trade
-      for (const [key, positions] of positionGroups) {
-        // Sort by open time first (layers often open together)
-        positions.sort((a, b) => new Date(a.openedAt).getTime() - new Date(b.openedAt).getTime());
-        
-        let currentGroup: any[] = [];
-        
-        for (const position of positions) {
-          if (currentGroup.length === 0) {
-            currentGroup.push(position);
-          } else {
-            const lastOpenTime = new Date(currentGroup[currentGroup.length - 1].openedAt).getTime();
-            const currentOpenTime = new Date(position.openedAt).getTime();
-            const lastCloseTime = new Date(currentGroup[currentGroup.length - 1].closedAt).getTime();
-            const currentCloseTime = new Date(position.closedAt).getTime();
-            
-            // If opened within 5 seconds OR closed within 5 seconds, they're part of the same trade
-            const openedTogether = currentOpenTime - lastOpenTime <= 5000;
-            const closedTogether = Math.abs(currentCloseTime - lastCloseTime) <= 5000;
-            
-            if (openedTogether || closedTogether) {
-              currentGroup.push(position);
-            } else {
-              // Consolidate the current group and start a new one
-              consolidatedPositions.push(mergePositionGroup(currentGroup));
-              currentGroup = [position];
-            }
-          }
-        }
-        
-        // Consolidate remaining group
-        if (currentGroup.length > 0) {
-          consolidatedPositions.push(mergePositionGroup(currentGroup));
-        }
-      }
+      const consolidatedPositions: any[] = [...syncPositions]; // Return ONLY sync positions
       
       // Helper function to merge a group of positions into one consolidated position
       function mergePositionGroup(group: any[]) {
