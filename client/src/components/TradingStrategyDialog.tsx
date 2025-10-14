@@ -35,6 +35,7 @@ interface Strategy {
   marginMode: "cross" | "isolated";
   leverage: number;
   orderDelayMs: number;
+  dcaLayerDelayMs: number;
   slippageTolerancePercent: string;
   orderType: "market" | "limit";
   maxRetryDurationMs: number;
@@ -68,6 +69,7 @@ const strategyFormSchema = z.object({
   marginMode: z.enum(["cross", "isolated"]),
   leverage: z.number().min(1).max(125),
   orderDelayMs: z.number().min(100).max(30000),
+  dcaLayerDelayMs: z.number().min(0).max(300000),
   slippageTolerancePercent: z.string().refine((val) => {
     const num = parseFloat(val);
     return !isNaN(num) && num >= 0.1 && num <= 5;
@@ -827,6 +829,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
       marginMode: "cross",
       leverage: 1,
       orderDelayMs: 1000,
+      dcaLayerDelayMs: 30000,
       slippageTolerancePercent: "0.5",
       orderType: "limit",
       maxRetryDurationMs: 30000,
@@ -1005,6 +1008,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         marginMode: strategy.marginMode,
         leverage: strategy.leverage,
         orderDelayMs: strategy.orderDelayMs,
+        dcaLayerDelayMs: strategy.dcaLayerDelayMs,
         slippageTolerancePercent: String(strategy.slippageTolerancePercent),
         orderType: strategy.orderType,
         maxRetryDurationMs: strategy.maxRetryDurationMs,
@@ -1328,6 +1332,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
         marginMode: strategy.marginMode,
         leverage: strategy.leverage,
         orderDelayMs: strategy.orderDelayMs,
+        dcaLayerDelayMs: strategy.dcaLayerDelayMs,
         slippageTolerancePercent: strategy.slippageTolerancePercent,
         orderType: strategy.orderType,
         maxRetryDurationMs: strategy.maxRetryDurationMs,
@@ -2127,11 +2132,45 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                           <span>100ms</span>
                           <span>30s</span>
                         </div>
+                        <FormDescription className="text-xs">
+                          Delay before placing any order
+                        </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
 
+                  <FormField
+                    control={form.control}
+                    name="dcaLayerDelayMs"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel data-testid="label-dca-layer-delay">DCA Layer Delay: {field.value / 1000}s</FormLabel>
+                        <FormControl>
+                          <Slider
+                            data-testid="slider-dca-layer-delay"
+                            min={0}
+                            max={300000}
+                            step={1000}
+                            value={[field.value]}
+                            onValueChange={(value) => field.onChange(value[0])}
+                            disabled={false}
+                          />
+                        </FormControl>
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                          <span>0s (No delay)</span>
+                          <span>5min</span>
+                        </div>
+                        <FormDescription className="text-xs">
+                          Minimum time between DCA layer fills on same symbol
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
                     name="maxRetryDurationMs"
