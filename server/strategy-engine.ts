@@ -575,18 +575,8 @@ export class StrategyEngine extends EventEmitter {
       ? `${session.id}-${liquidation.symbol}-${positionSide}`
       : `${session.id}-${liquidation.symbol}`;
     
-    // CRITICAL FIX: ATOMIC COOLDOWN CHECK - Must happen BEFORE lock acquisition to prevent race condition
-    // Check cooldown FIRST before any processing - this is the first line of defense
+    // Cooldown key for DCA layer delay tracking
     const cooldownKey = `${session.id}-${liquidation.symbol}-${positionSide}`;
-    const lastFill = this.lastFillTime.get(cooldownKey);
-    if (lastFill) {
-      const timeSinceLastFill = Date.now() - lastFill;
-      if (timeSinceLastFill < currentStrategy.dcaLayerDelayMs) {
-        const waitTime = ((currentStrategy.dcaLayerDelayMs - timeSinceLastFill) / 1000).toFixed(1);
-        console.log(`⏸️ COOLDOWN BLOCK (Pre-Lock): ${liquidation.symbol} ${positionSide} - wait ${waitTime}s before processing`);
-        return;
-      }
-    }
     
     // ATOMIC lock acquisition: Try to acquire lock, if already exists, wait and re-evaluate
     const existingLock = this.positionCreationLocks.get(lockKey);
@@ -644,7 +634,23 @@ export class StrategyEngine extends EventEmitter {
     });
     this.positionCreationLocks.set(lockKey, lockPromise);
     
-    // CRITICAL FIX: Set cooldown IMMEDIATELY on lock acquisition to prevent duplicate positions
+    // ATOMIC COOLDOWN CHECK: Check cooldown INSIDE lock to prevent race conditions
+    // This is the ONLY cooldown check - happens after lock acquisition, making it atomic
+    const lastFill = this.lastFillTime.get(cooldownKey);
+    if (lastFill) {
+      const timeSinceLastFill = Date.now() - lastFill;
+      if (timeSinceLastFill < currentStrategy.dcaLayerDelayMs) {
+        const waitTime = ((currentStrategy.dcaLayerDelayMs - timeSinceLastFill) / 1000).toFixed(1);
+        console.log(`⏸️ COOLDOWN BLOCK (Inside Lock): ${liquidation.symbol} ${positionSide} - wait ${waitTime}s before processing`);
+        releaseLock!(); // Release lock before returning
+        setTimeout(() => {
+          this.positionCreationLocks.delete(lockKey);
+        }, 100);
+        return;
+      }
+    }
+    
+    // CRITICAL FIX: Set provisional cooldown AFTER check passes to prevent duplicate positions
     // This prevents queued liquidations from passing cooldown check while we're processing entry
     // If entry fails, we'll clear this cooldown in the catch block
     this.lastFillTime.set(cooldownKey, Date.now());
