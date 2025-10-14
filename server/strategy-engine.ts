@@ -1448,10 +1448,30 @@ export class StrategyEngine extends EventEmitter {
       const stopLossPercent = parseFloat(strategy.stopLossPercent);
       
       // Calculate total potential loss across all UNIQUE positions (use deduplicated array)
+      // CRITICAL: Use FULL DCA SCHEDULE risk, not just filled layers
       const totalPotentialLoss = deduplicatedPositions.reduce((sum, position) => {
         const entryPrice = parseFloat(position.avgEntryPrice);
-        const quantity = Math.abs(parseFloat(position.totalQuantity));
         const isLong = position.side === 'long';
+        
+        // Parse DCA schedule to get FULL potential quantity (all layers)
+        let fullPotentialQuantity = Math.abs(parseFloat(position.totalQuantity)); // Fallback
+        let scheduleSource = 'filled qty';
+        
+        if (position.dcaSchedule) {
+          try {
+            const schedule = typeof position.dcaSchedule === 'string' 
+              ? JSON.parse(position.dcaSchedule) 
+              : position.dcaSchedule;
+            
+            // Calculate full potential quantity if all layers fill: q1 × totalWeight
+            if (schedule.q1 && schedule.totalWeight) {
+              fullPotentialQuantity = schedule.q1 * schedule.totalWeight;
+              scheduleSource = `DCA (${schedule.levels?.length || strategy.maxLayers} layers)`;
+            }
+          } catch (error) {
+            console.warn(`⚠️ Failed to parse DCA schedule for ${position.symbol}:`, error);
+          }
+        }
         
         // Calculate stop loss price based on entry price and strategy SL%
         const stopLossPrice = isLong 
@@ -1463,9 +1483,9 @@ export class StrategyEngine extends EventEmitter {
           ? entryPrice - stopLossPrice
           : stopLossPrice - entryPrice;
         
-        // Calculate total position loss
-        const positionLoss = lossPerUnit * quantity;
-        console.log(`   ${position.symbol}: lossPerUnit=$${lossPerUnit.toFixed(4)}, totalLoss=$${positionLoss.toFixed(2)}`);
+        // Calculate total position loss using FULL potential quantity
+        const positionLoss = lossPerUnit * fullPotentialQuantity;
+        console.log(`   ${position.symbol}: ${scheduleSource}, fullQty=${fullPotentialQuantity.toFixed(4)}, lossPerUnit=$${lossPerUnit.toFixed(4)}, totalLoss=$${positionLoss.toFixed(2)}`);
         return sum + positionLoss;
       }, 0);
       
