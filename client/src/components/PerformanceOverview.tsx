@@ -114,18 +114,15 @@ function PerformanceOverview() {
   } = useStrategyData();
 
   // Fetch commissions and funding fees with date range filtering
-  // Always enforce Oct 1st start date (1759276800000) as minimum
+  // No minimum start date - fetch all historical data unless user specifies a range
   const commissionsQuery = useQuery<{ records: any[]; total: number }>({
     queryKey: ['/api/commissions', dateRange.start?.getTime(), dateRange.end?.getTime()],
     queryFn: async () => {
       const params = new URLSearchParams();
-      // Use Oct 1st as minimum start time
-      const minStartTime = 1759276800000;
-      const effectiveStartTime = dateRange.start 
-        ? Math.max(dateRange.start.getTime(), minStartTime)
-        : minStartTime;
       
-      params.append('startTime', effectiveStartTime.toString());
+      if (dateRange.start) {
+        params.append('startTime', dateRange.start.getTime().toString());
+      }
       
       if (dateRange.end) {
         params.append('endTime', dateRange.end.getTime().toString());
@@ -143,13 +140,10 @@ function PerformanceOverview() {
     queryKey: ['/api/funding-fees', dateRange.start?.getTime(), dateRange.end?.getTime()],
     queryFn: async () => {
       const params = new URLSearchParams();
-      // Use Oct 1st as minimum start time
-      const minStartTime = 1759276800000;
-      const effectiveStartTime = dateRange.start 
-        ? Math.max(dateRange.start.getTime(), minStartTime)
-        : minStartTime;
       
-      params.append('startTime', effectiveStartTime.toString());
+      if (dateRange.start) {
+        params.append('startTime', dateRange.start.getTime().toString());
+      }
       
       if (dateRange.end) {
         params.append('endTime', dateRange.end.getTime().toString());
