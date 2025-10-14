@@ -767,7 +767,8 @@ export async function fetchCommissions(params: {
     const limit = 1000; // Max limit per request
     
     // Paginate forwards from startTime to endTime
-    // Exchange returns newest 1000 events in range, so we move startTime forward after each batch
+    // Exchange returns OLDEST 1000 events in range (ascending order)
+    let batchCount = 0;
     while (true) {
       const timestamp = Date.now();
       const queryParams = `incomeType=COMMISSION&startTime=${currentStartTime}&endTime=${endTime}&limit=${limit}&timestamp=${timestamp}`;
@@ -791,8 +792,12 @@ export async function fetchCommissions(params: {
       }
 
       const batch = await response.json();
+      batchCount++;
+      
+      console.log(`📥 Commission Batch ${batchCount}: Fetched ${batch.length} events (startTime=${currentStartTime}, endTime=${endTime})`);
       
       if (batch.length === 0) {
+        console.log(`🛑 Stopping: Empty batch received`);
         break; // No more records
       }
       
@@ -800,6 +805,7 @@ export async function fetchCommissions(params: {
       
       // If we got fewer records than the limit, we've reached the end
       if (batch.length < limit) {
+        console.log(`🛑 Stopping: Batch size (${batch.length}) < limit (${limit})`);
         break;
       }
       
@@ -807,13 +813,17 @@ export async function fetchCommissions(params: {
       // To get next batch, move startTime to the newest event's timestamp + 1ms
       const newestEventInBatch = batch[batch.length - 1];
       const nextStartTime = newestEventInBatch.time + 1;
+      console.log(`➡️ Next batch: Moving startTime from ${currentStartTime} to ${nextStartTime}`);
       currentStartTime = nextStartTime;
       
       // Stop if we've reached or passed endTime
       if (currentStartTime >= endTime) {
+        console.log(`🛑 Stopping: currentStartTime (${currentStartTime}) >= endTime (${endTime})`);
         break;
       }
     }
+    
+    console.log(`✅ Fetched ${allRecords.length} commission events: Total=$${allRecords.reduce((sum: number, item: any) => sum + Math.abs(parseFloat(item.income || '0')), 0).toFixed(2)}`);
 
     const total = allRecords.reduce((sum: number, item: any) => sum + Math.abs(parseFloat(item.income || '0')), 0);
     
