@@ -98,7 +98,7 @@ export const strategies = pgTable("strategies", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   // DCA (Dollar Cost Averaging) Parameters - at end to match database column order
-  dcaStartStepPercent: decimal("dca_start_step_percent", { precision: 5, scale: 2 }).notNull().default("0.4"), // First DCA layer distance from entry
+  dcaStartStepPercent: decimal("dca_start_step_percent", { precision: 5, scale: 2 }).notNull().default("0.1"), // Layer 1 position size as % of margin (0.1% = $5 notional at 10x leverage with $500 margin)
   dcaSpacingConvexity: decimal("dca_spacing_convexity", { precision: 5, scale: 2 }).notNull().default("1.2"), // Spacing growth between layers (convex)
   dcaSizeGrowth: decimal("dca_size_growth", { precision: 5, scale: 2 }).notNull().default("1.8"), // Position size multiplier per layer
   dcaMaxRiskPercent: decimal("dca_max_risk_percent", { precision: 5, scale: 2 }).notNull().default("1.0"), // Max % of account at risk

@@ -120,28 +120,24 @@ export interface StrategyWithDCA extends Strategy {
  * 
  * @param strategy - The trading strategy configuration (with DCA fields)
  * @param config - DCA configuration (entry price, side, balance, etc.)
- * @param maxRiskOverride - Optional override for max risk % (uses remaining portfolio budget)
  * @returns Complete DCA calculation with levels, sizes, and risk metrics
  */
 export function calculateDCALevels(
   strategy: StrategyWithDCA,
-  config: DCAConfig,
-  maxRiskOverride?: number
+  config: DCAConfig
 ): DCAResult {
   const { entryPrice, side, currentBalance, leverage, atrPercent } = config;
   
   // Extract DCA parameters from strategy
-  const delta1 = parseFloat(strategy.dcaStartStepPercent.toString()); // Δ1: Starting step %
+  const delta1 = parseFloat(strategy.dcaStartStepPercent.toString()); // Δ1: Start Step % (Layer 1 size)
   const p = parseFloat(strategy.dcaSpacingConvexity.toString()); // p: Spacing convexity
   const g = parseFloat(strategy.dcaSizeGrowth.toString()); // g: Size growth ratio
-  const strategyRmax = parseFloat(strategy.dcaMaxRiskPercent.toString()); // Strategy's max risk %
-  const Rmax = maxRiskOverride ?? strategyRmax; // Use override if provided, otherwise use strategy value
   const Vref = parseFloat(strategy.dcaVolatilityRef.toString()); // Vref: Reference volatility %
   const N = strategy.maxLayers; // Number of layers
   const stopLossPercent = parseFloat(strategy.stopLossPercent.toString());
   
   console.log(`\n📐 Calculating DCA levels for ${side.toUpperCase()} at $${entryPrice}`);
-  console.log(`   Parameters: Δ1=${delta1}%, p=${p}, g=${g}, Rmax=${Rmax}%${maxRiskOverride ? ' (OVERRIDE)' : ''}, N=${N}`);
+  console.log(`   Parameters: Δ1=${delta1}% (Layer 1 size), p=${p}, g=${g}, N=${N}`);
   console.log(`   Volatility: ATR=${atrPercent.toFixed(2)}%, Vref=${Vref}%`);
   
   // Step 1: Calculate volatility-scaled, widening level distances
@@ -193,23 +189,23 @@ export function calculateDCALevels(
   
   console.log(`   Stop loss: $${stopPrice.toFixed(4)} (${stopLossPercent}%)`);
   
-  // Step 6: Solve for q1 (base position size) from max risk
-  // L ≈ Σ[qk] · |Pavg - Ps|
-  // q1 = (Rmax · Equity) / (|Pavg - Ps| · Σ[wk])
+  // Step 6: Calculate q1 (base position size) from Start Step %
+  // Layer 1 size = (Balance × Margin% × StartStep%) × Leverage / EntryPrice
+  // This ensures consistent position sizing based on Start Step %, not max risk
   
-  // Calculate available capital for DCA
   const marginPercent = parseFloat(strategy.marginAmount.toString());
-  const availableCapital = (marginPercent / 100) * currentBalance;
-  const maxRiskDollars = (Rmax / 100) * currentBalance; // Risk on entire account, not just available margin
+  const marginToUse = (currentBalance * marginPercent / 100) * (delta1 / 100); // Start Step % of margin
+  const notionalValue = marginToUse * leverage; // Apply leverage for notional
+  let q1 = notionalValue / entryPrice; // Convert to quantity
   
-  // Dollar loss per unit size at stop
-  let lossPerUnit = Math.abs(avgEntryPrice - stopPrice);
+  console.log(`   💵 Layer 1 sizing: margin=$${marginToUse.toFixed(2)} (${delta1}% of ${marginPercent}% margin), leveraged=$${notionalValue.toFixed(2)}, q1=${q1.toFixed(6)} units`);
   
-  // Solve for q1 in base currency (not notional)
-  // We need to account for leverage: notional = baseSize * price * leverage
-  // Loss = totalQuantity * |avgPrice - stopPrice|
-  // totalQuantity = Σ[qk] = q1 * Σ[wk]
-  let q1 = maxRiskDollars / (lossPerUnit * totalWeight);
+  // Calculate risk metrics (for reporting, not for sizing)
+  const lossPerUnit = Math.abs(avgEntryPrice - stopPrice);
+  const totalPositionRisk = q1 * totalWeight * lossPerUnit; // Actual risk dollars for this position
+  const riskPercent = (totalPositionRisk / currentBalance) * 100; // Risk as % of account
+  
+  console.log(`   📊 Position risk: $${totalPositionRisk.toFixed(2)} (${riskPercent.toFixed(2)}% of account)`);
   
   // CRITICAL: Ensure Layer 1 meets exchange minimum notional
   // If q1 needs to be scaled up, we must reduce growth factor to maintain risk cap
@@ -263,8 +259,8 @@ export function calculateDCALevels(
     
     console.log(`   ⚠️ Layer 1 notional $${layer1Notional.toFixed(2)} < $${MIN_NOTIONAL} minimum (exchange requirement)`);
     console.log(`   📈 Adjusted q1: ${oldQ1.toFixed(6)} → ${q1.toFixed(6)} units to meet minimum`);
-    console.log(`   📉 Reduced growth factor: ${g.toFixed(3)}x → ${effectiveG.toFixed(3)}x to maintain ${Rmax}% risk cap`);
-    console.log(`   ✅ Total weight adjusted: ${totalWeight.toFixed(2)} → ${targetTotalWeight.toFixed(2)} to preserve risk`);
+    console.log(`   📉 Reduced growth factor: ${g.toFixed(3)}x → ${effectiveG.toFixed(3)}x to maintain position safety`);
+    console.log(`   ✅ Total weight adjusted: ${totalWeight.toFixed(2)} → ${targetTotalWeight.toFixed(2)}`);
     
     // Recalculate weights and total weight with new growth factor
     weights.length = 0; // Clear array
@@ -290,19 +286,13 @@ export function calculateDCALevels(
     totalWeight = newTotalWeight;
     avgEntryPrice = newAvgEntryPrice;
     
-    // Recalculate loss per unit with new average entry price
-    lossPerUnit = Math.abs(avgEntryPrice - stopPrice);
-    console.log(`   🔄 Recalculated loss per unit: $${lossPerUnit.toFixed(4)}`);
+    // Recalculate risk metrics with new values
+    const newLossPerUnit = Math.abs(avgEntryPrice - stopPrice);
+    const newTotalRisk = q1 * totalWeight * newLossPerUnit;
+    const newRiskPercent = (newTotalRisk / currentBalance) * 100;
     
-    // VERIFICATION: Check that total risk is still within cap
-    const verifyTotalRisk = q1 * totalWeight * lossPerUnit;
-    console.log(`   ✅ VERIFIED total risk: $${verifyTotalRisk.toFixed(2)} (cap: $${maxRiskDollars.toFixed(2)}) - ${verifyTotalRisk <= maxRiskDollars ? 'PASS' : 'FAIL'}`);
+    console.log(`   🔄 Recalculated position risk: $${newTotalRisk.toFixed(2)} (${newRiskPercent.toFixed(2)}% of account)`);
   }
-  
-  console.log(`   Available capital: $${availableCapital.toFixed(2)}`);
-  console.log(`   Max risk: $${maxRiskDollars.toFixed(2)} (${Rmax}% of account)`);
-  console.log(`   Loss per unit at stop: $${lossPerUnit.toFixed(4)}`);
-  console.log(`   Solved q1: ${q1.toFixed(6)} units`);
   
   // Step 7: Calculate position sizes for each level with individual TP/SL
   // qk = q1 · g^(k-1)
@@ -411,13 +401,17 @@ export function calculateDCALevels(
     console.log(`   TP distance: $${tpDistance.toFixed(4)} (${(tpDistance/avgEntryPrice*100).toFixed(2)}%)\n`);
   }
   
+  // Calculate final position risk for reporting
+  const finalLossPerUnit = Math.abs(avgEntryPrice - stopPrice);
+  const finalTotalRisk = q1 * totalWeight * finalLossPerUnit;
+  
   return {
     levels: dcaLevels,
     q1,
     weightedAvgPrice: avgEntryPrice,
     stopLossPrice: stopPrice,
     takeProfitPrice,
-    totalRiskDollars: maxRiskDollars,
+    totalRiskDollars: finalTotalRisk, // Actual position risk, not max risk budget
     maxNotional: totalNotional,
     effectiveGrowthFactor: effectiveG,
     growthFactorAdjusted,
@@ -608,7 +602,7 @@ export async function calculateNextLayer(
     currentBalance,
     leverage,
     atrPercent,
-  }, maxRiskOverride);
+  });
   
   // Get the next level's price, quantity, and TP/SL
   const nextLevel = dcaResult.levels[nextLayer - 1];

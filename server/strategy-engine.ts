@@ -840,7 +840,7 @@ export class StrategyEngine extends EventEmitter {
       
       const minNotional = symbolPrecision.minNotional;
       
-      // Calculate DCA levels for prospective entry with risk override if needed
+      // Calculate DCA levels (position sized by Start Step %, not max risk)
       const dcaResult = calculateDCALevels(fullStrategy, {
         entryPrice: price,
         side: positionSide as 'long' | 'short',
@@ -848,7 +848,7 @@ export class StrategyEngine extends EventEmitter {
         leverage: strategy.leverage,
         atrPercent,
         minNotional,
-      }, effectiveMaxRisk < strategyMaxRisk ? effectiveMaxRisk : undefined);
+      });
       
       // Get total risk from DCA calculation (this is the max risk across all layers)
       const newPositionRiskDollars = dcaResult.totalRiskDollars;
