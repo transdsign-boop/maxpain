@@ -233,6 +233,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // DEBUG: Query all positions and HYPE specifically (temporary for investigation)
+  app.get("/api/debug/hype-positions", async (req, res) => {
+    try {
+      // Query all positions to see total count
+      const allPositions = await db.select().from(positions);
+      
+      // Query just HYPE positions
+      const allHype = await db.select().from(positions)
+        .where(eq(positions.symbol, 'HYPEUSDT'))
+        .orderBy(desc(positions.openedAt));
+      
+      // Query open HYPE positions
+      const openHype = await db.select().from(positions)
+        .where(sql`symbol = 'HYPEUSDT' AND is_open = true`)
+        .orderBy(desc(positions.openedAt));
+      
+      res.json({
+        totalPositions: allPositions.length,
+        totalHype: allHype.length,
+        openHype: openHype.length,
+        hypePositions: allHype.slice(0, 5), // Show first 5
+        openHypePositions: openHype
+      });
+    } catch (error) {
+      console.error('❌ Failed to query HYPE positions:', error);
+      res.status(500).json({ error: "Query failed", message: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
   // Repair P&L and fees for all closed positions using corrected logic
   app.post("/api/admin/repair-pnl-and-fees", async (req, res) => {
     try {
