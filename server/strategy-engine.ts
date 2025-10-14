@@ -2722,7 +2722,6 @@ export class StrategyEngine extends EventEmitter {
           leverage: params.strategy.leverage,
           maxPortfolioRiskPercent: params.strategy.maxPortfolioRiskPercent,
           maxOpenPositions: params.strategy.maxOpenPositions,
-          riskLevel: params.strategy.riskLevel,
           isActive: params.strategy.isActive,
         },
       };

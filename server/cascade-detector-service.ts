@@ -325,12 +325,11 @@ class CascadeDetectorService {
       // Rotating OI fetch (N API calls where N = oiSymbolsPerTick)
       await this.rotatingOIFetch();
       
-      // Get RET thresholds and risk level from active strategy (same for all symbols)
+      // Get RET thresholds from active strategy (same for all symbols)
       const strategies = await storage.getAllActiveStrategies();
       const activeStrategy = strategies[0];
       const retHighThreshold = activeStrategy ? parseFloat(activeStrategy.retHighThreshold) : 35;
       const retMediumThreshold = activeStrategy ? parseFloat(activeStrategy.retMediumThreshold) : 25;
-      const riskLevel = activeStrategy?.riskLevel ?? 3; // Default to balanced
 
       const allStatuses = [];
 
@@ -348,8 +347,8 @@ class CascadeDetectorService {
         const oi = data.lastOI;
         const oiAge = Date.now() - data.lastOIUpdate;
 
-        // Update detector for this symbol (with risk level)
-        const status = detector.ingestTick(liqInfo.notional, ret1s, oi, retSideMatchesLiq, retHighThreshold, retMediumThreshold, riskLevel);
+        // Update detector for this symbol
+        const status = detector.ingestTick(liqInfo.notional, ret1s, oi, retSideMatchesLiq, retHighThreshold, retMediumThreshold);
 
         allStatuses.push(status);
 
@@ -371,7 +370,7 @@ class CascadeDetectorService {
         
         // Only log if there's significant activity or excellent quality
         // Ultra-minimal logging: only show when liquidations are substantial or quality is excellent
-        if (liqInfo.notional > 100000 || status.quality === 'excellent') {
+        if (liqInfo.notional > 100000 || status.rq_bucket === 'excellent') {
           console.log(`📊 Cascade [${symbol}]: ${csvLog}`);
         }
       }
