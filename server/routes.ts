@@ -4545,13 +4545,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         };
       });
       
-      // Consolidate positions: Group by symbol+side and merge positions closed within 30 seconds of each other
+      // Separate sync positions from live positions
+      // Sync positions (from income API) should NOT be consolidated - each represents one P&L event
+      const syncPositions = closedPositionsWithFees.filter(p => 
+        parseFloat(p.totalQuantity || '0') === 0 // Sync positions have quantity=0
+      );
+      
+      const livePositions = closedPositionsWithFees.filter(p => 
+        parseFloat(p.totalQuantity || '0') !== 0 // Live positions have actual quantity
+      );
+      
+      // Consolidate ONLY live positions: Group by symbol+side and merge positions closed within 5 seconds
       // This treats multiple layer entries/exits as a single trade
-      const consolidatedPositions: any[] = [];
+      const consolidatedPositions: any[] = [...syncPositions]; // Start with all sync positions (no consolidation)
       const positionGroups = new Map<string, any[]>();
       
-      // Group positions by symbol and side
-      for (const position of closedPositionsWithFees) {
+      // Group live positions by symbol and side
+      for (const position of livePositions) {
         const key = `${position.symbol}-${position.side}`;
         if (!positionGroups.has(key)) {
           positionGroups.set(key, []);
