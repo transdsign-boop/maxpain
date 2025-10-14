@@ -32,7 +32,6 @@ interface TradeEntryError {
     leverage: number;
     maxPortfolioRiskPercent: string;
     maxOpenPositions: number;
-    riskLevel: string;
     isActive: boolean;
   };
 }
