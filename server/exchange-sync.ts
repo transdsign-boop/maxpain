@@ -828,10 +828,8 @@ export async function fetchCommissions(params: {
 
     const total = allRecords.reduce((sum: number, item: any) => sum + Math.abs(parseFloat(item.income || '0')), 0);
     
-    // Find the oldest (earliest) timestamp in the records - this is the API cutoff date
-    const cutoffDate = allRecords.length > 0 
-      ? Math.min(...allRecords.map((r: any) => r.time))
-      : undefined;
+    // Find the oldest (earliest) timestamp - since records are in ASCENDING order, it's the first record
+    const cutoffDate = allRecords.length > 0 ? allRecords[0].time : undefined;
     
     return { success: true, records: allRecords, total, cutoffDate };
   } catch (error) {
@@ -848,6 +846,59 @@ export async function getTotalCommissions(): Promise<{
 }> {
   const result = await fetchCommissions({});
   return { success: result.success, total: result.total, error: result.error };
+}
+
+// Cached global cutoff dates (earliest timestamp from API)
+let cachedCommissionCutoff: number | null = null;
+let cachedFundingCutoff: number | null = null;
+
+// Get global commission cutoff date (cached, fetches once then reuses)
+export async function getGlobalCommissionCutoff(): Promise<number | undefined> {
+  if (cachedCommissionCutoff !== null) {
+    console.log(`✅ Using cached commission cutoff: ${new Date(cachedCommissionCutoff).toISOString()}`);
+    return cachedCommissionCutoff;
+  }
+  
+  // Fetch ALL data from the beginning to get the true global cutoff
+  const result = await fetchCommissions({ startTime: 0, endTime: Date.now() });
+  
+  if (result.success && result.records.length > 0) {
+    // The first record in ascending order is the oldest (global cutoff)
+    cachedCommissionCutoff = result.records[0].time;
+    console.log(`📌 Global commission cutoff cached: ${new Date(cachedCommissionCutoff).toISOString()}`);
+    return cachedCommissionCutoff;
+  }
+  
+  console.log(`⚠️ No commission records found, cutoff remains undefined`);
+  return undefined;
+}
+
+// Get global funding cutoff date (cached, fetches once then reuses)
+export async function getGlobalFundingCutoff(): Promise<number | undefined> {
+  if (cachedFundingCutoff !== null) {
+    console.log(`✅ Using cached funding cutoff: ${new Date(cachedFundingCutoff).toISOString()}`);
+    return cachedFundingCutoff;
+  }
+  
+  // Fetch ALL data from the beginning to get the true global cutoff
+  const result = await fetchFundingFees({ startTime: 0, endTime: Date.now() });
+  
+  if (result.success && result.records.length > 0) {
+    // The first record in ascending order is the oldest (global cutoff)
+    cachedFundingCutoff = result.records[0].time;
+    console.log(`📌 Global funding cutoff cached: ${new Date(cachedFundingCutoff).toISOString()}`);
+    return cachedFundingCutoff;
+  }
+  
+  console.log(`⚠️ No funding records found, cutoff remains undefined`);
+  return undefined;
+}
+
+// Manually refresh cached cutoff dates (useful for testing or after data changes)
+export function refreshCutoffCache() {
+  cachedCommissionCutoff = null;
+  cachedFundingCutoff = null;
+  console.log('🔄 Cutoff cache cleared');
 }
 
 // Fetch funding fees from exchange with optional date range
@@ -925,10 +976,8 @@ export async function fetchFundingFees(params: {
 
     const total = allRecords.reduce((sum: number, item: any) => sum + parseFloat(item.income || '0'), 0);
     
-    // Find the oldest (earliest) timestamp in the records - this is the API cutoff date
-    const cutoffDate = allRecords.length > 0 
-      ? Math.min(...allRecords.map((r: any) => r.time))
-      : undefined;
+    // Find the oldest (earliest) timestamp - since records are in ASCENDING order, it's the first record
+    const cutoffDate = allRecords.length > 0 ? allRecords[0].time : undefined;
     
     return { success: true, records: allRecords, total, cutoffDate };
   } catch (error) {

@@ -1485,7 +1485,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get commissions from exchange with optional date range
   app.get("/api/commissions", async (req, res) => {
     try {
-      const { fetchCommissions } = await import('./exchange-sync');
+      const { fetchCommissions, getGlobalCommissionCutoff } = await import('./exchange-sync');
       
       const startTime = req.query.startTime ? parseInt(req.query.startTime as string) : undefined;
       const endTime = req.query.endTime ? parseInt(req.query.endTime as string) : undefined;
@@ -1501,11 +1501,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         where: eq(strategies.isActive, true)
       });
       
-      // Only apply manual adjustment if viewing date range extends before API cutoff date
+      // Get the GLOBAL API cutoff date (cached, fetched once)
+      const globalCutoffDate = await getGlobalCommissionCutoff();
+      
+      // Only apply manual adjustment if viewing date range extends before GLOBAL API cutoff date
       // This prevents double-counting when viewing recent complete data
       const requestedStartTime = startTime || 0;
-      const apiCutoffDate = result.cutoffDate;
-      const shouldApplyAdjustment = apiCutoffDate && requestedStartTime < apiCutoffDate;
+      const shouldApplyAdjustment = globalCutoffDate && requestedStartTime < globalCutoffDate;
       
       const manualAdjustment = (shouldApplyAdjustment && activeStrategy?.manualCommissionAdjustment)
         ? parseFloat(activeStrategy.manualCommissionAdjustment) 
@@ -1517,7 +1519,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         total: adjustedTotal,
         apiTotal: result.total,
         manualAdjustment,
-        cutoffDate: apiCutoffDate,
+        cutoffDate: globalCutoffDate,
         adjustmentApplied: shouldApplyAdjustment
       });
     } catch (error: any) {
@@ -1529,7 +1531,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get funding fees from exchange with optional date range
   app.get("/api/funding-fees", async (req, res) => {
     try {
-      const { fetchFundingFees } = await import('./exchange-sync');
+      const { fetchFundingFees, getGlobalFundingCutoff } = await import('./exchange-sync');
       
       const startTime = req.query.startTime ? parseInt(req.query.startTime as string) : undefined;
       const endTime = req.query.endTime ? parseInt(req.query.endTime as string) : undefined;
@@ -1545,11 +1547,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         where: eq(strategies.isActive, true)
       });
       
-      // Only apply manual adjustment if viewing date range extends before API cutoff date
+      // Get the GLOBAL API cutoff date (cached, fetched once)
+      const globalCutoffDate = await getGlobalFundingCutoff();
+      
+      // Only apply manual adjustment if viewing date range extends before GLOBAL API cutoff date
       // This prevents double-counting when viewing recent complete data
       const requestedStartTime = startTime || 0;
-      const apiCutoffDate = result.cutoffDate;
-      const shouldApplyAdjustment = apiCutoffDate && requestedStartTime < apiCutoffDate;
+      const shouldApplyAdjustment = globalCutoffDate && requestedStartTime < globalCutoffDate;
       
       const manualAdjustment = (shouldApplyAdjustment && activeStrategy?.manualFundingAdjustment)
         ? parseFloat(activeStrategy.manualFundingAdjustment) 
@@ -1561,7 +1565,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         total: adjustedTotal,
         apiTotal: result.total,
         manualAdjustment,
-        cutoffDate: apiCutoffDate,
+        cutoffDate: globalCutoffDate,
         adjustmentApplied: shouldApplyAdjustment
       });
     } catch (error: any) {
