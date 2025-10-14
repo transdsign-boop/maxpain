@@ -1496,7 +1496,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(500).json({ error: result.error, records: [], total: 0 });
       }
       
-      res.json({ records: result.records, total: result.total });
+      // Get active strategy for manual adjustment
+      const activeStrategy = await db.query.strategies.findFirst({
+        where: eq(strategies.isActive, true)
+      });
+      
+      // Add manual commission adjustment (for missing historical data from exchange API)
+      const manualAdjustment = activeStrategy?.manualCommissionAdjustment 
+        ? parseFloat(activeStrategy.manualCommissionAdjustment) 
+        : 0;
+      const adjustedTotal = result.total + manualAdjustment;
+      
+      res.json({ 
+        records: result.records, 
+        total: adjustedTotal,
+        apiTotal: result.total,
+        manualAdjustment 
+      });
     } catch (error: any) {
       console.error('❌ Error fetching commissions:', error);
       res.status(500).json({ error: `Failed to fetch commissions: ${error.message}`, records: [], total: 0 });
@@ -1517,7 +1533,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(500).json({ error: result.error, records: [], total: 0 });
       }
       
-      res.json({ records: result.records, total: result.total });
+      // Get active strategy for manual adjustment
+      const activeStrategy = await db.query.strategies.findFirst({
+        where: eq(strategies.isActive, true)
+      });
+      
+      // Add manual funding adjustment (for correcting API vs UI discrepancies)
+      const manualAdjustment = activeStrategy?.manualFundingAdjustment 
+        ? parseFloat(activeStrategy.manualFundingAdjustment) 
+        : 0;
+      const adjustedTotal = result.total + manualAdjustment;
+      
+      res.json({ 
+        records: result.records, 
+        total: adjustedTotal,
+        apiTotal: result.total,
+        manualAdjustment 
+      });
     } catch (error: any) {
       console.error('❌ Error fetching funding fees:', error);
       res.status(500).json({ error: `Failed to fetch funding fees: ${error.message}`, records: [], total: 0 });
