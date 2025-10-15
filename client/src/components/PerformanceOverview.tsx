@@ -553,29 +553,35 @@ function PerformanceOverview() {
     const totalRealizedPnl = filteredPnlEvents.reduce((sum, e) => sum + parseFloat(e.income || '0'), 0);
     
     // Calculate max drawdown from filtered data (using sourceChartData which is already filtered)
+    // This calculates peak-to-trough within the selected timeframe
     let maxDrawdown = 0;
     let maxDrawdownPercent = 0;
-    let peak = -Infinity;
+    let peakValue = -Infinity;
+    let peakForPercentage = 0;
     
     sourceChartData.forEach(trade => {
-      // Initialize peak from first data point
-      if (peak === -Infinity) {
-        peak = trade.cumulativePnl;
+      // Track the peak cumulative P&L in this timeframe
+      if (peakValue === -Infinity) {
+        peakValue = trade.cumulativePnl;
+        peakForPercentage = Math.max(Math.abs(trade.cumulativePnl), totalDeposited); // Use absolute peak or deposits
       }
       
-      if (trade.cumulativePnl > peak) {
-        peak = trade.cumulativePnl;
+      if (trade.cumulativePnl > peakValue) {
+        peakValue = trade.cumulativePnl;
+        peakForPercentage = Math.max(Math.abs(peakValue), totalDeposited);
       }
       
-      const drawdown = peak - trade.cumulativePnl;
+      // Calculate drawdown from peak
+      const drawdown = peakValue - trade.cumulativePnl;
       if (drawdown > maxDrawdown) {
         maxDrawdown = drawdown;
       }
     });
     
-    // Calculate drawdown as percentage of total deposited capital (not peak P&L)
-    // This gives a meaningful percentage that updates with new deposits
-    maxDrawdownPercent = totalDeposited > 0 ? (maxDrawdown / totalDeposited) * 100 : 0;
+    // Calculate percentage based on the peak value in this timeframe
+    // If peak is positive, use it; otherwise use total deposits as baseline
+    const baseForPercentage = peakValue > 0 ? peakValue : totalDeposited;
+    maxDrawdownPercent = baseForPercentage > 0 ? (maxDrawdown / baseForPercentage) * 100 : 0;
     
     // Calculate average trade time from filtered closed positions
     let avgTradeTimeMs = 0;
