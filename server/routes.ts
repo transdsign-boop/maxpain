@@ -9,7 +9,7 @@ import { strategyEngine } from "./strategy-engine";
 import { cascadeDetectorService } from "./cascade-detector-service";
 import { wsBroadcaster } from "./websocket-broadcaster";
 import { liveDataOrchestrator } from "./live-data-orchestrator";
-import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySchema, updateStrategySchema, type Position, type Fill, type Liquidation, type InsertFill, positions, strategies, transfers, fills } from "@shared/schema";
+import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySchema, updateStrategySchema, type Position, type Fill, type Liquidation, type InsertFill, positions, strategies, transfers, fills, tradeSessions } from "@shared/schema";
 import { db } from "./db";
 import { desc, eq, sql } from "drizzle-orm";
 import { fetchRealizedPnlEvents, fetchAllAccountTrades } from "./exchange-sync";
@@ -4749,10 +4749,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get closed positions (completed trades) for a strategy
   app.get('/api/strategies/:strategyId/positions/closed', async (req, res) => {
     try {
-      const { strategyId } = req.params;
+      let { strategyId } = req.params;
       
-      // Get the strategy to check trading mode
-      const strategy = await storage.getStrategy(strategyId);
+      // FLEXIBLE ID RESOLUTION: Accept both strategy ID and session ID
+      // If ID is a session ID, resolve to its strategy ID
+      let strategy = await storage.getStrategy(strategyId);
+      if (!strategy) {
+        // Check if this might be a session ID
+        const sessionResult = await db.select().from(tradeSessions).where(eq(tradeSessions.id, strategyId)).limit(1);
+        if (sessionResult.length > 0) {
+          strategyId = sessionResult[0].strategyId;
+          strategy = await storage.getStrategy(strategyId);
+        }
+      }
+      
       if (!strategy) {
         return res.status(404).json({ error: 'Strategy not found' });
       }
