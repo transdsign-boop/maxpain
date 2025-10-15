@@ -260,29 +260,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Get fills directly linked to this position
           let allFills = await storage.getFillsByPosition(position.id);
           
-          // MATCHING LOGIC: If no fills found by positionId, search by symbol/side/timestamp
-          if (allFills.length === 0 && position.closedAt) {
-            // Search window: ±2 hours around position close time
-            const searchWindow = 2 * 60 * 60 * 1000; // 2 hours in ms
+          // Filter out synthetic P&L fills (orderId starts with "sync-pnl-" or has zero qty/price)
+          const realFills = allFills.filter(f => 
+            !f.orderId.startsWith('sync-pnl-') && 
+            parseFloat(f.quantity) > 0
+          );
+          
+          // MATCHING LOGIC: If no REAL fills found, search by symbol/side/timestamp
+          if (realFills.length === 0 && position.closedAt) {
+            // Search window: ±7 days around position close time (wide window for P&L sync timing differences)
+            const searchWindow = 7 * 24 * 60 * 60 * 1000; // 7 days in ms
             const startTime = new Date(position.closedAt.getTime() - searchWindow);
             const endTime = new Date(position.closedAt.getTime() + searchWindow);
             
             // Entry side for searching: LONG = buy fills, SHORT = sell fills
             const entrySide = position.side === 'long' ? 'buy' : 'sell';
             
-            allFills = await storage.searchFillsBySymbolSide(
+            const searchedFills = await storage.searchFillsBySymbolSide(
               position.symbol,
               entrySide,
               startTime,
               endTime
             );
             
+            // Filter out synthetic fills from search results too
+            allFills = searchedFills.filter(f => 
+              !f.orderId.startsWith('sync-pnl-') && 
+              parseFloat(f.quantity) > 0
+            );
+            
             if (totalProcessed <= 5 && allFills.length > 0) {
-              console.log(`🔗 Matched ${allFills.length} fills for P&L position: ${position.symbol} ${position.side}`);
+              console.log(`🔗 Matched ${allFills.length} real fills for P&L position: ${position.symbol} ${position.side}`);
             }
+          } else {
+            // Use the real fills we already filtered
+            allFills = realFills;
           }
           
-          // Count entry fills
+          // Count entry fills from real fills only
           let entryFills: Fill[] = [];
           
           // Try counting entry fills with layerNumber > 0 first
