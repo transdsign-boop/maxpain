@@ -86,7 +86,7 @@ export default function TradeErrorsDialog({ open, onOpenChange }: TradeErrorsDia
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col" data-testid="dialog-trade-errors">
+      <DialogContent className="max-w-4xl h-[80vh] flex flex-col" data-testid="dialog-trade-errors">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <AlertCircle className="w-5 h-5 text-orange-400" />
@@ -97,7 +97,7 @@ export default function TradeErrorsDialog({ open, onOpenChange }: TradeErrorsDia
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex gap-3 py-2">
+        <div className="flex gap-3 py-2 shrink-0">
           <Select value={symbolFilter} onValueChange={setSymbolFilter}>
             <SelectTrigger className="w-[200px]" data-testid="select-symbol-filter">
               <SelectValue placeholder="Filter by symbol" />
@@ -127,7 +127,7 @@ export default function TradeErrorsDialog({ open, onOpenChange }: TradeErrorsDia
           </div>
         </div>
 
-        <ScrollArea className="flex-1 -mx-6 px-6">
+        <ScrollArea className="flex-1 min-h-0 -mx-6 px-6">
           {isLoading ? (
             <div className="flex items-center justify-center py-8 text-muted-foreground">
               Loading errors...
