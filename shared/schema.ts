@@ -203,26 +203,6 @@ export const positions = pgTable("positions", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-// Position Layers - Individual DCA layer tracking for progressive take-profit
-export const positionLayers = pgTable("position_layers", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  positionId: varchar("position_id").notNull(), // References positions.id
-  layerNumber: integer("layer_number").notNull(),
-  entryPrice: decimal("entry_price", { precision: 18, scale: 8 }).notNull(),
-  quantity: decimal("quantity", { precision: 18, scale: 8 }).notNull(),
-  cost: decimal("cost", { precision: 18, scale: 8 }).notNull(), // Margin used for this layer
-  takeProfitPrice: decimal("take_profit_price", { precision: 18, scale: 8 }).notNull(),
-  stopLossPrice: decimal("stop_loss_price", { precision: 18, scale: 8 }).notNull(),
-  tpOrderId: varchar("tp_order_id"), // Exchange order ID for layer's TP LIMIT order
-  slOrderId: varchar("sl_order_id"), // Exchange order ID for layer's SL STOP_MARKET order
-  isOpen: boolean("is_open").notNull().default(true),
-  realizedPnl: decimal("realized_pnl", { precision: 18, scale: 8 }).notNull().default("0.0"),
-  closedAt: timestamp("closed_at"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-}, (table) => ({
-  // Ensure each position has unique layer numbers
-  uniquePositionLayer: unique().on(table.positionId, table.layerNumber),
-}));
 
 // Schema exports for strategies
 export const insertStrategySchema = createInsertSchema(strategies).omit({
@@ -359,15 +339,6 @@ export const insertPositionSchema = createInsertSchema(positions).omit({
 export type InsertPosition = z.infer<typeof insertPositionSchema>;
 export type Position = typeof positions.$inferSelect;
 
-// Schema exports for position layers
-export const insertPositionLayerSchema = createInsertSchema(positionLayers).omit({
-  id: true,
-  createdAt: true,
-  closedAt: true,
-});
-
-export type InsertPositionLayer = z.infer<typeof insertPositionLayerSchema>;
-export type PositionLayer = typeof positionLayers.$inferSelect;
 
 // Strategy Changes (track modifications to running strategies)
 export const strategyChanges = pgTable("strategy_changes", {
