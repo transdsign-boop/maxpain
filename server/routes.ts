@@ -3115,8 +3115,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         sessionFills.push(...fills);
       }
       
-      // Filter for closed positions only
-      let closedPositions = allPositions.filter(p => p.isOpen === false && p.closedAt);
+      // Filter for closed positions only, excluding positions with ONLY synthetic fills
+      let closedPositions = allPositions
+        .filter(p => p.isOpen === false && p.closedAt)
+        .filter(p => {
+          const positionFills = sessionFills.filter(f => f.positionId === p.id);
+          // Exclude positions that ONLY have synthetic fills (should be none after cleanup)
+          const hasOnlySyntheticFills = positionFills.length > 0 && 
+            positionFills.every(f => f.orderId.startsWith('sync-pnl-'));
+          return !hasOnlySyntheticFills; // Return positions with real fills or no fills
+        });
       
       closedPositions = closedPositions.sort((a, b) => new Date(a.closedAt!).getTime() - new Date(b.closedAt!).getTime());
 
