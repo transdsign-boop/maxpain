@@ -128,7 +128,6 @@ export interface IStorage {
   getFillsByOrder(orderId: string): Promise<Fill[]>;
   getFillsByPosition(positionId: string): Promise<Fill[]>;
   getRecentFills(symbol: string, since: Date): Promise<Fill[]>;
-  searchFillsBySymbolSide(symbol: string, side: string, startTime: Date, endTime: Date): Promise<Fill[]>;
   clearFillsBySession(sessionId: string): Promise<void>;
 
   // Position operations
@@ -686,17 +685,6 @@ export class DatabaseStorage implements IStorage {
       .where(and(
         eq(fills.symbol, symbol),
         gte(fills.filledAt, since)
-      ))
-      .orderBy(desc(fills.filledAt));
-  }
-
-  async searchFillsBySymbolSide(symbol: string, side: string, startTime: Date, endTime: Date): Promise<Fill[]> {
-    return await db.select().from(fills)
-      .where(and(
-        eq(fills.symbol, symbol),
-        eq(fills.side, side),
-        gte(fills.filledAt, startTime),
-        lte(fills.filledAt, endTime)
       ))
       .orderBy(desc(fills.filledAt));
   }
