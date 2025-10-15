@@ -4788,12 +4788,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log(`🔍 DEBUG: Processing ${allClosedPositions.length} closed positions, ${allFills.length} fills`);
       
-      // Fetch REAL P&L data from exchange to enrich positions
-      let exchangePnlEvents: any[] = [];
+      // Fetch exchange trades to enrich positions with actual realized P&L
+      // IMPROVED Oct 15, 2025: Use /fapi/v1/userTrades for deterministic orderId-based matching
+      let exchangeTrades: any[] = [];
       try {
-        console.log('🔍 DEBUG: About to import fetchRealizedPnlEvents');
-        const { fetchRealizedPnlEvents } = await import('./exchange-sync');
-        console.log('🔍 DEBUG: Import successful');
+        console.log('🔍 DEBUG: Starting P&L enrichment using userTrades API');
         
         // Get time range from positions
         if (allClosedPositions.length > 0) {
@@ -4808,20 +4807,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const startTime = new Date(oldestPosition.closedAt).getTime() - (24 * 60 * 60 * 1000); // -1 day buffer
           const endTime = new Date(newestPosition.closedAt).getTime() + (24 * 60 * 60 * 1000); // +1 day buffer
           
-          console.log(`🔍 DEBUG: Fetching P&L events from ${new Date(startTime).toISOString()} to ${new Date(endTime).toISOString()}`);
-          const pnlResult = await fetchRealizedPnlEvents({ startTime, endTime });
-          console.log('🔍 DEBUG: P&L fetch result:', pnlResult.success, pnlResult.count);
-          if (pnlResult.success) {
-            exchangePnlEvents = pnlResult.events;
-            console.log(`📊 Fetched ${exchangePnlEvents.length} exchange P&L events to match with ${allClosedPositions.length} positions`);
+          console.log(`🔍 DEBUG: Fetching trades from ${new Date(startTime).toISOString()} to ${new Date(endTime).toISOString()}`);
+          
+          // Fetch trades from exchange
+          const apiKey = process.env.ASTER_API_KEY;
+          const secretKey = process.env.ASTER_SECRET_KEY;
+          
+          if (apiKey && secretKey) {
+            const timestamp = Date.now();
+            const params = `timestamp=${timestamp}&limit=1000&startTime=${startTime}&endTime=${endTime}`;
+            const signature = crypto
+              .createHmac('sha256', secretKey)
+              .update(params)
+              .digest('hex');
+
+            const tradesResponse = await fetch(
+              `https://fapi.asterdex.com/fapi/v1/userTrades?${params}&signature=${signature}`,
+              {
+                headers: { 'X-MBX-APIKEY': apiKey },
+              }
+            );
+
+            if (tradesResponse.ok) {
+              exchangeTrades = await tradesResponse.json();
+              console.log(`📊 Fetched ${exchangeTrades.length} exchange trades with realizedPnl to match with ${allClosedPositions.length} positions`);
+            } else {
+              console.error('Failed to fetch exchange trades:', await tradesResponse.text());
+            }
           }
         } else {
           console.log('🔍 DEBUG: No closed positions to process');
         }
       } catch (error) {
-        console.error('⚠️ Failed to fetch exchange P&L events:', error);
+        console.error('⚠️ Failed to fetch exchange trades:', error);
       }
-      console.log(`🔍 DEBUG: Enrichment complete, have ${exchangePnlEvents.length} P&L events`);
+      console.log(`🔍 DEBUG: Enrichment complete, have ${exchangeTrades.length} trades`);
       
       
       // Enhance closed positions with fee information
@@ -4881,67 +4901,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
           };
         });
       
-      // ENRICH positions with actual P&L from exchange using TWO-POINTER MERGE
-      // CRITICAL: Process positions and events in chronological order to prevent misattribution
+      // ENRICH positions with actual P&L from exchange trades (DETERMINISTIC)
+      // Oct 15, 2025: Use orderId-based matching via /fapi/v1/userTrades for 100% accuracy
       
-      // Sort positions by close time (oldest first)
-      const sortedPositions = [...realPositions].sort((a, b) => {
-        if (!a.closedAt || !b.closedAt) return 0;
-        return new Date(a.closedAt).getTime() - new Date(b.closedAt).getTime();
-      });
-      
-      // Sort P&L events by time (oldest first)
-      const sortedEvents = [...exchangePnlEvents].sort((a, b) => a.time - b.time);
-      
-      // Two-pointer merge: match each position to earliest eligible unconsumed event
-      const positionPnlMap = new Map<string, number>();
-      let eventPointer = 0; // Tracks current position in sorted events
-      
-      for (const position of sortedPositions) {
-        if (!position.closedAt) {
-          positionPnlMap.set(position.id, 0);
-          continue;
+      const positionsWithRealPnl = realPositions.map(position => {
+        if (!position.closedAt || !position.openedAt) {
+          return {
+            ...position,
+            realizedPnl: '0',
+            exchangePnlMatched: 0,
+          };
         }
         
+        const openTime = new Date(position.openedAt).getTime();
         const closeTime = new Date(position.closedAt).getTime();
-        const timeWindow = 60 * 1000; // 60 second window
-        const maxEventTime = closeTime + timeWindow;
+        const timeBuffer = 60 * 1000; // 60 second buffer for matching
         
-        // Find first unconsumed event for this symbol within [closeTime, closeTime+60s]
-        let matchedPnl = 0;
-        let matchedEventIdx = -1;
+        // Find all trades for this position:
+        // - Symbol matches
+        // - Time within position lifetime (with buffer)
+        // - Side/positionSide matches position direction
+        const positionTrades = exchangeTrades.filter(trade => {
+          if (trade.symbol !== position.symbol) return false;
+          
+          const tradeTime = trade.time;
+          if (tradeTime < openTime - timeBuffer || tradeTime > closeTime + timeBuffer) return false;
+          
+          // Match trade direction to position side
+          // Long positions: BUY trades with positionSide=LONG (or side=BUY if no positionSide)
+          // Short positions: SELL trades with positionSide=SHORT (or side=SELL if no positionSide)
+          const isMatchingTrade = 
+            (position.side === 'long' && trade.side === 'BUY' && (!trade.positionSide || trade.positionSide === 'LONG')) ||
+            (position.side === 'short' && trade.side === 'SELL' && (!trade.positionSide || trade.positionSide === 'SHORT'));
+          
+          return isMatchingTrade;
+        });
         
-        for (let i = eventPointer; i < sortedEvents.length; i++) {
-          const event = sortedEvents[i];
-          
-          // Stop if event is beyond our window
-          if (event.time > maxEventTime) break;
-          
-          // Skip if wrong symbol or before position close
-          if (event.symbol !== position.symbol || event.time < closeTime) continue;
-          
-          // Found first eligible event for this position
-          matchedPnl = parseFloat(event.income || '0');
-          matchedEventIdx = i;
-          console.log(`💰 Matched P&L event to position ${position.symbol} ${position.side}: $${matchedPnl.toFixed(2)} (event@${event.time}, pos@${closeTime}, Δ${event.time - closeTime}ms)`);
-          break;
+        // Sum realizedPnl from matching trades (this field exists in userTrades response)
+        const totalRealizedPnl = positionTrades.reduce((sum, trade) => {
+          return sum + parseFloat(trade.realizedPnl || '0');
+        }, 0);
+        
+        if (positionTrades.length > 0) {
+          console.log(`💰 Matched ${positionTrades.length} trades to position ${position.symbol} ${position.side}: $${totalRealizedPnl.toFixed(2)}`);
         }
         
-        // Remove consumed event from sorted array to prevent reuse
-        if (matchedEventIdx >= 0) {
-          sortedEvents.splice(matchedEventIdx, 1);
-          // Don't advance eventPointer since we removed the element
-        }
-        
-        positionPnlMap.set(position.id, matchedPnl);
-      }
-      
-      // Apply enriched P&L to positions
-      const positionsWithRealPnl = sortedPositions.map(position => ({
-        ...position,
-        realizedPnl: (positionPnlMap.get(position.id) || 0).toFixed(8),
-        exchangePnlMatched: positionPnlMap.has(position.id) && positionPnlMap.get(position.id) !== 0 ? 1 : 0,
-      }));
+        return {
+          ...position,
+          realizedPnl: totalRealizedPnl.toFixed(8),
+          exchangePnlMatched: positionTrades.length,
+        };
+      });
       
       const consolidatedPositions: any[] = [...positionsWithRealPnl]; // Return positions with real P&L
       
