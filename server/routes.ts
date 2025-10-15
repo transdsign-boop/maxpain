@@ -4801,15 +4801,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         };
       });
       
-      // ONLY return sync positions (from income API P&L events)
-      // Each P&L event = ONE position in Completed Trades list
-      // Filter by orderId pattern "sync-pnl-" to exclude old sync positions
-      const syncPositions = closedPositionsWithFees.filter(p => {
+      // UPDATED Oct 15, 2025: Database consolidated to single-source-of-truth positions
+      // Each closed position has ONE entry with REAL exchange fills (no synthetic fills)
+      // Filter OUT any remaining positions with ONLY synthetic 'sync-pnl-' fills
+      const realPositions = closedPositionsWithFees.filter(p => {
         const positionFills = allFills.filter(f => f.positionId === p.id);
-        return positionFills.some(f => f.orderId.startsWith('sync-pnl-'));
+        // Exclude positions that ONLY have synthetic fills (should be none after cleanup)
+        const hasOnlySyntheticFills = positionFills.length > 0 && 
+          positionFills.every(f => f.orderId.startsWith('sync-pnl-'));
+        return !hasOnlySyntheticFills; // Return positions with real fills or no fills
       });
       
-      const consolidatedPositions: any[] = [...syncPositions]; // Return ONLY sync positions
+      const consolidatedPositions: any[] = [...realPositions]; // Return positions with real fills
       
       // Helper function to merge a group of positions into one consolidated position
       function mergePositionGroup(group: any[]) {
