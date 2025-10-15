@@ -1254,44 +1254,41 @@ function PerformanceOverview() {
                   height={28} 
                   wrapperStyle={{ paddingTop: '8px', fontSize: '11px' }} 
                   iconSize={10}
-                  onClick={(e) => {
-                    if (e.dataKey === 'Strategy Update') {
-                      setShowStrategyUpdates(!showStrategyUpdates);
-                    } else if (e.dataKey === 'Deposit') {
-                      setShowDeposits(!showDeposits);
-                    }
-                  }}
                   content={(props) => {
-                    const { payload } = props;
+                    const legendItems = [
+                      { name: 'Cumulative P&L', color: 'rgb(190, 242, 100)', active: true },
+                      { name: 'Strategy Update', color: 'hsl(var(--primary))', active: showStrategyUpdates },
+                      { name: 'Deposit', color: 'rgb(34, 197, 94)', active: showDeposits }
+                    ];
+                    
                     return (
                       <ul className="flex justify-center gap-4 pt-2" style={{ fontSize: '11px' }}>
-                        {payload?.map((entry, index) => (
+                        {legendItems.map((item, index) => (
                           <li 
                             key={`legend-${index}`} 
-                            className="flex items-center gap-1 cursor-pointer hover:opacity-70 transition-opacity"
+                            className={item.name === 'Cumulative P&L' ? 'flex items-center gap-1' : 'flex items-center gap-1 cursor-pointer hover:opacity-70 transition-opacity'}
                             onClick={() => {
-                              if (entry.value === 'Strategy Update') {
+                              if (item.name === 'Strategy Update') {
                                 setShowStrategyUpdates(!showStrategyUpdates);
-                              } else if (entry.value === 'Deposit') {
+                              } else if (item.name === 'Deposit') {
                                 setShowDeposits(!showDeposits);
                               }
                             }}
                             style={{
-                              opacity: (entry.value === 'Strategy Update' && !showStrategyUpdates) || 
-                                       (entry.value === 'Deposit' && !showDeposits) ? 0.4 : 1
+                              opacity: item.active ? 1 : 0.4
                             }}
-                            data-testid={`legend-${entry.value?.toLowerCase().replace(/\s+/g, '-')}`}
+                            data-testid={`legend-${item.name.toLowerCase().replace(/\s+/g, '-')}`}
                           >
                             <span 
                               style={{ 
                                 width: '10px', 
                                 height: '10px', 
-                                backgroundColor: entry.color,
+                                backgroundColor: item.color,
                                 display: 'inline-block',
                                 marginRight: '4px'
                               }} 
                             />
-                            <span>{entry.value}</span>
+                            <span>{item.name}</span>
                           </li>
                         ))}
                       </ul>
@@ -1466,6 +1463,7 @@ function PerformanceOverview() {
                   dot={false}
                   connectNulls={true}
                   isAnimationActive={false}
+                  legendType="none"
                 />
                 {/* Negative P&L line (below zero) */}
                 <Line
@@ -1480,33 +1478,33 @@ function PerformanceOverview() {
                   isAnimationActive={false}
                   legendType="none"
                 />
-                {/* Strategy Update indicator for legend */}
-                {showStrategyUpdates && (
-                  <Line
-                    yAxisId="right"
-                    type="monotone"
-                    dataKey={() => null}
-                    name="Strategy Update"
-                    stroke="hsl(var(--primary))"
-                    strokeWidth={1}
-                    strokeDasharray="5 5"
-                    dot={false}
-                    isAnimationActive={false}
-                  />
-                )}
-                {/* Deposits indicator for legend */}
-                {showDeposits && (
-                  <Line
-                    yAxisId="right"
-                    type="monotone"
-                    dataKey={() => null}
-                    name="Deposit"
-                    stroke="rgb(34, 197, 94)"
-                    strokeWidth={2}
-                    dot={false}
-                    isAnimationActive={false}
-                  />
-                )}
+                {/* Strategy Update indicator for legend - hidden via legendType but always rendered */}
+                <Line
+                  yAxisId="right"
+                  type="monotone"
+                  dataKey={() => null}
+                  name="Strategy Update"
+                  stroke="hsl(var(--primary))"
+                  strokeWidth={1}
+                  strokeDasharray="5 5"
+                  dot={false}
+                  isAnimationActive={false}
+                  legendType="none"
+                  hide={true}
+                />
+                {/* Deposits indicator for legend - hidden via legendType but always rendered */}
+                <Line
+                  yAxisId="right"
+                  type="monotone"
+                  dataKey={() => null}
+                  name="Deposit"
+                  stroke="rgb(34, 197, 94)"
+                  strokeWidth={2}
+                  dot={false}
+                  isAnimationActive={false}
+                  legendType="none"
+                  hide={true}
+                />
                 {/* Positive P&L area */}
                 <Area 
                   yAxisId="right"
