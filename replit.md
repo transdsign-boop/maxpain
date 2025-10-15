@@ -65,11 +65,11 @@ PERMANENT DATA PRESERVATION: ALL trading data MUST be preserved forever. The use
 
 **System Design Choices:**
 - **Data Persistence**: PostgreSQL via Neon serverless hosting.
-- **Schema**: 14 core tables for liquidations, strategies, trade sessions, positions, fills, orders, etc.
+- **Schema**: 13 core tables (liquidations, strategies, trade sessions, positions, fills, orders, etc.). **Removed `position_layers` table** (Oct 15, 2025) after migrating to simplified position-level TP/SL.
 - **Schema Changes**: Exclusively manual SQL scripts.
 - **Data Retention**: Liquidation data for 30 days; trading data and financial records are permanently preserved through archiving.
 - **Trade Sync Pagination**: Handles exchange API limitations by chunking large date ranges into 7-day segments with backward cursor pagination.
-- **Position Architecture** (Updated Oct 15, 2025): Database has been fully consolidated to single-source-of-truth positions. Each realized P&L event is represented by ONE position with real exchange fills. **Legacy P&L sync permanently disabled** - the reconciliation loop no longer calls `syncCompletedTrades()`. All P&L data is now fetched on-demand from exchange API (`/fapi/v1/income`), eliminating duplicate synthetic fills. Manual cleanup completed to remove all `sync-pnl-*` fills. **Completed trades UI updated** - frontend now displays positions with real fills from actual trading (endpoint filters OUT synthetic fills). **Fills attachment bug fixed** (Oct 15, 2025): `/api/strategies/:strategyId/positions/closed` endpoint now properly attaches fills array to each position (previously fetched fills but didn't include them in response).
+- **Position Architecture** (Updated Oct 15, 2025): Database has been fully consolidated to single-source-of-truth positions. Each realized P&L event is represented by ONE position with real exchange fills. **Legacy P&L sync permanently disabled** - the reconciliation loop no longer calls `syncCompletedTrades()`. All P&L data is now fetched on-demand from exchange API (`/fapi/v1/income`), eliminating duplicate synthetic fills. Manual cleanup completed to remove all `sync-pnl-*` fills. **Completed trades UI updated** - frontend now displays positions with real fills from actual trading (endpoint filters OUT synthetic fills). **Fills attachment bug fixed** (Oct 15, 2025): `/api/strategies/:strategyId/positions/closed` endpoint now properly attaches fills array to each position (previously fetched fills but didn't include them in response). **Legacy layer tracking removed** (Oct 15, 2025): `position_layers` table fully removed from schema and codebase after migrating to position-level TP/SL managed by OrderProtectionService.
 
 ## External Dependencies
 

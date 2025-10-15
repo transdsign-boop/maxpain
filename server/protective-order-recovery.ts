@@ -1,5 +1,5 @@
 import { db } from './db.js';
-import { positions, positionLayers } from '../shared/schema.js';
+import { positions } from '../shared/schema.js';
 import { eq, and, isNull } from 'drizzle-orm';
 import type { StrategyEngine } from './strategy-engine.js';
 import { calculateATRPercent } from './dca-calculator.js';
