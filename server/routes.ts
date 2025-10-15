@@ -13,6 +13,7 @@ import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySche
 import { db } from "./db";
 import { desc, eq, sql } from "drizzle-orm";
 import { fetchRealizedPnlEvents, fetchAllAccountTrades } from "./exchange-sync";
+import { fetchPositionPnL } from "./exchange-utils";
 
 // Fixed liquidation window - always 60 seconds regardless of user input
 const LIQUIDATION_WINDOW_SECONDS = 60;
@@ -4953,8 +4954,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           };
         });
       
-      // ENRICH positions with actual P&L from exchange trades (DETERMINISTIC)
-      // Oct 15, 2025: Use orderId-based matching via /fapi/v1/userTrades for 100% accuracy
+      // USE STORED P&L from database (Oct 15, 2025)
+      // P&L is now stored in DB when positions close, using exchange API (works for last 7 days)
+      // Only use exchange enrichment as fallback for positions missing P&L data
       
       const positionsWithRealPnl = realPositions.map(position => {
         if (!position.closedAt || !position.openedAt) {
@@ -4962,11 +4964,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
             ...position,
             realizedPnl: '0',
             exchangePnlMatched: 0,
+            pnlSource: 'none',
           };
         }
         
+        // Calculate position time window
         const openTime = new Date(position.openedAt).getTime();
         const closeTime = new Date(position.closedAt).getTime();
+        
+        // Check if we have stored P&L that's NOT the default value
+        // The schema default is '0.0', but when we close positions manually, we might store '0' for exactly zero P&L
+        // So we check: if realizedPnl is NOT one of the default values OR if the position was closed via our new system
+        const storedPnl = position.realizedPnl || '0';
+        const isDefaultValue = storedPnl === '0' || storedPnl === '0.0' || storedPnl === '0.00000000';
+        
+        // Positions closed within last 7 days should have stored P&L from our new system (even if exactly $0)
+        const daysSinceClosed = (Date.now() - closeTime) / (24 * 60 * 60 * 1000);
+        const closedWithNewSystem = daysSinceClosed <= 7;
+        
+        // Trust stored P&L if: (1) non-default value, OR (2) closed with new system (even if exactly $0)
+        if (!isDefaultValue || closedWithNewSystem) {
+          return {
+            ...position,
+            realizedPnl: position.realizedPnl,
+            exchangePnlMatched: -1, // Indicates using stored P&L
+            pnlSource: 'stored',
+          };
+        }
+        
+        // FALLBACK: Only for old positions without stored P&L - try exchange enrichment (only works for < 7 days)
         const timeBuffer = 60 * 1000; // 60 second buffer for matching
         
         // Find all trades for this position:
@@ -4996,13 +5022,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }, 0);
         
         if (positionTrades.length > 0) {
-          console.log(`💰 Matched ${positionTrades.length} trades to position ${position.symbol} ${position.side}: $${totalRealizedPnl.toFixed(2)}`);
+          console.log(`💰 [FALLBACK] Matched ${positionTrades.length} trades to position ${position.symbol} ${position.side}: $${totalRealizedPnl.toFixed(2)}`);
+        } else if (storedPnl === 0) {
+          console.log(`⚠️ Position ${position.symbol} ${position.side} has no stored P&L and no matching trades (likely > 7 days old)`);
         }
         
         return {
           ...position,
           realizedPnl: totalRealizedPnl.toFixed(8),
           exchangePnlMatched: positionTrades.length,
+          pnlSource: positionTrades.length > 0 ? 'exchange_fallback' : 'missing',
         };
       });
       
@@ -5564,8 +5593,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         layerNumber: 0,
       });
 
-      // Close the position with dollar P&L and percentage (preserve percentage for display)
-      await storage.closePosition(position.id, new Date(), dollarPnl, unrealizedPnl);
+      // Try to fetch actual P&L from exchange (only works for positions within last 7 days)
+      const closedAt = new Date();
+      let finalPnl = dollarPnl;
+      let pnlSource = 'calculated';
+      
+      const pnlResult = await fetchPositionPnL({
+        symbol: position.symbol,
+        side: position.side as 'long' | 'short',
+        openedAt: position.openedAt,
+        closedAt,
+      });
+      
+      if (pnlResult.success && pnlResult.realizedPnl !== undefined) {
+        finalPnl = pnlResult.realizedPnl;
+        pnlSource = 'exchange';
+        console.log(`✅ Using exchange P&L: $${finalPnl.toFixed(2)} (calculated was $${dollarPnl.toFixed(2)})`);
+      } else {
+        console.log(`ℹ️ Using calculated P&L: $${dollarPnl.toFixed(2)} (${pnlResult.error})`);
+      }
+      
+      // Close the position with actual or calculated P&L
+      await storage.closePosition(position.id, closedAt, finalPnl, unrealizedPnl);
 
       // Update session balance and stats (deduct exit fee for BOTH paper and live)
       if (session) {
@@ -5824,6 +5873,80 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error fetching session history:', error);
       res.status(500).json({ error: 'Failed to fetch session history' });
+    }
+  });
+
+  // Backfill P&L for closed positions (within last 7 days)
+  app.post('/api/admin/backfill-pnl', async (req, res) => {
+    try {
+      console.log('🔄 Starting P&L backfill for closed positions...');
+      
+      // Get all closed positions with realizedPnl = 0
+      const allClosedPositions = await db.select()
+        .from(positions)
+        .where(eq(positions.isOpen, false));
+      
+      const positionsNeedingPnl = allClosedPositions.filter(p => 
+        parseFloat(p.realizedPnl || '0') === 0 && p.closedAt && p.openedAt
+      );
+      
+      console.log(`📊 Found ${positionsNeedingPnl.length} positions needing P&L backfill (out of ${allClosedPositions.length} total)`);
+      
+      let successCount = 0;
+      let failCount = 0;
+      let skippedCount = 0;
+      
+      for (const position of positionsNeedingPnl) {
+        try {
+          // Check if position is within last 7 days
+          const daysSinceClosed = (Date.now() - new Date(position.closedAt!).getTime()) / (24 * 60 * 60 * 1000);
+          
+          if (daysSinceClosed > 7) {
+            console.log(`⏭️ Skipping ${position.symbol} ${position.side} - closed ${daysSinceClosed.toFixed(1)} days ago (> 7 days)`);
+            skippedCount++;
+            continue;
+          }
+          
+          // Fetch P&L from exchange
+          const pnlResult = await fetchPositionPnL({
+            symbol: position.symbol,
+            side: position.side as 'long' | 'short',
+            openedAt: position.openedAt!,
+            closedAt: position.closedAt!,
+          });
+          
+          if (pnlResult.success && pnlResult.realizedPnl !== undefined) {
+            // Update position with actual P&L
+            await db.update(positions)
+              .set({ 
+                realizedPnl: pnlResult.realizedPnl.toString(),
+                updatedAt: new Date()
+              })
+              .where(eq(positions.id, position.id));
+            
+            console.log(`✅ ${position.symbol} ${position.side}: $${pnlResult.realizedPnl.toFixed(2)}`);
+            successCount++;
+          } else {
+            console.log(`❌ ${position.symbol} ${position.side}: ${pnlResult.error}`);
+            failCount++;
+          }
+        } catch (error) {
+          console.error(`❌ Error backfilling ${position.symbol} ${position.side}:`, error);
+          failCount++;
+        }
+      }
+      
+      res.json({
+        success: true,
+        message: `Backfill complete: ${successCount} updated, ${failCount} failed, ${skippedCount} skipped (> 7 days)`,
+        updated: successCount,
+        failed: failCount,
+        skipped: skippedCount,
+        total: positionsNeedingPnl.length
+      });
+    } catch (error) {
+      console.error('Error backfilling P&L:', error);
+      res.status(500).json({ error: 'Failed to backfill P&L' });
     }
   });
 
