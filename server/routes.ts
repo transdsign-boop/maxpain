@@ -4874,14 +4874,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
               }
             }
             
-            // Filter trades to match position time window (client-side filtering)
-            exchangeTrades = allTrades.filter(trade => {
-              const tradeTime = trade.time;
-              return tradeTime >= startTime && tradeTime <= endTime;
-            });
+            // Use ALL trades (no time window filtering) to catch any positions outside the calculated range
+            exchangeTrades = allTrades;
             
-            console.log(`📊 Fetched ${allTrades.length} total trades, filtered to ${exchangeTrades.length} trades matching time window`);
-            console.log(`🎯 Final: ${exchangeTrades.length} exchange trades with realizedPnl to match with ${allClosedPositions.length} positions`);
+            // Log trade date range for visibility
+            if (allTrades.length > 0) {
+              const oldestTrade = allTrades.reduce((oldest, t) => t.time < oldest.time ? t : oldest);
+              const newestTrade = allTrades.reduce((newest, t) => t.time > newest.time ? t : newest);
+              console.log(`📊 Fetched ${allTrades.length} total trades from ${new Date(oldestTrade.time).toISOString()} to ${new Date(newestTrade.time).toISOString()}`);
+            } else {
+              console.log(`📊 Fetched ${allTrades.length} total trades`);
+            }
+            console.log(`🎯 Using ALL ${exchangeTrades.length} exchange trades to match with ${allClosedPositions.length} positions`);
           }
         } else {
           console.log('🔍 DEBUG: No closed positions to process');
