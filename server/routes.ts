@@ -4809,31 +4809,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           console.log(`🔍 DEBUG: Fetching trades from ${new Date(startTime).toISOString()} to ${new Date(endTime).toISOString()}`);
           
-          // Fetch trades from exchange
+          // Fetch trades from exchange (chunk into 7-day segments due to API limit)
           const apiKey = process.env.ASTER_API_KEY;
           const secretKey = process.env.ASTER_SECRET_KEY;
           
           if (apiKey && secretKey) {
-            const timestamp = Date.now();
-            const params = `timestamp=${timestamp}&limit=1000&startTime=${startTime}&endTime=${endTime}`;
-            const signature = crypto
-              .createHmac('sha256', secretKey)
-              .update(params)
-              .digest('hex');
+            const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+            let currentStart = startTime;
+            const allTrades: any[] = [];
+            
+            while (currentStart < endTime) {
+              const currentEnd = Math.min(currentStart + SEVEN_DAYS_MS, endTime);
+              
+              const timestamp = Date.now();
+              const params = `timestamp=${timestamp}&limit=1000&startTime=${currentStart}&endTime=${currentEnd}`;
+              const signature = crypto
+                .createHmac('sha256', secretKey)
+                .update(params)
+                .digest('hex');
 
-            const tradesResponse = await fetch(
-              `https://fapi.asterdex.com/fapi/v1/userTrades?${params}&signature=${signature}`,
-              {
-                headers: { 'X-MBX-APIKEY': apiKey },
+              try {
+                const tradesResponse = await fetch(
+                  `https://fapi.asterdex.com/fapi/v1/userTrades?${params}&signature=${signature}`,
+                  {
+                    headers: { 'X-MBX-APIKEY': apiKey },
+                  }
+                );
+
+                if (tradesResponse.ok) {
+                  const batchTrades = await tradesResponse.json();
+                  allTrades.push(...batchTrades);
+                  console.log(`📥 Fetched ${batchTrades.length} trades for ${new Date(currentStart).toISOString()} to ${new Date(currentEnd).toISOString()}`);
+                } else {
+                  console.error('Failed to fetch exchange trades batch:', await tradesResponse.text());
+                }
+              } catch (error) {
+                console.error('Error fetching trades batch:', error);
               }
-            );
-
-            if (tradesResponse.ok) {
-              exchangeTrades = await tradesResponse.json();
-              console.log(`📊 Fetched ${exchangeTrades.length} exchange trades with realizedPnl to match with ${allClosedPositions.length} positions`);
-            } else {
-              console.error('Failed to fetch exchange trades:', await tradesResponse.text());
+              
+              currentStart = currentEnd + 1; // Move to next chunk
             }
+            
+            exchangeTrades = allTrades;
+            console.log(`📊 Fetched ${exchangeTrades.length} total exchange trades with realizedPnl to match with ${allClosedPositions.length} positions`);
           }
         } else {
           console.log('🔍 DEBUG: No closed positions to process');
