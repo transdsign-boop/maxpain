@@ -77,8 +77,18 @@ interface AssetPerformance {
 }
 
 function PerformanceOverview() {
-  // Date range filter state
-  const [dateRange, setDateRange] = useState<{ start: Date | null; end: Date | null }>({ start: null, end: null });
+  // Date range filter state - load from localStorage
+  const [dateRange, setDateRange] = useState<{ start: Date | null; end: Date | null }>(() => {
+    const saved = localStorage.getItem('chart-settings');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return {
+        start: parsed.dateRange?.start ? new Date(parsed.dateRange.start) : null,
+        end: parsed.dateRange?.end ? new Date(parsed.dateRange.end) : null,
+      };
+    }
+    return { start: null, end: null };
+  });
   const [dateFilterOpen, setDateFilterOpen] = useState(false);
   const [depositFilterOpen, setDepositFilterOpen] = useState(false);
   const [selectedDepositId, setSelectedDepositId] = useState<string | null>(null);
@@ -721,8 +731,28 @@ function PerformanceOverview() {
   };
 
   // Chart visibility toggles
-  const [showStrategyUpdates, setShowStrategyUpdates] = useState(true);
-  const [showDeposits, setShowDeposits] = useState(true);
+  // Load chart settings from localStorage
+  const [showStrategyUpdates, setShowStrategyUpdates] = useState(() => {
+    const saved = localStorage.getItem('chart-settings');
+    return saved ? JSON.parse(saved).showStrategyUpdates ?? true : true;
+  });
+  const [showDeposits, setShowDeposits] = useState(() => {
+    const saved = localStorage.getItem('chart-settings');
+    return saved ? JSON.parse(saved).showDeposits ?? true : true;
+  });
+  
+  // Save chart settings to localStorage whenever they change
+  useEffect(() => {
+    const settings = {
+      showStrategyUpdates,
+      showDeposits,
+      dateRange: {
+        start: dateRange.start ? dateRange.start.toISOString() : null,
+        end: dateRange.end ? dateRange.end.toISOString() : null,
+      },
+    };
+    localStorage.setItem('chart-settings', JSON.stringify(settings));
+  }, [showStrategyUpdates, showDeposits, dateRange]);
   
   // Get selected deposit info
   const selectedDeposit = useMemo(() => {
