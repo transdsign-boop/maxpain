@@ -6,7 +6,7 @@ import { Slider } from "@/components/ui/slider";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Calendar } from "@/components/ui/calendar";
-import { TrendingUp, TrendingDown, Target, Award, Activity, LineChart, DollarSign, Percent, Calendar as CalendarIcon, X, Wallet } from "lucide-react";
+import { TrendingUp, TrendingDown, Target, Award, Activity, LineChart, DollarSign, Percent, Calendar as CalendarIcon, X, Wallet, Settings } from "lucide-react";
 import { ComposedChart, Line, Area, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, ReferenceArea, ReferenceDot, Label } from "recharts";
 import { format, subDays, subMinutes, subHours, startOfDay, endOfDay } from "date-fns";
 import { useStrategyData } from "@/hooks/use-strategy-data";
@@ -719,6 +719,10 @@ function PerformanceOverview() {
     setSelectedDepositId(null);
     setDateRange({ start: null, end: null });
   };
+
+  // Chart visibility toggles
+  const [showStrategyUpdates, setShowStrategyUpdates] = useState(true);
+  const [showDeposits, setShowDeposits] = useState(true);
   
   // Get selected deposit info
   const selectedDeposit = useMemo(() => {
@@ -1210,6 +1214,30 @@ function PerformanceOverview() {
                 Showing most recent {Math.min(totalTrades, 2000).toLocaleString()} of {totalTrades.toLocaleString()} trades
               </Badge>
             )}
+
+            {/* Chart visibility toggles */}
+            <div className="flex gap-2 ml-auto">
+              <Button
+                size="sm"
+                variant={showStrategyUpdates ? "secondary" : "outline"}
+                onClick={() => setShowStrategyUpdates(!showStrategyUpdates)}
+                className="h-7 px-2 text-xs gap-1"
+                data-testid="toggle-strategy-updates"
+              >
+                <Settings className="h-3 w-3" />
+                Strategy Updates
+              </Button>
+              <Button
+                size="sm"
+                variant={showDeposits ? "secondary" : "outline"}
+                onClick={() => setShowDeposits(!showDeposits)}
+                className="h-7 px-2 text-xs gap-1"
+                data-testid="toggle-deposits"
+              >
+                <Wallet className="h-3 w-3" />
+                Deposits
+              </Button>
+            </div>
           </div>
           
           <div className="relative h-64 md:h-80 -mx-8" style={{
@@ -1291,7 +1319,7 @@ function PerformanceOverview() {
                 ))}
                 
                 {/* Vertical lines for strategy changes with clickable dots */}
-                {strategyChanges?.map((change) => {
+                {showStrategyUpdates && strategyChanges?.map((change) => {
                   const changeTime = new Date(change.changedAt).getTime();
                   let tradeIndex = chartData.findIndex(trade => trade.timestamp >= changeTime);
                   
@@ -1331,7 +1359,7 @@ function PerformanceOverview() {
                 })}
 
                 {/* Vertical markers for transfer events (deposits) */}
-                {transfers?.filter((transfer) => {
+                {showDeposits && transfers?.filter((transfer) => {
                   // Filter transfers by date range
                   const transferTime = new Date(transfer.timestamp).getTime();
                   const startTimestamp = dateRange.start ? dateRange.start.getTime() : 0;
@@ -1429,17 +1457,32 @@ function PerformanceOverview() {
                   legendType="none"
                 />
                 {/* Strategy Update indicator for legend */}
-                <Line
-                  yAxisId="right"
-                  type="monotone"
-                  dataKey={() => null}
-                  name="Strategy Update"
-                  stroke="hsl(var(--primary))"
-                  strokeWidth={1}
-                  strokeDasharray="5 5"
-                  dot={false}
-                  isAnimationActive={false}
-                />
+                {showStrategyUpdates && (
+                  <Line
+                    yAxisId="right"
+                    type="monotone"
+                    dataKey={() => null}
+                    name="Strategy Update"
+                    stroke="hsl(var(--primary))"
+                    strokeWidth={1}
+                    strokeDasharray="5 5"
+                    dot={false}
+                    isAnimationActive={false}
+                  />
+                )}
+                {/* Deposits indicator for legend */}
+                {showDeposits && (
+                  <Line
+                    yAxisId="right"
+                    type="monotone"
+                    dataKey={() => null}
+                    name="Deposit"
+                    stroke="rgb(34, 197, 94)"
+                    strokeWidth={2}
+                    dot={false}
+                    isAnimationActive={false}
+                  />
+                )}
                 {/* Positive P&L area */}
                 <Area 
                   yAxisId="right"
@@ -1452,6 +1495,7 @@ function PerformanceOverview() {
                   connectNulls={false}
                   baseValue={0}
                   isAnimationActive={false}
+                  legendType="none"
                 />
                 {/* Negative P&L area */}
                 <Area 
@@ -1465,6 +1509,7 @@ function PerformanceOverview() {
                   connectNulls={false}
                   baseValue={0}
                   isAnimationActive={false}
+                  legendType="none"
                 />
               </ComposedChart>
               </ResponsiveContainer>
