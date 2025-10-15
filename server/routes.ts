@@ -4807,22 +4807,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const startTime = new Date(oldestPosition.closedAt).getTime() - (24 * 60 * 60 * 1000); // -1 day buffer
           const endTime = new Date(newestPosition.closedAt).getTime() + (24 * 60 * 60 * 1000); // +1 day buffer
           
-          console.log(`🔍 DEBUG: Fetching trades from ${new Date(startTime).toISOString()} to ${new Date(endTime).toISOString()}`);
+          console.log(`🔍 DEBUG: Need trades from ${new Date(startTime).toISOString()} to ${new Date(endTime).toISOString()}`);
           
-          // Fetch trades from exchange (chunk into 7-day segments due to API limit)
+          // Fetch ALL trades from exchange using fromId pagination (cannot combine with time filters)
           const apiKey = process.env.ASTER_API_KEY;
           const secretKey = process.env.ASTER_SECRET_KEY;
           
           if (apiKey && secretKey) {
-            const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
-            let currentStart = startTime;
             const allTrades: any[] = [];
+            let fromId: number | null = null;
+            let batchCount = 0;
             
-            while (currentStart < endTime) {
-              const currentEnd = Math.min(currentStart + SEVEN_DAYS_MS, endTime);
-              
+            // Keep fetching until we get less than 1000 trades (exhausted all available trades)
+            while (true) {
+              batchCount++;
               const timestamp = Date.now();
-              const params = `timestamp=${timestamp}&limit=1000&startTime=${currentStart}&endTime=${currentEnd}`;
+              
+              // Build params - use fromId for pagination (cannot combine with startTime/endTime)
+              let params = `timestamp=${timestamp}&limit=1000`;
+              if (fromId !== null) {
+                params += `&fromId=${fromId}`;
+              }
+              
               const signature = crypto
                 .createHmac('sha256', secretKey)
                 .update(params)
@@ -4838,20 +4844,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
                 if (tradesResponse.ok) {
                   const batchTrades = await tradesResponse.json();
+                  
+                  if (batchTrades.length === 0) {
+                    console.log(`✅ Batch ${batchCount}: No more trades available`);
+                    break; // No more trades
+                  }
+                  
                   allTrades.push(...batchTrades);
-                  console.log(`📥 Fetched ${batchTrades.length} trades for ${new Date(currentStart).toISOString()} to ${new Date(currentEnd).toISOString()}`);
+                  console.log(`📥 Batch ${batchCount}: Fetched ${batchTrades.length} trades (total: ${allTrades.length})`);
+                  
+                  // If we got less than 1000 trades, we've reached the end
+                  if (batchTrades.length < 1000) {
+                    console.log(`✅ Batch ${batchCount}: Got ${batchTrades.length} trades (< 1000), finished pagination`);
+                    break;
+                  }
+                  
+                  // Set fromId for next iteration (last trade's id + 1)
+                  const lastTrade = batchTrades[batchTrades.length - 1];
+                  fromId = lastTrade.id + 1;
+                  
                 } else {
-                  console.error('Failed to fetch exchange trades batch:', await tradesResponse.text());
+                  const errorText = await tradesResponse.text();
+                  console.error(`Failed to fetch exchange trades batch ${batchCount}:`, errorText);
+                  break;
                 }
               } catch (error) {
-                console.error('Error fetching trades batch:', error);
+                console.error(`Error fetching trades batch ${batchCount}:`, error);
+                break;
               }
-              
-              currentStart = currentEnd + 1; // Move to next chunk
             }
             
-            exchangeTrades = allTrades;
-            console.log(`📊 Fetched ${exchangeTrades.length} total exchange trades with realizedPnl to match with ${allClosedPositions.length} positions`);
+            // Filter trades to match position time window (client-side filtering)
+            exchangeTrades = allTrades.filter(trade => {
+              const tradeTime = trade.time;
+              return tradeTime >= startTime && tradeTime <= endTime;
+            });
+            
+            console.log(`📊 Fetched ${allTrades.length} total trades, filtered to ${exchangeTrades.length} trades matching time window`);
+            console.log(`🎯 Final: ${exchangeTrades.length} exchange trades with realizedPnl to match with ${allClosedPositions.length} positions`);
           }
         } else {
           console.log('🔍 DEBUG: No closed positions to process');
