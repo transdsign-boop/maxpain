@@ -1247,7 +1247,11 @@ function PerformanceOverview() {
           {!chartLoading && chartData && chartData.length > 0 ? (
             <>
               <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={chartData} margin={{ top: 35, right: 0, left: 0, bottom: 30 }}>
+                <ComposedChart 
+                  data={chartData} 
+                  margin={{ top: 35, right: 0, left: 0, bottom: 30 }}
+                  key={`chart-${showStrategyUpdates}-${showDeposits}`}
+                >
                 <XAxis 
                   dataKey="tradeNumber" 
                   label={{ value: 'Trade #', position: 'insideBottom', offset: -5 }}
