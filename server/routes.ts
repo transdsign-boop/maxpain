@@ -4882,13 +4882,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
             
             console.log(`📊 Fetched ${allTrades.length} total trades, filtered to ${exchangeTrades.length} trades matching time window`);
             console.log(`🎯 Final: ${exchangeTrades.length} exchange trades with realizedPnl to match with ${allClosedPositions.length} positions`);
-            
-            // Debug: Log sample trades to verify realizedPnl field
-            if (exchangeTrades.length > 0) {
-              console.log('🔍 Sample trade structure:', JSON.stringify(exchangeTrades[0], null, 2));
-              const tradesWithPnl = exchangeTrades.filter(t => parseFloat(t.realizedPnl || '0') !== 0);
-              console.log(`📊 Trades breakdown: ${exchangeTrades.length} total, ${tradesWithPnl.length} with non-zero realizedPnl`);
-            }
           }
         } else {
           console.log('🔍 DEBUG: No closed positions to process');
