@@ -2777,8 +2777,19 @@ export class StrategyEngine extends EventEmitter {
         return false;
       }
       
-      // Use the exact leverage from global settings (no auto-adjustment)
-      const leverage = requestedLeverage;
+      // Symbol-specific leverage limits (some tokens have lower max leverage)
+      const symbolLeverageLimits: Record<string, number> = {
+        '4USDT': 5,
+        'COAIUSDT': 5,
+        'AIAUSDT': 5,
+      };
+      
+      // Cap leverage at symbol-specific limit if it exists
+      let leverage = requestedLeverage;
+      if (symbolLeverageLimits[symbol] && requestedLeverage > symbolLeverageLimits[symbol]) {
+        leverage = symbolLeverageLimits[symbol];
+        console.log(`⚙️ Capping ${symbol} leverage from ${requestedLeverage}x to ${leverage}x (exchange limit)`);
+      }
       
       const timestamp = Date.now();
       const leverageParams: Record<string, string | number> = {
