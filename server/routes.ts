@@ -3028,9 +3028,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ? tradeTimesMs.reduce((sum, time) => sum + time, 0) / tradeTimesMs.length
         : 0;
 
-      // Calculate percentage P&L based on starting balance
-      const startingBalance = parseFloat(activeSession.startingBalance);
-      const totalPnlPercent = startingBalance > 0 ? (totalPnl / startingBalance) * 100 : 0;
+      // Fetch all deposits to calculate total deposited capital
+      const { fetchTransfers } = await import('./exchange-sync');
+      const transfersResult = await fetchTransfers({});
+      
+      // Sum all deposits (positive transfers only)
+      let totalDeposited = 0;
+      if (transfersResult.success && transfersResult.records) {
+        const deposits = transfersResult.records.filter((t: any) => parseFloat(t.income || '0') > 0);
+        totalDeposited = deposits.reduce((sum: number, t: any) => sum + parseFloat(t.income || '0'), 0);
+      }
+      
+      // Fallback to starting balance if no deposits found
+      const baseCapital = totalDeposited > 0 ? totalDeposited : parseFloat(activeSession.startingBalance);
+      const totalPnlPercent = baseCapital > 0 ? (totalPnl / baseCapital) * 100 : 0;
 
       // Calculate maximum drawdown from cumulative P&L
       let maxDrawdown = 0;
@@ -3056,8 +3067,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
-      // Calculate drawdown as percentage of starting balance
-      const maxDrawdownPercent = startingBalance > 0 ? (maxDrawdown / startingBalance) * 100 : 0;
+      // Calculate drawdown as percentage of total deposited capital (not starting balance)
+      // This gives a meaningful percentage that updates with new deposits
+      const maxDrawdownPercent = baseCapital > 0 ? (maxDrawdown / baseCapital) * 100 : 0;
 
       res.json({
         totalTrades: allPositions.length, // Total trades includes both open and closed positions

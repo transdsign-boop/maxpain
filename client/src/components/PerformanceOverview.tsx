@@ -553,11 +553,12 @@ function PerformanceOverview() {
       const drawdown = peak - trade.cumulativePnl;
       if (drawdown > maxDrawdown) {
         maxDrawdown = drawdown;
-        // Calculate drawdown as percentage of peak (handle both positive and negative peaks)
-        const absPeak = Math.abs(peak);
-        maxDrawdownPercent = absPeak > 0 ? (drawdown / absPeak) * 100 : 0;
       }
     });
+    
+    // Calculate drawdown as percentage of total deposited capital (not peak P&L)
+    // This gives a meaningful percentage that updates with new deposits
+    maxDrawdownPercent = totalDeposited > 0 ? (maxDrawdown / totalDeposited) * 100 : 0;
     
     // Calculate average trade time from filtered closed positions
     let avgTradeTimeMs = 0;
