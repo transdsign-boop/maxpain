@@ -4785,6 +4785,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
         allClosedPositions.push(...sessionClosedPositions);
         allFills.push(...sessionFills);
       }
+
+      console.log(`🔍 DEBUG: Processing ${allClosedPositions.length} closed positions, ${allFills.length} fills`);
+      
+      // Fetch REAL P&L data from exchange to enrich positions
+      let exchangePnlEvents: any[] = [];
+      try {
+        console.log('🔍 DEBUG: About to import fetchRealizedPnlEvents');
+        const { fetchRealizedPnlEvents } = await import('./exchange-sync');
+        console.log('🔍 DEBUG: Import successful');
+        
+        // Get time range from positions
+        if (allClosedPositions.length > 0) {
+          console.log('🔍 DEBUG: Have positions, calculating time range');
+          const oldestPosition = allClosedPositions.reduce((oldest, p) => 
+            new Date(p.closedAt).getTime() < new Date(oldest.closedAt).getTime() ? p : oldest
+          );
+          const newestPosition = allClosedPositions.reduce((newest, p) => 
+            new Date(p.closedAt).getTime() > new Date(newest.closedAt).getTime() ? p : newest
+          );
+          
+          const startTime = new Date(oldestPosition.closedAt).getTime() - (24 * 60 * 60 * 1000); // -1 day buffer
+          const endTime = new Date(newestPosition.closedAt).getTime() + (24 * 60 * 60 * 1000); // +1 day buffer
+          
+          console.log(`🔍 DEBUG: Fetching P&L events from ${new Date(startTime).toISOString()} to ${new Date(endTime).toISOString()}`);
+          const pnlResult = await fetchRealizedPnlEvents({ startTime, endTime });
+          console.log('🔍 DEBUG: P&L fetch result:', pnlResult.success, pnlResult.count);
+          if (pnlResult.success) {
+            exchangePnlEvents = pnlResult.events;
+            console.log(`📊 Fetched ${exchangePnlEvents.length} exchange P&L events to match with ${allClosedPositions.length} positions`);
+          }
+        } else {
+          console.log('🔍 DEBUG: No closed positions to process');
+        }
+      } catch (error) {
+        console.error('⚠️ Failed to fetch exchange P&L events:', error);
+      }
+      console.log(`🔍 DEBUG: Enrichment complete, have ${exchangePnlEvents.length} P&L events`);
+      
       
       // Enhance closed positions with fee information
       const closedPositionsWithFees = allClosedPositions.map(position => {
@@ -4843,7 +4881,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
           };
         });
       
-      const consolidatedPositions: any[] = [...realPositions]; // Return positions with real fills
+      // ENRICH positions with actual P&L from exchange using TWO-POINTER MERGE
+      // CRITICAL: Process positions and events in chronological order to prevent misattribution
+      
+      // Sort positions by close time (oldest first)
+      const sortedPositions = [...realPositions].sort((a, b) => {
+        if (!a.closedAt || !b.closedAt) return 0;
+        return new Date(a.closedAt).getTime() - new Date(b.closedAt).getTime();
+      });
+      
+      // Sort P&L events by time (oldest first)
+      const sortedEvents = [...exchangePnlEvents].sort((a, b) => a.time - b.time);
+      
+      // Two-pointer merge: match each position to earliest eligible unconsumed event
+      const positionPnlMap = new Map<string, number>();
+      let eventPointer = 0; // Tracks current position in sorted events
+      
+      for (const position of sortedPositions) {
+        if (!position.closedAt) {
+          positionPnlMap.set(position.id, 0);
+          continue;
+        }
+        
+        const closeTime = new Date(position.closedAt).getTime();
+        const timeWindow = 60 * 1000; // 60 second window
+        const maxEventTime = closeTime + timeWindow;
+        
+        // Find first unconsumed event for this symbol within [closeTime, closeTime+60s]
+        let matchedPnl = 0;
+        let matchedEventIdx = -1;
+        
+        for (let i = eventPointer; i < sortedEvents.length; i++) {
+          const event = sortedEvents[i];
+          
+          // Stop if event is beyond our window
+          if (event.time > maxEventTime) break;
+          
+          // Skip if wrong symbol or before position close
+          if (event.symbol !== position.symbol || event.time < closeTime) continue;
+          
+          // Found first eligible event for this position
+          matchedPnl = parseFloat(event.income || '0');
+          matchedEventIdx = i;
+          console.log(`💰 Matched P&L event to position ${position.symbol} ${position.side}: $${matchedPnl.toFixed(2)} (event@${event.time}, pos@${closeTime}, Δ${event.time - closeTime}ms)`);
+          break;
+        }
+        
+        // Remove consumed event from sorted array to prevent reuse
+        if (matchedEventIdx >= 0) {
+          sortedEvents.splice(matchedEventIdx, 1);
+          // Don't advance eventPointer since we removed the element
+        }
+        
+        positionPnlMap.set(position.id, matchedPnl);
+      }
+      
+      // Apply enriched P&L to positions
+      const positionsWithRealPnl = sortedPositions.map(position => ({
+        ...position,
+        realizedPnl: (positionPnlMap.get(position.id) || 0).toFixed(8),
+        exchangePnlMatched: positionPnlMap.has(position.id) && positionPnlMap.get(position.id) !== 0 ? 1 : 0,
+      }));
+      
+      const consolidatedPositions: any[] = [...positionsWithRealPnl]; // Return positions with real P&L
       
       // Helper function to merge a group of positions into one consolidated position
       function mergePositionGroup(group: any[]) {
