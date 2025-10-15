@@ -4803,14 +4803,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // UPDATED Oct 15, 2025: Database consolidated to single-source-of-truth positions
       // Each closed position has ONE entry with REAL exchange fills (no synthetic fills)
-      // Filter OUT any remaining positions with ONLY synthetic 'sync-pnl-' fills
-      const realPositions = closedPositionsWithFees.filter(p => {
-        const positionFills = allFills.filter(f => f.positionId === p.id);
-        // Exclude positions that ONLY have synthetic fills (should be none after cleanup)
-        const hasOnlySyntheticFills = positionFills.length > 0 && 
-          positionFills.every(f => f.orderId.startsWith('sync-pnl-'));
-        return !hasOnlySyntheticFills; // Return positions with real fills or no fills
-      });
+      // Filter OUT any remaining positions with ONLY synthetic 'sync-pnl-' fills AND attach fills to each position
+      const realPositions = closedPositionsWithFees
+        .filter(p => {
+          const positionFills = allFills.filter(f => f.positionId === p.id);
+          // Exclude positions that ONLY have synthetic fills (should be none after cleanup)
+          const hasOnlySyntheticFills = positionFills.length > 0 && 
+            positionFills.every(f => f.orderId.startsWith('sync-pnl-'));
+          return !hasOnlySyntheticFills; // Return positions with real fills or no fills
+        })
+        .map(p => {
+          // Attach fills to each position for frontend display
+          // Filter out synthetic fills and sort chronologically by filledAt (oldest first)
+          const positionFills = allFills
+            .filter(f => f.positionId === p.id)
+            .filter(f => !f.orderId.startsWith('sync-pnl-')) // Remove any synthetic fills
+            .sort((a, b) => new Date(a.filledAt).getTime() - new Date(b.filledAt).getTime()); // Sort chronologically (oldest first)
+          return {
+            ...p,
+            fills: positionFills
+          };
+        });
       
       const consolidatedPositions: any[] = [...realPositions]; // Return positions with real fills
       
