@@ -6,14 +6,13 @@ import {
   type Order, type InsertOrder,
   type Fill, type InsertFill,
   type Position, type InsertPosition,
-  type PositionLayer, type InsertPositionLayer,
   type StrategyChange, type InsertStrategyChange,
   type StrategySnapshot, type InsertStrategySnapshot,
   type TradeEntryError, type InsertTradeEntryError
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { db } from "./db";
-import { liquidations, users, userSettings, strategies, tradeSessions, orders, fills, positions, positionLayers, strategyChanges, strategySnapshots, tradeEntryErrors } from "@shared/schema";
+import { liquidations, users, userSettings, strategies, tradeSessions, orders, fills, positions, strategyChanges, strategySnapshots, tradeEntryErrors } from "@shared/schema";
 import { desc, gte, lte, eq, sql as drizzleSql, inArray, and } from "drizzle-orm";
 import { neon } from '@neondatabase/serverless';
 
@@ -142,12 +141,6 @@ export interface IStorage {
   closePosition(id: string, closedAt: Date, realizedPnl: number, realizedPnlPercent?: number): Promise<Position>;
   clearPositionsBySession(sessionId: string): Promise<void>;
   
-  // Position Layer operations
-  createPositionLayer(layer: InsertPositionLayer): Promise<PositionLayer>;
-  getPositionLayers(positionId: string): Promise<PositionLayer[]>;
-  getOpenPositionLayers(positionId: string): Promise<PositionLayer[]>;
-  closePositionLayer(layerId: string, realizedPnl: number): Promise<PositionLayer>;
-  updateLayerOrderIds(layerId: string, tpOrderId: string, slOrderId: string): Promise<PositionLayer>;
 
   // Strategy Change operations
   recordStrategyChange(change: InsertStrategyChange): Promise<StrategyChange>;
@@ -775,50 +768,6 @@ export class DatabaseStorage implements IStorage {
 
   async clearPositionsBySession(sessionId: string): Promise<void> {
     await db.delete(positions).where(eq(positions.sessionId, sessionId));
-  }
-
-  // Position Layer operations
-  async createPositionLayer(layer: InsertPositionLayer): Promise<PositionLayer> {
-    const result = await db.insert(positionLayers).values(layer).returning();
-    return result[0];
-  }
-
-  async getPositionLayers(positionId: string): Promise<PositionLayer[]> {
-    return await db.select().from(positionLayers)
-      .where(eq(positionLayers.positionId, positionId))
-      .orderBy(positionLayers.layerNumber);
-  }
-
-  async getOpenPositionLayers(positionId: string): Promise<PositionLayer[]> {
-    return await db.select().from(positionLayers)
-      .where(and(
-        eq(positionLayers.positionId, positionId),
-        eq(positionLayers.isOpen, true)
-      ))
-      .orderBy(positionLayers.layerNumber);
-  }
-
-  async closePositionLayer(layerId: string, realizedPnl: number): Promise<PositionLayer> {
-    const result = await db.update(positionLayers)
-      .set({
-        isOpen: false,
-        realizedPnl: realizedPnl.toString(),
-        closedAt: new Date()
-      })
-      .where(eq(positionLayers.id, layerId))
-      .returning();
-    return result[0];
-  }
-
-  async updateLayerOrderIds(layerId: string, tpOrderId: string, slOrderId: string): Promise<PositionLayer> {
-    const result = await db.update(positionLayers)
-      .set({
-        tpOrderId,
-        slOrderId,
-      })
-      .where(eq(positionLayers.id, layerId))
-      .returning();
-    return result[0];
   }
 
   // Strategy Change operations
