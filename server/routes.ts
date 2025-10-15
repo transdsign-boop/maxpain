@@ -5490,9 +5490,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const quantity = Math.abs(parseFloat(targetPosition.positionAmt));
         const side = parseFloat(targetPosition.positionAmt) > 0 ? 'SELL' : 'BUY'; // Opposite side to close
 
-        // Place market order to close the position
+        // Place market order to close the position (include positionSide for hedge mode)
         const orderTimestamp = Date.now();
-        const orderParams = `symbol=${symbol}&side=${side}&type=MARKET&quantity=${quantity}&timestamp=${orderTimestamp}`;
+        const orderParams = `symbol=${symbol}&side=${side}&positionSide=${positionSide}&type=MARKET&quantity=${quantity}&timestamp=${orderTimestamp}`;
         const orderSignature = crypto
           .createHmac('sha256', secretKey)
           .update(orderParams)
