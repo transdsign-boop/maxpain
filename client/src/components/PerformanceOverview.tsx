@@ -486,6 +486,23 @@ function PerformanceOverview() {
     }
   }, [activeStrategy?.maxPortfolioRiskPercent]);
 
+  // Calculate total deposited capital (only positive deposits, exclude withdrawals)
+  // MUST be calculated before displayPerformance to avoid reference errors
+  const { totalDeposited, depositCount, depositsList } = useMemo(() => {
+    if (!transfers || transfers.length === 0) return { totalDeposited: 0, depositCount: 0, depositsList: [] };
+    
+    // Filter to only include deposits (positive amounts)
+    const deposits = transfers.filter(t => parseFloat(t.amount || '0') > 0);
+    const totalDeposited = deposits.reduce((sum, transfer) => sum + parseFloat(transfer.amount || '0'), 0);
+    
+    // Sort deposits by timestamp (newest first for easy selection)
+    const sortedDeposits = [...deposits].sort((a, b) => 
+      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
+    
+    return { totalDeposited, depositCount: deposits.length, depositsList: sortedDeposits };
+  }, [transfers]);
+
   // Use unified performance data (live-only mode)
   // Recalculate metrics when date filter is active
   const displayPerformance = useMemo(() => {
@@ -679,22 +696,6 @@ function PerformanceOverview() {
   const unifiedDomain = calculateUnifiedDomain();
   const pnlDomain = unifiedDomain;
   const cumulativePnlDomain = unifiedDomain;
-
-  // Calculate total deposited capital (only positive deposits, exclude withdrawals)
-  const { totalDeposited, depositCount, depositsList } = useMemo(() => {
-    if (!transfers || transfers.length === 0) return { totalDeposited: 0, depositCount: 0, depositsList: [] };
-    
-    // Filter to only include deposits (positive amounts)
-    const deposits = transfers.filter(t => parseFloat(t.amount || '0') > 0);
-    const totalDeposited = deposits.reduce((sum, transfer) => sum + parseFloat(transfer.amount || '0'), 0);
-    
-    // Sort deposits by timestamp (newest first for easy selection)
-    const sortedDeposits = [...deposits].sort((a, b) => 
-      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-    );
-    
-    return { totalDeposited, depositCount: deposits.length, depositsList: sortedDeposits };
-  }, [transfers]);
   
   // Handle deposit event selection
   const handleDepositSelect = (depositId: string) => {
