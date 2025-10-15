@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    environment:
+      # Node environment
+      - NODE_ENV=production
+      
+      # Database connection (using external Neon database)
+      - NEON_DATABASE_URL=${NEON_DATABASE_URL}
+      
+      # Aster DEX API credentials
+      - ASTER_API_KEY=${ASTER_API_KEY}
+      - ASTER_SECRET_KEY=${ASTER_SECRET_KEY}
+      
+      # Session configuration
+      - SESSION_SECRET=${SESSION_SECRET:-change-this-secret-in-production}
+    
+    restart: unless-stopped
+    
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:5000/api/strategies', (r) => { process.exit(r.statusCode === 200 ? 0 : 1); })"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    volumes:
+      # Optional: Mount logs directory for persistence
+      - ./logs:/app/logs
+    
+    networks:
+      - aster-network
+
+networks:
+  aster-network:
+    driver: bridge
