@@ -1215,29 +1215,6 @@ function PerformanceOverview() {
               </Badge>
             )}
 
-            {/* Chart visibility toggles */}
-            <div className="flex gap-2 ml-auto">
-              <Button
-                size="sm"
-                variant={showStrategyUpdates ? "secondary" : "outline"}
-                onClick={() => setShowStrategyUpdates(!showStrategyUpdates)}
-                className="h-7 px-2 text-xs gap-1"
-                data-testid="toggle-strategy-updates"
-              >
-                <Settings className="h-3 w-3" />
-                Strategy Updates
-              </Button>
-              <Button
-                size="sm"
-                variant={showDeposits ? "secondary" : "outline"}
-                onClick={() => setShowDeposits(!showDeposits)}
-                className="h-7 px-2 text-xs gap-1"
-                data-testid="toggle-deposits"
-              >
-                <Wallet className="h-3 w-3" />
-                Deposits
-              </Button>
-            </div>
           </div>
           
           <div className="relative h-64 md:h-80 -mx-8" style={{
@@ -1277,6 +1254,49 @@ function PerformanceOverview() {
                   height={28} 
                   wrapperStyle={{ paddingTop: '8px', fontSize: '11px' }} 
                   iconSize={10}
+                  onClick={(e) => {
+                    if (e.dataKey === 'Strategy Update') {
+                      setShowStrategyUpdates(!showStrategyUpdates);
+                    } else if (e.dataKey === 'Deposit') {
+                      setShowDeposits(!showDeposits);
+                    }
+                  }}
+                  content={(props) => {
+                    const { payload } = props;
+                    return (
+                      <ul className="flex justify-center gap-4 pt-2" style={{ fontSize: '11px' }}>
+                        {payload?.map((entry, index) => (
+                          <li 
+                            key={`legend-${index}`} 
+                            className="flex items-center gap-1 cursor-pointer hover:opacity-70 transition-opacity"
+                            onClick={() => {
+                              if (entry.value === 'Strategy Update') {
+                                setShowStrategyUpdates(!showStrategyUpdates);
+                              } else if (entry.value === 'Deposit') {
+                                setShowDeposits(!showDeposits);
+                              }
+                            }}
+                            style={{
+                              opacity: (entry.value === 'Strategy Update' && !showStrategyUpdates) || 
+                                       (entry.value === 'Deposit' && !showDeposits) ? 0.4 : 1
+                            }}
+                            data-testid={`legend-${entry.value?.toLowerCase().replace(/\s+/g, '-')}`}
+                          >
+                            <span 
+                              style={{ 
+                                width: '10px', 
+                                height: '10px', 
+                                backgroundColor: entry.color,
+                                display: 'inline-block',
+                                marginRight: '4px'
+                              }} 
+                            />
+                            <span>{entry.value}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    );
+                  }}
                 />
                 <ReferenceLine yAxisId="left" y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
                 <ReferenceLine yAxisId="right" y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
