@@ -4972,18 +4972,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const openTime = new Date(position.openedAt).getTime();
         const closeTime = new Date(position.closedAt).getTime();
         
-        // Check if we have stored P&L that's NOT the default value
-        // The schema default is '0.0', but when we close positions manually, we might store '0' for exactly zero P&L
-        // So we check: if realizedPnl is NOT one of the default values OR if the position was closed via our new system
-        const storedPnl = position.realizedPnl || '0';
-        const isDefaultValue = storedPnl === '0' || storedPnl === '0.0' || storedPnl === '0.00000000';
+        // Check if we have stored P&L (NULL = never stored, any other value = stored)
+        // After schema migration, NULL means "never fetched from exchange"
+        // Any non-null value (including '0' or '0.0') means we stored actual P&L
+        const hasStoredPnl = position.realizedPnl !== null && position.realizedPnl !== undefined;
         
-        // Positions closed within last 7 days should have stored P&L from our new system (even if exactly $0)
-        const daysSinceClosed = (Date.now() - closeTime) / (24 * 60 * 60 * 1000);
-        const closedWithNewSystem = daysSinceClosed <= 7;
-        
-        // Trust stored P&L if: (1) non-default value, OR (2) closed with new system (even if exactly $0)
-        if (!isDefaultValue || closedWithNewSystem) {
+        // If we have stored P&L (even if exactly $0), use it - it's permanent
+        if (hasStoredPnl) {
           return {
             ...position,
             realizedPnl: position.realizedPnl,
@@ -4992,7 +4987,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           };
         }
         
-        // FALLBACK: Only for old positions without stored P&L - try exchange enrichment (only works for < 7 days)
+        // FALLBACK: Only for positions without stored P&L (NULL) - try exchange enrichment (only works for < 7 days)
         const timeBuffer = 60 * 1000; // 60 second buffer for matching
         
         // Find all trades for this position:
@@ -5881,13 +5876,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       console.log('🔄 Starting P&L backfill for closed positions...');
       
-      // Get all closed positions with realizedPnl = 0
+      // Get all closed positions with NULL realizedPnl (never stored)
       const allClosedPositions = await db.select()
         .from(positions)
         .where(eq(positions.isOpen, false));
       
       const positionsNeedingPnl = allClosedPositions.filter(p => 
-        parseFloat(p.realizedPnl || '0') === 0 && p.closedAt && p.openedAt
+        (p.realizedPnl === null || p.realizedPnl === undefined) && p.closedAt && p.openedAt
       );
       
       console.log(`📊 Found ${positionsNeedingPnl.length} positions needing P&L backfill (out of ${allClosedPositions.length} total)`);
