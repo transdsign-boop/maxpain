@@ -5018,7 +5018,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         if (positionTrades.length > 0) {
           console.log(`💰 [FALLBACK] Matched ${positionTrades.length} trades to position ${position.symbol} ${position.side}: $${totalRealizedPnl.toFixed(2)}`);
-        } else if (storedPnl === 0) {
+        } else {
           console.log(`⚠️ Position ${position.symbol} ${position.side} has no stored P&L and no matching trades (likely > 7 days old)`);
         }
         
