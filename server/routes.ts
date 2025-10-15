@@ -4882,6 +4882,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
             
             console.log(`📊 Fetched ${allTrades.length} total trades, filtered to ${exchangeTrades.length} trades matching time window`);
             console.log(`🎯 Final: ${exchangeTrades.length} exchange trades with realizedPnl to match with ${allClosedPositions.length} positions`);
+            
+            // Debug: Log sample trades to verify realizedPnl field
+            if (exchangeTrades.length > 0) {
+              console.log('🔍 Sample trade structure:', JSON.stringify(exchangeTrades[0], null, 2));
+              const tradesWithPnl = exchangeTrades.filter(t => parseFloat(t.realizedPnl || '0') !== 0);
+              console.log(`📊 Trades breakdown: ${exchangeTrades.length} total, ${tradesWithPnl.length} with non-zero realizedPnl`);
+            }
           }
         } else {
           console.log('🔍 DEBUG: No closed positions to process');
@@ -4975,14 +4982,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const tradeTime = trade.time;
           if (tradeTime < openTime - timeBuffer || tradeTime > closeTime + timeBuffer) return false;
           
-          // Match trade direction to position side
-          // Long positions: BUY trades with positionSide=LONG (or side=BUY if no positionSide)
-          // Short positions: SELL trades with positionSide=SHORT (or side=SELL if no positionSide)
-          const isMatchingTrade = 
-            (position.side === 'long' && trade.side === 'BUY' && (!trade.positionSide || trade.positionSide === 'LONG')) ||
-            (position.side === 'short' && trade.side === 'SELL' && (!trade.positionSide || trade.positionSide === 'SHORT'));
+          // CRITICAL: Match CLOSING trades to get realizedPnl
+          // Long positions CLOSE with SELL trades (BUY opens with $0 P&L)
+          // Short positions CLOSE with BUY trades (SELL opens with $0 P&L)
+          // We want trades that REDUCE the position, which have realizedPnl populated
+          const isClosingTrade = 
+            (position.side === 'long' && trade.side === 'SELL' && (!trade.positionSide || trade.positionSide === 'LONG')) ||
+            (position.side === 'short' && trade.side === 'BUY' && (!trade.positionSide || trade.positionSide === 'SHORT'));
           
-          return isMatchingTrade;
+          return isClosingTrade;
         });
         
         // Sum realizedPnl from matching trades (this field exists in userTrades response)
