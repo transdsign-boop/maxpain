@@ -69,6 +69,7 @@ PERMANENT DATA PRESERVATION: ALL trading data MUST be preserved forever. The use
 - **Schema Changes**: Exclusively manual SQL scripts.
 - **Data Retention**: Liquidation data for 30 days; trading data and financial records are permanently preserved through archiving.
 - **Trade Sync Pagination**: Handles exchange API limitations by chunking large date ranges into 7-day segments with backward cursor pagination.
+- **Position Architecture** (Updated Oct 2025): Database has been consolidated to single-source-of-truth positions. Each realized P&L event is represented by ONE position with real exchange fills. Synthetic fills from legacy P&L sync have been removed. All P&L data is fetched directly from exchange API (`/fapi/v1/income`).
 
 ## External Dependencies
 

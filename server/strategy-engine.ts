@@ -4762,11 +4762,12 @@ export class StrategyEngine extends EventEmitter {
         // 3.5. Check for and place missing DCA layer protective orders
         await this.protectiveOrderRecovery.checkAndPlaceMissingOrders();
         
-        // 4. Sync completed trades from exchange (automatic reconciliation)
-        const syncResult = await syncCompletedTrades(session.id);
-        if (syncResult.success && syncResult.addedCount > 0) {
-          console.log(`  ✓ Synced ${syncResult.addedCount} completed trades from exchange`);
-        }
+        // 4. DISABLED: Legacy P&L sync (creates duplicate synthetic fills)
+        // P&L data is now fetched directly from exchange API - no DB storage needed
+        // const syncResult = await syncCompletedTrades(session.id);
+        // if (syncResult.success && syncResult.addedCount > 0) {
+        //   console.log(`  ✓ Synced ${syncResult.addedCount} completed trades from exchange`);
+        // }
         
         // 5. Keep data retention active (delete old liquidations)
         const deletedCount = await storage.deleteOldLiquidations(30);
