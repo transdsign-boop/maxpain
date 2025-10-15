@@ -91,6 +91,24 @@ function PerformanceOverview() {
   // Strategy change dialog state
   const [selectedChange, setSelectedChange] = useState<any>(null);
   
+  // Chart series visibility state
+  const [visibleSeries, setVisibleSeries] = useState<{
+    pnlBars: boolean;
+    cumulativeLine: boolean;
+  }>({
+    pnlBars: true,
+    cumulativeLine: true,
+  });
+  
+  // Toggle chart series visibility
+  const handleLegendClick = (dataKey: string) => {
+    if (dataKey === 'P&L per Trade') {
+      setVisibleSeries(prev => ({ ...prev, pnlBars: !prev.pnlBars }));
+    } else if (dataKey === 'Cumulative P&L') {
+      setVisibleSeries(prev => ({ ...prev, cumulativeLine: !prev.cumulativeLine }));
+    }
+  };
+  
   // Use centralized hook for all strategy-related data (reduces API calls by 10-20x)
   const {
     activeStrategy,
@@ -1243,8 +1261,9 @@ function PerformanceOverview() {
                 <Legend 
                   verticalAlign="bottom" 
                   height={28} 
-                  wrapperStyle={{ paddingTop: '8px', fontSize: '11px' }} 
+                  wrapperStyle={{ paddingTop: '8px', fontSize: '11px', cursor: 'pointer' }} 
                   iconSize={10}
+                  onClick={(e) => handleLegendClick(e.value)}
                 />
                 <ReferenceLine yAxisId="left" y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
                 <ReferenceLine yAxisId="right" y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
@@ -1389,45 +1408,51 @@ function PerformanceOverview() {
                     <stop offset="100%" stopColor="rgb(220, 38, 38)" stopOpacity={0.3}/>
                   </linearGradient>
                 </defs>
-                <Bar 
-                  yAxisId="left"
-                  dataKey="pnl" 
-                  barSize={20}
-                  data-testid="chart-bar-pnl"
-                  legendType="none"
-                >
-                  {chartData.map((entry, index) => (
-                    <Cell 
-                      key={`cell-${index}`} 
-                      fill={entry.pnl >= 0 ? 'rgba(190, 242, 100, 0.7)' : 'rgba(220, 38, 38, 0.7)'} 
-                    />
-                  ))}
-                </Bar>
+                {visibleSeries.pnlBars && (
+                  <Bar 
+                    yAxisId="left"
+                    dataKey="pnl" 
+                    name="P&L per Trade"
+                    barSize={20}
+                    data-testid="chart-bar-pnl"
+                  >
+                    {chartData.map((entry, index) => (
+                      <Cell 
+                        key={`cell-${index}`} 
+                        fill={entry.pnl >= 0 ? 'rgba(190, 242, 100, 0.7)' : 'rgba(220, 38, 38, 0.7)'} 
+                      />
+                    ))}
+                  </Bar>
+                )}
                 {/* Positive P&L line (above zero) */}
-                <Line
-                  yAxisId="right"
-                  type="monotone"
-                  dataKey={(entry: any) => entry.cumulativePnl >= 0 ? entry.cumulativePnl : null}
-                  name="Cumulative P&L"
-                  stroke="rgb(190, 242, 100)"
-                  strokeWidth={2}
-                  dot={false}
-                  connectNulls={true}
-                  isAnimationActive={false}
-                />
+                {visibleSeries.cumulativeLine && (
+                  <Line
+                    yAxisId="right"
+                    type="monotone"
+                    dataKey={(entry: any) => entry.cumulativePnl >= 0 ? entry.cumulativePnl : null}
+                    name="Cumulative P&L"
+                    stroke="rgb(190, 242, 100)"
+                    strokeWidth={2}
+                    dot={false}
+                    connectNulls={true}
+                    isAnimationActive={false}
+                  />
+                )}
                 {/* Negative P&L line (below zero) */}
-                <Line
-                  yAxisId="right"
-                  type="monotone"
-                  dataKey={(entry: any) => entry.cumulativePnl <= 0 ? entry.cumulativePnl : null}
-                  name="Negative P&L"
-                  stroke="rgb(220, 38, 38)"
-                  strokeWidth={2}
-                  dot={false}
-                  connectNulls={true}
-                  isAnimationActive={false}
-                  legendType="none"
-                />
+                {visibleSeries.cumulativeLine && (
+                  <Line
+                    yAxisId="right"
+                    type="monotone"
+                    dataKey={(entry: any) => entry.cumulativePnl <= 0 ? entry.cumulativePnl : null}
+                    name="Negative P&L"
+                    stroke="rgb(220, 38, 38)"
+                    strokeWidth={2}
+                    dot={false}
+                    connectNulls={true}
+                    isAnimationActive={false}
+                    legendType="none"
+                  />
+                )}
                 {/* Strategy Update indicator for legend */}
                 <Line
                   yAxisId="right"
