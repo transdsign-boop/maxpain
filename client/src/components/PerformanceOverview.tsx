@@ -91,25 +91,6 @@ function PerformanceOverview() {
   // Strategy change dialog state
   const [selectedChange, setSelectedChange] = useState<any>(null);
   
-  // Chart series visibility state
-  const [visibleSeries, setVisibleSeries] = useState<{
-    pnlBars: boolean;
-    cumulativeLine: boolean;
-  }>({
-    pnlBars: true,
-    cumulativeLine: true,
-  });
-  
-  // Toggle chart series visibility
-  const handleLegendClick = (e: any) => {
-    const dataKey = e.dataKey || e.value;
-    if (dataKey === 'P&L per Trade' || dataKey === 'pnl') {
-      setVisibleSeries(prev => ({ ...prev, pnlBars: !prev.pnlBars }));
-    } else if (dataKey === 'Cumulative P&L' || dataKey === 'cumulativePnl') {
-      setVisibleSeries(prev => ({ ...prev, cumulativeLine: !prev.cumulativeLine }));
-    }
-  };
-  
   // Use centralized hook for all strategy-related data (reduces API calls by 10-20x)
   const {
     activeStrategy,
@@ -1262,9 +1243,8 @@ function PerformanceOverview() {
                 <Legend 
                   verticalAlign="bottom" 
                   height={28} 
-                  wrapperStyle={{ paddingTop: '8px', fontSize: '11px', cursor: 'pointer' }} 
+                  wrapperStyle={{ paddingTop: '8px', fontSize: '11px' }} 
                   iconSize={10}
-                  onClick={(e) => handleLegendClick(e.value)}
                 />
                 <ReferenceLine yAxisId="left" y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
                 <ReferenceLine yAxisId="right" y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
@@ -1412,10 +1392,9 @@ function PerformanceOverview() {
                 <Bar 
                   yAxisId="left"
                   dataKey="pnl" 
-                  name="P&L per Trade"
                   barSize={20}
                   data-testid="chart-bar-pnl"
-                  hide={!visibleSeries.pnlBars}
+                  legendType="none"
                 >
                   {chartData.map((entry, index) => (
                     <Cell 
@@ -1435,7 +1414,6 @@ function PerformanceOverview() {
                   dot={false}
                   connectNulls={true}
                   isAnimationActive={false}
-                  hide={!visibleSeries.cumulativeLine}
                 />
                 {/* Negative P&L line (below zero) */}
                 <Line
@@ -1449,7 +1427,6 @@ function PerformanceOverview() {
                   connectNulls={true}
                   isAnimationActive={false}
                   legendType="none"
-                  hide={!visibleSeries.cumulativeLine}
                 />
                 {/* Strategy Update indicator for legend */}
                 <Line
@@ -1462,7 +1439,6 @@ function PerformanceOverview() {
                   strokeDasharray="5 5"
                   dot={false}
                   isAnimationActive={false}
-                  legendType="none"
                 />
                 {/* Positive P&L area */}
                 <Area 
@@ -1476,7 +1452,6 @@ function PerformanceOverview() {
                   connectNulls={false}
                   baseValue={0}
                   isAnimationActive={false}
-                  legendType="none"
                 />
                 {/* Negative P&L area */}
                 <Area 
@@ -1490,7 +1465,6 @@ function PerformanceOverview() {
                   connectNulls={false}
                   baseValue={0}
                   isAnimationActive={false}
-                  legendType="none"
                 />
               </ComposedChart>
               </ResponsiveContainer>
