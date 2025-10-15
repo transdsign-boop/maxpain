@@ -193,38 +193,55 @@ function PerformanceOverview() {
       .slice(0, 3);
   }, [assetPerformance]);
 
-  // Convert completed positions to chart data format
+  // Convert realized P&L events to chart data format
   const rawSourceData = useMemo(() => {
-    if (!closedPositions || closedPositions.length === 0) return [];
+    if (!realizedPnlEvents || realizedPnlEvents.length === 0) return [];
     
-    // Filter to only positions with stored P&L (realizedPnl NOT NULL)
-    // Then sort by close time
-    const completedTrades = closedPositions
-      .filter(pos => pos.closedAt && pos.realizedPnl !== null && pos.realizedPnl !== undefined)
-      .sort((a, b) => new Date(a.closedAt!).getTime() - new Date(b.closedAt!).getTime());
-    
-    if (completedTrades.length === 0) return [];
+    // Create array of closed positions with timestamps for matching
+    const closedPosArray = closedPositions?.filter(pos => pos.closedAt).map(pos => ({
+      ...pos,
+      closeTime: new Date(pos.closedAt).getTime()
+    })) || [];
     
     let cumulativePnl = 0;
+    let matchCount = 0;
     
-    const chartData = completedTrades.map((position, index) => {
-      const pnl = parseFloat(position.realizedPnl || '0');
+    const chartData = realizedPnlEvents.map((event, index) => {
+      const pnl = parseFloat(event.income || '0');
       cumulativePnl += pnl;
+      
+      // Try to match P&L event with closed position to get actual side
+      // Match by symbol and timestamp (within 5 minute window to accommodate exchange delays)
+      // Exchange P&L events can arrive minutes after we mark position closed
+      let actualSide = 'unknown';
+      const eventTime = event.time;
+      
+      // Search for matching position by symbol and close time window
+      const matchedPos = closedPosArray.find(pos => {
+        if (pos.symbol !== event.symbol) return false;
+        const timeDiff = Math.abs(pos.closeTime - eventTime);
+        return timeDiff <= 300000; // Within 5 minutes (300 seconds)
+      });
+      
+      if (matchedPos) {
+        actualSide = matchedPos.side;
+        matchCount++;
+      }
       
       return {
         tradeNumber: index + 1,
-        timestamp: new Date(position.closedAt!).getTime(),
-        symbol: position.symbol,
-        side: position.side,
+        timestamp: event.time,
+        symbol: event.symbol,
+        side: actualSide,
         pnl: pnl,
         cumulativePnl: cumulativePnl,
-        entryPrice: parseFloat(position.avgEntryPrice || '0'),
-        quantity: parseFloat(position.totalQuantity || '0'),
+        entryPrice: 0, // Not available from P&L events
+        quantity: 0, // Not available from P&L events
       };
     });
     
     return chartData;
-  }, [closedPositions]);
+  }, [realizedPnlEvents, closedPositions]);
   
   // Apply date range filter
   const sourceChartData = useMemo(() => {
@@ -499,29 +516,24 @@ function PerformanceOverview() {
     const totalCommissions = commissions?.total || 0;
     const totalFundingFees = fundingFees?.total || 0;
 
-    // Use completed positions (with stored P&L) as source of truth for trade counts
+    // Use realized P&L events from exchange as source of truth for trade counts
     // Filter by date range if active
-    let filteredCompletedTrades = closedPositions?.filter(pos => 
-      pos.closedAt && pos.realizedPnl !== null && pos.realizedPnl !== undefined
-    ) || [];
-    
+    let filteredPnlEvents = realizedPnlEvents || [];
     if (dateRange.start || dateRange.end) {
       const startTimestamp = dateRange.start ? dateRange.start.getTime() : 0;
       const endTimestamp = dateRange.end ? dateRange.end.getTime() : Date.now();
       
-      filteredCompletedTrades = filteredCompletedTrades.filter(pos => {
-        if (!pos.closedAt) return false;
-        const closeTime = new Date(pos.closedAt).getTime();
-        return closeTime >= startTimestamp && closeTime <= endTimestamp;
-      });
+      filteredPnlEvents = filteredPnlEvents.filter(event => 
+        event.time >= startTimestamp && event.time <= endTimestamp
+      );
     }
 
-    // Calculate metrics from completed positions with stored P&L
-    const winningTrades = filteredCompletedTrades.filter(pos => parseFloat(pos.realizedPnl || '0') > 0);
-    const losingTrades = filteredCompletedTrades.filter(pos => parseFloat(pos.realizedPnl || '0') < 0);
-    const totalWins = winningTrades.reduce((sum, pos) => sum + parseFloat(pos.realizedPnl || '0'), 0);
-    const totalLosses = Math.abs(losingTrades.reduce((sum, pos) => sum + parseFloat(pos.realizedPnl || '0'), 0));
-    const totalRealizedPnl = filteredCompletedTrades.reduce((sum, pos) => sum + parseFloat(pos.realizedPnl || '0'), 0);
+    // Calculate metrics from realized P&L events
+    const winningTrades = filteredPnlEvents.filter(e => parseFloat(e.income) > 0);
+    const losingTrades = filteredPnlEvents.filter(e => parseFloat(e.income) < 0);
+    const totalWins = winningTrades.reduce((sum, e) => sum + parseFloat(e.income || '0'), 0);
+    const totalLosses = Math.abs(losingTrades.reduce((sum, e) => sum + parseFloat(e.income || '0'), 0));
+    const totalRealizedPnl = filteredPnlEvents.reduce((sum, e) => sum + parseFloat(e.income || '0'), 0);
     
     // Calculate max drawdown from filtered data (using sourceChartData which is already filtered)
     let maxDrawdown = 0;
@@ -577,17 +589,17 @@ function PerformanceOverview() {
     
     return {
       ...basePerformance,
-      totalTrades: filteredCompletedTrades.length,
-      closedTrades: filteredCompletedTrades.length,
+      totalTrades: filteredPnlEvents.length,
+      closedTrades: filteredPnlEvents.length,
       winningTrades: winningTrades.length,
       losingTrades: losingTrades.length,
-      winRate: filteredCompletedTrades.length > 0 ? (winningTrades.length / filteredCompletedTrades.length) * 100 : 0,
+      winRate: filteredPnlEvents.length > 0 ? (winningTrades.length / filteredPnlEvents.length) * 100 : 0,
       totalRealizedPnl: totalRealizedPnl,
       totalPnl: totalRealizedPnl,
       averageWin: winningTrades.length > 0 ? totalWins / winningTrades.length : 0,
       averageLoss: losingTrades.length > 0 ? totalLosses / losingTrades.length : 0,
-      bestTrade: filteredCompletedTrades.length > 0 ? Math.max(...filteredCompletedTrades.map(pos => parseFloat(pos.realizedPnl || '0'))) : 0,
-      worstTrade: filteredCompletedTrades.length > 0 ? Math.min(...filteredCompletedTrades.map(pos => parseFloat(pos.realizedPnl || '0'))) : 0,
+      bestTrade: filteredPnlEvents.length > 0 ? Math.max(...filteredPnlEvents.map(e => parseFloat(e.income || '0'))) : 0,
+      worstTrade: filteredPnlEvents.length > 0 ? Math.min(...filteredPnlEvents.map(e => parseFloat(e.income || '0'))) : 0,
       profitFactor: totalLosses > 0 ? totalWins / totalLosses : (totalWins > 0 ? 999 : 0),
       totalFees: totalCommissions,
       fundingCost: totalFundingFees,
@@ -595,7 +607,7 @@ function PerformanceOverview() {
       maxDrawdown: maxDrawdown,
       maxDrawdownPercent: maxDrawdownPercent,
     };
-  }, [performance, dateRange, commissions, fundingFees, sourceChartData, closedPositions]);
+  }, [performance, dateRange, realizedPnlEvents, commissions, fundingFees, sourceChartData, closedPositions]);
   const displayLoading = isLoading || chartLoading || liveAccountLoading;
   const showLoadingUI = displayLoading || !performance;
 
