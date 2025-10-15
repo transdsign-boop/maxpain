@@ -9,9 +9,10 @@ import { strategyEngine } from "./strategy-engine";
 import { cascadeDetectorService } from "./cascade-detector-service";
 import { wsBroadcaster } from "./websocket-broadcaster";
 import { liveDataOrchestrator } from "./live-data-orchestrator";
-import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySchema, updateStrategySchema, type Position, type Liquidation, type InsertFill, positions, strategies, transfers, fills } from "@shared/schema";
+import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySchema, updateStrategySchema, type Position, type Fill, type Liquidation, type InsertFill, positions, strategies, transfers, fills } from "@shared/schema";
 import { db } from "./db";
 import { desc, eq, sql } from "drizzle-orm";
+import { fetchRealizedPnlEvents, fetchAllAccountTrades } from "./exchange-sync";
 
 // Fixed liquidation window - always 60 seconds regardless of user input
 const LIQUIDATION_WINDOW_SECONDS = 60;
@@ -446,6 +447,178 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error('❌ Failed to repair P&L and fees:', error);
       res.status(500).json({ error: `Repair failed: ${error.message}` });
+    }
+  });
+
+  // CONSOLIDATE: Rebuild database with real exchange data (fills + P&L)
+  app.post("/api/admin/consolidate-exchange-data", async (req, res) => {
+    try {
+      console.log('🔄 Starting database consolidation with real exchange data...');
+      
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+      
+      if (!apiKey || !secretKey) {
+        return res.status(500).json({ error: 'API keys not configured' });
+      }
+
+      // Get active session
+      const session = await storage.getOrCreateActiveSession(DEFAULT_USER_ID);
+      if (!session) {
+        return res.status(500).json({ error: 'No active session' });
+      }
+
+      // Step 1: Fetch ALL P&L events from income API (these = closed positions)
+      console.log('📥 Step 1: Fetching P&L events from exchange...');
+      
+      // Add delay to avoid rate limiting (exchange has 2400 req/min limit)
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      const pnlResult = await fetchRealizedPnlEvents({
+        startTime: new Date('2025-10-01T00:00:00Z').getTime(),
+        endTime: Date.now(),
+      });
+
+      if (!pnlResult.success) {
+        return res.status(500).json({ error: `Failed to fetch P&L events: ${pnlResult.error}` });
+      }
+
+      console.log(`✅ Found ${pnlResult.count} P&L events`);
+
+      // Step 2: Fetch ALL fills from userTrades API
+      console.log('📥 Step 2: Fetching fills from exchange...');
+      const fillsResult = await fetchAllAccountTrades({
+        startTime: new Date('2025-10-01T00:00:00Z').getTime(),
+        endTime: Date.now(),
+      });
+
+      if (!fillsResult.success) {
+        return res.status(500).json({ error: 'Failed to fetch fills' });
+      }
+
+      console.log(`✅ Found ${fillsResult.trades.length} fills`);
+
+      // Step 3: Delete ALL old P&L sync positions (with synthetic fills)
+      console.log('🗑️  Step 3: Removing old P&L sync positions...');
+      const allPositions = await storage.getPositionsBySession(session.id);
+      const syncPositions: string[] = [];
+      
+      for (const pos of allPositions) {
+        const positionFills = await storage.getFillsByPosition(pos.id);
+        const hasSyncFill = positionFills.some(f => f.orderId.startsWith('sync-pnl-'));
+        if (hasSyncFill) {
+          syncPositions.push(pos.id);
+          // Delete synthetic fills first
+          for (const fill of positionFills) {
+            if (fill.orderId.startsWith('sync-pnl-')) {
+              await db.delete(fills).where(eq(fills.id, fill.id));
+            }
+          }
+          // Delete position
+          await db.delete(positions).where(eq(positions.id, pos.id));
+        }
+      }
+      
+      console.log(`✅ Deleted ${syncPositions.length} old P&L sync positions`);
+
+      // Step 4: Create consolidated positions with real fills + P&L
+      console.log('🔨 Step 4: Creating consolidated positions...');
+      let created = 0;
+
+      for (const pnlEvent of pnlResult.events) {
+        // Find fills for this P&L event (same symbol, before P&L time)
+        const positionFills = fillsResult.trades.filter(fill => 
+          fill.symbol === pnlEvent.symbol &&
+          fill.time <= pnlEvent.time &&
+          fill.time >= (pnlEvent.time - (24 * 60 * 60 * 1000)) // Within 24 hours before
+        );
+
+        if (positionFills.length === 0) {
+          console.log(`⚠️  No fills found for ${pnlEvent.symbol} P&L event at ${new Date(pnlEvent.time).toISOString()}`);
+          continue;
+        }
+
+        // Determine position side from fills
+        const buyFills = positionFills.filter(f => f.buyer);
+        const sellFills = positionFills.filter(f => !f.buyer);
+        const side = buyFills.length > sellFills.length ? 'long' : 'short';
+        
+        // Calculate position metrics from fills
+        const entryFills = side === 'long' ? buyFills : sellFills;
+        const totalQty = entryFills.reduce((sum, f) => sum + parseFloat(f.qty), 0);
+        const totalCost = entryFills.reduce((sum, f) => sum + (parseFloat(f.qty) * parseFloat(f.price)), 0);
+        const avgPrice = totalCost / totalQty;
+        const totalCommission = positionFills.reduce((sum, f) => sum + parseFloat(f.commission), 0);
+
+        // Get strategy for leverage and maxLayers
+        const strategy = await storage.getStrategyBySession(session.id);
+        const leverage = strategy?.leverage || 1;
+        const maxLayers = strategy?.maxLayers || 333;
+
+        // Create consolidated position
+        const position = await storage.createPosition({
+          sessionId: session.id,
+          symbol: pnlEvent.symbol,
+          side,
+          totalQuantity: totalQty.toString(),
+          avgEntryPrice: avgPrice.toString(),
+          totalCost: (totalCost / leverage).toString(), // Actual margin used
+          unrealizedPnl: '0',
+          realizedPnl: pnlEvent.income, // Real P&L from exchange
+          layersFilled: entryFills.length,
+          maxLayers,
+          leverage,
+          isOpen: false,
+          totalFees: totalCommission.toString(),
+        });
+
+        // Set timestamps
+        await db.update(positions)
+          .set({
+            openedAt: new Date(positionFills[0].time),
+            closedAt: new Date(pnlEvent.time),
+          })
+          .where(eq(positions.id, position.id));
+
+        // Create real fill records
+        for (let i = 0; i < positionFills.length; i++) {
+          const fill = positionFills[i];
+          await storage.applyFill({
+            orderId: fill.orderId.toString(),
+            sessionId: session.id,
+            positionId: position.id,
+            symbol: fill.symbol,
+            side: fill.buyer ? 'buy' : 'sell',
+            quantity: fill.qty,
+            price: fill.price,
+            value: fill.quoteQty,
+            fee: fill.commission,
+            layerNumber: fill.buyer === (side === 'long') ? (entryFills.indexOf(fill) + 1) : 0,
+            filledAt: new Date(fill.time),
+          });
+        }
+
+        created++;
+        
+        if (created % 50 === 0) {
+          console.log(`   ✅ Created ${created} consolidated positions...`);
+        }
+      }
+
+      console.log(`✅ Consolidation complete: Created ${created} positions with real exchange data`);
+
+      res.json({
+        success: true,
+        pnlEvents: pnlResult.count,
+        fills: fillsResult.trades.length,
+        deletedSyncPositions: syncPositions.length,
+        createdPositions: created,
+        message: `Successfully consolidated ${created} positions with real fills and P&L data`
+      });
+
+    } catch (error: any) {
+      console.error('❌ Consolidation failed:', error);
+      res.status(500).json({ error: `Consolidation failed: ${error.message}` });
     }
   });
   
