@@ -257,27 +257,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
         for (const position of closedPositions) {
           totalProcessed++;
           
-          // Get all fills for this position
-          const allFills = await storage.getFillsByPosition(position.id);
+          // Get fills directly linked to this position
+          let allFills = await storage.getFillsByPosition(position.id);
+          
+          // MATCHING LOGIC: If no fills found by positionId, search by symbol/side/timestamp
+          if (allFills.length === 0 && position.closedAt) {
+            // Search window: ±2 hours around position close time
+            const searchWindow = 2 * 60 * 60 * 1000; // 2 hours in ms
+            const startTime = new Date(position.closedAt.getTime() - searchWindow);
+            const endTime = new Date(position.closedAt.getTime() + searchWindow);
+            
+            // Entry side for searching: LONG = buy fills, SHORT = sell fills
+            const entrySide = position.side === 'long' ? 'buy' : 'sell';
+            
+            allFills = await storage.searchFillsBySymbolSide(
+              position.symbol,
+              entrySide,
+              startTime,
+              endTime
+            );
+            
+            if (totalProcessed <= 5 && allFills.length > 0) {
+              console.log(`🔗 Matched ${allFills.length} fills for P&L position: ${position.symbol} ${position.side}`);
+            }
+          }
+          
+          // Count entry fills
+          let entryFills: Fill[] = [];
           
           // Try counting entry fills with layerNumber > 0 first
-          let entryFills = allFills.filter(f => f.layerNumber > 0);
+          entryFills = allFills.filter(f => f.layerNumber > 0);
           
           // FALLBACK: If no layerNumber data, count by fill side
-          // For LONG positions: entry fills are 'buy', for SHORT positions: entry fills are 'sell'
           if (entryFills.length === 0 && allFills.length > 0) {
             const entrySide = position.side === 'long' ? 'buy' : 'sell';
             entryFills = allFills.filter(f => f.side === entrySide);
           }
           
           const actualLayersFilled = entryFills.length || 1; // Default to 1 if no fills data
-          
-          // Debug logging for first 3 positions to understand the data
-          if (totalProcessed <= 3) {
-            console.log(`📊 Position ${totalProcessed}: ${position.symbol} ${position.side}`);
-            console.log(`   All fills: ${allFills.length}, Entry fills: ${entryFills.length}`);
-            console.log(`   Current layersFilled: ${position.layersFilled}, Calculated: ${actualLayersFilled}`);
-          }
           
           // Only update if different from current value
           if (actualLayersFilled !== position.layersFilled) {
