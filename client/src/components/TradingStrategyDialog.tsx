@@ -26,6 +26,7 @@ interface Strategy {
   id: string;
   name: string;
   userId: string;
+  exchange: "aster" | "bybit";
   selectedAssets: string[];
   percentileThreshold: number;
   liquidationLookbackHours: number;
@@ -54,6 +55,7 @@ interface Strategy {
 // Form validation schema
 const strategyFormSchema = z.object({
   name: z.string().min(1, "Strategy name is required").max(50, "Name too long"),
+  exchange: z.enum(["aster", "bybit"]),
   selectedAssets: z.array(z.string()).min(1, "Select at least one asset"),
   percentileThreshold: z.number().min(1).max(100),
   liquidationLookbackHours: z.number().min(1).max(24),
@@ -1323,6 +1325,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
       // Always update form with latest strategy data to ensure UI reflects current state
       form.reset({
         name: strategy.name,
+        exchange: strategy.exchange || "aster",
         selectedAssets: strategy.selectedAssets,
         percentileThreshold: strategy.percentileThreshold,
         liquidationLookbackHours: strategy.liquidationLookbackHours,
@@ -1392,6 +1395,43 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
               
+              {/* Exchange Selection */}
+              <FormField
+                control={form.control}
+                name="exchange"
+                render={({ field }) => (
+                  <FormItem className="rounded-lg border p-4 bg-muted/30">
+                    <FormLabel data-testid="label-exchange">Exchange</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value} disabled={isStrategyRunning}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-exchange">
+                          <SelectValue placeholder="Select exchange" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="aster" data-testid="select-exchange-aster">
+                          Aster DEX
+                        </SelectItem>
+                        <SelectItem value="bybit" data-testid="select-exchange-bybit">
+                          Bybit Demo
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>
+                      Choose which exchange to trade on. All data is isolated per exchange.
+                      {isStrategyRunning && (
+                        <span className="block mt-1 text-orange-600 dark:text-orange-400 font-medium">
+                          Stop trading to change exchange
+                        </span>
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <Separator />
+
               {/* Hedge Mode Toggle */}
               <FormField
                 control={form.control}
