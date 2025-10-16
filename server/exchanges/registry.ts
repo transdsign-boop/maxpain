@@ -8,6 +8,8 @@
 import { ExchangeType, ExchangeConfig, IExchangeAdapter, IExchangeStream } from './types';
 import { AsterExchangeAdapter } from './aster-adapter';
 import { AsterWebSocketStream } from './aster-stream';
+import { BybitExchangeAdapter } from './bybit-adapter';
+import { BybitWebSocketStream } from './bybit-stream';
 
 export class ExchangeRegistry {
   private adapters: Map<ExchangeType, IExchangeAdapter> = new Map();
@@ -48,7 +50,7 @@ export class ExchangeRegistry {
         apiKey: bybitApiKey,
         secretKey: bybitSecretKey,
         baseURL: 'https://api-demo.bybit.com', // Demo testnet
-        wsURL: 'wss://stream-demo.bybit.com', // Demo testnet WebSocket
+        wsURL: 'wss://stream-demo.bybit.com/v5/private', // Demo testnet WebSocket V5 private
       });
       console.log('✅ Bybit Demo credentials loaded');
     } else {
@@ -79,8 +81,8 @@ export class ExchangeRegistry {
         adapter = new AsterExchangeAdapter(config);
         break;
       case 'bybit':
-        // TODO: Implement BybitExchangeAdapter
-        throw new Error('Bybit adapter not yet implemented');
+        adapter = new BybitExchangeAdapter(config);
+        break;
       default:
         throw new Error(`Unsupported exchange type: ${exchangeType}`);
     }
@@ -117,8 +119,8 @@ export class ExchangeRegistry {
         stream = new AsterWebSocketStream(config);
         break;
       case 'bybit':
-        // TODO: Implement BybitWebSocketStream
-        throw new Error('Bybit stream not yet implemented');
+        stream = new BybitWebSocketStream(config);
+        break;
       default:
         throw new Error(`Unsupported exchange type: ${exchangeType}`);
     }
