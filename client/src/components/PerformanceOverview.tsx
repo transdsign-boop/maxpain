@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, memo, Fragment } from "react";
+import { useMemo, useState, useEffect, useRef, memo, Fragment } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -78,6 +78,9 @@ interface AssetPerformance {
 }
 
 function PerformanceOverview() {
+  // Track if this is the first render to avoid unnecessary invalidations
+  const isFirstRender = useRef(true);
+  
   // Date range filter state - load from localStorage
   const [dateRange, setDateRange] = useState<{ start: Date | null; end: Date | null }>(() => {
     const saved = localStorage.getItem('chart-settings');
@@ -298,6 +301,28 @@ function PerformanceOverview() {
     setChartEndIndex(sourceChartData.length);
     setTradesPerPage(displayCount || 1); // Minimum 1 to prevent division by zero
   }, [dateRange, sourceChartData.length]);
+  
+  // Invalidate all queries when exchange filter changes to force refetch with new exchange
+  useEffect(() => {
+    // Skip invalidation on first render - only invalidate when user actually changes the filter
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    
+    // Invalidate all exchange-dependent queries to force refetch with new exchange parameter
+    queryClient.invalidateQueries({ queryKey: ['/api/live/account'] });
+    queryClient.invalidateQueries({ queryKey: ['/api/live/positions'] });
+    queryClient.invalidateQueries({ queryKey: ['/api/live/positions-summary'] });
+    queryClient.invalidateQueries({ queryKey: ['/api/performance/overview'] });
+    queryClient.invalidateQueries({ queryKey: ['/api/performance/chart'] });
+    queryClient.invalidateQueries({ queryKey: ['/api/analytics/asset-performance'] });
+    queryClient.invalidateQueries({ queryKey: ['/api/realized-pnl-events'] });
+    queryClient.invalidateQueries({ queryKey: ['/api/commissions'] });
+    queryClient.invalidateQueries({ queryKey: ['/api/funding-fees'] });
+    queryClient.invalidateQueries({ queryKey: ['/api/transfers'] });
+    queryClient.invalidateQueries({ queryKey: ['/api/strategies'] }); // Also invalidate strategies for positions/changes
+  }, [exchangeFilter]);
   
   // Update chart when new trades arrive and user is viewing latest
   useEffect(() => {
