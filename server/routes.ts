@@ -6,6 +6,7 @@ import { randomUUID } from "crypto";
 import { z } from "zod";
 import { storage } from "./storage";
 import { strategyEngine } from "./strategy-engine";
+import { exchangeRegistry } from "./exchanges/registry";
 import { cascadeDetectorService } from "./cascade-detector-service";
 import { wsBroadcaster } from "./websocket-broadcaster";
 import { liveDataOrchestrator } from "./live-data-orchestrator";
@@ -3834,16 +3835,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Close all positions
       for (const position of openPositions) {
         try {
-          // ALWAYS fetch real-time current price from Aster DEX API
+          // Get exchange adapter for this strategy
+          const exchangeType = (strategy.exchange || 'aster') as 'aster' | 'bybit';
+          const adapter = exchangeRegistry.getAdapter(exchangeType);
+          
+          // ALWAYS fetch real-time current price from exchange API
           let currentPrice: number | null = null;
           try {
-            const asterApiUrl = `https://fapi.asterdex.com/fapi/v1/ticker/price?symbol=${position.symbol}`;
-            const priceResponse = await fetch(asterApiUrl);
-            
-            if (priceResponse.ok) {
-              const priceData = await priceResponse.json();
-              currentPrice = parseFloat(priceData.price);
-            }
+            const ticker = await adapter.getTicker(position.symbol);
+            currentPrice = parseFloat(ticker.price);
           } catch (apiError) {
             console.error(`Failed to fetch price for ${position.symbol}:`, apiError);
             continue; // Skip this position if we can't get price
@@ -5543,19 +5543,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: 'Position is already closed' });
       }
 
-      // ALWAYS fetch real-time current price from Aster DEX API (no cache)
+      // Get session to find strategy and exchange type
+      const session = await storage.getTradeSession(position.sessionId);
+      if (!session) {
+        return res.status(404).json({ error: 'Trade session not found' });
+      }
+      
+      const strategy = await storage.getStrategy(session.strategyId);
+      if (!strategy) {
+        return res.status(404).json({ error: 'Strategy not found' });
+      }
+
+      // Get exchange adapter for this strategy
+      const exchangeType = (strategy.exchange || 'aster') as 'aster' | 'bybit';
+      const adapter = exchangeRegistry.getAdapter(exchangeType);
+
+      // ALWAYS fetch real-time current price from exchange API (no cache)
       let currentPrice: number | null = null;
       try {
-        const asterApiUrl = `https://fapi.asterdex.com/fapi/v1/ticker/price?symbol=${position.symbol}`;
-        const priceResponse = await fetch(asterApiUrl);
-        
-        if (priceResponse.ok) {
-          const priceData = await priceResponse.json();
-          currentPrice = parseFloat(priceData.price);
-          console.log(`📊 Fetched real-time price for ${position.symbol} from Aster API: $${currentPrice}`);
-        }
+        const ticker = await adapter.getTicker(position.symbol);
+        currentPrice = parseFloat(ticker.price);
+        console.log(`📊 Fetched real-time price for ${position.symbol} from ${exchangeType.toUpperCase()} API: $${currentPrice}`);
       } catch (apiError) {
-        console.error('Failed to fetch price from Aster API:', apiError);
+        console.error(`Failed to fetch price from ${exchangeType.toUpperCase()} API:`, apiError);
       }
       
       if (!currentPrice) {
@@ -5577,9 +5587,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const leverage = (position as any).leverage || 1;
       const notionalValue = totalCost * leverage;
       const dollarPnl = (unrealizedPnl / 100) * notionalValue;
-
-      // Get session
-      const session = await storage.getTradeSession(position.sessionId);
       
       // Manual close = limit order (take profit style) = 0.01% maker fee
       const quantity = parseFloat(position.totalQuantity);
