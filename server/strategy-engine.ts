@@ -73,6 +73,7 @@ export class StrategyEngine extends EventEmitter {
   private leverageSetForSymbols: Map<string, number> = new Map(); // symbol -> leverage value (track actual leverage configured on exchange)
   private marginModeSetForSymbols: Map<string, 'isolated' | 'cross'> = new Map(); // symbol -> margin mode (track actual margin mode configured on exchange)
   private pendingQ1Values: Map<string, number> = new Map(); // "sessionId-symbol-side" -> q1 base layer size for position being created
+  private reconciliationInProgress: Map<string, boolean> = new Map(); // sessionId -> boolean flag to prevent concurrent reconciliation
   private pendingFirstLayerData: Map<string, { takeProfitPrice: number; stopLossPrice: number; entryPrice: number; quantity: number }> = new Map(); // "sessionId-symbol-side" -> first layer TP/SL data
   private pendingDCASchedules: Map<string, { levels: any[]; effectiveGrowthFactor: number; q1: number; totalWeight: number }> = new Map(); // "sessionId-symbol-side" -> complete DCA schedule
   private pendingReservedRisk: Map<string, { dollars: number; percent: number }> = new Map(); // "sessionId-symbol-side" -> reserved risk for full DCA potential
@@ -1304,6 +1305,15 @@ export class StrategyEngine extends EventEmitter {
 
   // Reconcile stale positions: close database positions that are already closed on the exchange
   private async reconcileStalePositions(sessionId: string, strategy: Strategy): Promise<void> {
+    // CRITICAL FIX: Prevent concurrent reconciliation runs to avoid duplicate closed positions
+    if (this.reconciliationInProgress.get(sessionId)) {
+      console.log('⏭️ Skipping reconciliation - previous run still in progress');
+      return;
+    }
+    
+    // Set lock to prevent concurrent execution
+    this.reconciliationInProgress.set(sessionId, true);
+    
     try {
       console.log('🔄 Starting stale position reconciliation...');
       
@@ -1409,6 +1419,9 @@ export class StrategyEngine extends EventEmitter {
     } catch (error) {
       console.error('⚠️ Error reconciling stale positions:', error);
       // Don't throw - allow portfolio calculation to continue
+    } finally {
+      // ALWAYS clear the lock, even if there was an error
+      this.reconciliationInProgress.delete(sessionId);
     }
   }
 
