@@ -5,6 +5,7 @@ import { z } from "zod";
 
 export const liquidations = pgTable("liquidations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  exchange: text("exchange").notNull().default("aster"), // "aster" or "bybit"
   symbol: text("symbol").notNull(),
   side: text("side").notNull(), // "long" or "short"
   size: decimal("size", { precision: 18, scale: 8 }).notNull(),
@@ -73,6 +74,7 @@ export type UserSettings = typeof userSettings.$inferSelect;
 // Trading Strategy Configuration
 export const strategies = pgTable("strategies", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  exchange: text("exchange").notNull().default("aster"), // "aster" or "bybit"
   name: text("name").notNull(),
   userId: varchar("user_id").notNull(), // Replit Auth user ID
   selectedAssets: text("selected_assets").array().notNull(),
@@ -129,6 +131,7 @@ export const strategies = pgTable("strategies", {
 // Trading Sessions
 export const tradeSessions = pgTable("trade_sessions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  exchange: text("exchange").notNull().default("aster"), // "aster" or "bybit"
   strategyId: varchar("strategy_id").notNull(), // References strategies.id
   startingBalance: decimal("starting_balance", { precision: 18, scale: 8 }).notNull().default("10000.0"),
   currentBalance: decimal("current_balance", { precision: 18, scale: 8 }).notNull(),
@@ -143,6 +146,7 @@ export const tradeSessions = pgTable("trade_sessions", {
 // Order Records
 export const orders = pgTable("orders", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  exchange: text("exchange").notNull().default("aster"), // "aster" or "bybit"
   sessionId: varchar("session_id").notNull(), // References tradeSessions.id
   symbol: text("symbol").notNull(),
   side: text("side").notNull(), // "buy" or "sell"
@@ -159,6 +163,7 @@ export const orders = pgTable("orders", {
 // Fill Records (Order Executions)
 export const fills = pgTable("fills", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  exchange: text("exchange").notNull().default("aster"), // "aster" or "bybit"
   orderId: varchar("order_id").notNull(), // References orders.id
   sessionId: varchar("session_id").notNull(), // References tradeSessions.id
   positionId: varchar("position_id"), // References positions.id (nullable for backwards compatibility)
@@ -178,6 +183,7 @@ export const fills = pgTable("fills", {
 // Current Positions
 export const positions = pgTable("positions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  exchange: text("exchange").notNull().default("aster"), // "aster" or "bybit"
   sessionId: varchar("session_id").notNull(), // References tradeSessions.id
   symbol: text("symbol").notNull(),
   side: text("side").notNull(), // "long" or "short"
@@ -213,6 +219,7 @@ export const insertStrategySchema = createInsertSchema(strategies).omit({
 
 // Frontend-specific schema that matches what TradingControlPanel sends
 export const frontendStrategySchema = z.object({
+  exchange: z.enum(["aster", "bybit"]).default("aster"),
   name: z.string().min(1, "Strategy name is required").max(50, "Name too long"),
   userId: z.string(),
   selectedAssets: z.array(z.string()).min(1, "Select at least one asset"),
@@ -378,6 +385,7 @@ export type StrategySnapshot = typeof strategySnapshots.$inferSelect;
 // Transfers (deposits/withdrawals)
 export const transfers = pgTable("transfers", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  exchange: text("exchange").notNull().default("aster"), // "aster" or "bybit"
   userId: varchar("user_id").notNull(), // Replit Auth user ID
   amount: decimal("amount", { precision: 18, scale: 8 }).notNull(),
   asset: text("asset").notNull().default("USDT"),
@@ -401,6 +409,7 @@ export type Transfer = typeof transfers.$inferSelect;
 // Commission Fees
 export const commissions = pgTable("commissions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  exchange: text("exchange").notNull().default("aster"), // "aster" or "bybit"
   userId: varchar("user_id").notNull(), // Replit Auth user ID
   symbol: text("symbol").notNull(), // Trading pair (e.g., "BTCUSDT")
   amount: decimal("amount", { precision: 18, scale: 8 }).notNull(), // Negative for fees paid
@@ -425,6 +434,7 @@ export type Commission = typeof commissions.$inferSelect;
 // Funding Fees
 export const fundingFees = pgTable("funding_fees", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  exchange: text("exchange").notNull().default("aster"), // "aster" or "bybit"
   userId: varchar("user_id").notNull(), // Replit Auth user ID
   symbol: text("symbol").notNull(), // Trading pair (e.g., "BTCUSDT")
   amount: decimal("amount", { precision: 18, scale: 8 }).notNull(), // Negative if paid, positive if received
