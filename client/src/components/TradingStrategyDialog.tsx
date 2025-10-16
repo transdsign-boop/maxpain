@@ -744,10 +744,12 @@ interface TradingStrategyDialogProps {
 export default function TradingStrategyDialog({ open, onOpenChange }: TradingStrategyDialogProps) {
   const { toast } = useToast();
   const [activeStrategy, setActiveStrategy] = useState<Strategy | null>(null);
-  const [isStrategyRunning, setIsStrategyRunning] = useState(false);
   const [apiTestResult, setApiTestResult] = useState<{ success: boolean; message: string; accountInfo?: any } | null>(null);
   const [assetSortMode, setAssetSortMode] = useState<"liquidations" | "liquidity" | "alphabetical">("liquidations");
   const [dcaSaveTrigger, setDcaSaveTrigger] = useState(0);
+  
+  // Strategy is "running" only if it's active AND not paused
+  const isStrategyRunning = activeStrategy?.isActive && !activeStrategy?.paused;
 
   // Fetch available symbols from Aster DEX
   const { data: symbols, isLoading: symbolsLoading } = useQuery({
@@ -1048,7 +1050,6 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
       return await response.json() as Strategy;
     },
     onSuccess: (updatedStrategy) => {
-      setIsStrategyRunning(true);
       setActiveStrategy(updatedStrategy);
       toast({
         title: "Strategy Started",
@@ -1101,7 +1102,6 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
       });
       queryClient.invalidateQueries({ queryKey: ['/api/strategies'] });
       setActiveStrategy(null);
-      setIsStrategyRunning(false);
     },
     onError: () => {
       toast({
@@ -1320,7 +1320,6 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
       
       // Update state with the strategy (could be updated data for existing strategy)
       setActiveStrategy(strategy);
-      setIsStrategyRunning(strategy.isActive);
       
       // Always update form with latest strategy data to ensure UI reflects current state
       form.reset({
@@ -1348,7 +1347,6 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
     } else if (strategies && strategies.length === 0) {
       // No strategies available, clear active strategy
       setActiveStrategy(null);
-      setIsStrategyRunning(false);
     }
   }, [strategies, form]); // Remove activeStrategy from dependencies to prevent stale state
 
