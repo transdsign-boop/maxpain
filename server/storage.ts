@@ -75,10 +75,10 @@ export interface IStorage {
   
   // Liquidation operations
   insertLiquidation(liquidation: InsertLiquidation): Promise<Liquidation>;
-  getLiquidations(limit?: number): Promise<Liquidation[]>;
-  getLiquidationsBySymbol(symbols: string[], limit?: number): Promise<Liquidation[]>;
-  getLiquidationsSince(timestamp: Date, limit?: number): Promise<Liquidation[]>;
-  getLargestLiquidationSince(timestamp: Date): Promise<Liquidation | undefined>;
+  getLiquidations(limit?: number, exchange?: string): Promise<Liquidation[]>;
+  getLiquidationsBySymbol(symbols: string[], limit?: number, exchange?: string): Promise<Liquidation[]>;
+  getLiquidationsSince(timestamp: Date, limit?: number, exchange?: string): Promise<Liquidation[]>;
+  getLargestLiquidationSince(timestamp: Date, exchange?: string): Promise<Liquidation | undefined>;
   getLiquidationsBySignature(symbol: string, side: string, size: string, price: string, since: Date): Promise<Liquidation[]>;
   getLiquidationsByEventTimestamp(eventTimestamp: string): Promise<Liquidation[]>;
   deleteOldLiquidations(olderThanDays: number): Promise<number>;
@@ -189,17 +189,26 @@ export class DatabaseStorage implements IStorage {
     return result[0];
   }
 
-  async getLiquidations(limit: number = 100): Promise<Liquidation[]> {
-    return await db.select().from(liquidations).orderBy(desc(liquidations.timestamp)).limit(limit);
-  }
-
-  async getLiquidationsBySymbol(symbols: string[], limit: number = 100): Promise<Liquidation[]> {
-    if (symbols.length === 0) return [];
-    
-    // Use inArray for proper symbol filtering
+  async getLiquidations(limit: number = 100, exchange?: string): Promise<Liquidation[]> {
+    const conditions = exchange ? eq(liquidations.exchange, exchange) : undefined;
     return await db.select()
       .from(liquidations)
-      .where(inArray(liquidations.symbol, symbols))
+      .where(conditions)
+      .orderBy(desc(liquidations.timestamp))
+      .limit(limit);
+  }
+
+  async getLiquidationsBySymbol(symbols: string[], limit: number = 100, exchange?: string): Promise<Liquidation[]> {
+    if (symbols.length === 0) return [];
+    
+    // Build conditions: symbol filter + optional exchange filter
+    const conditions = exchange 
+      ? and(inArray(liquidations.symbol, symbols), eq(liquidations.exchange, exchange))
+      : inArray(liquidations.symbol, symbols);
+    
+    return await db.select()
+      .from(liquidations)
+      .where(conditions)
       .orderBy(desc(liquidations.timestamp))
       .limit(limit);
   }
@@ -233,18 +242,26 @@ export class DatabaseStorage implements IStorage {
       .limit(1);
   }
 
-  async getLiquidationsSince(timestamp: Date, limit: number = 100): Promise<Liquidation[]> {
+  async getLiquidationsSince(timestamp: Date, limit: number = 100, exchange?: string): Promise<Liquidation[]> {
+    const conditions = exchange
+      ? and(gte(liquidations.timestamp, timestamp), eq(liquidations.exchange, exchange))
+      : gte(liquidations.timestamp, timestamp);
+    
     return await db.select()
       .from(liquidations)
-      .where(gte(liquidations.timestamp, timestamp))
+      .where(conditions)
       .orderBy(desc(liquidations.timestamp))
       .limit(limit);
   }
 
-  async getLargestLiquidationSince(timestamp: Date): Promise<Liquidation | undefined> {
+  async getLargestLiquidationSince(timestamp: Date, exchange?: string): Promise<Liquidation | undefined> {
+    const conditions = exchange
+      ? and(gte(liquidations.timestamp, timestamp), eq(liquidations.exchange, exchange))
+      : gte(liquidations.timestamp, timestamp);
+    
     const result = await db.select()
       .from(liquidations)
-      .where(gte(liquidations.timestamp, timestamp))
+      .where(conditions)
       .orderBy(desc(liquidations.value))
       .limit(1);
     return result[0];

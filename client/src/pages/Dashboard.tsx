@@ -667,6 +667,7 @@ export default function Dashboard() {
           selectedAssets={selectedAssets}
           isCollapsed={isSidebarCollapsed}
           onToggleCollapse={setIsSidebarCollapsed}
+          exchange={activeStrategy?.exchange || 'aster'}
         />
       </div>
 
@@ -693,6 +694,7 @@ export default function Dashboard() {
               selectedAssets={selectedAssets}
               isCollapsed={false}
               onToggleCollapse={() => {}}
+              exchange={activeStrategy?.exchange || 'aster'}
             />
           </div>
         </SheetContent>
