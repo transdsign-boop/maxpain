@@ -134,9 +134,9 @@ export interface IStorage {
   getPosition(id: string): Promise<Position | undefined>;
   getPositionBySymbol(sessionId: string, symbol: string): Promise<Position | undefined>;
   getPositionBySymbolAndSide(sessionId: string, symbol: string, side: string): Promise<Position | undefined>;
-  getOpenPositions(sessionId: string): Promise<Position[]>;
-  getClosedPositions(sessionId: string): Promise<Position[]>;
-  getPositionsBySession(sessionId: string): Promise<Position[]>;
+  getOpenPositions(sessionId: string, exchange?: string): Promise<Position[]>;
+  getClosedPositions(sessionId: string, exchange?: string): Promise<Position[]>;
+  getPositionsBySession(sessionId: string, exchange?: string): Promise<Position[]>;
   updatePosition(id: string, updates: Partial<InsertPosition>): Promise<Position>;
   closePosition(id: string, closedAt: Date, realizedPnl: number, realizedPnlPercent?: number): Promise<Position>;
   clearPositionsBySession(sessionId: string): Promise<void>;
@@ -737,21 +737,45 @@ export class DatabaseStorage implements IStorage {
     return result[0];
   }
 
-  async getOpenPositions(sessionId: string): Promise<Position[]> {
+  async getOpenPositions(sessionId: string, exchange?: string): Promise<Position[]> {
+    const conditions = [
+      eq(positions.sessionId, sessionId),
+      eq(positions.isOpen, true)
+    ];
+    
+    if (exchange) {
+      conditions.push(eq(positions.exchange, exchange));
+    }
+    
     return await db.select().from(positions)
-      .where(and(eq(positions.sessionId, sessionId), eq(positions.isOpen, true)))
+      .where(and(...conditions))
       .orderBy(desc(positions.openedAt));
   }
 
-  async getClosedPositions(sessionId: string): Promise<Position[]> {
+  async getClosedPositions(sessionId: string, exchange?: string): Promise<Position[]> {
+    const conditions = [
+      eq(positions.sessionId, sessionId),
+      eq(positions.isOpen, false)
+    ];
+    
+    if (exchange) {
+      conditions.push(eq(positions.exchange, exchange));
+    }
+    
     return await db.select().from(positions)
-      .where(and(eq(positions.sessionId, sessionId), eq(positions.isOpen, false)))
+      .where(and(...conditions))
       .orderBy(desc(positions.closedAt));
   }
 
-  async getPositionsBySession(sessionId: string): Promise<Position[]> {
+  async getPositionsBySession(sessionId: string, exchange?: string): Promise<Position[]> {
+    const conditions = [eq(positions.sessionId, sessionId)];
+    
+    if (exchange) {
+      conditions.push(eq(positions.exchange, exchange));
+    }
+    
     return await db.select().from(positions)
-      .where(eq(positions.sessionId, sessionId))
+      .where(and(...conditions))
       .orderBy(desc(positions.openedAt));
   }
 
