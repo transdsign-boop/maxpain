@@ -19,6 +19,8 @@ import { liveDataOrchestrator } from './live-data-orchestrator';
 import { syncCompletedTrades } from './exchange-sync';
 import { ProtectiveOrderRecovery } from './protective-order-recovery';
 import { wsBroadcaster } from './websocket-broadcaster';
+import { exchangeRegistry } from './exchanges/registry';
+import type { IExchangeAdapter } from './exchanges/types';
 
 // Aster DEX fee schedule
 const ASTER_MAKER_FEE_PERCENT = 0.01;  // 0.01% for limit orders (adds liquidity) 
@@ -53,8 +55,8 @@ export class StrategyEngine extends EventEmitter {
   private activeSessions: Map<string, TradeSession> = new Map();
   private liquidationHistory: Map<string, Liquidation[]> = new Map(); // symbol -> liquidations
   private priceCache: Map<string, number> = new Map(); // symbol -> latest price
-  private symbolPrecisionCache: Map<string, SymbolPrecision> = new Map(); // symbol -> precision info
-  private exchangeInfoFetched = false; // Track if exchange info has been fetched
+  private symbolPrecisionCache: Map<string, SymbolPrecision> = new Map(); // Key: "${exchange}:${symbol}" for multi-exchange isolation
+  private exchangeInfoFetched: Set<string> = new Set(); // Track which exchanges have been fetched (exchange type)
   private positionCreationLocks: Map<string, Promise<void>> = new Map(); // sessionId-symbol -> lock to prevent duplicate positions
   private pendingLayerOrders: Map<string, Set<number>> = new Map(); // positionId -> Set of pending layer numbers to prevent duplicates
   private isRunning = false;
@@ -92,57 +94,103 @@ export class StrategyEngine extends EventEmitter {
     this.on('liquidation', this.handleLiquidation.bind(this));
   }
 
-  // Fetch exchange info to get symbol precision requirements
-  private async fetchExchangeInfo() {
-    if (this.exchangeInfoFetched) return;
+  /**
+   * Get the exchange adapter for a given strategy
+   * Registry caches adapters per exchange type, so this is lightweight
+   */
+  private getAdapterForStrategy(strategyId: string): IExchangeAdapter {
+    const strategy = this.activeStrategies.get(strategyId);
+    if (!strategy) {
+      throw new Error(`Strategy ${strategyId} not found in active strategies`);
+    }
     
+    const exchangeType = (strategy.exchange || 'aster') as 'aster' | 'bybit';
+    return exchangeRegistry.getAdapter(exchangeType);
+  }
+
+  // Fetch exchange info to get symbol precision requirements
+  // Fetches per-exchange to support multi-exchange isolation
+  private async fetchExchangeInfo() {
     try {
-      const response = await fetch('https://fapi.asterdex.com/fapi/v1/exchangeInfo');
-      if (!response.ok) {
-        console.error('❌ Failed to fetch exchange info:', response.statusText);
+      if (this.activeStrategies.size === 0) {
+        console.log('⏭️ No active strategies, skipping exchange info fetch');
         return;
       }
       
-      const data = await response.json();
+      // Fetch exchange info for each unique exchange type
+      const exchangeTypes = new Set<string>();
+      for (const strategy of this.activeStrategies.values()) {
+        const exchange = strategy.exchange || 'aster';
+        exchangeTypes.add(exchange);
+      }
       
-      // Cache precision info for each symbol
-      for (const symbol of data.symbols || []) {
-        const lotSizeFilter = symbol.filters?.find((f: any) => f.filterType === 'LOT_SIZE');
-        const priceFilter = symbol.filters?.find((f: any) => f.filterType === 'PRICE_FILTER');
-        const minNotionalFilter = symbol.filters?.find((f: any) => f.filterType === 'MIN_NOTIONAL');
+      for (const exchangeType of exchangeTypes) {
+        // Skip if already fetched for this exchange
+        if (this.exchangeInfoFetched.has(exchangeType)) {
+          continue;
+        }
         
-        if (lotSizeFilter && priceFilter) {
-          const parsedMinNotional = minNotionalFilter?.notional ? parseFloat(minNotionalFilter.notional) : 5.0;
+        const adapter = exchangeRegistry.getAdapter(exchangeType as 'aster' | 'bybit');
+        const data = await adapter.getExchangeInfo();
+        
+        // Cache precision info with exchange-scoped keys
+        for (const symbol of data.symbols || []) {
+          const parsedMinNotional = symbol.minNotional ? parseFloat(symbol.minNotional) : 5.0;
           
           // Debug logging for HYPE to trace minNotional value
           if (symbol.symbol === 'HYPEUSDT') {
-            console.log(`🔍 HYPE minNotional parsing:`, {
-              filterFound: !!minNotionalFilter,
-              filterValue: minNotionalFilter?.notional,
+            console.log(`🔍 [${exchangeType}] HYPE minNotional parsing:`, {
+              value: symbol.minNotional,
               parsed: parsedMinNotional
             });
           }
           
-          this.symbolPrecisionCache.set(symbol.symbol, {
+          // KEY CHANGE: Store with exchange prefix for isolation
+          const cacheKey = `${exchangeType}:${symbol.symbol}`;
+          this.symbolPrecisionCache.set(cacheKey, {
             quantityPrecision: symbol.quantityPrecision || 8,
             pricePrecision: symbol.pricePrecision || 8,
-            stepSize: lotSizeFilter.stepSize || '1',
-            tickSize: priceFilter.tickSize || '0.01',
+            stepSize: symbol.stepSize || '1',
+            tickSize: '0.' + '0'.repeat(symbol.pricePrecision - 1) + '1', // Derive from precision
             minNotional: parsedMinNotional, // Use exchange value or fallback to $5
           });
         }
+        
+        this.exchangeInfoFetched.add(exchangeType);
+        const symbolCount = data.symbols?.length || 0;
+        console.log(`✅ [${exchangeType}] Cached precision info for ${symbolCount} symbols`);
       }
-      
-      this.exchangeInfoFetched = true;
-      console.log(`✅ Cached precision info for ${this.symbolPrecisionCache.size} symbols`);
     } catch (error) {
       console.error('❌ Error fetching exchange info:', error);
     }
   }
 
+  // Helper to get exchange-specific precision (supports multi-exchange isolation)
+  private getPrecision(symbol: string, strategyId: string): SymbolPrecision | undefined {
+    const strategy = this.activeStrategies.get(strategyId);
+    const exchange = strategy?.exchange || 'aster';
+    const cacheKey = `${exchange}:${symbol}`;
+    return this.symbolPrecisionCache.get(cacheKey);
+  }
+
   // Round quantity to match exchange precision requirements using stepSize
-  private roundQuantity(symbol: string, quantity: number): number {
-    const precision = this.symbolPrecisionCache.get(symbol);
+  private roundQuantity(symbol: string, quantity: number, strategyId?: string): number {
+    let precision: SymbolPrecision | undefined;
+    
+    if (strategyId) {
+      precision = this.getPrecision(symbol, strategyId);
+    } else {
+      // TODO: Multi-exchange - Make strategyId required to prevent cross-exchange contamination
+      // Fallback: try to find precision for any exchange (legacy behavior)
+      console.warn(`⚠️ roundQuantity called without strategyId for ${symbol} - using fallback (may use wrong exchange precision)`);
+      for (const [key, value] of this.symbolPrecisionCache) {
+        if (key.endsWith(`:${symbol}`)) {
+          precision = value;
+          break;
+        }
+      }
+    }
+    
     if (!precision) {
       console.warn(`⚠️ No precision info for ${symbol}, using default rounding`);
       return Math.floor(quantity * 100) / 100; // Default to 2 decimals
@@ -161,8 +209,23 @@ export class StrategyEngine extends EventEmitter {
   }
 
   // Round price to match exchange precision requirements using tickSize
-  private roundPrice(symbol: string, price: number): number {
-    const precision = this.symbolPrecisionCache.get(symbol);
+  private roundPrice(symbol: string, price: number, strategyId?: string): number {
+    let precision: SymbolPrecision | undefined;
+    
+    if (strategyId) {
+      precision = this.getPrecision(symbol, strategyId);
+    } else {
+      // TODO: Multi-exchange - Make strategyId required to prevent cross-exchange contamination
+      // Fallback: try to find precision for any exchange (legacy behavior)
+      console.warn(`⚠️ roundPrice called without strategyId for ${symbol} - using fallback (may use wrong exchange precision)`);
+      for (const [key, value] of this.symbolPrecisionCache) {
+        if (key.endsWith(`:${symbol}`)) {
+          precision = value;
+          break;
+        }
+      }
+    }
+    
     if (!precision) {
       console.warn(`⚠️ No precision info for ${symbol}, using default rounding`);
       return Math.floor(price * 100) / 100; // Default to 2 decimals
@@ -187,14 +250,17 @@ export class StrategyEngine extends EventEmitter {
     console.log('🚀 StrategyEngine starting...');
     this.isRunning = true;
     
+    // Load active strategies and sessions FIRST (needed for exchange adapter access)
+    await this.loadActiveStrategies();
+    
     // Fetch exchange info for precision requirements (for live trading)
     await this.fetchExchangeInfo();
     
-    // Fetch and cache the exchange's position mode setting
-    this.exchangePositionMode = await this.fetchExchangePositionMode();
-    
-    // Load active strategies and sessions
-    await this.loadActiveStrategies();
+    // Fetch and cache the exchange's position mode setting (using first active strategy)
+    if (this.activeStrategies.size > 0) {
+      const firstStrategyId = Array.from(this.activeStrategies.keys())[0];
+      this.exchangePositionMode = await this.fetchExchangePositionMode(firstStrategyId);
+    }
     
     // NOTE: Removed programmatic layer monitoring - layers now use exchange orders (LIMIT TP, STOP_MARKET SL)
     // Exchange will automatically execute these orders, and we'll receive ORDER_TRADE_UPDATE events via WebSocket
@@ -1214,53 +1280,15 @@ export class StrategyEngine extends EventEmitter {
     return shouldAddLayer;
   }
 
-  // Fetch available balance from exchange (for live trading)
+  // Fetch available balance from exchange (for live trading) using adapter
   private async getExchangeAvailableBalance(strategy: Strategy): Promise<number | null> {
     try {
-      const apiKey = process.env.ASTER_API_KEY;
-      const secretKey = process.env.ASTER_SECRET_KEY;
-
-      if (!apiKey || !secretKey) {
-        console.error('❌ Aster DEX API keys not configured');
-        return null;
-      }
-
-      const timestamp = Date.now();
-      const params = `timestamp=${timestamp}`;
-      const signature = createHmac('sha256', secretKey)
-        .update(params)
-        .digest('hex');
-
-      const response = await fetch(
-        `https://fapi.asterdex.com/fapi/v1/account?${params}&signature=${signature}`,
-        {
-          headers: { 'X-MBX-APIKEY': apiKey },
-        }
-      );
-
-      if (!response.ok) {
-        let errorMessage = '';
-        try {
-          const errorText = await response.text();
-          errorMessage = errorText || response.statusText;
-        } catch {
-          errorMessage = response.statusText;
-        }
-        
-        if (response.status === 429) {
-          console.error('⚠️ Rate limit exceeded for Aster DEX account endpoint');
-        } else if (response.status === 401 || response.status === 403) {
-          console.error('🔑 Authentication failed for Aster DEX - check API keys:', errorMessage);
-        } else {
-          console.error(`❌ Failed to fetch exchange account (${response.status}):`, errorMessage);
-        }
-        return null;
-      }
-
-      const data = await response.json();
-      // CRITICAL: Use totalWalletBalance (total account equity) NOT availableBalance
+      const adapter = this.getAdapterForStrategy(strategy.id);
+      const accountInfo = await adapter.getAccountInfo();
+      
+      // CRITICAL: Use totalBalance (total account equity) NOT availableBalance
       // Risk must be calculated on total account value, not just leftover funds after positions are open
-      const totalWalletBalance = parseFloat(data.totalWalletBalance || '0');
+      const totalWalletBalance = parseFloat(accountInfo.totalBalance || '0');
       console.log(`💰 Exchange total wallet balance (for risk calc): $${totalWalletBalance.toFixed(2)}`);
       return totalWalletBalance;
     } catch (error) {
@@ -1275,7 +1303,7 @@ export class StrategyEngine extends EventEmitter {
       console.log('🔄 Starting stale position reconciliation...');
       
       // Get live positions from exchange
-      const livePositions = await this.getExchangePositions();
+      const livePositions = await this.getExchangePositions(strategy.id);
       if (!livePositions) {
         console.log('⏭️ Skipping position reconciliation - could not fetch live positions');
         return;
@@ -2026,16 +2054,12 @@ export class StrategyEngine extends EventEmitter {
 
     while (Date.now() - startTime < maxRetryDuration) {
       try {
-        // Fetch real-time current price from Aster DEX API
+        // Fetch real-time current price using exchange adapter
         let currentPrice = targetPrice; // fallback to target price
         try {
-          const asterApiUrl = `https://fapi.asterdex.com/fapi/v1/ticker/price?symbol=${symbol}`;
-          const priceResponse = await fetch(asterApiUrl);
-          
-          if (priceResponse.ok) {
-            const priceData = await priceResponse.json();
-            currentPrice = parseFloat(priceData.price);
-          }
+          const adapter = this.getAdapterForStrategy(strategy.id);
+          const ticker = await adapter.getTicker(symbol);
+          currentPrice = parseFloat(ticker.price);
         } catch (apiError) {
           console.log(`⚠️ Using target price as fallback (API unavailable)`);
         }
@@ -2532,41 +2556,14 @@ export class StrategyEngine extends EventEmitter {
   }
 
 
-  // Get the exchange's position mode (one-way or dual)
-  private async fetchExchangePositionMode(): Promise<'one-way' | 'dual'> {
+  // Get the exchange's position mode (one-way or dual) using adapter
+  private async fetchExchangePositionMode(strategyId: string): Promise<'one-way' | 'dual'> {
     try {
-      const apiKey = process.env.ASTER_API_KEY;
-      const secretKey = process.env.ASTER_SECRET_KEY;
+      const adapter = this.getAdapterForStrategy(strategyId);
+      const accountInfo = await adapter.getAccountInfo();
       
-      if (!apiKey || !secretKey) {
-        console.error('❌ Cannot determine position mode: API keys not configured');
-        return 'one-way'; // Default to one-way mode
-      }
-      
-      const timestamp = Date.now();
-      const queryString = `timestamp=${timestamp}&recvWindow=5000`;
-      
-      const signature = createHmac('sha256', secretKey)
-        .update(queryString)
-        .digest('hex');
-      
-      const signedParams = `${queryString}&signature=${signature}`;
-      
-      const response = await fetch(`https://fapi.asterdex.com/fapi/v1/positionSide/dual?${signedParams}`, {
-        method: 'GET',
-        headers: {
-          'X-MBX-APIKEY': apiKey,
-        },
-      });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`❌ Failed to fetch position mode: ${response.status} ${errorText}`);
-        return 'one-way'; // Default to one-way mode on error
-      }
-      
-      const data = await response.json();
-      const isDualMode = data.dualSidePosition === true;
+      // Check if positionMode exists in accountInfo
+      const isDualMode = accountInfo.positionMode === 'dual';
       
       console.log(`📊 Exchange position mode: ${isDualMode ? 'dual' : 'one-way'}`);
       return isDualMode ? 'dual' : 'one-way';
@@ -2576,113 +2573,35 @@ export class StrategyEngine extends EventEmitter {
     }
   }
 
-  // Get all exchange positions from Aster DEX
-  private async getExchangePositions(): Promise<any[]> {
+  // Get all exchange positions from exchange adapter
+  private async getExchangePositions(strategyId: string): Promise<any[]> {
     try {
-      const apiKey = process.env.ASTER_API_KEY;
-      const secretKey = process.env.ASTER_SECRET_KEY;
+      const adapter = this.getAdapterForStrategy(strategyId);
+      const normalizedPositions = await adapter.getPositions();
       
-      if (!apiKey || !secretKey) {
-        console.error('❌ Aster DEX API keys not configured');
-        return [];
-      }
-      
-      const timestamp = Date.now();
-      const queryString = `timestamp=${timestamp}&recvWindow=5000`;
-      
-      const signature = createHmac('sha256', secretKey)
-        .update(queryString)
-        .digest('hex');
-      
-      const signedParams = `${queryString}&signature=${signature}`;
-      
-      // Implement exponential backoff for rate limiting
-      let retryAttempt = 0;
-      const maxRetries = 3;
-      let response: Response | null = null;
-      
-      while (retryAttempt <= maxRetries) {
-        response = await fetch(`https://fapi.asterdex.com/fapi/v2/positionRisk?${signedParams}`, {
-          method: 'GET',
-          headers: {
-            'X-MBX-APIKEY': apiKey,
-          },
-        });
-        
-        // Check for rate limiting
-        if (response.status === 429) {
-          retryAttempt++;
-          if (retryAttempt <= maxRetries) {
-            const backoffDelay = Math.min(1000 * Math.pow(2, retryAttempt), 10000); // Exponential backoff, max 10s
-            console.log(`⏱️ Rate limited on position fetch. Retrying in ${backoffDelay}ms (attempt ${retryAttempt}/${maxRetries})...`);
-            await new Promise(resolve => setTimeout(resolve, backoffDelay));
-            continue;
-          } else {
-            console.error(`❌ Rate limited after ${maxRetries} retries`);
-            return [];
-          }
-        }
-        
-        break; // Exit loop if not rate limited
-      }
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`❌ Failed to fetch exchange positions: ${response.status} ${errorText}`);
-        return [];
-      }
-      
-      const positions = await response.json();
-      return positions;
+      // Convert normalized positions back to legacy format for backward compatibility
+      // This maintains the existing data structure that the rest of the code expects
+      return normalizedPositions.map(pos => ({
+        symbol: pos.symbol,
+        positionAmt: pos.side === 'LONG' ? pos.size : `-${pos.size}`,
+        entryPrice: pos.entryPrice,
+        markPrice: pos.markPrice,
+        unRealizedProfit: pos.unrealizedPnl,
+        leverage: pos.leverage,
+        marginType: pos.marginType.toLowerCase(),
+        positionSide: pos.positionSide || 'BOTH',
+      }));
     } catch (error) {
       console.error('❌ Error fetching exchange positions:', error);
       return [];
     }
   }
 
-  // Cancel an order on Aster DEX
-  private async cancelExchangeOrder(symbol: string, orderId: string): Promise<{ success: boolean; error?: string }> {
+  // Cancel an order using exchange adapter
+  private async cancelExchangeOrder(strategyId: string, symbol: string, orderId: string): Promise<{ success: boolean; error?: string }> {
     try {
-      const apiKey = process.env.ASTER_API_KEY;
-      const secretKey = process.env.ASTER_SECRET_KEY;
-      
-      if (!apiKey || !secretKey) {
-        console.error('❌ Aster DEX API keys not configured');
-        return { success: false, error: 'API keys not configured' };
-      }
-      
-      const timestamp = Date.now();
-      const orderParams: Record<string, string | number> = {
-        symbol,
-        orderId,
-        timestamp,
-        recvWindow: 5000,
-      };
-      
-      const queryString = Object.entries(orderParams)
-        .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
-        .map(([k, v]) => `${k}=${v}`)
-        .join('&');
-      
-      const signature = createHmac('sha256', secretKey)
-        .update(queryString)
-        .digest('hex');
-      
-      const signedParams = `${queryString}&signature=${signature}`;
-      
-      const response = await fetch(`https://fapi.asterdex.com/fapi/v1/order?${signedParams}`, {
-        method: 'DELETE',
-        headers: {
-          'X-MBX-APIKEY': apiKey,
-        },
-      });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`❌ Failed to cancel order ${orderId}: ${response.status} ${errorText}`);
-        return { success: false, error: errorText };
-      }
-      
+      const adapter = this.getAdapterForStrategy(strategyId);
+      await adapter.cancelOrder(symbol, orderId);
       console.log(`✅ Canceled order ${orderId} for ${symbol}`);
       return { success: true };
     } catch (error) {
@@ -2691,41 +2610,27 @@ export class StrategyEngine extends EventEmitter {
     }
   }
 
-  // Get all open orders from Aster DEX
-  private async getOpenOrders(): Promise<any[]> {
+  // Get all open orders from exchange adapter
+  private async getOpenOrders(strategyId: string): Promise<any[]> {
     try {
-      const apiKey = process.env.ASTER_API_KEY;
-      const secretKey = process.env.ASTER_SECRET_KEY;
+      const adapter = this.getAdapterForStrategy(strategyId);
+      const normalizedOrders = await adapter.getOpenOrders();
       
-      if (!apiKey || !secretKey) {
-        console.error('❌ Aster DEX API keys not configured');
-        return [];
-      }
-      
-      const timestamp = Date.now();
-      const queryString = `timestamp=${timestamp}&recvWindow=5000`;
-      
-      const signature = createHmac('sha256', secretKey)
-        .update(queryString)
-        .digest('hex');
-      
-      const signedParams = `${queryString}&signature=${signature}`;
-      
-      const response = await fetch(`https://fapi.asterdex.com/fapi/v1/openOrders?${signedParams}`, {
-        method: 'GET',
-        headers: {
-          'X-MBX-APIKEY': apiKey,
-        },
-      });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`❌ Failed to fetch open orders: ${response.status} ${errorText}`);
-        return [];
-      }
-      
-      const orders = await response.json();
-      return orders;
+      // Convert normalized orders back to legacy format for backward compatibility
+      return normalizedOrders.map(order => ({
+        orderId: order.orderId,
+        clientOrderId: order.clientOrderId,
+        symbol: order.symbol,
+        side: order.side,
+        type: order.type,
+        origQty: order.quantity,
+        price: order.price,
+        stopPrice: order.stopPrice,
+        status: order.status,
+        executedQty: order.executedQty,
+        avgPrice: order.avgPrice,
+        positionSide: order.positionSide || 'BOTH',
+      }));
     } catch (error) {
       console.error('❌ Error fetching open orders:', error);
       return [];
@@ -2946,7 +2851,7 @@ export class StrategyEngine extends EventEmitter {
     }
   }
 
-  // Clean up orphaned TP/SL orders on Aster DEX
+  // Clean up orphaned TP/SL orders on exchange
   async cleanupOrphanedTPSL(): Promise<number> {
     try {
       console.log('🧹 Starting orphaned TP/SL order cleanup...');
@@ -2958,8 +2863,17 @@ export class StrategyEngine extends EventEmitter {
         return 0;
       }
 
-      // Get all open orders from Aster DEX
-      const allOrders = await this.getOpenOrders();
+      // TODO: Multi-exchange support - currently uses first strategy's exchange
+      // In future, should group sessions by exchange and clean up each separately
+      const firstSession = activeSessions[0];
+      const firstStrategy = this.activeStrategies.get(firstSession.strategyId);
+      if (!firstStrategy) {
+        console.log('⏭️ No active strategy found, skipping cleanup');
+        return 0;
+      }
+
+      // Get all open orders from exchange
+      const allOrders = await this.getOpenOrders(firstStrategy.id);
       if (allOrders.length === 0) {
         console.log('✅ No open orders found on exchange');
         return 0;
@@ -3098,7 +3012,14 @@ export class StrategyEngine extends EventEmitter {
         return 0;
       }
 
-      const allOrders = await this.getOpenOrders();
+      // TODO: Multi-exchange support - currently uses first strategy's exchange
+      const firstSession = activeSessions[0];
+      const firstStrategy = this.activeStrategies.get(firstSession.strategyId);
+      if (!firstStrategy) {
+        return 0;
+      }
+
+      const allOrders = await this.getOpenOrders(firstStrategy.id);
       if (allOrders.length === 0) {
         return 0;
       }
@@ -3205,14 +3126,21 @@ export class StrategyEngine extends EventEmitter {
         return 0;
       }
 
+      // TODO: Multi-exchange support - currently uses first strategy's exchange
+      const firstSession = activeSessions[0];
+      const firstStrategy = this.activeStrategies.get(firstSession.strategyId);
+      if (!firstStrategy) {
+        return 0;
+      }
+
       // Get all exchange positions
-      const exchangePositions = await this.getExchangePositions();
+      const exchangePositions = await this.getExchangePositions(firstStrategy.id);
       if (exchangePositions.length === 0) {
         return 0;
       }
 
       // Get all open orders
-      const allOrders = await this.getOpenOrders();
+      const allOrders = await this.getOpenOrders(firstStrategy.id);
       
       // Process each position
       for (const exchangePos of exchangePositions) {
@@ -3386,14 +3314,21 @@ export class StrategyEngine extends EventEmitter {
         return results;
       }
 
+      // TODO: Multi-exchange support - currently uses first strategy's exchange
+      const firstSession = activeSessions[0];
+      const firstStrategy = this.activeStrategies.get(firstSession.strategyId);
+      if (!firstStrategy) {
+        return results;
+      }
+
       // Get all exchange positions
-      const exchangePositions = await this.getExchangePositions();
+      const exchangePositions = await this.getExchangePositions(firstStrategy.id);
       if (exchangePositions.length === 0) {
         return results;
       }
 
       // Get all open orders
-      const allOrders = await this.getOpenOrders();
+      const allOrders = await this.getOpenOrders(firstStrategy.id);
       
       // Process each position
       for (const exchangePos of exchangePositions) {
@@ -3499,16 +3434,23 @@ export class StrategyEngine extends EventEmitter {
         return 0;
       }
 
+      // TODO: Multi-exchange support - currently uses first strategy's exchange
+      const firstSession = activeSessions[0];
+      const firstStrategy = this.activeStrategies.get(firstSession.strategyId);
+      if (!firstStrategy) {
+        return 0;
+      }
+
       let fixedCount = 0;
 
       // Get all exchange positions
-      const exchangePositions = await this.getExchangePositions();
+      const exchangePositions = await this.getExchangePositions(firstStrategy.id);
       if (exchangePositions.length === 0) {
         return 0;
       }
 
       // Get all open orders
-      const allOrders = await this.getOpenOrders();
+      const allOrders = await this.getOpenOrders(firstStrategy.id);
       
       // Process each position
       for (const exchangePos of exchangePositions) {
@@ -3588,7 +3530,7 @@ export class StrategyEngine extends EventEmitter {
           console.log(`   Entry: $${entryPrice.toFixed(2)}, Stop-loss: ${stopLossPercent}%, Leverage: ${strategy.leverage}x`);
           
           // Cancel the incorrect order
-          const cancelResult = await this.cancelExchangeOrder(symbol, existingSlOrder.orderId);
+          const cancelResult = await this.cancelExchangeOrder(strategy.id, symbol, existingSlOrder.orderId);
           if (cancelResult.success) {
             console.log(`   ✓ Canceled incorrect SL order`);
             
