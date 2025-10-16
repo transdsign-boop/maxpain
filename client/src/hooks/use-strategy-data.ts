@@ -28,7 +28,7 @@ export function useStrategyData(exchange?: string) {
 
   // Live account data - Fetch once, then rely on WebSocket updates
   const liveAccountQuery = useQuery<any>({
-    queryKey: ['/api/live/account', exchange || 'all'],
+    queryKey: exchange ? ['/api/live/account', exchange] : ['/api/live/account'],
     queryFn: async () => {
       // Fallback HTTP fetch if WebSocket hasn't populated the cache yet
       const exchangeParam = exchange && exchange !== 'all' ? `?exchange=${exchange}` : '';
@@ -46,7 +46,7 @@ export function useStrategyData(exchange?: string) {
 
   // Live positions data - Fetch once, then rely on WebSocket updates
   const livePositionsQuery = useQuery<any[]>({
-    queryKey: ['/api/live/positions', exchange || 'all'],
+    queryKey: exchange ? ['/api/live/positions', exchange] : ['/api/live/positions'],
     queryFn: async () => {
       // Fallback HTTP fetch if WebSocket hasn't populated the cache yet
       const exchangeParam = exchange && exchange !== 'all' ? `?exchange=${exchange}` : '';
@@ -79,7 +79,7 @@ export function useStrategyData(exchange?: string) {
 
   // Fetch position summary ONCE (no polling - WebSocket provides updates)
   const positionSummaryQuery = useQuery<any>({
-    queryKey: ['/api/strategies', activeStrategy?.id, 'positions', 'summary', exchange || 'all'],
+    queryKey: exchange ? ['/api/strategies', activeStrategy?.id, 'positions', 'summary', exchange] : ['/api/strategies', activeStrategy?.id, 'positions', 'summary'],
     queryFn: async () => {
       const exchangeParam = exchange && exchange !== 'all' ? `?exchange=${exchange}` : '';
       const response = await fetch(`/api/strategies/${activeStrategy!.id}/positions/summary${exchangeParam}`);
@@ -92,7 +92,7 @@ export function useStrategyData(exchange?: string) {
 
   // Fetch portfolio risk metrics from WebSocket cache (updated in real-time)
   const portfolioRiskQuery = useQuery<any>({
-    queryKey: ['/api/live/positions-summary', exchange || 'all'],
+    queryKey: exchange ? ['/api/live/positions-summary', exchange] : ['/api/live/positions-summary'],
     queryFn: async () => {
       // Fallback HTTP fetch if WebSocket hasn't populated the cache yet
       const exchangeParam = exchange && exchange !== 'all' ? `?exchange=${exchange}` : '';
@@ -110,7 +110,7 @@ export function useStrategyData(exchange?: string) {
 
   // Fetch strategy changes ONCE (no polling - WebSocket provides updates)
   const strategyChangesQuery = useQuery<any[]>({
-    queryKey: ['/api/strategies', activeStrategy?.id, 'changes', exchange || 'all'],
+    queryKey: exchange ? ['/api/strategies', activeStrategy?.id, 'changes', exchange] : ['/api/strategies', activeStrategy?.id, 'changes'],
     queryFn: async () => {
       const exchangeParam = exchange && exchange !== 'all' ? `?exchange=${exchange}` : '';
       const response = await fetch(`/api/strategies/${activeStrategy!.id}/changes${exchangeParam}`);
@@ -123,7 +123,7 @@ export function useStrategyData(exchange?: string) {
 
   // Fetch performance overview ONCE (no polling - WebSocket provides updates)
   const performanceQuery = useQuery<any>({
-    queryKey: ['/api/performance/overview', exchange || 'all'],
+    queryKey: exchange ? ['/api/performance/overview', exchange] : ['/api/performance/overview'],
     queryFn: async () => {
       const exchangeParam = exchange && exchange !== 'all' ? `?exchange=${exchange}` : '';
       const response = await fetch(`/api/performance/overview${exchangeParam}`);
@@ -135,7 +135,7 @@ export function useStrategyData(exchange?: string) {
 
   // Fetch chart data ONCE (no polling - WebSocket provides updates)
   const chartDataQuery = useQuery<any[]>({
-    queryKey: ['/api/performance/chart', exchange || 'all'],
+    queryKey: exchange ? ['/api/performance/chart', exchange] : ['/api/performance/chart'],
     queryFn: async () => {
       const exchangeParam = exchange && exchange !== 'all' ? `?exchange=${exchange}` : '';
       const response = await fetch(`/api/performance/chart${exchangeParam}`);
@@ -147,7 +147,7 @@ export function useStrategyData(exchange?: string) {
 
   // Fetch asset performance ONCE (no polling - WebSocket provides updates)
   const assetPerformanceQuery = useQuery<any[]>({
-    queryKey: ['/api/analytics/asset-performance', exchange || 'all'],
+    queryKey: exchange ? ['/api/analytics/asset-performance', exchange] : ['/api/analytics/asset-performance'],
     queryFn: async () => {
       const exchangeParam = exchange && exchange !== 'all' ? `?exchange=${exchange}` : '';
       const response = await fetch(`/api/analytics/asset-performance${exchangeParam}`);
@@ -159,7 +159,7 @@ export function useStrategyData(exchange?: string) {
 
   // Fetch closed positions (refresh every 30 seconds to stay in sync with P&L events)
   const closedPositionsQuery = useQuery<any[]>({
-    queryKey: ['/api/strategies', activeStrategy?.id, 'positions', 'closed', exchange || 'all'],
+    queryKey: exchange ? ['/api/strategies', activeStrategy?.id, 'positions', 'closed', exchange] : ['/api/strategies', activeStrategy?.id, 'positions', 'closed'],
     queryFn: async () => {
       const exchangeParam = exchange && exchange !== 'all' ? `?exchange=${exchange}` : '';
       const response = await fetch(`/api/strategies/${activeStrategy!.id}/positions/closed${exchangeParam}`);
@@ -174,7 +174,7 @@ export function useStrategyData(exchange?: string) {
   // Fetch realized P&L events from exchange (actual closed trades - source of truth)
   // Starting from October 1st, 2025 (timestamp: 1759276800000)
   const realizedPnlEventsQuery = useQuery<{ events: any[]; total: number; count: number; dateRange?: any }>({
-    queryKey: ['/api/realized-pnl-events', exchange || 'all'],
+    queryKey: exchange ? ['/api/realized-pnl-events', exchange] : ['/api/realized-pnl-events'],
     queryFn: async () => {
       const exchangeParam = exchange && exchange !== 'all' ? `&exchange=${exchange}` : '';
       const response = await fetch(`/api/realized-pnl-events?startTime=1759276800000${exchangeParam}`);
@@ -188,7 +188,7 @@ export function useStrategyData(exchange?: string) {
   // Fetch transfers for chart markers (fetched from exchange API)
   // Starting from October 1st, 2025 (timestamp: 1759276800000)
   const transfersQuery = useQuery<any[]>({
-    queryKey: ['/api/transfers', exchange || 'all'],
+    queryKey: exchange ? ['/api/transfers', exchange] : ['/api/transfers'],
     queryFn: async () => {
       const exchangeParam = exchange && exchange !== 'all' ? `&exchange=${exchange}` : '';
       const response = await fetch(`/api/transfers?startTime=1759276800000${exchangeParam}`);
@@ -201,7 +201,7 @@ export function useStrategyData(exchange?: string) {
   // Fetch commissions for fee calculation (fetched from exchange API, not database)
   // Starting from October 1st, 2025 (timestamp: 1759276800000)
   const commissionsQuery = useQuery<{ records: any[]; total: number }>({
-    queryKey: ['/api/commissions', exchange || 'all'],
+    queryKey: exchange ? ['/api/commissions', exchange] : ['/api/commissions'],
     queryFn: async () => {
       const exchangeParam = exchange && exchange !== 'all' ? `?exchange=${exchange}` : '';
       const response = await fetch(`/api/commissions${exchangeParam}`);
@@ -213,7 +213,7 @@ export function useStrategyData(exchange?: string) {
 
   // Fetch funding fees for fee calculation (fetched from exchange API, not database)
   const fundingFeesQuery = useQuery<{ records: any[]; total: number }>({
-    queryKey: ['/api/funding-fees', exchange || 'all'],
+    queryKey: exchange ? ['/api/funding-fees', exchange] : ['/api/funding-fees'],
     queryFn: async () => {
       const exchangeParam = exchange && exchange !== 'all' ? `?exchange=${exchange}` : '';
       const response = await fetch(`/api/funding-fees${exchangeParam}`);
