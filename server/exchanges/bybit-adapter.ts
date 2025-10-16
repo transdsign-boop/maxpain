@@ -65,11 +65,12 @@ export class BybitExchangeAdapter implements IExchangeAdapter {
       .digest('hex');
   }
 
-  private createSignedRequest(params: Record<string, any>): { 
+  private createSignedRequest(params: Record<string, any>, method: 'GET' | 'POST' = 'GET'): { 
     queryString: string; 
     signature: string; 
     timestamp: number;
     headers: Record<string, string>;
+    body?: string;
   } {
     const timestamp = Date.now();
     const recvWindow = 5000;
@@ -82,13 +83,21 @@ export class BybitExchangeAdapter implements IExchangeAdapter {
         return acc;
       }, {} as Record<string, any>);
     
-    // For GET requests, params go in query string
-    // For POST requests, params go in JSON body
-    const queryString = Object.entries(sortedParams)
-      .map(([k, v]) => `${k}=${typeof v === 'object' ? JSON.stringify(v) : v}`)
-      .join('&');
+    let signature: string;
+    let queryString = '';
+    let body: string | undefined;
     
-    const signature = this.generateSignature(queryString, timestamp);
+    if (method === 'GET') {
+      // For GET requests, params go in query string
+      queryString = Object.entries(sortedParams)
+        .map(([k, v]) => `${k}=${typeof v === 'object' ? JSON.stringify(v) : v}`)
+        .join('&');
+      signature = this.generateSignature(queryString, timestamp);
+    } else {
+      // For POST requests, params go in JSON body
+      body = JSON.stringify(sortedParams);
+      signature = this.generateSignature(body, timestamp);
+    }
     
     const headers = {
       'X-BAPI-API-KEY': this.apiKey,
@@ -98,7 +107,7 @@ export class BybitExchangeAdapter implements IExchangeAdapter {
       'Content-Type': 'application/json',
     };
     
-    return { queryString, signature, timestamp, headers };
+    return { queryString, signature, timestamp, headers, body };
   }
 
   // ============================================================================
@@ -106,10 +115,10 @@ export class BybitExchangeAdapter implements IExchangeAdapter {
   // ============================================================================
 
   async getAccountInfo(): Promise<NormalizedAccountInfo> {
-    const { headers } = this.createSignedRequest({ accountType: 'CONTRACT' });
+    const { headers, queryString } = this.createSignedRequest({ accountType: 'CONTRACT' });
     
     const response = await fetch(
-      `${this.baseURL}/v5/account/wallet-balance?accountType=CONTRACT`,
+      `${this.baseURL}/v5/account/wallet-balance?${queryString}`,
       { headers }
     );
 
@@ -199,14 +208,14 @@ export class BybitExchangeAdapter implements IExchangeAdapter {
       sellLeverage: leverage.toString(),
     };
 
-    const { headers } = this.createSignedRequest(params);
+    const { headers, body } = this.createSignedRequest(params, 'POST');
     
     const response = await fetch(
       `${this.baseURL}/v5/position/set-leverage`,
       {
         method: 'POST',
         headers,
-        body: JSON.stringify(params),
+        body,
       }
     );
 
@@ -230,14 +239,14 @@ export class BybitExchangeAdapter implements IExchangeAdapter {
       sellLeverage: '10',
     };
 
-    const { headers } = this.createSignedRequest(params);
+    const { headers, body } = this.createSignedRequest(params, 'POST');
     
     const response = await fetch(
       `${this.baseURL}/v5/position/switch-mode`,
       {
         method: 'POST',
         headers,
-        body: JSON.stringify(params),
+        body,
       }
     );
 
@@ -258,14 +267,14 @@ export class BybitExchangeAdapter implements IExchangeAdapter {
       mode: enabled ? 3 : 0, // 0=one-way, 3=hedge
     };
 
-    const { headers } = this.createSignedRequest(params);
+    const { headers, body } = this.createSignedRequest(params, 'POST');
     
     const response = await fetch(
       `${this.baseURL}/v5/position/switch-mode`,
       {
         method: 'POST',
         headers,
-        body: JSON.stringify(params),
+        body,
       }
     );
 
@@ -310,14 +319,14 @@ export class BybitExchangeAdapter implements IExchangeAdapter {
       orderParams.reduceOnly = true;
     }
 
-    const { headers } = this.createSignedRequest(orderParams);
+    const { headers, body } = this.createSignedRequest(orderParams, 'POST');
     
     const response = await fetch(
       `${this.baseURL}/v5/order/create`,
       {
         method: 'POST',
         headers,
-        body: JSON.stringify(orderParams),
+        body,
       }
     );
 
@@ -369,14 +378,14 @@ export class BybitExchangeAdapter implements IExchangeAdapter {
       request: orderRequests,
     };
 
-    const { headers } = this.createSignedRequest(params);
+    const { headers, body } = this.createSignedRequest(params, 'POST');
     
     const response = await fetch(
       `${this.baseURL}/v5/order/create-batch`,
       {
         method: 'POST',
         headers,
-        body: JSON.stringify(params),
+        body,
       }
     );
 
@@ -484,14 +493,14 @@ export class BybitExchangeAdapter implements IExchangeAdapter {
       orderId,
     };
 
-    const { headers } = this.createSignedRequest(params);
+    const { headers, body } = this.createSignedRequest(params, 'POST');
     
     const response = await fetch(
       `${this.baseURL}/v5/order/cancel`,
       {
         method: 'POST',
         headers,
-        body: JSON.stringify(params),
+        body,
       }
     );
 
@@ -517,14 +526,14 @@ export class BybitExchangeAdapter implements IExchangeAdapter {
       params.settleCoin = 'USDT'; // Cancel all USDT futures orders
     }
 
-    const { headers } = this.createSignedRequest(params);
+    const { headers, body } = this.createSignedRequest(params, 'POST');
     
     const response = await fetch(
       `${this.baseURL}/v5/order/cancel-all`,
       {
         method: 'POST',
         headers,
-        body: JSON.stringify(params),
+        body,
       }
     );
 
