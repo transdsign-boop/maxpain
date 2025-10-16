@@ -6198,6 +6198,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Test endpoint for Bybit REST API connectivity (from India region)
+  app.get('/api/test/bybit', async (req, res) => {
+    try {
+      console.log('🧪 Testing Bybit REST API connection...');
+      
+      // Get Bybit adapter from registry
+      const bybitAdapter = exchangeRegistry.getAdapter('bybit');
+      
+      if (!bybitAdapter) {
+        return res.status(500).json({ 
+          success: false, 
+          error: 'Bybit adapter not configured. Check BYBIT_API_KEY and BYBIT_SECRET_KEY environment variables.' 
+        });
+      }
+      
+      // Try to fetch account info (simple read operation)
+      const accountInfo = await bybitAdapter.getAccountInfo();
+      
+      console.log('✅ Bybit REST API connection successful!');
+      console.log('📊 Account Balance:', accountInfo.totalBalance);
+      console.log('💰 Available Balance:', accountInfo.availableBalance);
+      console.log('📈 Positions:', accountInfo.positions.length);
+      
+      res.json({
+        success: true,
+        message: 'Bybit REST API is accessible from India region!',
+        accountInfo: {
+          totalBalance: accountInfo.totalBalance,
+          availableBalance: accountInfo.availableBalance,
+          totalUnrealizedPnl: accountInfo.totalUnrealizedPnl,
+          positionsCount: accountInfo.positions.length,
+          assets: accountInfo.assets.map(a => ({
+            asset: a.asset,
+            walletBalance: a.walletBalance
+          }))
+        }
+      });
+    } catch (error: any) {
+      console.error('❌ Bybit REST API test failed:', error.message);
+      
+      // Check if it's a CloudFront 403 error
+      const isCloudFrontBlock = error.message?.includes('403') || error.message?.includes('Forbidden');
+      
+      res.status(500).json({
+        success: false,
+        error: error.message,
+        isCloudFrontBlock,
+        hint: isCloudFrontBlock 
+          ? 'Still blocked by CloudFront. The India region may also be restricted.' 
+          : 'Connection failed for another reason. Check API credentials and network connectivity.'
+      });
+    }
+  });
+
   return httpServer;
 }
 
