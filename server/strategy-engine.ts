@@ -14,7 +14,6 @@ import { fetchActualFills, aggregateFills } from './exchange-utils';
 import { orderProtectionService } from './order-protection-service';
 import { cascadeDetectorService } from './cascade-detector-service';
 import { calculateNextLayer, calculateATRPercent } from './dca-calculator';
-import { userDataStreamManager } from './user-data-stream';
 import { liveDataOrchestrator } from './live-data-orchestrator';
 import { syncCompletedTrades } from './exchange-sync';
 import { ProtectiveOrderRecovery } from './protective-order-recovery';
@@ -404,123 +403,22 @@ export class StrategyEngine extends EventEmitter {
     // Sync cascade detector with strategy's selected assets
     await cascadeDetectorService.syncSymbols();
     
-    // Start WebSocket user data stream for real-time account/position updates
-    // IMPORTANT: Only run in deployed environment to avoid listen key conflicts
-    // Aster DEX only allows ONE active user data stream per API key
-    const apiKey = process.env.ASTER_API_KEY;
-    const secretKey = process.env.ASTER_SECRET_KEY;
-    const isDeployed = process.env.REPLIT_DEPLOYMENT === '1';
-    
-    if (apiKey && isDeployed) {
-      try {
-        await userDataStreamManager.start({
-          apiKey,
-          onAccountUpdate: (data) => {
-            console.log('💰 Account balance updated via WebSocket');
-          },
-          onPositionUpdate: (data) => {
-            console.log('📈 Position updated via WebSocket');
-          },
-          onOrderUpdate: (data) => {
-            console.log('📦 Order updated via WebSocket');
-          },
-          onTradeFill: async (order) => {
-            // CRITICAL: Immediately update protective orders when position changes from trade fill
-            console.log(`🚨 TRADE FILL detected for ${order.symbol} ${order.positionSide} - triggering immediate protective order update`);
-            try {
-              const session = this.activeSessions.get(strategy.id);
-              if (!session) {
-                console.log('⏭️ No active session, skipping protective order update');
-                return;
-              }
-
-              // Find the specific position that just filled
-              const positionSide = order.positionSide === 'LONG' ? 'long' : 'short';
-              const position = await storage.getPositionBySymbolAndSide(
-                session.id,
-                order.symbol,
-                positionSide
-              );
-
-              if (position && position.isOpen) {
-                // CRITICAL FIX: Increment layersFilled when a DCA layer fills
-                // Check if this is a DCA layer (not the initial position entry)
-                // ENFORCE MAX LAYERS: Never increment beyond maxLayers limit
-                if (position.layersFilled < position.layersPlaced && position.layersFilled < position.maxLayers) {
-                  const nextLayerNumber = position.layersFilled + 1;
-                  await storage.updatePosition(position.id, {
-                    layersFilled: nextLayerNumber
-                  });
-                  // Update the in-memory position object so downstream logic sees the new count
-                  position.layersFilled = nextLayerNumber;
-                  console.log(`📊 Layer counter updated: ${nextLayerNumber}/${position.maxLayers} for ${order.symbol} ${positionSide}`);
-                } else if (position.layersFilled >= position.maxLayers) {
-                  console.log(`🛑 Max layers reached: ${position.layersFilled}/${position.maxLayers} for ${order.symbol} ${positionSide} - ignoring additional fills`);
-                }
-                
-                // Update protective orders ONLY for the position that just filled
-                // Position object now has updated layersFilled count
-                await orderProtectionService.updateProtectiveOrders(position, strategy);
-                console.log(`✅ Protective orders updated immediately for ${order.symbol} ${positionSide}`);
-              } else {
-                console.log(`⏭️ No open ${order.symbol} ${positionSide} position found`);
-              }
-            } catch (error) {
-              console.error('❌ Failed to update protective orders after fill:', error);
-            }
-          }
-        });
-        console.log('✅ User data stream started for real-time updates (deployed mode)');
-      } catch (error) {
-        console.error('⚠️ Failed to start user data stream:', error);
-      }
-    } else if (apiKey && secretKey && !isDeployed) {
-      // Preview mode: Use polling instead of WebSocket (5-second intervals)
-      console.log('🔄 Starting polling mode for preview (5-second intervals)');
-      console.log('   📱 Deployed version uses WebSocket for real-time updates');
+    // Connect to exchange WebSocket stream based on strategy's exchange setting
+    // This allows switching between Aster DEX and Bybit Demo by changing strategy.exchange
+    try {
+      const exchangeType = (strategy.exchange || 'aster') as 'aster' | 'bybit';
+      console.log(`🔌 Connecting to ${exchangeType} WebSocket for strategy ${strategy.id}`);
       
-      // Poll account and positions every 5 seconds
-      this.pollingInterval = setInterval(async () => {
-        try {
-          const timestamp = Date.now();
-          
-          // Fetch account data
-          const accountParams = `timestamp=${timestamp}`;
-          const accountSignature = createHmac('sha256', secretKey)
-            .update(accountParams)
-            .digest('hex');
-          
-          const accountResponse = await fetch(
-            `https://fapi.asterdex.com/fapi/v2/account?${accountParams}&signature=${accountSignature}`,
-            { headers: { 'X-MBX-APIKEY': apiKey } }
-          );
-          
-          if (accountResponse.ok) {
-            const accountData = await accountResponse.json();
-            liveDataOrchestrator.updateAccountFromWebSocket(strategy.id, accountData.assets || []);
-          }
-          
-          // Fetch position data
-          const positionParams = `timestamp=${timestamp}`;
-          const positionSignature = createHmac('sha256', secretKey)
-            .update(positionParams)
-            .digest('hex');
-          
-          const positionResponse = await fetch(
-            `https://fapi.asterdex.com/fapi/v2/positionRisk?${positionParams}&signature=${positionSignature}`,
-            { headers: { 'X-MBX-APIKEY': apiKey } }
-          );
-          
-          if (positionResponse.ok) {
-            const positionData = await positionResponse.json();
-            liveDataOrchestrator.updatePositionsFromWebSocket(strategy.id, positionData);
-          }
-        } catch (error) {
-          console.error('⚠️ Polling error:', error);
-        }
-      }, 5000); // 5 seconds
+      // Get the appropriate exchange stream from registry
+      const stream = exchangeRegistry.getStream(strategy.id, exchangeType);
       
-      console.log('✅ Polling started for account/position updates (preview mode)');
+      // Connect to the stream via LiveDataOrchestrator
+      // This will disconnect any existing stream first
+      await liveDataOrchestrator.connectExchangeStream(strategy.id, stream);
+      
+      console.log(`✅ ${exchangeType} WebSocket stream connected for strategy ${strategy.id}`);
+    } catch (error) {
+      console.error('❌ Failed to connect exchange WebSocket stream:', error);
     }
   }
 
