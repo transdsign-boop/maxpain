@@ -115,7 +115,7 @@ export class BybitExchangeAdapter implements IExchangeAdapter {
   // ============================================================================
 
   async getAccountInfo(): Promise<NormalizedAccountInfo> {
-    const { headers, queryString } = this.createSignedRequest({ accountType: 'CONTRACT' });
+    const { headers, queryString } = this.createSignedRequest({ accountType: 'UNIFIED' });
     
     const response = await fetch(
       `${this.baseURL}/v5/account/wallet-balance?${queryString}`,
@@ -710,7 +710,7 @@ export class BybitExchangeAdapter implements IExchangeAdapter {
     };
 
     const requestParams: Record<string, any> = {
-      accountType: 'CONTRACT',
+      accountType: 'UNIFIED',
       category: this.category,
       limit: params.limit || 50,
     };
