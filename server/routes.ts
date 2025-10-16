@@ -3272,25 +3272,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('💾 Sending to database:', JSON.stringify(updateData, null, 2));
       await storage.updateStrategy(strategyId, updateData);
       
-      // CRITICAL: Handle exchange switching
-      if (validatedUpdates.exchange && validatedUpdates.exchange !== existingStrategy.exchange) {
-        console.log(`🔄 Exchange changed from ${existingStrategy.exchange} to ${validatedUpdates.exchange} - reconnecting stream...`);
-        
-        // Disconnect old exchange stream
-        await liveDataOrchestrator.disconnectExchangeStream(strategyId);
-        
-        // Get new stream from registry for the new exchange
-        const newStream = exchangeRegistry.getStream(strategyId, validatedUpdates.exchange as any);
-        
-        // Connect to new exchange stream
-        await liveDataOrchestrator.connectExchangeStream(strategyId, newStream);
-        
-        console.log(`✅ Successfully switched to ${validatedUpdates.exchange} exchange`);
-      }
-      
-      // CRITICAL: Reload strategy in engine whenever ANY settings change
-      // This ensures position sizing and all other settings are applied immediately
-      if (Object.keys(changes).length > 0) {
+      // CRITICAL: Reload strategy in engine FIRST to update in-memory state
+      // This must happen before exchange switching to ensure correct exchange is used
+      const hasExchangeChange = validatedUpdates.exchange && validatedUpdates.exchange !== existingStrategy.exchange;
+      if (hasExchangeChange || Object.keys(changes).length > 0) {
         console.log(`🔄 Reloading strategy in engine to apply updated settings...`);
         await strategyEngine.reloadStrategy(strategyId);
         
@@ -3299,6 +3284,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log(`🔄 Syncing cascade detector with updated asset selection...`);
           await cascadeDetectorService.syncSymbols();
         }
+      }
+      
+      // CRITICAL: Handle exchange switching AFTER strategy is reloaded
+      if (hasExchangeChange) {
+        console.log(`🔄 Exchange changed from ${existingStrategy.exchange} to ${validatedUpdates.exchange} - reconnecting stream...`);
+        
+        try {
+          // Disconnect old exchange stream (may fail if exchange was never configured)
+          await liveDataOrchestrator.disconnectExchangeStream(strategyId);
+        } catch (error) {
+          console.warn(`⚠️ Could not disconnect old ${existingStrategy.exchange} stream (may not have been configured):`, error instanceof Error ? error.message : error);
+        }
+        
+        // Get new stream from registry for the new exchange
+        const newStream = exchangeRegistry.getStream(strategyId, validatedUpdates.exchange as any);
+        
+        // Connect to new exchange stream
+        await liveDataOrchestrator.connectExchangeStream(strategyId, newStream);
+        
+        console.log(`✅ Successfully switched to ${validatedUpdates.exchange} exchange`);
       }
       
       // If there are changes and strategy has an active session, record the change
