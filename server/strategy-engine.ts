@@ -920,9 +920,11 @@ export class StrategyEngine extends EventEmitter {
       console.log(`💰 Risk Budget: filled=${portfolioRisk.filledRiskPercentage.toFixed(1)}%, reserved=${currentReservedRisk.toFixed(1)}%, max=${maxRiskPercent}%, remaining=${remainingRiskPercent.toFixed(1)}%, effective=${effectiveMaxRisk.toFixed(1)}% (${effectiveMaxRisk < strategyMaxRisk ? 'SCALED DOWN' : 'normal'})`);
       
       // Get symbol precision (includes exchange-specific minimum notional)
-      const symbolPrecision = this.symbolPrecisionCache.get(liquidation.symbol);
+      const exchange = strategy.exchange || 'aster';
+      const cacheKey = `${exchange}:${liquidation.symbol}`;
+      const symbolPrecision = this.symbolPrecisionCache.get(cacheKey);
       if (!symbolPrecision?.minNotional) {
-        console.error(`❌ Missing MIN_NOTIONAL for ${liquidation.symbol} - cannot trade without exchange limits`);
+        console.error(`❌ Missing MIN_NOTIONAL for ${exchange}:${liquidation.symbol} - cannot trade without exchange limits`);
         console.error(`   ⚠️  ABORTING TRADE - Exchange limits are required for safe position sizing`);
         
         wsBroadcaster.broadcastTradeBlock({
@@ -1674,9 +1676,11 @@ export class StrategyEngine extends EventEmitter {
       };
       
       // Get symbol precision (includes exchange-specific minimum notional)
-      const symbolPrecision = this.symbolPrecisionCache.get(liquidation.symbol);
+      const exchange = strategy.exchange || 'aster';
+      const cacheKey = `${exchange}:${liquidation.symbol}`;
+      const symbolPrecision = this.symbolPrecisionCache.get(cacheKey);
       if (!symbolPrecision?.minNotional) {
-        console.error(`❌ Missing MIN_NOTIONAL for ${liquidation.symbol} - cannot trade without exchange limits`);
+        console.error(`❌ Missing MIN_NOTIONAL for ${exchange}:${liquidation.symbol} - cannot trade without exchange limits`);
         console.error(`   ⚠️  ABORTING TRADE - Exchange limits are required for safe position sizing`);
         return null;
       }
@@ -2422,12 +2426,15 @@ export class StrategyEngine extends EventEmitter {
       }
       
       // Round quantity and price to exchange precision requirements
-      const precisionInfo = this.symbolPrecisionCache.get(symbol);
-      console.log(`🔧 Precision for ${symbol}:`, precisionInfo ? `stepSize=${precisionInfo.stepSize}, tickSize=${precisionInfo.tickSize}` : 'NOT FOUND');
+      const strategyId = session?.strategyId;
+      const exchange = strategyId ? (await db.query.strategies.findFirst({ where: eq(strategies.id, strategyId) }))?.exchange || 'aster' : 'aster';
+      const cacheKey = `${exchange}:${symbol}`;
+      const precisionInfo = this.symbolPrecisionCache.get(cacheKey);
+      console.log(`🔧 Precision for ${exchange}:${symbol}:`, precisionInfo ? `stepSize=${precisionInfo.stepSize}, tickSize=${precisionInfo.tickSize}` : 'NOT FOUND');
       console.log(`🔢 Raw values: quantity=${quantity}, price=${price}`);
       
-      const roundedQuantity = this.roundQuantity(symbol, quantity);
-      const roundedPrice = this.roundPrice(symbol, price);
+      const roundedQuantity = this.roundQuantity(symbol, quantity, strategyId);
+      const roundedPrice = this.roundPrice(symbol, price, strategyId);
       
       console.log(`🔢 Rounded values: quantity=${roundedQuantity}, price=${roundedPrice}`);
       
@@ -4503,8 +4510,9 @@ export class StrategyEngine extends EventEmitter {
   }
 
   // Public getter for symbol precision cache (used by API endpoints)
-  getSymbolPrecision(symbol: string): SymbolPrecision | undefined {
-    return this.symbolPrecisionCache.get(symbol);
+  getSymbolPrecision(symbol: string, exchange: string = 'aster'): SymbolPrecision | undefined {
+    const cacheKey = `${exchange}:${symbol}`;
+    return this.symbolPrecisionCache.get(cacheKey);
   }
 }
 
