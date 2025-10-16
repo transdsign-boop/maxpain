@@ -628,7 +628,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/liquidations", async (req, res) => {
     try {
       const limit = parseInt(req.query.limit as string) || 100;
-      const liquidations = await storage.getLiquidations(limit);
+      const exchange = req.query.exchange as string | undefined;
+      const liquidations = await storage.getLiquidations(limit, exchange);
       res.json(liquidations);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch liquidations" });
@@ -639,7 +640,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const timestamp = new Date(req.params.timestamp);
       const limit = parseInt(req.query.limit as string) || 100;
-      const liquidations = await storage.getLiquidationsSince(timestamp, limit);
+      const exchange = req.query.exchange as string | undefined;
+      const liquidations = await storage.getLiquidationsSince(timestamp, limit, exchange);
       res.json(liquidations);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch liquidations since timestamp" });
@@ -649,7 +651,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/liquidations/largest/:timestamp", async (req, res) => {
     try {
       const timestamp = new Date(req.params.timestamp);
-      const largest = await storage.getLargestLiquidationSince(timestamp);
+      const exchange = req.query.exchange as string | undefined;
+      const largest = await storage.getLargestLiquidationSince(timestamp, exchange);
       res.json(largest || null);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch largest liquidation" });
@@ -660,13 +663,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const symbols = req.query.symbols as string;
       const limit = parseInt(req.query.limit as string) || 100;
+      const exchange = req.query.exchange as string | undefined;
       
       if (!symbols) {
         return res.status(400).json({ error: "symbols parameter required" });
       }
       
       const symbolArray = symbols.split(',').map(s => s.trim());
-      const liquidations = await storage.getLiquidationsBySymbol(symbolArray, limit);
+      const liquidations = await storage.getLiquidationsBySymbol(symbolArray, limit, exchange);
       res.json(liquidations);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch liquidations by symbol" });
@@ -3267,6 +3271,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       console.log('💾 Sending to database:', JSON.stringify(updateData, null, 2));
       await storage.updateStrategy(strategyId, updateData);
+      
+      // CRITICAL: Handle exchange switching
+      if (validatedUpdates.exchange && validatedUpdates.exchange !== existingStrategy.exchange) {
+        console.log(`🔄 Exchange changed from ${existingStrategy.exchange} to ${validatedUpdates.exchange} - reconnecting stream...`);
+        
+        // Disconnect old exchange stream
+        await liveDataOrchestrator.disconnectExchangeStream(strategyId);
+        
+        // Get new stream from registry for the new exchange
+        const newStream = exchangeRegistry.getStream(strategyId, validatedUpdates.exchange as any);
+        
+        // Connect to new exchange stream
+        await liveDataOrchestrator.connectExchangeStream(strategyId, newStream);
+        
+        console.log(`✅ Successfully switched to ${validatedUpdates.exchange} exchange`);
+      }
       
       // CRITICAL: Reload strategy in engine whenever ANY settings change
       // This ensures position sizing and all other settings are applied immediately

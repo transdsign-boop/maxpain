@@ -26,6 +26,7 @@ interface LiveLiquidationsSidebarProps {
   isCollapsed: boolean;
   onToggleCollapse: (collapsed: boolean) => void;
   onLiquidationClick?: (liquidation: Liquidation) => void;
+  exchange?: string;
 }
 
 function LiveLiquidationsSidebar({ 
@@ -34,7 +35,8 @@ function LiveLiquidationsSidebar({
   selectedAssets,
   isCollapsed,
   onToggleCollapse,
-  onLiquidationClick
+  onLiquidationClick,
+  exchange = 'aster'
 }: LiveLiquidationsSidebarProps) {
 
   // Show liquidations from the last 8 hours
@@ -54,7 +56,7 @@ function LiveLiquidationsSidebar({
 
   // Fetch complete historical data for all unique symbols shown in sidebar
   const { data: symbolHistories, isLoading: historiesLoading } = useQuery<Record<string, Liquidation[]>>({
-    queryKey: [`/api/liquidations/by-symbol?symbols=${uniqueSymbols.join(',')}&limit=10000`],
+    queryKey: [`/api/liquidations/by-symbol?symbols=${uniqueSymbols.join(',')}&limit=10000&exchange=${exchange}`],
     enabled: uniqueSymbols.length > 0,
     refetchInterval: 30000, // Refresh every 30 seconds
     select: (data: any) => {
