@@ -6,7 +6,8 @@ import { Slider } from "@/components/ui/slider";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Calendar } from "@/components/ui/calendar";
-import { TrendingUp, TrendingDown, Target, Award, Activity, LineChart, DollarSign, Percent, Calendar as CalendarIcon, X, Wallet, Settings } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { TrendingUp, TrendingDown, Target, Award, Activity, LineChart, DollarSign, Percent, Calendar as CalendarIcon, X, Wallet, Settings, ArrowLeftRight } from "lucide-react";
 import { ComposedChart, Line, Area, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, ReferenceArea, ReferenceDot, Label } from "recharts";
 import { format, subDays, subMinutes, subHours, startOfDay, endOfDay } from "date-fns";
 import { useStrategyData } from "@/hooks/use-strategy-data";
@@ -92,6 +93,7 @@ function PerformanceOverview() {
   const [dateFilterOpen, setDateFilterOpen] = useState(false);
   const [depositFilterOpen, setDepositFilterOpen] = useState(false);
   const [selectedDepositId, setSelectedDepositId] = useState<string | null>(null);
+  const [exchangeFilter, setExchangeFilter] = useState<string>("all");
   
   // Pagination and zoom state for chart
   const [chartEndIndex, setChartEndIndex] = useState<number | null>(null);
@@ -146,6 +148,30 @@ function PerformanceOverview() {
     },
     staleTime: 30 * 1000, // 30 seconds
   });
+
+  // Fetch filtered closed positions when exchange filter is active
+  const filteredPositionsQuery = useQuery<any[]>({
+    queryKey: ['/api/strategies', activeStrategy?.id, 'positions', 'closed', exchangeFilter !== 'all' ? exchangeFilter : null],
+    queryFn: async () => {
+      if (!activeStrategy?.id) return [];
+      
+      const params = new URLSearchParams();
+      if (exchangeFilter !== 'all') {
+        params.append('exchange', exchangeFilter);
+      }
+      
+      const url = `/api/strategies/${activeStrategy.id}/positions/closed${params.toString() ? `?${params.toString()}` : ''}`;
+      const response = await fetch(url);
+      if (!response.ok) throw new Error('Failed to fetch filtered positions');
+      return response.json();
+    },
+    enabled: !!activeStrategy?.id && exchangeFilter !== 'all',
+    staleTime: 30 * 1000,
+    refetchInterval: 30 * 1000,
+  });
+
+  // Use filtered positions if exchange filter is active, otherwise use hook's positions
+  const displayedClosedPositions = exchangeFilter !== 'all' ? filteredPositionsQuery.data || [] : closedPositions;
 
   const fundingFeesQuery = useQuery<{ records: any[]; total: number }>({
     queryKey: ['/api/funding-fees', dateRange.start?.getTime(), dateRange.end?.getTime()],
@@ -208,7 +234,7 @@ function PerformanceOverview() {
     if (!realizedPnlEvents || realizedPnlEvents.length === 0) return [];
     
     // Create array of closed positions with timestamps for matching
-    const closedPosArray = closedPositions?.filter(pos => pos.closedAt).map(pos => ({
+    const closedPosArray = displayedClosedPositions?.filter(pos => pos.closedAt).map(pos => ({
       ...pos,
       closeTime: new Date(pos.closedAt).getTime()
     })) || [];
@@ -251,7 +277,7 @@ function PerformanceOverview() {
     });
     
     return chartData;
-  }, [realizedPnlEvents, closedPositions]);
+  }, [realizedPnlEvents, displayedClosedPositions]);
   
   // Apply date range filter
   const sourceChartData = useMemo(() => {
@@ -595,14 +621,14 @@ function PerformanceOverview() {
     
     // Calculate average trade time from filtered closed positions
     let avgTradeTimeMs = 0;
-    if (closedPositions && closedPositions.length > 0) {
-      let filteredClosedPositions = closedPositions;
+    if (displayedClosedPositions && displayedClosedPositions.length > 0) {
+      let filteredClosedPositions = displayedClosedPositions;
       
       if (dateRange.start || dateRange.end) {
         const startTimestamp = dateRange.start ? dateRange.start.getTime() : 0;
         const endTimestamp = dateRange.end ? dateRange.end.getTime() : Date.now();
         
-        filteredClosedPositions = closedPositions.filter(pos => {
+        filteredClosedPositions = displayedClosedPositions.filter(pos => {
           if (!pos.closedAt) return false;
           const closeTime = new Date(pos.closedAt).getTime();
           return closeTime >= startTimestamp && closeTime <= endTimestamp;
@@ -641,7 +667,7 @@ function PerformanceOverview() {
       maxDrawdown: maxDrawdown,
       maxDrawdownPercent: maxDrawdownPercent,
     };
-  }, [performance, dateRange, realizedPnlEvents, commissions, fundingFees, sourceChartData, closedPositions]);
+  }, [performance, dateRange, realizedPnlEvents, commissions, fundingFees, sourceChartData, displayedClosedPositions]);
   const displayLoading = isLoading || chartLoading || liveAccountLoading;
   const showLoadingUI = displayLoading || !performance;
 
@@ -1207,6 +1233,21 @@ function PerformanceOverview() {
                   </PopoverContent>
                 </Popover>
               )}
+              
+              {/* Exchange Filter */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">Exchange:</span>
+                <Select value={exchangeFilter} onValueChange={setExchangeFilter}>
+                  <SelectTrigger className="w-32" data-testid="select-exchange-filter">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="aster">Aster DEX</SelectItem>
+                    <SelectItem value="bybit">Bybit</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               
               {/* Active Deposit Filter Indicator */}
               {selectedDeposit && (
