@@ -6213,28 +6213,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // Try to fetch account info (simple read operation)
-      const accountInfo = await bybitAdapter.getAccountInfo();
-      
-      console.log('✅ Bybit REST API connection successful!');
-      console.log('📊 Account Balance:', accountInfo.totalBalance);
-      console.log('💰 Available Balance:', accountInfo.availableBalance);
-      console.log('📈 Positions:', accountInfo.positions.length);
-      
-      res.json({
+      const testResults: any = {
         success: true,
-        message: 'Bybit REST API is accessible from India region!',
-        accountInfo: {
-          totalBalance: accountInfo.totalBalance,
-          availableBalance: accountInfo.availableBalance,
-          totalUnrealizedPnl: accountInfo.totalUnrealizedPnl,
-          positionsCount: accountInfo.positions.length,
-          assets: accountInfo.assets.map(a => ({
-            asset: a.asset,
-            walletBalance: a.walletBalance
-          }))
-        }
-      });
+        message: 'Bybit REST API is fully accessible from India region!',
+        tests: {}
+      };
+      
+      // Test 1: Account info (authenticated endpoint)
+      console.log('📝 Test 1: Fetching account info...');
+      const accountInfo = await bybitAdapter.getAccountInfo();
+      testResults.tests.accountInfo = {
+        success: true,
+        totalBalance: accountInfo.totalBalance,
+        availableBalance: accountInfo.availableBalance,
+        totalUnrealizedPnl: accountInfo.totalUnrealizedPnl,
+        positionsCount: accountInfo.positions.length,
+        assets: accountInfo.assets.map(a => ({
+          asset: a.asset,
+          walletBalance: a.walletBalance
+        }))
+      };
+      console.log('✅ Account info test passed');
+      
+      // Test 2: Exchange info (public endpoint)
+      console.log('📝 Test 2: Fetching exchange info...');
+      const exchangeInfo = await bybitAdapter.getExchangeInfo();
+      testResults.tests.exchangeInfo = {
+        success: true,
+        symbolsCount: exchangeInfo.symbols.length,
+        sampleSymbol: exchangeInfo.symbols.find(s => s.symbol === 'BTCUSDT') || exchangeInfo.symbols[0]
+      };
+      console.log('✅ Exchange info test passed');
+      
+      // Test 3: Ticker (public endpoint)
+      console.log('📝 Test 3: Fetching BTC ticker...');
+      const ticker = await bybitAdapter.getTicker('BTCUSDT');
+      testResults.tests.ticker = {
+        success: true,
+        symbol: ticker.symbol,
+        lastPrice: ticker.lastPrice,
+        priceChangePercent: ticker.priceChangePercent
+      };
+      console.log('✅ Ticker test passed');
+      
+      // Test 4: Positions (authenticated endpoint)
+      console.log('📝 Test 4: Fetching positions...');
+      const positions = await bybitAdapter.getPositions();
+      testResults.tests.positions = {
+        success: true,
+        count: positions.length,
+        positions: positions.slice(0, 3).map(p => ({
+          symbol: p.symbol,
+          positionSide: p.positionSide,
+          positionAmt: p.positionAmt,
+          entryPrice: p.entryPrice
+        }))
+      };
+      console.log('✅ Positions test passed');
+      
+      console.log('🎉 All Bybit REST API tests passed!');
+      res.json(testResults);
+      
     } catch (error: any) {
       console.error('❌ Bybit REST API test failed:', error.message);
       
