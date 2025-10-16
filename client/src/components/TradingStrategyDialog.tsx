@@ -44,6 +44,7 @@ interface Strategy {
   marginAmount: string;
   hedgeMode: boolean;
   isActive: boolean;
+  paused: boolean;
   maxOpenPositions: number;
   maxPortfolioRiskPercent: string;
   createdAt: string;
@@ -749,7 +750,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
   const [dcaSaveTrigger, setDcaSaveTrigger] = useState(0);
   
   // Strategy is "running" only if it's active AND not paused
-  const isStrategyRunning = activeStrategy?.isActive && !activeStrategy?.paused;
+  const isStrategyRunning = Boolean(activeStrategy?.isActive && !activeStrategy?.paused);
 
   // Fetch available symbols from Aster DEX
   const { data: symbols, isLoading: symbolsLoading } = useQuery({
