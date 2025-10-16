@@ -86,7 +86,7 @@ export interface IStorage {
   // Analytics operations
   getAvailableAssets(): Promise<{ symbol: string; count: number; latestTimestamp: Date }[]>;
   getLiquidationAnalytics(symbol: string, sinceTimestamp: Date): Promise<Liquidation[]>;
-  getAssetPerformance(): Promise<{ symbol: string; wins: number; losses: number; winRate: number; totalPnl: number; totalTrades: number }[]>;
+  getAssetPerformance(exchange?: string): Promise<{ symbol: string; wins: number; losses: number; winRate: number; totalPnl: number; totalTrades: number }[]>;
   
   // User settings operations
   getUserSettings(userId: string): Promise<UserSettings | undefined>;
@@ -289,17 +289,24 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async getAssetPerformance(): Promise<{ symbol: string; wins: number; losses: number; winRate: number; totalPnl: number; totalTrades: number }[]> {
-    const result = await db.select({
+  async getAssetPerformance(exchange?: string): Promise<{ symbol: string; wins: number; losses: number; winRate: number; totalPnl: number; totalTrades: number }[]> {
+    let query = db.select({
       symbol: positions.symbol,
       wins: drizzleSql<number>`COUNT(CASE WHEN ${positions.isOpen} = false AND ${positions.realizedPnl} > 0 THEN 1 END)`,
       losses: drizzleSql<number>`COUNT(CASE WHEN ${positions.isOpen} = false AND ${positions.realizedPnl} < 0 THEN 1 END)`,
       totalPnl: drizzleSql<number>`COALESCE(SUM(CASE WHEN ${positions.isOpen} = false THEN ${positions.realizedPnl} ELSE 0 END), 0)`,
       totalTrades: drizzleSql<number>`COUNT(CASE WHEN ${positions.isOpen} = false THEN 1 END)`,
     })
-    .from(positions)
-    .groupBy(positions.symbol)
-    .having(drizzleSql`COUNT(CASE WHEN ${positions.isOpen} = false THEN 1 END) > 0`);
+    .from(positions);
+    
+    // Filter by exchange if provided (and not 'all')
+    if (exchange && exchange !== 'all') {
+      query = query.where(eq(positions.exchange, exchange)) as any;
+    }
+    
+    const result = await query
+      .groupBy(positions.symbol)
+      .having(drizzleSql`COUNT(CASE WHEN ${positions.isOpen} = false THEN 1 END) > 0`);
     
     return result.map(r => {
       const wins = parseInt(String(r.wins));
