@@ -4116,7 +4116,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/positions/:sessionId', async (req, res) => {
     try {
       const { sessionId } = req.params;
-      const positions = await storage.getOpenPositions(sessionId);
+      const { exchange } = req.query;
+      const positions = await storage.getOpenPositions(sessionId, exchange as string | undefined);
       res.json(positions);
     } catch (error) {
       console.error('Error fetching positions:', error);
@@ -4705,8 +4706,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/positions/:sessionId/summary', async (req, res) => {
     try {
       const { sessionId } = req.params;
-      const positions = await storage.getOpenPositions(sessionId);
-      const closedPositions = await storage.getClosedPositions(sessionId);
+      const { exchange } = req.query;
+      const positions = await storage.getOpenPositions(sessionId, exchange as string | undefined);
+      const closedPositions = await storage.getClosedPositions(sessionId, exchange as string | undefined);
       const session = await storage.getTradeSession(sessionId);
       
       if (!session) {
@@ -4788,6 +4790,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/strategies/:strategyId/positions/closed', async (req, res) => {
     try {
       let { strategyId } = req.params;
+      const { exchange } = req.query;
       
       // FLEXIBLE ID RESOLUTION: Accept both strategy ID and session ID
       // If ID is a session ID, resolve to its strategy ID
@@ -4813,12 +4816,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json([]);
       }
 
-      // Get closed positions from active sessions only
+      // Get closed positions from active sessions only (with optional exchange filter)
       const allClosedPositions: any[] = [];
       const allFills: any[] = [];
       
       for (const session of activeSessions) {
-        const sessionClosedPositions = await storage.getClosedPositions(session.id);
+        const sessionClosedPositions = await storage.getClosedPositions(session.id, exchange as string | undefined);
         const sessionFills = await storage.getFillsBySession(session.id);
         allClosedPositions.push(...sessionClosedPositions);
         allFills.push(...sessionFills);
