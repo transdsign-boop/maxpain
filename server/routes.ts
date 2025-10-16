@@ -936,7 +936,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/analytics/asset-performance", async (req, res) => {
     try {
-      const performance = await storage.getAssetPerformance();
+      const exchange = req.query.exchange as string | undefined;
+      const performance = await storage.getAssetPerformance(exchange);
       res.json(performance);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch asset performance" });
@@ -1751,8 +1752,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const startTime = req.query.startTime ? parseInt(req.query.startTime as string) : undefined;
       const endTime = req.query.endTime ? parseInt(req.query.endTime as string) : undefined;
+      const exchange = req.query.exchange as string | undefined;
       
-      const result = await fetchCommissions({ startTime, endTime });
+      const result = await fetchCommissions({ startTime, endTime, exchange });
       
       if (!result.success) {
         return res.status(500).json({ error: result.error, records: [], total: 0 });
@@ -1764,7 +1766,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       
       // Get the GLOBAL API cutoff date (cached, fetched once)
-      const globalCutoffDate = await getGlobalCommissionCutoff();
+      const globalCutoffDate = await getGlobalCommissionCutoff(exchange);
       
       // Only apply manual adjustment if viewing date range extends before GLOBAL API cutoff date
       // This prevents double-counting when viewing recent complete data
@@ -1797,8 +1799,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const startTime = req.query.startTime ? parseInt(req.query.startTime as string) : undefined;
       const endTime = req.query.endTime ? parseInt(req.query.endTime as string) : undefined;
+      const exchange = req.query.exchange as string | undefined;
       
-      const result = await fetchFundingFees({ startTime, endTime });
+      const result = await fetchFundingFees({ startTime, endTime, exchange });
       
       if (!result.success) {
         return res.status(500).json({ error: result.error, records: [], total: 0 });
@@ -1810,7 +1813,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       
       // Get the GLOBAL API cutoff date (cached, fetched once)
-      const globalCutoffDate = await getGlobalFundingCutoff();
+      const globalCutoffDate = await getGlobalFundingCutoff(exchange);
       
       // Only apply manual adjustment if viewing date range extends before GLOBAL API cutoff date
       // This prevents double-counting when viewing recent complete data
@@ -2801,6 +2804,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get overall trading performance metrics
   app.get("/api/performance/overview", async (req, res) => {
     try {
+      const exchange = req.query.exchange as string | undefined;
+      
       // Get the active strategy
       const strategies = await storage.getStrategiesByUser(DEFAULT_USER_ID);
       const activeStrategy = strategies.find(s => s.isActive);
@@ -2836,7 +2841,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const { fetchRealizedPnl } = await import('./exchange-sync');
         console.log('📊 fetchRealizedPnl imported successfully');
         
-        const pnlResult = await fetchRealizedPnl({});
+        const pnlResult = await fetchRealizedPnl({ exchange });
         
         console.log('📊 fetchRealizedPnl result:', JSON.stringify(pnlResult));
         if (pnlResult.success) {
@@ -2983,7 +2988,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let totalFees = 0;
       try {
         const { getTotalCommissions } = await import('./exchange-sync');
-        const commissionsResult = await getTotalCommissions();
+        const commissionsResult = await getTotalCommissions(exchange);
         if (commissionsResult.success) {
           totalFees = commissionsResult.total;
         }
@@ -2995,7 +3000,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let totalFundingCost = 0;
       try {
         const { getTotalFundingFees } = await import('./exchange-sync');
-        const fundingResult = await getTotalFundingFees();
+        const fundingResult = await getTotalFundingFees(exchange);
         if (fundingResult.success) {
           totalFundingCost = fundingResult.total;
         }
@@ -6150,9 +6155,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { fetchRealizedPnlEvents } = await import('./exchange-sync');
       
-      const { startTime, endTime } = req.query;
+      const { startTime, endTime, exchange } = req.query;
       
-      const params: { startTime?: number; endTime?: number } = {};
+      const params: { startTime?: number; endTime?: number; exchange?: string } = {};
       
       if (startTime) {
         const timestamp = parseInt(startTime as string);
@@ -6168,6 +6173,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({ error: 'Invalid endTime parameter' });
         }
         params.endTime = timestamp;
+      }
+      
+      if (exchange && exchange !== 'all') {
+        params.exchange = exchange as string;
       }
 
       const result = await fetchRealizedPnlEvents(params);
