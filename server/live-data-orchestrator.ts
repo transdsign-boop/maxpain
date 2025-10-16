@@ -2,6 +2,12 @@ import { wsBroadcaster } from './websocket-broadcaster';
 import { db } from './db';
 import { strategies, tradeSessions } from '@shared/schema';
 import { eq, and } from 'drizzle-orm';
+import { 
+  IExchangeStream, 
+  NormalizedAccountUpdate, 
+  NormalizedOrderUpdate, 
+  NormalizedTradeUpdate 
+} from './exchanges/types';
 
 interface LiveSnapshot {
   account: {
@@ -45,9 +51,179 @@ class LiveDataOrchestrator {
   private cache: Map<string, LiveSnapshot> = new Map();
   private lastAccountLogTime: number = 0;
   private lastPositionsLogTime: number = 0;
+  private exchangeStreams: Map<string, IExchangeStream> = new Map();
 
   constructor() {
     console.log('🎯 Live Data Orchestrator initialized - 100% WebSocket mode (NO POLLING)');
+  }
+
+  /**
+   * Connect to an exchange stream for a strategy
+   * This replaces the old user-data-stream integration
+   */
+  async connectExchangeStream(strategyId: string, stream: IExchangeStream): Promise<void> {
+    console.log(`🔌 Connecting exchange stream for strategy ${strategyId} (${stream.exchangeType})`);
+    
+    // Disconnect existing stream if any
+    if (this.exchangeStreams.has(strategyId)) {
+      await this.disconnectExchangeStream(strategyId);
+    }
+
+    // Store stream reference
+    this.exchangeStreams.set(strategyId, stream);
+
+    // Subscribe to stream events
+    stream.onAccountUpdate((update: NormalizedAccountUpdate) => {
+      this.handleNormalizedAccountUpdate(strategyId, update);
+    });
+
+    stream.onOrderUpdate((update: NormalizedOrderUpdate) => {
+      this.handleNormalizedOrderUpdate(strategyId, update);
+    });
+
+    stream.onTradeUpdate((update: NormalizedTradeUpdate) => {
+      this.handleNormalizedTradeUpdate(strategyId, update);
+    });
+
+    stream.onError((error: Error) => {
+      console.error(`❌ Exchange stream error for strategy ${strategyId}:`, error);
+    });
+
+    stream.onDisconnect(() => {
+      console.log(`🔌 Exchange stream disconnected for strategy ${strategyId}`);
+    });
+
+    stream.onReconnect(() => {
+      console.log(`🔄 Exchange stream reconnected for strategy ${strategyId}`);
+    });
+
+    // Connect the stream
+    await stream.connect();
+    console.log(`✅ Exchange stream connected for strategy ${strategyId}`);
+  }
+
+  /**
+   * Disconnect exchange stream for a strategy
+   */
+  async disconnectExchangeStream(strategyId: string): Promise<void> {
+    const stream = this.exchangeStreams.get(strategyId);
+    if (stream) {
+      console.log(`🔌 Disconnecting exchange stream for strategy ${strategyId}`);
+      
+      // Disconnect the stream
+      await stream.disconnect();
+      
+      // Remove from orchestrator's tracking
+      this.exchangeStreams.delete(strategyId);
+      
+      // CRITICAL: Also notify registry to clear cached stream to prevent listener duplication
+      // Registry will remove the cached instance, forcing fresh stream on next connect
+      const { exchangeRegistry } = await import('./exchanges/registry');
+      await exchangeRegistry.disconnectStrategy(strategyId);
+    }
+  }
+
+  /**
+   * Handle normalized account update from exchange stream
+   */
+  private handleNormalizedAccountUpdate(strategyId: string, update: NormalizedAccountUpdate): void {
+    const snapshot = this.getSnapshot(strategyId);
+    
+    // Find USDT balance
+    const usdtBalance = update.balances.find(b => b.asset === 'USDT');
+    
+    if (usdtBalance) {
+      const walletBalance = usdtBalance.walletBalance || '0';
+      const availableBalance = usdtBalance.availableBalance || '0';
+      
+      snapshot.account = {
+        feeTier: 0,
+        canTrade: true,
+        canDeposit: true,
+        canWithdraw: true,
+        updateTime: Date.now(),
+        totalWalletBalance: walletBalance,
+        totalUnrealizedProfit: '0', // Calculated from positions
+        totalMarginBalance: walletBalance,
+        totalInitialMargin: '0',
+        availableBalance,
+        usdcBalance: walletBalance,
+        usdtBalance: walletBalance,
+        assets: [{
+          a: 'USDT',
+          wb: walletBalance,
+          cw: availableBalance,
+          bc: '0'
+        }]
+      };
+      
+      snapshot.timestamp = Date.now();
+      
+      if (Date.now() - this.lastAccountLogTime > 30000) {
+        console.log(`✅ Account updated from ${this.exchangeStreams.get(strategyId)?.exchangeType} stream (balance: $${parseFloat(walletBalance).toFixed(2)})`);
+        this.lastAccountLogTime = Date.now();
+      }
+      
+      this.broadcastSnapshot(strategyId);
+    }
+
+    // Update positions from normalized account update
+    // CRITICAL: Always update positions, even if empty (clears stale data)
+    if (update.positions.length > 0) {
+      // Convert normalized positions to legacy format
+      snapshot.positions = update.positions.map(p => ({
+        symbol: p.symbol,
+        positionAmt: p.side === 'LONG' ? p.size : `-${p.size}`,
+        entryPrice: p.entryPrice,
+        markPrice: p.markPrice,
+        unRealizedProfit: p.unrealizedPnl,
+        unrealizedProfit: p.unrealizedPnl,
+        marginType: p.marginType === 'CROSSED' ? 'cross' : 'isolated',
+        isolatedWallet: '0',
+        positionSide: p.positionSide,
+        leverage: p.leverage
+      }));
+    } else {
+      // Clear positions when update reports zero positions
+      snapshot.positions = [];
+      snapshot.positionsSummary = null;
+    }
+    
+    snapshot.timestamp = Date.now();
+    
+    if (Date.now() - this.lastPositionsLogTime > 30000) {
+      console.log(`✅ Positions updated from ${this.exchangeStreams.get(strategyId)?.exchangeType} stream (${update.positions.length} positions)`);
+      this.lastPositionsLogTime = Date.now();
+    }
+    
+    this.calculatePositionSummary(strategyId);
+  }
+
+  /**
+   * Handle normalized order update from exchange stream
+   */
+  private handleNormalizedOrderUpdate(strategyId: string, update: NormalizedOrderUpdate): void {
+    // Broadcast order update to frontend
+    wsBroadcaster.broadcast({
+      type: 'order_update',
+      data: update,
+      timestamp: Date.now()
+    });
+  }
+
+  /**
+   * Handle normalized trade update from exchange stream
+   */
+  private handleNormalizedTradeUpdate(strategyId: string, update: NormalizedTradeUpdate): void {
+    // Broadcast trade as order update to frontend (trade is a type of order event)
+    wsBroadcaster.broadcast({
+      type: 'order_update',
+      data: update,
+      timestamp: Date.now()
+    });
+
+    // Trigger protective order update if configured
+    // This will be handled by strategy-engine callbacks
   }
 
   // Get current snapshot from cache (or create empty one)
@@ -229,14 +405,27 @@ class LiveDataOrchestrator {
   }
 
   // Stop and clear cache for a strategy
-  stop(strategyId: string): void {
-    console.log(`🛑 Clearing live data cache for strategy ${strategyId}`);
+  async stop(strategyId: string): Promise<void> {
+    console.log(`🛑 Stopping live data for strategy ${strategyId}`);
+    
+    // Disconnect exchange stream
+    await this.disconnectExchangeStream(strategyId);
+    
+    // Clear cache
     this.cache.delete(strategyId);
   }
 
   // Stop all and clear all caches
-  stopAll(): void {
-    console.log('🛑 Clearing all live data caches');
+  async stopAll(): Promise<void> {
+    console.log('🛑 Stopping all live data');
+    
+    // Disconnect all exchange streams
+    const disconnectPromises = Array.from(this.exchangeStreams.keys()).map(strategyId =>
+      this.disconnectExchangeStream(strategyId)
+    );
+    await Promise.all(disconnectPromises);
+    
+    // Clear all caches
     this.cache.clear();
   }
 }
