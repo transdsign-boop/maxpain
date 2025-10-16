@@ -445,7 +445,8 @@ export class StrategyEngine extends EventEmitter {
               if (position && position.isOpen) {
                 // CRITICAL FIX: Increment layersFilled when a DCA layer fills
                 // Check if this is a DCA layer (not the initial position entry)
-                if (position.layersFilled < position.layersPlaced) {
+                // ENFORCE MAX LAYERS: Never increment beyond maxLayers limit
+                if (position.layersFilled < position.layersPlaced && position.layersFilled < position.maxLayers) {
                   const nextLayerNumber = position.layersFilled + 1;
                   await storage.updatePosition(position.id, {
                     layersFilled: nextLayerNumber
@@ -453,6 +454,8 @@ export class StrategyEngine extends EventEmitter {
                   // Update the in-memory position object so downstream logic sees the new count
                   position.layersFilled = nextLayerNumber;
                   console.log(`📊 Layer counter updated: ${nextLayerNumber}/${position.maxLayers} for ${order.symbol} ${positionSide}`);
+                } else if (position.layersFilled >= position.maxLayers) {
+                  console.log(`🛑 Max layers reached: ${position.layersFilled}/${position.maxLayers} for ${order.symbol} ${positionSide} - ignoring additional fills`);
                 }
                 
                 // Update protective orders ONLY for the position that just filled
