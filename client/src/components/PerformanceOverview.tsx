@@ -124,12 +124,12 @@ function PerformanceOverview() {
     realizedPnlCount,
     realizedPnlLoading,
     portfolioRisk,
-  } = useStrategyData();
+  } = useStrategyData(exchangeFilter !== 'all' ? exchangeFilter : undefined);
 
   // Fetch commissions and funding fees with date range filtering
   // No minimum start date - fetch all historical data unless user specifies a range
   const commissionsQuery = useQuery<{ records: any[]; total: number }>({
-    queryKey: ['/api/commissions', dateRange.start?.getTime(), dateRange.end?.getTime()],
+    queryKey: ['/api/commissions', dateRange.start?.getTime(), dateRange.end?.getTime(), exchangeFilter !== 'all' ? exchangeFilter : null],
     queryFn: async () => {
       const params = new URLSearchParams();
       
@@ -139,6 +139,10 @@ function PerformanceOverview() {
       
       if (dateRange.end) {
         params.append('endTime', dateRange.end.getTime().toString());
+      }
+      
+      if (exchangeFilter !== 'all') {
+        params.append('exchange', exchangeFilter);
       }
       
       const url = `/api/commissions?${params.toString()}`;
@@ -149,32 +153,11 @@ function PerformanceOverview() {
     staleTime: 30 * 1000, // 30 seconds
   });
 
-  // Fetch filtered closed positions when exchange filter is active
-  const filteredPositionsQuery = useQuery<any[]>({
-    queryKey: ['/api/strategies', activeStrategy?.id, 'positions', 'closed', exchangeFilter !== 'all' ? exchangeFilter : null],
-    queryFn: async () => {
-      if (!activeStrategy?.id) return [];
-      
-      const params = new URLSearchParams();
-      if (exchangeFilter !== 'all') {
-        params.append('exchange', exchangeFilter);
-      }
-      
-      const url = `/api/strategies/${activeStrategy.id}/positions/closed${params.toString() ? `?${params.toString()}` : ''}`;
-      const response = await fetch(url);
-      if (!response.ok) throw new Error('Failed to fetch filtered positions');
-      return response.json();
-    },
-    enabled: !!activeStrategy?.id && exchangeFilter !== 'all',
-    staleTime: 30 * 1000,
-    refetchInterval: 30 * 1000,
-  });
-
-  // Use filtered positions if exchange filter is active, otherwise use hook's positions
-  const displayedClosedPositions = exchangeFilter !== 'all' ? filteredPositionsQuery.data || [] : closedPositions;
+  // The hook now handles exchange filtering, so we can directly use closedPositions
+  const displayedClosedPositions = closedPositions;
 
   const fundingFeesQuery = useQuery<{ records: any[]; total: number }>({
-    queryKey: ['/api/funding-fees', dateRange.start?.getTime(), dateRange.end?.getTime()],
+    queryKey: ['/api/funding-fees', dateRange.start?.getTime(), dateRange.end?.getTime(), exchangeFilter !== 'all' ? exchangeFilter : null],
     queryFn: async () => {
       const params = new URLSearchParams();
       
@@ -184,6 +167,10 @@ function PerformanceOverview() {
       
       if (dateRange.end) {
         params.append('endTime', dateRange.end.getTime().toString());
+      }
+      
+      if (exchangeFilter !== 'all') {
+        params.append('exchange', exchangeFilter);
       }
       
       const url = `/api/funding-fees?${params.toString()}`;
