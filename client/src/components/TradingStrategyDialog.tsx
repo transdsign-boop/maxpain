@@ -825,6 +825,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
     resolver: zodResolver(strategyFormSchema),
     defaultValues: {
       name: "Liquidation Counter-Trade",
+      exchange: "aster",
       selectedAssets: ["ASTERUSDT"],
       percentileThreshold: 50,
       liquidationLookbackHours: 1,
@@ -1004,6 +1005,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
       // Convert number fields to strings to match form field types
       form.reset({
         name: strategy.name,
+        exchange: strategy.exchange,
         selectedAssets: strategy.selectedAssets,
         percentileThreshold: strategy.percentileThreshold,
         liquidationLookbackHours: strategy.liquidationLookbackHours,
