@@ -31,6 +31,13 @@ export class AsterWebSocketStream implements IExchangeStream {
   private readonly apiKey: string;
   private readonly secretKey: string;
 
+  // Reconnection state
+  private reconnectAttempts: number = 0;
+  private maxReconnectAttempts: number = 10;
+  private reconnectTimeout: NodeJS.Timeout | null = null;
+  private bannedUntil: number | null = null;
+  private shouldReconnect: boolean = true;
+
   // Event callbacks
   private accountUpdateCallback: ((update: NormalizedAccountUpdate) => void) | null = null;
   private orderUpdateCallback: ((update: NormalizedOrderUpdate) => void) | null = null;
@@ -95,8 +102,10 @@ export class AsterWebSocketStream implements IExchangeStream {
           this.disconnectCallback();
         }
 
-        // Auto-reconnect after 5 seconds
-        setTimeout(() => this.reconnect(), 5000);
+        // Schedule reconnect with exponential backoff (if enabled)
+        if (this.shouldReconnect) {
+          this.scheduleReconnect();
+        }
       });
 
       // Wait for connection
@@ -121,6 +130,15 @@ export class AsterWebSocketStream implements IExchangeStream {
 
   async disconnect(): Promise<void> {
     try {
+      // Disable auto-reconnect
+      this.shouldReconnect = false;
+      
+      // Clear any pending reconnect
+      if (this.reconnectTimeout) {
+        clearTimeout(this.reconnectTimeout);
+        this.reconnectTimeout = null;
+      }
+      
       this.cleanup();
       
       if (this.ws) {
@@ -144,11 +162,28 @@ export class AsterWebSocketStream implements IExchangeStream {
   async reconnect(): Promise<void> {
     console.log('🔄 [Aster Stream] Reconnecting...');
     
-    await this.disconnect();
-    await this.connect();
-    
-    if (this.reconnectCallback) {
-      this.reconnectCallback();
+    try {
+      // Re-enable auto-reconnect for this attempt
+      this.shouldReconnect = true;
+      
+      await this.connect();
+      
+      // Reset reconnection attempts on success
+      this.reconnectAttempts = 0;
+      this.bannedUntil = null;
+      
+      if (this.reconnectCallback) {
+        this.reconnectCallback();
+      }
+    } catch (error) {
+      console.error('❌ [Aster Stream] Reconnection failed:', error);
+      
+      // Schedule another retry if auto-reconnect is enabled
+      if (this.shouldReconnect) {
+        this.scheduleReconnect();
+      }
+      
+      throw error;
     }
   }
 
@@ -297,13 +332,36 @@ export class AsterWebSocketStream implements IExchangeStream {
   // ============================================================================
 
   private async getListenKey(): Promise<string> {
+    console.log('🔑 Creating new User Data Stream listen key...');
+    
     const response = await fetch(`${this.baseURL}/fapi/v1/listenKey`, {
       method: 'POST',
       headers: { 'X-MBX-APIKEY': this.apiKey },
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to get listen key: ${response.statusText}`);
+      // Check for HTTP 418 ban error
+      if (response.status === 418) {
+        try {
+          const errorData = await response.json();
+          console.error(`❌ Failed to create listen key (HTTP 418): ${JSON.stringify(errorData)}`);
+          
+          // Extract ban expiry timestamp from error message
+          // Format: "IP(x.x.x.x) banned until 1234567890123"
+          const banMatch = errorData.msg?.match(/banned until (\d+)/);
+          if (banMatch) {
+            this.bannedUntil = parseInt(banMatch[1], 10);
+            const banExpiry = new Date(this.bannedUntil);
+            const waitSeconds = Math.ceil((this.bannedUntil - Date.now()) / 1000);
+            console.error(`🚫 [Aster Stream] IP BANNED until ${banExpiry.toISOString()} (${waitSeconds}s from now)`);
+          }
+        } catch (parseError) {
+          console.error('❌ Failed to parse ban error:', parseError);
+        }
+      }
+      
+      const errorMsg = `Failed to get listen key: ${response.statusText} (${response.status})`;
+      throw new Error(errorMsg);
     }
 
     const data = await response.json();
@@ -349,5 +407,61 @@ export class AsterWebSocketStream implements IExchangeStream {
       clearInterval(this.keepAliveInterval);
       this.keepAliveInterval = null;
     }
+  }
+
+  private scheduleReconnect(): void {
+    // Clear any existing reconnect timeout
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+
+    // Check if we've exceeded max attempts
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      console.error(`❌ [Aster Stream] Max reconnection attempts (${this.maxReconnectAttempts}) reached. Giving up.`);
+      this.shouldReconnect = false;
+      return;
+    }
+
+    this.reconnectAttempts++;
+
+    // Calculate delay with exponential backoff: 5s, 10s, 20s, 40s, 80s, ...
+    // Cap at 5 minutes
+    const baseDelay = 5000; // 5 seconds
+    const exponentialDelay = baseDelay * Math.pow(2, this.reconnectAttempts - 1);
+    const maxDelay = 5 * 60 * 1000; // 5 minutes
+    let delay = Math.min(exponentialDelay, maxDelay);
+
+    // If we're banned, wait until ban expires (plus 5 seconds buffer)
+    if (this.bannedUntil) {
+      const now = Date.now();
+      if (now < this.bannedUntil) {
+        const banDelay = this.bannedUntil - now + 5000; // Add 5s buffer
+        delay = Math.max(delay, banDelay);
+        
+        const banExpiry = new Date(this.bannedUntil);
+        const waitMinutes = Math.ceil(banDelay / 60000);
+        console.log(`⏳ [Aster Stream] Waiting for ban to expire at ${banExpiry.toISOString()} (~${waitMinutes} min)`);
+      } else {
+        // Ban has expired
+        this.bannedUntil = null;
+      }
+    }
+
+    const delaySeconds = Math.ceil(delay / 1000);
+    console.log(`⏱️  [Aster Stream] Scheduling reconnect attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delaySeconds}s`);
+
+    this.reconnectTimeout = setTimeout(async () => {
+      try {
+        await this.reconnect();
+      } catch (error) {
+        console.error('❌ [Aster Stream] Reconnect attempt failed:', error);
+        
+        // Schedule another retry if auto-reconnect is enabled
+        if (this.shouldReconnect) {
+          this.scheduleReconnect();
+        }
+      }
+    }, delay);
   }
 }
