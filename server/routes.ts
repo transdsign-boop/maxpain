@@ -6058,22 +6058,73 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .where(eq(positions.isOpen, false))
         .orderBy(desc(positions.closedAt));
       
-      // Match exchange P&L events with database positions
+      // Match exchange P&L events with database positions using multiple strategies
       const trades = result.events.map((event, index) => {
-        // Try to find matching database position by symbol, date, and P&L
         const eventDate = new Date(event.time);
         const eventPnL = parseFloat(event.income || '0');
         
-        const matchedPosition = dbPositions.find(p => {
+        // Strategy 1: Exact match by symbol + close time + P&L (if P&L stored)
+        let matchedPosition = dbPositions.find(p => {
           if (!p.closedAt || p.symbol !== event.symbol) return false;
+          if (p.realizedPnl === null) return false; // Skip if P&L not stored
           
           const positionDate = new Date(p.closedAt);
           const timeDiff = Math.abs(eventDate.getTime() - positionDate.getTime());
-          const pnlDiff = Math.abs(eventPnL - parseFloat(p.realizedPnl || '0'));
+          const pnlDiff = Math.abs(eventPnL - parseFloat(p.realizedPnl));
           
           // Match if within 10 minutes and P&L difference < $0.01
           return timeDiff < 600000 && pnlDiff < 0.01;
         });
+        
+        // Strategy 2: Match by symbol + close time (wider window, ignoring P&L)
+        if (!matchedPosition) {
+          matchedPosition = dbPositions.find(p => {
+            if (!p.closedAt || p.symbol !== event.symbol) return false;
+            
+            const positionDate = new Date(p.closedAt);
+            const timeDiff = Math.abs(eventDate.getTime() - positionDate.getTime());
+            
+            // Match if within 1 hour
+            return timeDiff < 3600000;
+          });
+        }
+        
+        // Strategy 3: Match by symbol + P&L (if both exist), ignoring time
+        if (!matchedPosition) {
+          matchedPosition = dbPositions.find(p => {
+            if (p.symbol !== event.symbol) return false;
+            if (p.realizedPnl === null) return false;
+            
+            const pnlDiff = Math.abs(eventPnL - parseFloat(p.realizedPnl));
+            
+            // Match if P&L difference < $0.01
+            return pnlDiff < 0.01;
+          });
+        }
+        
+        // Strategy 4: Last resort - just match by symbol and find closest time
+        if (!matchedPosition) {
+          const symbolMatches = dbPositions.filter(p => 
+            p.symbol === event.symbol && p.closedAt
+          );
+          
+          if (symbolMatches.length > 0) {
+            // Find the one with closest close time
+            matchedPosition = symbolMatches.reduce((closest, p) => {
+              const pDate = new Date(p.closedAt!);
+              const cDate = new Date(closest.closedAt!);
+              const pDiff = Math.abs(eventDate.getTime() - pDate.getTime());
+              const cDiff = Math.abs(eventDate.getTime() - cDate.getTime());
+              return pDiff < cDiff ? p : closest;
+            });
+            
+            // Only use if within 24 hours
+            const timeDiff = Math.abs(eventDate.getTime() - new Date(matchedPosition.closedAt!).getTime());
+            if (timeDiff > 86400000) {
+              matchedPosition = undefined;
+            }
+          }
+        }
         
         return {
           tradeNumber: index + 1,
