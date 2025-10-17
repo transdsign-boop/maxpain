@@ -129,12 +129,29 @@ class LiveDataOrchestrator {
   private handleNormalizedAccountUpdate(strategyId: string, update: NormalizedAccountUpdate): void {
     const snapshot = this.getSnapshot(strategyId);
     
-    // Find USDT balance
-    const usdtBalance = update.balances.find(b => b.asset === 'USDT');
-    
-    if (usdtBalance) {
-      const walletBalance = usdtBalance.walletBalance || '0';
-      const availableBalance = usdtBalance.availableBalance || '0';
+    // Process ALL assets (multi-asset collateral support)
+    if (update.balances && update.balances.length > 0) {
+      // Calculate total wallet balance across all collateral assets
+      // (balances are already in USD value from exchange)
+      const totalWalletBalance = update.balances.reduce((sum, b) => {
+        return sum + parseFloat(b.walletBalance || '0');
+      }, 0);
+      
+      const totalAvailableBalance = update.balances.reduce((sum, b) => {
+        return sum + parseFloat(b.crossWalletBalance || '0');
+      }, 0);
+      
+      // Find USDT balance for backward compatibility
+      const usdtBalance = update.balances.find(b => b.asset === 'USDT');
+      const usdtWalletBalance = usdtBalance?.walletBalance || '0';
+      
+      // Map all assets to the format expected by frontend
+      const assets = update.balances.map(b => ({
+        a: b.asset,
+        wb: b.walletBalance || '0',
+        cw: b.crossWalletBalance || '0',
+        bc: '0' // Balance change not provided by exchange
+      }));
       
       snapshot.account = {
         feeTier: 0,
@@ -142,25 +159,24 @@ class LiveDataOrchestrator {
         canDeposit: true,
         canWithdraw: true,
         updateTime: Date.now(),
-        totalWalletBalance: walletBalance,
+        totalWalletBalance: totalWalletBalance.toString(),
         totalUnrealizedProfit: '0', // Calculated from positions
-        totalMarginBalance: walletBalance,
+        totalMarginBalance: totalWalletBalance.toString(),
         totalInitialMargin: '0',
-        availableBalance,
-        usdcBalance: walletBalance,
-        usdtBalance: walletBalance,
-        assets: [{
-          a: 'USDT',
-          wb: walletBalance,
-          cw: availableBalance,
-          bc: '0'
-        }]
+        availableBalance: totalAvailableBalance.toString(),
+        usdcBalance: usdtWalletBalance, // Backward compatibility
+        usdtBalance: usdtWalletBalance, // Backward compatibility
+        assets: assets // All collateral assets
       };
       
       snapshot.timestamp = Date.now();
       
       if (Date.now() - this.lastAccountLogTime > 30000) {
-        console.log(`✅ Account updated from ${this.exchangeStreams.get(strategyId)?.exchangeType} stream (balance: $${parseFloat(walletBalance).toFixed(2)})`);
+        const assetSummary = update.balances
+          .filter(b => parseFloat(b.walletBalance || '0') > 0)
+          .map(b => `${b.asset}=$${parseFloat(b.walletBalance || '0').toFixed(2)}`)
+          .join(', ');
+        console.log(`✅ Account updated from ${this.exchangeStreams.get(strategyId)?.exchangeType} stream (total: $${totalWalletBalance.toFixed(2)}, assets: ${assetSummary})`);
         this.lastAccountLogTime = Date.now();
       }
       
