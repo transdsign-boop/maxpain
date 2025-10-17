@@ -4799,115 +4799,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         allFills.push(...sessionFills);
       }
 
-      console.log(`🔍 DEBUG: Processing ${allClosedPositions.length} closed positions, ${allFills.length} fills`);
-      
-      // Fetch exchange trades to enrich positions with actual realized P&L
-      // IMPROVED Oct 15, 2025: Use /fapi/v1/userTrades for deterministic orderId-based matching
-      let exchangeTrades: any[] = [];
-      try {
-        console.log('🔍 DEBUG: Starting P&L enrichment using userTrades API');
-        
-        // Get time range from positions
-        if (allClosedPositions.length > 0) {
-          console.log('🔍 DEBUG: Have positions, calculating time range');
-          const oldestPosition = allClosedPositions.reduce((oldest, p) => 
-            new Date(p.closedAt).getTime() < new Date(oldest.closedAt).getTime() ? p : oldest
-          );
-          const newestPosition = allClosedPositions.reduce((newest, p) => 
-            new Date(p.closedAt).getTime() > new Date(newest.closedAt).getTime() ? p : newest
-          );
-          
-          const startTime = new Date(oldestPosition.closedAt).getTime() - (24 * 60 * 60 * 1000); // -1 day buffer
-          const endTime = new Date(newestPosition.closedAt).getTime() + (24 * 60 * 60 * 1000); // +1 day buffer
-          
-          console.log(`🔍 DEBUG: Need trades from ${new Date(startTime).toISOString()} to ${new Date(endTime).toISOString()}`);
-          
-          // Fetch ALL trades from exchange using fromId pagination (cannot combine with time filters)
-          const apiKey = process.env.ASTER_API_KEY;
-          const secretKey = process.env.ASTER_SECRET_KEY;
-          
-          if (apiKey && secretKey) {
-            const allTrades: any[] = [];
-            let fromId: number | null = null;
-            let batchCount = 0;
-            
-            // Keep fetching until we get less than 1000 trades (exhausted all available trades)
-            while (true) {
-              batchCount++;
-              const timestamp = Date.now();
-              
-              // Build params - use fromId for pagination (cannot combine with startTime/endTime)
-              let params = `timestamp=${timestamp}&limit=1000`;
-              if (fromId !== null) {
-                params += `&fromId=${fromId}`;
-              }
-              
-              const signature = crypto
-                .createHmac('sha256', secretKey)
-                .update(params)
-                .digest('hex');
-
-              try {
-                const tradesResponse = await fetch(
-                  `https://fapi.asterdex.com/fapi/v1/userTrades?${params}&signature=${signature}`,
-                  {
-                    headers: { 'X-MBX-APIKEY': apiKey },
-                  }
-                );
-
-                if (tradesResponse.ok) {
-                  const batchTrades = await tradesResponse.json();
-                  
-                  if (batchTrades.length === 0) {
-                    console.log(`✅ Batch ${batchCount}: No more trades available`);
-                    break; // No more trades
-                  }
-                  
-                  allTrades.push(...batchTrades);
-                  console.log(`📥 Batch ${batchCount}: Fetched ${batchTrades.length} trades (total: ${allTrades.length})`);
-                  
-                  // If we got less than 1000 trades, we've reached the end
-                  if (batchTrades.length < 1000) {
-                    console.log(`✅ Batch ${batchCount}: Got ${batchTrades.length} trades (< 1000), finished pagination`);
-                    break;
-                  }
-                  
-                  // Set fromId for next iteration (last trade's id + 1)
-                  const lastTrade = batchTrades[batchTrades.length - 1];
-                  fromId = lastTrade.id + 1;
-                  
-                } else {
-                  const errorText = await tradesResponse.text();
-                  console.error(`Failed to fetch exchange trades batch ${batchCount}:`, errorText);
-                  break;
-                }
-              } catch (error) {
-                console.error(`Error fetching trades batch ${batchCount}:`, error);
-                break;
-              }
-            }
-            
-            // Use ALL trades (no time window filtering) to catch any positions outside the calculated range
-            exchangeTrades = allTrades;
-            
-            // Log trade date range for visibility
-            if (allTrades.length > 0) {
-              const oldestTrade = allTrades.reduce((oldest, t) => t.time < oldest.time ? t : oldest);
-              const newestTrade = allTrades.reduce((newest, t) => t.time > newest.time ? t : newest);
-              console.log(`📊 Fetched ${allTrades.length} total trades from ${new Date(oldestTrade.time).toISOString()} to ${new Date(newestTrade.time).toISOString()}`);
-            } else {
-              console.log(`📊 Fetched ${allTrades.length} total trades`);
-            }
-            console.log(`🎯 Using ALL ${exchangeTrades.length} exchange trades to match with ${allClosedPositions.length} positions`);
-          }
-        } else {
-          console.log('🔍 DEBUG: No closed positions to process');
-        }
-      } catch (error) {
-        console.error('⚠️ Failed to fetch exchange trades:', error);
-      }
-      console.log(`🔍 DEBUG: Enrichment complete, have ${exchangeTrades.length} trades`);
-      
+      console.log(`💰 Calculating P&L from fills for ${allClosedPositions.length} closed positions (${allFills.length} total fills)`);
       
       // Enhance closed positions with fee information
       const closedPositionsWithFees = allClosedPositions.map(position => {
@@ -4966,79 +4858,70 @@ export async function registerRoutes(app: Express): Promise<Server> {
           };
         });
       
-      // USE STORED P&L from database (Oct 15, 2025)
-      // P&L is now stored in DB when positions close, using exchange API (works for last 7 days)
-      // Only use exchange enrichment as fallback for positions missing P&L data
+      // CALCULATE P&L DIRECTLY FROM FILLS (Oct 17, 2025)
+      // This works for ALL positions regardless of age - no 7-day exchange API limitation
+      // P&L = (exit value - entry value) × direction - total fees
       
       const positionsWithRealPnl = realPositions.map(position => {
-        if (!position.closedAt || !position.openedAt) {
+        if (!position.closedAt || !position.openedAt || !position.fills || position.fills.length === 0) {
           return {
             ...position,
             realizedPnl: '0',
-            exchangePnlMatched: 0,
-            pnlSource: 'none',
+            pnlSource: 'no_fills',
           };
         }
         
-        // Calculate position time window
-        const openTime = new Date(position.openedAt).getTime();
-        const closeTime = new Date(position.closedAt).getTime();
+        // Separate entry and exit fills based on position direction
+        const isLong = position.side === 'long';
         
-        // Check if we have stored P&L (NULL = never stored, any other value = stored)
-        // After schema migration, NULL means "never fetched from exchange"
-        // Any non-null value (including '0' or '0.0') means we stored actual P&L
-        const hasStoredPnl = position.realizedPnl !== null && position.realizedPnl !== undefined;
-        
-        // If we have stored P&L (even if exactly $0), use it - it's permanent
-        if (hasStoredPnl) {
-          return {
-            ...position,
-            realizedPnl: position.realizedPnl,
-            exchangePnlMatched: -1, // Indicates using stored P&L
-            pnlSource: 'stored',
-          };
-        }
-        
-        // FALLBACK: Only for positions without stored P&L (NULL) - try exchange enrichment (only works for < 7 days)
-        const timeBuffer = 60 * 1000; // 60 second buffer for matching
-        
-        // Find all trades for this position:
-        // - Symbol matches
-        // - Time within position lifetime (with buffer)
-        // - Side/positionSide matches position direction
-        const positionTrades = exchangeTrades.filter(trade => {
-          if (trade.symbol !== position.symbol) return false;
-          
-          const tradeTime = trade.time;
-          if (tradeTime < openTime - timeBuffer || tradeTime > closeTime + timeBuffer) return false;
-          
-          // CRITICAL: Match CLOSING trades to get realizedPnl
-          // Long positions CLOSE with SELL trades (BUY opens with $0 P&L)
-          // Short positions CLOSE with BUY trades (SELL opens with $0 P&L)
-          // We want trades that REDUCE the position, which have realizedPnl populated
-          const isClosingTrade = 
-            (position.side === 'long' && trade.side === 'SELL' && (!trade.positionSide || trade.positionSide === 'LONG')) ||
-            (position.side === 'short' && trade.side === 'BUY' && (!trade.positionSide || trade.positionSide === 'SHORT'));
-          
-          return isClosingTrade;
+        // Entry fills: BUY for long, SELL for short (layer > 0 or matching side)
+        const entryFills = position.fills.filter((fill: any) => {
+          const matchingSide = (isLong && fill.side === 'buy') || (!isLong && fill.side === 'sell');
+          return matchingSide && (fill.layerNumber > 0 || fill.orderId.startsWith('entry-'));
         });
         
-        // Sum realizedPnl from matching trades (this field exists in userTrades response)
-        const totalRealizedPnl = positionTrades.reduce((sum, trade) => {
-          return sum + parseFloat(trade.realizedPnl || '0');
+        // Exit fills: SELL for long, BUY for short (layer = 0 or exit orderId)
+        const exitFills = position.fills.filter((fill: any) => {
+          const matchingSide = (isLong && fill.side === 'sell') || (!isLong && fill.side === 'buy');
+          return matchingSide && (fill.layerNumber === 0 || fill.orderId.startsWith('exit-'));
+        });
+        
+        // Calculate total values from fills
+        const entryValue = entryFills.reduce((sum: number, fill: any) => {
+          return sum + (parseFloat(fill.quantity || '0') * parseFloat(fill.price || '0'));
         }, 0);
         
-        if (positionTrades.length > 0) {
-          console.log(`💰 [FALLBACK] Matched ${positionTrades.length} trades to position ${position.symbol} ${position.side}: $${totalRealizedPnl.toFixed(2)}`);
+        const exitValue = exitFills.reduce((sum: number, fill: any) => {
+          return sum + (parseFloat(fill.quantity || '0') * parseFloat(fill.price || '0'));
+        }, 0);
+        
+        const totalFees = position.fills.reduce((sum: number, fill: any) => {
+          return sum + parseFloat(fill.fee || '0');
+        }, 0);
+        
+        // Calculate P&L based on position direction
+        // Long: profit when exit > entry (sell high, buy low)
+        // Short: profit when entry > exit (sell high, buy back low)
+        let grossPnl = 0;
+        if (isLong) {
+          grossPnl = exitValue - entryValue;
         } else {
-          console.log(`⚠️ Position ${position.symbol} ${position.side} has no stored P&L and no matching trades (likely > 7 days old)`);
+          grossPnl = entryValue - exitValue;
         }
+        
+        const netPnl = grossPnl - totalFees;
+        
+        // Calculate P&L percentage
+        const pnlPercent = entryValue > 0 ? (grossPnl / entryValue) * 100 : 0;
         
         return {
           ...position,
-          realizedPnl: totalRealizedPnl.toFixed(8),
-          exchangePnlMatched: positionTrades.length,
-          pnlSource: positionTrades.length > 0 ? 'exchange_fallback' : 'missing',
+          realizedPnl: netPnl.toFixed(8),
+          realizedPnlPercent: pnlPercent.toFixed(2),
+          totalFees: totalFees.toFixed(4),
+          pnlSource: 'fills',
+          entryFillCount: entryFills.length,
+          exitFillCount: exitFills.length,
         };
       });
       
