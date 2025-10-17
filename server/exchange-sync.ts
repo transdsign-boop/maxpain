@@ -1077,12 +1077,19 @@ export async function fetchRealizedPnlEvents(params: {
         .update(queryParams)
         .digest('hex');
 
-      const response = await fetch(
+      const { fetchWithRetry } = await import('./rate-limit-handler');
+      
+      const response = await fetchWithRetry(
         `https://fapi.asterdex.com/fapi/v1/income?${queryParams}&signature=${signature}`,
         {
           headers: {
             'X-MBX-APIKEY': apiKey,
           },
+        },
+        {
+          maxRetries: 3,
+          baseDelayMs: 2000, // Start with 2 seconds for rate limits
+          maxDelayMs: 60000 // Cap at 60 seconds
         }
       );
 
