@@ -129,12 +129,15 @@ class LiveDataOrchestrator {
   private handleNormalizedAccountUpdate(strategyId: string, update: NormalizedAccountUpdate): void {
     const snapshot = this.getSnapshot(strategyId);
     
-    // Find USDT balance
-    const usdtBalance = update.balances.find(b => b.asset === 'USDT');
+    // Find stablecoin balance - prioritize USDF (user's collateral), then fall back to USDT/USDC
+    const stablecoinBalance = update.balances.find(b => b.asset === 'USDF') 
+                            || update.balances.find(b => b.asset === 'USDT')
+                            || update.balances.find(b => b.asset === 'USDC');
     
-    if (usdtBalance) {
-      const walletBalance = usdtBalance.walletBalance || '0';
-      const availableBalance = usdtBalance.availableBalance || '0';
+    if (stablecoinBalance) {
+      const walletBalance = stablecoinBalance.walletBalance || '0';
+      const availableBalance = stablecoinBalance.availableBalance || '0';
+      const assetSymbol = stablecoinBalance.asset;
       
       snapshot.account = {
         feeTier: 0,
@@ -150,7 +153,7 @@ class LiveDataOrchestrator {
         usdcBalance: walletBalance,
         usdtBalance: walletBalance,
         assets: [{
-          a: 'USDT',
+          a: assetSymbol,
           wb: walletBalance,
           cw: availableBalance,
           bc: '0'
@@ -160,7 +163,7 @@ class LiveDataOrchestrator {
       snapshot.timestamp = Date.now();
       
       if (Date.now() - this.lastAccountLogTime > 30000) {
-        console.log(`✅ Account updated from ${this.exchangeStreams.get(strategyId)?.exchangeType} stream (balance: $${parseFloat(walletBalance).toFixed(2)})`);
+        console.log(`✅ Account updated from ${this.exchangeStreams.get(strategyId)?.exchangeType} stream (${assetSymbol} balance: $${parseFloat(walletBalance).toFixed(2)})`);
         this.lastAccountLogTime = Date.now();
       }
       
