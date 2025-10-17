@@ -636,7 +636,7 @@ function DCASettingsSection({ strategyId, isStrategyRunning, saveTrigger }: { st
                       type="number"
                       step="0.1"
                       min="0.5"
-                      max="10.0"
+                      max="100"
                       value={formValues.minSlPercent || ''}
                       onChange={(e) => handleInputChange('minSlPercent', e.target.value)}
                       placeholder="1.0"
@@ -656,7 +656,7 @@ function DCASettingsSection({ strategyId, isStrategyRunning, saveTrigger }: { st
                       type="number"
                       step="0.1"
                       min="1.0"
-                      max="10.0"
+                      max="100"
                       value={formValues.maxSlPercent || ''}
                       onChange={(e) => handleInputChange('maxSlPercent', e.target.value)}
                       placeholder="5.0"
