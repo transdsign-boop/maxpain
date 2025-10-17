@@ -46,6 +46,7 @@ interface Position {
   closedAt?: Date | null;
   updatedAt: Date;
   totalFees?: string; // Total fees paid for this position (entry + exit)
+  liquidationPrice?: string; // Real liquidation price from exchange
 }
 
 interface PositionSummary {
@@ -533,15 +534,16 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
         : ((stopLossPrice - avgEntry) / avgEntry) * 100)
     : sanitizedSL;
 
-  // Calculate liquidation price based on leverage (isolated margin)
-  const maintenanceMarginFactor = 0.95;
+  // Use real liquidation price from exchange (if available), otherwise calculate
   const hasLiquidation = leverage > 1 && !isNaN(leverage) && isFinite(leverage);
   
-  const liquidationPrice = hasLiquidation
-    ? position.side === 'long'
-      ? avgEntry * (1 - (1 / leverage) * maintenanceMarginFactor)
-      : avgEntry * (1 + (1 / leverage) * maintenanceMarginFactor)
-    : null;
+  const liquidationPrice = position.liquidationPrice 
+    ? parseFloat(position.liquidationPrice)
+    : hasLiquidation
+      ? position.side === 'long'
+        ? avgEntry * (1 - (1 / leverage) * 0.95)
+        : avgEntry * (1 + (1 / leverage) * 0.95)
+      : null;
   
   // Calculate distance to liquidation as a percentage
   let distanceToLiquidation = null;
@@ -1044,6 +1046,7 @@ export const StrategyStatus = memo(function StrategyStatus() {
           updatedAt: new Date(),
           closedAt: null,
           sessionId: activeStrategy?.id || '',
+          liquidationPrice: p.liquidationPrice, // Real liquidation price from exchange
         };
       }),
     sessionId: activeStrategy?.id || '',
