@@ -1257,11 +1257,35 @@ export class StrategyEngine extends EventEmitter {
       }
 
       const data = await response.json();
-      // CRITICAL: Use totalWalletBalance (total account equity) NOT availableBalance
-      // Risk must be calculated on total account value, not just leftover funds after positions are open
-      const totalWalletBalance = parseFloat(data.totalWalletBalance || '0');
-      console.log(`💰 Exchange total wallet balance (for risk calc): $${totalWalletBalance.toFixed(2)}`);
-      return totalWalletBalance;
+      
+      // CRITICAL: Check for USDF (user's actual collateral) first, then fall back to USDT/USDC
+      // Same multi-asset logic as WebSocket handler (live-data-orchestrator.ts)
+      const assets = data.assets || [];
+      let walletBalance = 0;
+      let assetUsed = 'UNKNOWN';
+      
+      // Priority: USDF → USDT → USDC → first available
+      const stablecoinPriority = ['USDF', 'USDT', 'USDC'];
+      for (const assetSymbol of stablecoinPriority) {
+        const asset = assets.find((a: any) => a.asset === assetSymbol);
+        if (asset && parseFloat(asset.walletBalance || '0') > 0) {
+          walletBalance = parseFloat(asset.walletBalance);
+          assetUsed = assetSymbol;
+          break;
+        }
+      }
+      
+      // Fallback: use first asset with non-zero balance
+      if (walletBalance === 0 && assets.length > 0) {
+        const firstAsset = assets.find((a: any) => parseFloat(a.walletBalance || '0') > 0);
+        if (firstAsset) {
+          walletBalance = parseFloat(firstAsset.walletBalance);
+          assetUsed = firstAsset.asset;
+        }
+      }
+      
+      console.log(`💰 Exchange balance (for risk calc): $${walletBalance.toFixed(2)} ${assetUsed}`);
+      return walletBalance;
     } catch (error) {
       console.error('❌ Error fetching exchange balance:', error);
       return null;
