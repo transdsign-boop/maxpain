@@ -2783,6 +2783,9 @@ export class StrategyEngine extends EventEmitter {
         'COAIUSDT': 5,
         'AIAUSDT': 5,
         'XPLUSDT': 5,
+        'ASTERUSDT': 5,
+        'SOLUSDT': 5,
+        'STBLUSDT': 5,
       };
       
       // Cap leverage at symbol-specific limit if it exists
