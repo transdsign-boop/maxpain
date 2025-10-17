@@ -3619,12 +3619,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }, "Must be between 0.5 and 5.0").nullable().optional(),
         minSlPercent: z.string().refine((val) => {
           const num = parseFloat(val);
-          return !isNaN(num) && num >= 0.5 && num <= 10.0;
-        }, "Must be between 0.5 and 10.0").nullable().optional(),
+          return !isNaN(num) && num >= 0.5 && num <= 100;
+        }, "Must be between 0.5 and 100").nullable().optional(),
         maxSlPercent: z.string().refine((val) => {
           const num = parseFloat(val);
-          return !isNaN(num) && num >= 1.0 && num <= 10.0;
-        }, "Must be between 1.0 and 10.0").nullable().optional(),
+          return !isNaN(num) && num >= 1.0 && num <= 100;
+        }, "Must be between 1.0 and 100").nullable().optional(),
       });
       
       const validatedData = dcaUpdateSchema.parse(req.body);
@@ -6092,6 +6092,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           layersFilled: matchedPosition?.layersFilled,
         };
       });
+      
+      // Sort trades by timestamp (newest first)
+      trades.sort((a, b) => b.timestamp - a.timestamp);
       
       res.json({
         success: true,
