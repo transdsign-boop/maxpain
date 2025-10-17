@@ -6037,6 +6037,75 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get all trades with database details when available
+  app.get('/api/all-trades', async (req, res) => {
+    try {
+      const { fetchRealizedPnlEvents } = await import('./exchange-sync');
+      
+      // Fetch ALL P&L events from exchange (Oct 1 onwards for full history)
+      const startTime = 1759276800000; // Oct 1, 2025
+      const result = await fetchRealizedPnlEvents({ startTime, endTime: Date.now() });
+      
+      if (!result.success) {
+        return res.status(500).json({ error: result.error || 'Failed to fetch trades' });
+      }
+      
+      // Get all closed positions from database
+      const dbPositions = await db
+        .select()
+        .from(positions)
+        .where(eq(positions.isOpen, false))
+        .orderBy(positions.closedAt);
+      
+      // Match exchange P&L events with database positions
+      const trades = result.events.map((event, index) => {
+        // Try to find matching database position by symbol, date, and P&L
+        const eventDate = new Date(event.time);
+        const eventPnL = parseFloat(event.income || '0');
+        
+        const matchedPosition = dbPositions.find(p => {
+          if (!p.closedAt || p.symbol !== event.symbol) return false;
+          
+          const positionDate = new Date(p.closedAt);
+          const timeDiff = Math.abs(eventDate.getTime() - positionDate.getTime());
+          const pnlDiff = Math.abs(eventPnL - parseFloat(p.realizedPnl || '0'));
+          
+          // Match if within 10 minutes and P&L difference < $0.01
+          return timeDiff < 600000 && pnlDiff < 0.01;
+        });
+        
+        return {
+          tradeNumber: index + 1,
+          timestamp: event.time,
+          date: eventDate.toISOString(),
+          symbol: event.symbol,
+          pnl: eventPnL,
+          asset: event.asset,
+          tradeId: event.tradeId,
+          // Database details (if available)
+          hasDetails: !!matchedPosition,
+          positionId: matchedPosition?.id,
+          side: matchedPosition?.side,
+          quantity: matchedPosition?.totalQuantity,
+          entryPrice: matchedPosition?.avgEntryPrice,
+          openedAt: matchedPosition?.openedAt,
+          layersFilled: matchedPosition?.layersFilled,
+        };
+      });
+      
+      res.json({
+        success: true,
+        trades,
+        total: trades.length,
+        withDetails: trades.filter(t => t.hasDetails).length,
+        withoutDetails: trades.filter(t => !t.hasDetails).length,
+      });
+    } catch (error) {
+      console.error('Error fetching all trades:', error);
+      res.status(500).json({ error: 'Failed to fetch all trades' });
+    }
+  });
+
   return httpServer;
 }
 

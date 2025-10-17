@@ -96,6 +96,29 @@ interface RealizedPnlEventCardProps {
   getPnlColor: (pnl: number) => string;
 }
 
+interface AllTradesViewProps {
+  formatCurrency: (value: number) => string;
+  formatPercentage: (value: number) => string;
+  getPnlColor: (pnl: number) => string;
+}
+
+interface Trade {
+  tradeNumber: number;
+  timestamp: number;
+  date: string;
+  symbol: string;
+  pnl: number;
+  asset: string;
+  tradeId: string;
+  hasDetails: boolean;
+  positionId?: string;
+  side?: string;
+  quantity?: string;
+  entryPrice?: string;
+  openedAt?: Date;
+  layersFilled?: number;
+}
+
 interface AssetPerformance {
   symbol: string;
   totalPnl: number;
@@ -103,6 +126,112 @@ interface AssetPerformance {
   wins: number;
   losses: number;
   winRate: number;
+}
+
+// All Trades View - shows all trades from exchange with database details when available
+function AllTradesView({ formatCurrency, formatPercentage, getPnlColor }: AllTradesViewProps) {
+  const { data: allTradesData, isLoading } = useQuery<{ 
+    trades: Trade[];
+    total: number;
+    withDetails: number;
+    withoutDetails: number;
+  }>({
+    queryKey: ['/api/all-trades'],
+    staleTime: 30 * 1000, // 30 seconds
+  });
+
+  if (isLoading) {
+    return (
+      <div className="space-y-2">
+        {[1, 2, 3].map((i) => (
+          <Skeleton key={i} className="h-24 w-full" />
+        ))}
+      </div>
+    );
+  }
+
+  if (!allTradesData || allTradesData.trades.length === 0) {
+    return (
+      <div className="text-center py-6">
+        <CheckCircle2 className="h-8 w-8 mx-auto text-muted-foreground/50 mb-2" />
+        <p className="text-sm text-muted-foreground">No completed trades yet</p>
+      </div>
+    );
+  }
+
+  const { trades, total, withDetails, withoutDetails } = allTradesData;
+
+  return (
+    <div>
+      <div className="mb-3 p-3 rounded-lg bg-muted/30 border">
+        <p className="text-sm font-medium mb-1">All Exchange Trades</p>
+        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+          <span>Total: <strong className="text-foreground">{total}</strong></span>
+          <span>With details: <strong className="text-foreground">{withDetails}</strong></span>
+          <span>P&L only: <strong className="text-foreground">{withoutDetails}</strong></span>
+        </div>
+      </div>
+
+      <div className="space-y-2 max-h-96 overflow-y-auto overflow-x-hidden pr-2 custom-scrollbar">
+        {trades.map((trade) => (
+          <Card key={`${trade.tradeId}-${trade.timestamp}`} className="p-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold">{trade.symbol}</span>
+                {trade.hasDetails && trade.side && (
+                  <Badge className={trade.side === 'long' ? 'bg-lime-500/15 text-lime-300 border-lime-400/30' : 'bg-red-600/15 text-red-400 border-red-500/30'}>
+                    {trade.side.toUpperCase()}
+                  </Badge>
+                )}
+                {!trade.hasDetails && (
+                  <Badge variant="outline" className="text-xs">
+                    Exchange only
+                  </Badge>
+                )}
+              </div>
+              <div className={`text-lg font-mono font-bold ${getPnlColor(trade.pnl)}`}>
+                {trade.pnl >= 0 ? '+' : ''}${trade.pnl.toFixed(2)}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Date:</span>
+                <span className="font-mono">{format(new Date(trade.timestamp), 'MMM dd, HH:mm')}</span>
+              </div>
+              
+              {trade.hasDetails && trade.quantity && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Qty:</span>
+                  <span className="font-mono">{parseFloat(trade.quantity).toFixed(4)}</span>
+                </div>
+              )}
+              
+              {trade.hasDetails && trade.entryPrice && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Entry:</span>
+                  <span className="font-mono">{formatCurrency(parseFloat(trade.entryPrice))}</span>
+                </div>
+              )}
+              
+              {trade.hasDetails && trade.layersFilled && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Layers:</span>
+                  <span className="font-mono">{trade.layersFilled}</span>
+                </div>
+              )}
+
+              {!trade.hasDetails && (
+                <div className="col-span-2 text-center text-muted-foreground italic">
+                  Trade details not available (older than 7 days)
+                </div>
+              )}
+            </div>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 // Completed trade card with expandable layer details
@@ -1392,47 +1521,11 @@ export const StrategyStatus = memo(function StrategyStatus() {
           </TabsContent>
 
           <TabsContent value="completed" className="mt-3 md:mt-4">
-            <div className="mb-2">
-              <p className="text-xs text-muted-foreground">
-                Showing {closedPositions?.length || 0} completed positions (expand to see layers)
-              </p>
-            </div>
-            {closedPositions && closedPositions.length > 0 ? (
-              <div className="space-y-2 max-h-96 overflow-y-auto overflow-x-hidden pr-2 custom-scrollbar">
-                {closedPositions
-                  .sort((a, b) => {
-                    const aTime = a.closedAt ? new Date(a.closedAt).getTime() : 0;
-                    const bTime = b.closedAt ? new Date(b.closedAt).getTime() : 0;
-                    return bTime - aTime;
-                  })
-                  .map((position) => {
-                    const hedgeSymbol = position.symbol;
-                    const hedgeSide = position.side === 'long' ? 'short' : 'long';
-                    const isHedge = closedPositions.some(p => 
-                      p.symbol === hedgeSymbol && 
-                      p.side === hedgeSide && 
-                      p.id !== position.id &&
-                      Math.abs(new Date(p.openedAt).getTime() - new Date(position.openedAt).getTime()) < 60000
-                    );
-                    
-                    return (
-                      <CompletedTradeCard 
-                        key={position.id} 
-                        position={position} 
-                        formatCurrency={formatCurrency} 
-                        formatPercentage={formatPercentage}
-                        getPnlColor={getPnlColor}
-                        isHedge={isHedge}
-                      />
-                    );
-                  })}
-              </div>
-            ) : (
-              <div className="text-center py-6">
-                <CheckCircle2 className="h-8 w-8 mx-auto text-muted-foreground/50 mb-2" />
-                <p className="text-sm text-muted-foreground">No completed trades yet</p>
-              </div>
-            )}
+            <AllTradesView 
+              formatCurrency={formatCurrency} 
+              formatPercentage={formatPercentage}
+              getPnlColor={getPnlColor}
+            />
           </TabsContent>
         </Tabs>
       </CardContent>
