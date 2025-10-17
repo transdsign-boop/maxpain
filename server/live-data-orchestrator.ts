@@ -138,7 +138,7 @@ class LiveDataOrchestrator {
       }, 0);
       
       const totalAvailableBalance = update.balances.reduce((sum, b) => {
-        return sum + parseFloat(b.crossWalletBalance || '0');
+        return sum + parseFloat(b.availableBalance || '0');
       }, 0);
       
       // Find USDT balance for backward compatibility
@@ -149,7 +149,7 @@ class LiveDataOrchestrator {
       const assets = update.balances.map(b => ({
         a: b.asset,
         wb: b.walletBalance || '0',
-        cw: b.crossWalletBalance || '0',
+        cw: b.availableBalance || '0',
         bc: '0' // Balance change not provided by exchange
       }));
       
@@ -258,15 +258,31 @@ class LiveDataOrchestrator {
 
   // Update account cache from WebSocket (called by user-data-stream)
   updateAccountFromWebSocket(strategyId: string, balances: any[]): void {
-    const usdtBalance = balances.find((b: any) => b.asset === 'USDT');
-    
-    if (usdtBalance) {
+    // Process ALL assets (multi-asset collateral support)
+    if (balances && balances.length > 0) {
       const snapshot = this.getSnapshot(strategyId);
-      const walletBalance = usdtBalance.walletBalance || '0';
-      const crossWalletBalance = usdtBalance.crossWalletBalance || '0';
-      const unrealizedProfit = usdtBalance.unrealizedProfit || '0';
-      const marginBalance = usdtBalance.marginBalance || '0';
-      const initialMargin = usdtBalance.initialMargin || '0';
+      
+      // Calculate total wallet balance across all collateral assets
+      // (balances are already in USD value from exchange)
+      const totalWalletBalance = balances.reduce((sum: number, b: any) => {
+        return sum + parseFloat(b.walletBalance || '0');
+      }, 0);
+      
+      const totalAvailableBalance = balances.reduce((sum: number, b: any) => {
+        return sum + parseFloat(b.crossWalletBalance || '0');
+      }, 0);
+      
+      // Find USDT balance for backward compatibility
+      const usdtBalance = balances.find((b: any) => b.asset === 'USDT');
+      const usdtWalletBalance = usdtBalance?.walletBalance || '0';
+      
+      // Map all assets to the format expected by frontend
+      const assets = balances.map((b: any) => ({
+        a: b.asset,
+        wb: b.walletBalance || '0',
+        cw: b.crossWalletBalance || '0',
+        bc: '0' // Balance change not provided by exchange
+      }));
       
       // Match the HTTP API format exactly - include ALL fields the frontend expects
       snapshot.account = {
@@ -276,25 +292,24 @@ class LiveDataOrchestrator {
         canWithdraw: true,
         updateTime: Date.now(),
         // Fields used by PerformanceOverview component
-        totalWalletBalance: walletBalance,
-        totalUnrealizedProfit: unrealizedProfit,
-        totalMarginBalance: marginBalance,
-        totalInitialMargin: initialMargin,
-        availableBalance: crossWalletBalance,
+        totalWalletBalance: totalWalletBalance.toString(),
+        totalUnrealizedProfit: '0', // Calculated from positions
+        totalMarginBalance: totalWalletBalance.toString(),
+        totalInitialMargin: '0',
+        availableBalance: totalAvailableBalance.toString(),
         // Legacy fields for compatibility
-        usdcBalance: walletBalance,
-        usdtBalance: walletBalance,
-        assets: [{
-          a: 'USDT',
-          wb: walletBalance,
-          cw: crossWalletBalance,
-          bc: '0'
-        }]
+        usdcBalance: usdtWalletBalance,
+        usdtBalance: usdtWalletBalance,
+        assets: assets // All collateral assets
       };
       snapshot.timestamp = Date.now();
       // Reduced logging - only log occasionally (every 30s) to reduce log spam
       if (Date.now() - this.lastAccountLogTime > 30000) {
-        console.log('✅ Updated account cache from WebSocket (balance: $' + parseFloat(walletBalance).toFixed(2) + ')');
+        const assetSummary = balances
+          .filter((b: any) => parseFloat(b.walletBalance || '0') > 0)
+          .map((b: any) => `${b.asset}=$${parseFloat(b.walletBalance || '0').toFixed(2)}`)
+          .join(', ');
+        console.log(`✅ Updated account cache from WebSocket (total: $${totalWalletBalance.toFixed(2)}, assets: ${assetSummary})`);
         this.lastAccountLogTime = Date.now();
       }
       this.broadcastSnapshot(strategyId);

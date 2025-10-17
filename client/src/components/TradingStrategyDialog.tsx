@@ -1936,24 +1936,49 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                     Exchange Account Balance
                     {accountLoading && <span className="text-xs text-muted-foreground ml-2">Loading...</span>}
                   </FormLabel>
-                  <div className="flex items-center gap-2 p-3 rounded-md bg-muted/50 border">
+                  <div className="p-3 rounded-md bg-muted/50 border space-y-3">
                     {accountLoading ? (
                       <div className="text-muted-foreground">Fetching from Aster DEX...</div>
                     ) : exchangeAccount?.totalWalletBalance ? (
                       <>
-                        <div className="flex-1">
-                          <div className="text-2xl font-semibold font-mono" data-testid="text-account-balance">
-                            ${parseFloat(exchangeAccount.totalWalletBalance).toFixed(2)}
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1">
+                            <div className="text-2xl font-semibold font-mono" data-testid="text-account-balance">
+                              ${parseFloat(exchangeAccount.totalWalletBalance).toFixed(2)}
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-1">
+                              Total Collateral Balance
+                            </div>
                           </div>
-                          <div className="text-xs text-muted-foreground mt-1">
-                            Tier: {accountBalance < 1000 ? 'Micro' : accountBalance < 10000 ? 'Small' : accountBalance < 50000 ? 'Mid' : 'Large'} Account
+                          <div className="text-green-600 dark:text-green-400">
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
                           </div>
                         </div>
-                        <div className="text-green-600 dark:text-green-400">
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                        </div>
+                        
+                        {/* Asset Breakdown */}
+                        {exchangeAccount.assets && exchangeAccount.assets.length > 0 && (
+                          <div className="pt-2 border-t border-border/50">
+                            <div className="text-xs font-medium text-muted-foreground mb-2">Collateral Assets:</div>
+                            <div className="grid grid-cols-2 gap-2">
+                              {exchangeAccount.assets
+                                .filter((asset: any) => parseFloat(asset.wb || '0') > 0.01) // Only show assets with >$0.01
+                                .map((asset: any) => (
+                                  <div 
+                                    key={asset.a} 
+                                    className="flex justify-between items-center text-xs bg-background/50 px-2 py-1 rounded"
+                                    data-testid={`asset-${asset.a.toLowerCase()}`}
+                                  >
+                                    <span className="font-medium">{asset.a}</span>
+                                    <span className="font-mono text-muted-foreground">
+                                      ${parseFloat(asset.wb || '0').toFixed(2)}
+                                    </span>
+                                  </div>
+                                ))}
+                            </div>
+                          </div>
+                        )}
                       </>
                     ) : (
                       <div className="text-muted-foreground">
@@ -1962,7 +1987,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Automatically fetched from your Aster DEX account
+                    Multi-asset collateral mode enabled - all assets contribute to total balance
                   </p>
                 </div>
                 
