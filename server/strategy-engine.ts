@@ -1729,24 +1729,24 @@ export class StrategyEngine extends EventEmitter {
       const currentLeverage = this.leverageSetForSymbols.get(liquidation.symbol);
       if (currentLeverage !== leverage) {
         console.log(`⚙️ Setting ${liquidation.symbol} leverage to ${leverage}x on exchange...`);
-        const leverageSet = await this.setLeverage(liquidation.symbol, leverage);
-        if (leverageSet) {
+        const leverageResult = await this.setLeverage(liquidation.symbol, leverage);
+        if (leverageResult.success) {
           this.leverageSetForSymbols.set(liquidation.symbol, leverage);
         } else {
           console.error(`❌ Failed to set leverage for ${liquidation.symbol}, aborting order to prevent trading with wrong leverage`);
           
-          // Log error to database for audit trail
+          // Log error to database for audit trail with actual exchange error
           await this.logTradeEntryError({
             strategy,
             symbol: liquidation.symbol,
             side: positionSide,
             attemptType: 'entry',
             reason: 'leverage_set_failed',
-            errorDetails: `Failed to configure ${leverage}x leverage on exchange`,
+            errorDetails: leverageResult.error || `Failed to configure ${leverage}x leverage on exchange`,
             liquidationValue: parseFloat(liquidation.value),
           });
           
-          throw new Error(`Failed to set leverage for ${liquidation.symbol}`);
+          throw new Error(`Failed to set leverage for ${liquidation.symbol}: ${leverageResult.error || 'Unknown error'}`);
         }
       }
 
@@ -2767,14 +2767,15 @@ export class StrategyEngine extends EventEmitter {
   }
 
   // Set leverage for a symbol on Aster DEX using fixed global settings
-  private async setLeverage(symbol: string, requestedLeverage: number): Promise<boolean> {
+  private async setLeverage(symbol: string, requestedLeverage: number): Promise<{ success: boolean; error?: string }> {
     try {
       const apiKey = process.env.ASTER_API_KEY;
       const secretKey = process.env.ASTER_SECRET_KEY;
       
       if (!apiKey || !secretKey) {
-        console.error('❌ Aster DEX API keys not configured');
-        return false;
+        const error = 'Aster DEX API keys not configured';
+        console.error(`❌ ${error}`);
+        return { success: false, error };
       }
       
       // Symbol-specific leverage limits (some tokens have lower max leverage)
@@ -2783,9 +2784,6 @@ export class StrategyEngine extends EventEmitter {
         'COAIUSDT': 5,
         'AIAUSDT': 5,
         'XPLUSDT': 5,
-        'ASTERUSDT': 5,
-        'SOLUSDT': 5,
-        'STBLUSDT': 5,
       };
       
       // Cap leverage at symbol-specific limit if it exists
@@ -2823,16 +2821,18 @@ export class StrategyEngine extends EventEmitter {
       
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`❌ Failed to set leverage for ${symbol}: ${response.status} ${errorText}`);
-        return false;
+        const error = `HTTP ${response.status}: ${errorText}`;
+        console.error(`❌ Failed to set leverage for ${symbol}: ${error}`);
+        return { success: false, error };
       }
       
       const result = await response.json();
       console.log(`✅ Set ${symbol} leverage to ${leverage}x:`, result);
-      return true;
+      return { success: true };
     } catch (error) {
-      console.error('❌ Error setting leverage:', error);
-      return false;
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error('❌ Error setting leverage:', errorMsg);
+      return { success: false, error: errorMsg };
     }
   }
 
