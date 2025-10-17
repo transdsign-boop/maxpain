@@ -129,41 +129,12 @@ class LiveDataOrchestrator {
   private handleNormalizedAccountUpdate(strategyId: string, update: NormalizedAccountUpdate): void {
     const snapshot = this.getSnapshot(strategyId);
     
-    // Process ALL assets (multi-asset collateral support)
-    if (update.balances && update.balances.length > 0) {
-      // Calculate total wallet balance across all collateral assets
-      // (balances are already in USD value from exchange)
-      const totalWalletBalance = update.balances.reduce((sum, b) => {
-        return sum + parseFloat(b.walletBalance || '0');
-      }, 0);
-      
-      const totalAvailableBalance = update.balances.reduce((sum, b) => {
-        return sum + parseFloat(b.availableBalance || '0');
-      }, 0);
-      
-      // Find USDT balance for backward compatibility
-      const usdtBalance = update.balances.find(b => b.asset === 'USDT');
-      const usdtWalletBalance = usdtBalance?.walletBalance || '0';
-      
-      // Map all assets to the format expected by frontend
-      const assets = update.balances.map(b => ({
-        a: b.asset,
-        wb: b.walletBalance || '0',
-        cw: b.availableBalance || '0',
-        bc: '0' // Balance change not provided by exchange
-      }));
-      
-      // Calculate unrealized P&L from current positions
-      const unrealizedPnl = (snapshot.positions || []).reduce((sum, pos) => {
-        const pnl = parseFloat(pos.unRealizedProfit || pos.unrealizedProfit || '0');
-        if (pnl !== 0) {
-          console.log(`💰 Position ${pos.symbol} unrealized P&L: $${pnl.toFixed(2)}`);
-        }
-        return sum + pnl;
-      }, 0);
-      if (unrealizedPnl !== 0) {
-        console.log(`💰 Total unrealized P&L: $${unrealizedPnl.toFixed(2)} (from ${(snapshot.positions || []).length} positions)`);
-      }
+    // Find USDT balance
+    const usdtBalance = update.balances.find(b => b.asset === 'USDT');
+    
+    if (usdtBalance) {
+      const walletBalance = usdtBalance.walletBalance || '0';
+      const availableBalance = usdtBalance.availableBalance || '0';
       
       snapshot.account = {
         feeTier: 0,
@@ -171,24 +142,25 @@ class LiveDataOrchestrator {
         canDeposit: true,
         canWithdraw: true,
         updateTime: Date.now(),
-        totalWalletBalance: totalWalletBalance.toString(),
-        totalUnrealizedProfit: unrealizedPnl.toString(),
-        totalMarginBalance: (totalWalletBalance + unrealizedPnl).toString(),
+        totalWalletBalance: walletBalance,
+        totalUnrealizedProfit: '0', // Calculated from positions
+        totalMarginBalance: walletBalance,
         totalInitialMargin: '0',
-        availableBalance: totalAvailableBalance.toString(),
-        usdcBalance: usdtWalletBalance, // Backward compatibility
-        usdtBalance: usdtWalletBalance, // Backward compatibility
-        assets: assets // All collateral assets
+        availableBalance,
+        usdcBalance: walletBalance,
+        usdtBalance: walletBalance,
+        assets: [{
+          a: 'USDT',
+          wb: walletBalance,
+          cw: availableBalance,
+          bc: '0'
+        }]
       };
       
       snapshot.timestamp = Date.now();
       
       if (Date.now() - this.lastAccountLogTime > 30000) {
-        const assetSummary = update.balances
-          .filter(b => parseFloat(b.walletBalance || '0') > 0)
-          .map(b => `${b.asset}=$${parseFloat(b.walletBalance || '0').toFixed(2)}`)
-          .join(', ');
-        console.log(`✅ Account updated from ${this.exchangeStreams.get(strategyId)?.exchangeType} stream (total: $${totalWalletBalance.toFixed(2)}, assets: ${assetSummary})`);
+        console.log(`✅ Account updated from ${this.exchangeStreams.get(strategyId)?.exchangeType} stream (balance: $${parseFloat(walletBalance).toFixed(2)})`);
         this.lastAccountLogTime = Date.now();
       }
       
@@ -270,43 +242,15 @@ class LiveDataOrchestrator {
 
   // Update account cache from WebSocket (called by user-data-stream)
   updateAccountFromWebSocket(strategyId: string, balances: any[]): void {
-    // Process ALL assets (multi-asset collateral support)
-    if (balances && balances.length > 0) {
+    const usdtBalance = balances.find((b: any) => b.asset === 'USDT');
+    
+    if (usdtBalance) {
       const snapshot = this.getSnapshot(strategyId);
-      
-      // Calculate total wallet balance across all collateral assets
-      // (balances are already in USD value from exchange)
-      const totalWalletBalance = balances.reduce((sum: number, b: any) => {
-        return sum + parseFloat(b.walletBalance || '0');
-      }, 0);
-      
-      const totalAvailableBalance = balances.reduce((sum: number, b: any) => {
-        return sum + parseFloat(b.crossWalletBalance || '0');
-      }, 0);
-      
-      // Find USDT balance for backward compatibility
-      const usdtBalance = balances.find((b: any) => b.asset === 'USDT');
-      const usdtWalletBalance = usdtBalance?.walletBalance || '0';
-      
-      // Map all assets to the format expected by frontend
-      const assets = balances.map((b: any) => ({
-        a: b.asset,
-        wb: b.walletBalance || '0',
-        cw: b.crossWalletBalance || '0',
-        bc: '0' // Balance change not provided by exchange
-      }));
-      
-      // Calculate unrealized P&L from current positions
-      const unrealizedPnl = (snapshot.positions || []).reduce((sum: number, pos: any) => {
-        const pnl = parseFloat(pos.unRealizedProfit || pos.unrealizedProfit || '0');
-        if (pnl !== 0) {
-          console.log(`💰 Position ${pos.symbol} unrealized P&L: $${pnl.toFixed(2)}`);
-        }
-        return sum + pnl;
-      }, 0);
-      if (unrealizedPnl !== 0) {
-        console.log(`💰 Total unrealized P&L: $${unrealizedPnl.toFixed(2)} (from ${balances.length} positions)`);
-      }
+      const walletBalance = usdtBalance.walletBalance || '0';
+      const crossWalletBalance = usdtBalance.crossWalletBalance || '0';
+      const unrealizedProfit = usdtBalance.unrealizedProfit || '0';
+      const marginBalance = usdtBalance.marginBalance || '0';
+      const initialMargin = usdtBalance.initialMargin || '0';
       
       // Match the HTTP API format exactly - include ALL fields the frontend expects
       snapshot.account = {
@@ -316,24 +260,25 @@ class LiveDataOrchestrator {
         canWithdraw: true,
         updateTime: Date.now(),
         // Fields used by PerformanceOverview component
-        totalWalletBalance: totalWalletBalance.toString(),
-        totalUnrealizedProfit: unrealizedPnl.toString(),
-        totalMarginBalance: (totalWalletBalance + unrealizedPnl).toString(),
-        totalInitialMargin: '0',
-        availableBalance: totalAvailableBalance.toString(),
+        totalWalletBalance: walletBalance,
+        totalUnrealizedProfit: unrealizedProfit,
+        totalMarginBalance: marginBalance,
+        totalInitialMargin: initialMargin,
+        availableBalance: crossWalletBalance,
         // Legacy fields for compatibility
-        usdcBalance: usdtWalletBalance,
-        usdtBalance: usdtWalletBalance,
-        assets: assets // All collateral assets
+        usdcBalance: walletBalance,
+        usdtBalance: walletBalance,
+        assets: [{
+          a: 'USDT',
+          wb: walletBalance,
+          cw: crossWalletBalance,
+          bc: '0'
+        }]
       };
       snapshot.timestamp = Date.now();
       // Reduced logging - only log occasionally (every 30s) to reduce log spam
       if (Date.now() - this.lastAccountLogTime > 30000) {
-        const assetSummary = balances
-          .filter((b: any) => parseFloat(b.walletBalance || '0') > 0)
-          .map((b: any) => `${b.asset}=$${parseFloat(b.walletBalance || '0').toFixed(2)}`)
-          .join(', ');
-        console.log(`✅ Updated account cache from WebSocket (total: $${totalWalletBalance.toFixed(2)}, assets: ${assetSummary})`);
+        console.log('✅ Updated account cache from WebSocket (balance: $' + parseFloat(walletBalance).toFixed(2) + ')');
         this.lastAccountLogTime = Date.now();
       }
       this.broadcastSnapshot(strategyId);
@@ -429,12 +374,6 @@ class LiveDataOrchestrator {
         reservedRiskDollars,
         reservedRiskPercentage
       };
-      
-      // Update account with calculated unrealized P&L
-      if (snapshot.account) {
-        snapshot.account.totalUnrealizedProfit = unrealizedPnl.toString();
-        snapshot.account.totalMarginBalance = (currentBalance + unrealizedPnl).toString();
-      }
       
       // Broadcast update
       this.broadcastSnapshot(strategyId);
