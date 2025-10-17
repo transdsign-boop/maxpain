@@ -57,28 +57,19 @@ export function useWebSocketData(options: UseWebSocketDataOptions = {}) {
               // Populate cache with live snapshot data from orchestrator
               const snapshot = wsEvent.data?.snapshot;
               if (snapshot?.account) {
-                // Normalize Binance-style field names to match component expectations
-                const normalizedAccount = {
-                  ...snapshot.account,
-                  // Map Binance fields to component fields
-                  unrealizedPnl: parseFloat(snapshot.account.totalUnrealizedProfit || '0'),
-                  availableMargin: parseFloat(snapshot.account.availableBalance || '0'),
-                  totalBalance: parseFloat(snapshot.account.totalWalletBalance || '0'),
-                  marginBalance: parseFloat(snapshot.account.totalMarginBalance || '0'),
-                };
-                queryClient.setQueryData(['/api/live/account'], normalizedAccount);
-                // Force refetch to trigger re-render
+                queryClient.setQueryData(['/api/live/account'], snapshot.account);
+                // Force re-render by invalidating (without refetching)
                 queryClient.invalidateQueries({ queryKey: ['/api/live/account'], refetchType: 'none' });
               }
               if (snapshot?.positions) {
                 queryClient.setQueryData(['/api/live/positions'], snapshot.positions);
-                // Force refetch to trigger re-render
+                // Force re-render by invalidating (without refetching)
                 queryClient.invalidateQueries({ queryKey: ['/api/live/positions'], refetchType: 'none' });
               }
               // Cache portfolio risk metrics for UI risk meter
               if (snapshot?.positionsSummary) {
                 queryClient.setQueryData(['/api/live/positions-summary'], snapshot.positionsSummary);
-                // Force refetch to trigger re-render
+                // Force re-render by invalidating (without refetching)
                 queryClient.invalidateQueries({ queryKey: ['/api/live/positions-summary'], refetchType: 'none' });
               }
               break;
