@@ -111,26 +111,25 @@ export class StrategyEngine extends EventEmitter {
         const priceFilter = symbol.filters?.find((f: any) => f.filterType === 'PRICE_FILTER');
         const minNotionalFilter = symbol.filters?.find((f: any) => f.filterType === 'MIN_NOTIONAL');
         
-        if (lotSizeFilter && priceFilter) {
-          const parsedMinNotional = minNotionalFilter?.notional ? parseFloat(minNotionalFilter.notional) : 5.0;
-          
-          // Debug logging for HYPE to trace minNotional value
-          if (symbol.symbol === 'HYPEUSDT') {
-            console.log(`🔍 HYPE minNotional parsing:`, {
-              filterFound: !!minNotionalFilter,
-              filterValue: minNotionalFilter?.notional,
-              parsed: parsedMinNotional
-            });
-          }
-          
-          this.symbolPrecisionCache.set(symbol.symbol, {
-            quantityPrecision: symbol.quantityPrecision || 8,
-            pricePrecision: symbol.pricePrecision || 8,
-            stepSize: lotSizeFilter.stepSize || '1',
-            tickSize: priceFilter.tickSize || '0.01',
-            minNotional: parsedMinNotional, // Use exchange value or fallback to $5
+        // Always cache symbol info - use defaults if filters are missing
+        const parsedMinNotional = minNotionalFilter?.notional ? parseFloat(minNotionalFilter.notional) : 5.0;
+        
+        // Debug logging for missing filters
+        if (!lotSizeFilter || !priceFilter) {
+          console.log(`⚠️ ${symbol.symbol} missing filters:`, {
+            hasLotSize: !!lotSizeFilter,
+            hasPriceFilter: !!priceFilter,
+            hasMinNotional: !!minNotionalFilter
           });
         }
+        
+        this.symbolPrecisionCache.set(symbol.symbol, {
+          quantityPrecision: symbol.quantityPrecision || 8,
+          pricePrecision: symbol.pricePrecision || 8,
+          stepSize: lotSizeFilter?.stepSize || '1',
+          tickSize: priceFilter?.tickSize || '0.01',
+          minNotional: parsedMinNotional, // Use exchange value or fallback to $5
+        });
       }
       
       this.exchangeInfoFetched = true;
