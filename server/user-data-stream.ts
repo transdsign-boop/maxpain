@@ -298,6 +298,7 @@ class UserDataStreamManager {
           marginType: p.mt,
           isolatedWallet: p.iw,
           positionSide: p.ps,
+          liquidationPrice: p.lp, // Real-time liquidation price from exchange
         }));
 
         // Update orchestrator cache from WebSocket
