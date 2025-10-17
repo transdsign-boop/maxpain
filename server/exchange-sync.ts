@@ -693,7 +693,6 @@ export async function fetchTransfers(params: {
 export async function fetchCommissions(params: {
   startTime?: number;
   endTime?: number;
-  exchange?: string;
 }): Promise<{
   success: boolean;
   records: any[];
@@ -786,12 +785,12 @@ export async function fetchCommissions(params: {
 
 // Get total commission fees (just the sum, no individual records)
 // Implements pagination to fetch ALL historical data
-export async function getTotalCommissions(exchange?: string): Promise<{
+export async function getTotalCommissions(): Promise<{
   success: boolean;
   total: number;
   error?: string;
 }> {
-  const result = await fetchCommissions({ exchange });
+  const result = await fetchCommissions({});
   return { success: result.success, total: result.total, error: result.error };
 }
 
@@ -800,14 +799,14 @@ let cachedCommissionCutoff: number | null = null;
 let cachedFundingCutoff: number | null = null;
 
 // Get global commission cutoff date (cached, fetches once then reuses)
-export async function getGlobalCommissionCutoff(exchange?: string): Promise<number | undefined> {
+export async function getGlobalCommissionCutoff(): Promise<number | undefined> {
   if (cachedCommissionCutoff !== null) {
     console.log(`✅ Using cached commission cutoff: ${new Date(cachedCommissionCutoff).toISOString()}`);
     return cachedCommissionCutoff;
   }
   
   // Fetch ALL data from the beginning to get the true global cutoff
-  const result = await fetchCommissions({ startTime: 0, endTime: Date.now(), exchange });
+  const result = await fetchCommissions({ startTime: 0, endTime: Date.now() });
   
   if (result.success && result.records.length > 0) {
     // The first record in ascending order is the oldest (global cutoff)
@@ -822,14 +821,14 @@ export async function getGlobalCommissionCutoff(exchange?: string): Promise<numb
 }
 
 // Get global funding cutoff date (cached, fetches once then reuses)
-export async function getGlobalFundingCutoff(exchange?: string): Promise<number | undefined> {
+export async function getGlobalFundingCutoff(): Promise<number | undefined> {
   if (cachedFundingCutoff !== null) {
     console.log(`✅ Using cached funding cutoff: ${new Date(cachedFundingCutoff).toISOString()}`);
     return cachedFundingCutoff;
   }
   
   // Fetch ALL data from the beginning to get the true global cutoff
-  const result = await fetchFundingFees({ startTime: 0, endTime: Date.now(), exchange });
+  const result = await fetchFundingFees({ startTime: 0, endTime: Date.now() });
   
   if (result.success && result.records.length > 0) {
     // The first record in ascending order is the oldest (global cutoff)
@@ -854,7 +853,6 @@ export function refreshCutoffCache() {
 export async function fetchFundingFees(params: {
   startTime?: number;
   endTime?: number;
-  exchange?: string;
 }): Promise<{
   success: boolean;
   records: any[];
@@ -937,12 +935,12 @@ export async function fetchFundingFees(params: {
 
 // Get total funding fees (just the sum, no individual records)
 // Implements pagination to fetch ALL historical data
-export async function getTotalFundingFees(exchange?: string): Promise<{
+export async function getTotalFundingFees(): Promise<{
   success: boolean;
   total: number;
   error?: string;
 }> {
-  const result = await fetchFundingFees({ exchange });
+  const result = await fetchFundingFees({});
   return { success: result.success, total: result.total, error: result.error };
 }
 
@@ -951,7 +949,6 @@ export async function getTotalFundingFees(exchange?: string): Promise<{
 export async function fetchRealizedPnl(params: {
   startTime?: number;
   endTime?: number;
-  exchange?: string;
 }): Promise<{
   success: boolean;
   total: number;
@@ -1042,7 +1039,6 @@ export async function fetchRealizedPnl(params: {
 export async function fetchRealizedPnlEvents(params: {
   startTime?: number;
   endTime?: number;
-  exchange?: string;
 }): Promise<{
   success: boolean;
   events: Array<{

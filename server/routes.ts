@@ -6,7 +6,6 @@ import { randomUUID } from "crypto";
 import { z } from "zod";
 import { storage } from "./storage";
 import { strategyEngine } from "./strategy-engine";
-import { exchangeRegistry } from "./exchanges/registry";
 import { cascadeDetectorService } from "./cascade-detector-service";
 import { wsBroadcaster } from "./websocket-broadcaster";
 import { liveDataOrchestrator } from "./live-data-orchestrator";
@@ -628,8 +627,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/liquidations", async (req, res) => {
     try {
       const limit = parseInt(req.query.limit as string) || 100;
-      const exchange = req.query.exchange as string | undefined;
-      const liquidations = await storage.getLiquidations(limit, exchange);
+      const liquidations = await storage.getLiquidations(limit);
       res.json(liquidations);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch liquidations" });
@@ -640,8 +638,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const timestamp = new Date(req.params.timestamp);
       const limit = parseInt(req.query.limit as string) || 100;
-      const exchange = req.query.exchange as string | undefined;
-      const liquidations = await storage.getLiquidationsSince(timestamp, limit, exchange);
+      const liquidations = await storage.getLiquidationsSince(timestamp, limit);
       res.json(liquidations);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch liquidations since timestamp" });
@@ -651,8 +648,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/liquidations/largest/:timestamp", async (req, res) => {
     try {
       const timestamp = new Date(req.params.timestamp);
-      const exchange = req.query.exchange as string | undefined;
-      const largest = await storage.getLargestLiquidationSince(timestamp, exchange);
+      const largest = await storage.getLargestLiquidationSince(timestamp);
       res.json(largest || null);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch largest liquidation" });
@@ -663,14 +659,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const symbols = req.query.symbols as string;
       const limit = parseInt(req.query.limit as string) || 100;
-      const exchange = req.query.exchange as string | undefined;
       
       if (!symbols) {
         return res.status(400).json({ error: "symbols parameter required" });
       }
       
       const symbolArray = symbols.split(',').map(s => s.trim());
-      const liquidations = await storage.getLiquidationsBySymbol(symbolArray, limit, exchange);
+      const liquidations = await storage.getLiquidationsBySymbol(symbolArray, limit);
       res.json(liquidations);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch liquidations by symbol" });
@@ -936,8 +931,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/analytics/asset-performance", async (req, res) => {
     try {
-      const exchange = req.query.exchange as string | undefined;
-      const performance = await storage.getAssetPerformance(exchange);
+      const performance = await storage.getAssetPerformance();
       res.json(performance);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch asset performance" });
@@ -1752,9 +1746,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const startTime = req.query.startTime ? parseInt(req.query.startTime as string) : undefined;
       const endTime = req.query.endTime ? parseInt(req.query.endTime as string) : undefined;
-      const exchange = req.query.exchange as string | undefined;
       
-      const result = await fetchCommissions({ startTime, endTime, exchange });
+      const result = await fetchCommissions({ startTime, endTime });
       
       if (!result.success) {
         return res.status(500).json({ error: result.error, records: [], total: 0 });
@@ -1766,7 +1759,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       
       // Get the GLOBAL API cutoff date (cached, fetched once)
-      const globalCutoffDate = await getGlobalCommissionCutoff(exchange);
+      const globalCutoffDate = await getGlobalCommissionCutoff();
       
       // Only apply manual adjustment if viewing date range extends before GLOBAL API cutoff date
       // This prevents double-counting when viewing recent complete data
@@ -1799,9 +1792,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const startTime = req.query.startTime ? parseInt(req.query.startTime as string) : undefined;
       const endTime = req.query.endTime ? parseInt(req.query.endTime as string) : undefined;
-      const exchange = req.query.exchange as string | undefined;
       
-      const result = await fetchFundingFees({ startTime, endTime, exchange });
+      const result = await fetchFundingFees({ startTime, endTime });
       
       if (!result.success) {
         return res.status(500).json({ error: result.error, records: [], total: 0 });
@@ -1813,7 +1805,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       
       // Get the GLOBAL API cutoff date (cached, fetched once)
-      const globalCutoffDate = await getGlobalFundingCutoff(exchange);
+      const globalCutoffDate = await getGlobalFundingCutoff();
       
       // Only apply manual adjustment if viewing date range extends before GLOBAL API cutoff date
       // This prevents double-counting when viewing recent complete data
@@ -2804,8 +2796,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get overall trading performance metrics
   app.get("/api/performance/overview", async (req, res) => {
     try {
-      const exchange = req.query.exchange as string | undefined;
-      
       // Get the active strategy
       const strategies = await storage.getStrategiesByUser(DEFAULT_USER_ID);
       const activeStrategy = strategies.find(s => s.isActive);
@@ -2841,7 +2831,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const { fetchRealizedPnl } = await import('./exchange-sync');
         console.log('📊 fetchRealizedPnl imported successfully');
         
-        const pnlResult = await fetchRealizedPnl({ exchange });
+        const pnlResult = await fetchRealizedPnl({});
         
         console.log('📊 fetchRealizedPnl result:', JSON.stringify(pnlResult));
         if (pnlResult.success) {
@@ -2988,7 +2978,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let totalFees = 0;
       try {
         const { getTotalCommissions } = await import('./exchange-sync');
-        const commissionsResult = await getTotalCommissions(exchange);
+        const commissionsResult = await getTotalCommissions();
         if (commissionsResult.success) {
           totalFees = commissionsResult.total;
         }
@@ -3000,7 +2990,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let totalFundingCost = 0;
       try {
         const { getTotalFundingFees } = await import('./exchange-sync');
-        const fundingResult = await getTotalFundingFees(exchange);
+        const fundingResult = await getTotalFundingFees();
         if (fundingResult.success) {
           totalFundingCost = fundingResult.total;
         }
@@ -3277,10 +3267,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('💾 Sending to database:', JSON.stringify(updateData, null, 2));
       await storage.updateStrategy(strategyId, updateData);
       
-      // CRITICAL: Reload strategy in engine FIRST to update in-memory state
-      // This must happen before exchange switching to ensure correct exchange is used
-      const hasExchangeChange = validatedUpdates.exchange && validatedUpdates.exchange !== existingStrategy.exchange;
-      if (hasExchangeChange || Object.keys(changes).length > 0) {
+      // CRITICAL: Reload strategy in engine whenever ANY settings change
+      // This ensures position sizing and all other settings are applied immediately
+      if (Object.keys(changes).length > 0) {
         console.log(`🔄 Reloading strategy in engine to apply updated settings...`);
         await strategyEngine.reloadStrategy(strategyId);
         
@@ -3289,26 +3278,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log(`🔄 Syncing cascade detector with updated asset selection...`);
           await cascadeDetectorService.syncSymbols();
         }
-      }
-      
-      // CRITICAL: Handle exchange switching AFTER strategy is reloaded
-      if (hasExchangeChange) {
-        console.log(`🔄 Exchange changed from ${existingStrategy.exchange} to ${validatedUpdates.exchange} - reconnecting stream...`);
-        
-        try {
-          // Disconnect old exchange stream (may fail if exchange was never configured)
-          await liveDataOrchestrator.disconnectExchangeStream(strategyId);
-        } catch (error) {
-          console.warn(`⚠️ Could not disconnect old ${existingStrategy.exchange} stream (may not have been configured):`, error instanceof Error ? error.message : error);
-        }
-        
-        // Get new stream from registry for the new exchange
-        const newStream = exchangeRegistry.getStream(strategyId, validatedUpdates.exchange as any);
-        
-        // Connect to new exchange stream
-        await liveDataOrchestrator.connectExchangeStream(strategyId, newStream);
-        
-        console.log(`✅ Successfully switched to ${validatedUpdates.exchange} exchange`);
       }
       
       // If there are changes and strategy has an active session, record the change
@@ -3865,15 +3834,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Close all positions
       for (const position of openPositions) {
         try {
-          // Get exchange adapter for this strategy
-          const exchangeType = (strategy.exchange || 'aster') as 'aster' | 'bybit';
-          const adapter = exchangeRegistry.getAdapter(exchangeType);
-          
-          // ALWAYS fetch real-time current price from exchange API
+          // ALWAYS fetch real-time current price from Aster DEX API
           let currentPrice: number | null = null;
           try {
-            const ticker = await adapter.getTicker(position.symbol);
-            currentPrice = parseFloat(ticker.price);
+            const asterApiUrl = `https://fapi.asterdex.com/fapi/v1/ticker/price?symbol=${position.symbol}`;
+            const priceResponse = await fetch(asterApiUrl);
+            
+            if (priceResponse.ok) {
+              const priceData = await priceResponse.json();
+              currentPrice = parseFloat(priceData.price);
+            }
           } catch (apiError) {
             console.error(`Failed to fetch price for ${position.symbol}:`, apiError);
             continue; // Skip this position if we can't get price
@@ -4121,8 +4091,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/positions/:sessionId', async (req, res) => {
     try {
       const { sessionId } = req.params;
-      const { exchange } = req.query;
-      const positions = await storage.getOpenPositions(sessionId, exchange as string | undefined);
+      const positions = await storage.getOpenPositions(sessionId);
       res.json(positions);
     } catch (error) {
       console.error('Error fetching positions:', error);
@@ -4711,9 +4680,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/positions/:sessionId/summary', async (req, res) => {
     try {
       const { sessionId } = req.params;
-      const { exchange } = req.query;
-      const positions = await storage.getOpenPositions(sessionId, exchange as string | undefined);
-      const closedPositions = await storage.getClosedPositions(sessionId, exchange as string | undefined);
+      const positions = await storage.getOpenPositions(sessionId);
+      const closedPositions = await storage.getClosedPositions(sessionId);
       const session = await storage.getTradeSession(sessionId);
       
       if (!session) {
@@ -4795,7 +4763,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/strategies/:strategyId/positions/closed', async (req, res) => {
     try {
       let { strategyId } = req.params;
-      const { exchange } = req.query;
       
       // FLEXIBLE ID RESOLUTION: Accept both strategy ID and session ID
       // If ID is a session ID, resolve to its strategy ID
@@ -4821,12 +4788,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json([]);
       }
 
-      // Get closed positions from active sessions only (with optional exchange filter)
+      // Get closed positions from active sessions only
       const allClosedPositions: any[] = [];
       const allFills: any[] = [];
       
       for (const session of activeSessions) {
-        const sessionClosedPositions = await storage.getClosedPositions(session.id, exchange as string | undefined);
+        const sessionClosedPositions = await storage.getClosedPositions(session.id);
         const sessionFills = await storage.getFillsBySession(session.id);
         allClosedPositions.push(...sessionClosedPositions);
         allFills.push(...sessionFills);
@@ -5576,29 +5543,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: 'Position is already closed' });
       }
 
-      // Get session to find strategy and exchange type
-      const session = await storage.getTradeSession(position.sessionId);
-      if (!session) {
-        return res.status(404).json({ error: 'Trade session not found' });
-      }
-      
-      const strategy = await storage.getStrategy(session.strategyId);
-      if (!strategy) {
-        return res.status(404).json({ error: 'Strategy not found' });
-      }
-
-      // Get exchange adapter for this strategy
-      const exchangeType = (strategy.exchange || 'aster') as 'aster' | 'bybit';
-      const adapter = exchangeRegistry.getAdapter(exchangeType);
-
-      // ALWAYS fetch real-time current price from exchange API (no cache)
+      // ALWAYS fetch real-time current price from Aster DEX API (no cache)
       let currentPrice: number | null = null;
       try {
-        const ticker = await adapter.getTicker(position.symbol);
-        currentPrice = parseFloat(ticker.price);
-        console.log(`📊 Fetched real-time price for ${position.symbol} from ${exchangeType.toUpperCase()} API: $${currentPrice}`);
+        const asterApiUrl = `https://fapi.asterdex.com/fapi/v1/ticker/price?symbol=${position.symbol}`;
+        const priceResponse = await fetch(asterApiUrl);
+        
+        if (priceResponse.ok) {
+          const priceData = await priceResponse.json();
+          currentPrice = parseFloat(priceData.price);
+          console.log(`📊 Fetched real-time price for ${position.symbol} from Aster API: $${currentPrice}`);
+        }
       } catch (apiError) {
-        console.error(`Failed to fetch price from ${exchangeType.toUpperCase()} API:`, apiError);
+        console.error('Failed to fetch price from Aster API:', apiError);
       }
       
       if (!currentPrice) {
@@ -5620,6 +5577,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const leverage = (position as any).leverage || 1;
       const notionalValue = totalCost * leverage;
       const dollarPnl = (unrealizedPnl / 100) * notionalValue;
+
+      // Get session
+      const session = await storage.getTradeSession(position.sessionId);
       
       // Manual close = limit order (take profit style) = 0.01% maker fee
       const quantity = parseFloat(position.totalQuantity);
@@ -6155,9 +6115,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { fetchRealizedPnlEvents } = await import('./exchange-sync');
       
-      const { startTime, endTime, exchange } = req.query;
+      const { startTime, endTime } = req.query;
       
-      const params: { startTime?: number; endTime?: number; exchange?: string } = {};
+      const params: { startTime?: number; endTime?: number } = {};
       
       if (startTime) {
         const timestamp = parseInt(startTime as string);
@@ -6173,10 +6133,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({ error: 'Invalid endTime parameter' });
         }
         params.endTime = timestamp;
-      }
-      
-      if (exchange && exchange !== 'all') {
-        params.exchange = exchange as string;
       }
 
       const result = await fetchRealizedPnlEvents(params);
@@ -6195,99 +6151,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error fetching realized P&L events:', error);
       res.status(500).json({ error: 'Failed to fetch realized P&L events' });
-    }
-  });
-
-  // Test endpoint for Bybit REST API connectivity (from India region)
-  app.get('/api/test/bybit', async (req, res) => {
-    try {
-      console.log('🧪 Testing Bybit REST API connection...');
-      
-      // Get Bybit adapter from registry
-      const bybitAdapter = exchangeRegistry.getAdapter('bybit');
-      
-      if (!bybitAdapter) {
-        return res.status(500).json({ 
-          success: false, 
-          error: 'Bybit adapter not configured. Check BYBIT_API_KEY and BYBIT_SECRET_KEY environment variables.' 
-        });
-      }
-      
-      const testResults: any = {
-        success: true,
-        message: 'Bybit REST API is fully accessible from India region!',
-        tests: {}
-      };
-      
-      // Test 1: Account info (authenticated endpoint)
-      console.log('📝 Test 1: Fetching account info...');
-      const accountInfo = await bybitAdapter.getAccountInfo();
-      testResults.tests.accountInfo = {
-        success: true,
-        totalBalance: accountInfo.totalBalance,
-        availableBalance: accountInfo.availableBalance,
-        totalUnrealizedPnl: accountInfo.totalUnrealizedPnl,
-        positionsCount: accountInfo.positions.length,
-        assets: accountInfo.assets.map(a => ({
-          asset: a.asset,
-          walletBalance: a.walletBalance
-        }))
-      };
-      console.log('✅ Account info test passed');
-      
-      // Test 2: Exchange info (public endpoint)
-      console.log('📝 Test 2: Fetching exchange info...');
-      const exchangeInfo = await bybitAdapter.getExchangeInfo();
-      testResults.tests.exchangeInfo = {
-        success: true,
-        symbolsCount: exchangeInfo.symbols.length,
-        sampleSymbol: exchangeInfo.symbols.find(s => s.symbol === 'BTCUSDT') || exchangeInfo.symbols[0]
-      };
-      console.log('✅ Exchange info test passed');
-      
-      // Test 3: Ticker (public endpoint)
-      console.log('📝 Test 3: Fetching BTC ticker...');
-      const ticker = await bybitAdapter.getTicker('BTCUSDT');
-      testResults.tests.ticker = {
-        success: true,
-        symbol: ticker.symbol,
-        lastPrice: ticker.lastPrice,
-        priceChangePercent: ticker.priceChangePercent
-      };
-      console.log('✅ Ticker test passed');
-      
-      // Test 4: Positions (authenticated endpoint)
-      console.log('📝 Test 4: Fetching positions...');
-      const positions = await bybitAdapter.getPositions();
-      testResults.tests.positions = {
-        success: true,
-        count: positions.length,
-        positions: positions.slice(0, 3).map(p => ({
-          symbol: p.symbol,
-          positionSide: p.positionSide,
-          positionAmt: p.positionAmt,
-          entryPrice: p.entryPrice
-        }))
-      };
-      console.log('✅ Positions test passed');
-      
-      console.log('🎉 All Bybit REST API tests passed!');
-      res.json(testResults);
-      
-    } catch (error: any) {
-      console.error('❌ Bybit REST API test failed:', error.message);
-      
-      // Check if it's a CloudFront 403 error
-      const isCloudFrontBlock = error.message?.includes('403') || error.message?.includes('Forbidden');
-      
-      res.status(500).json({
-        success: false,
-        error: error.message,
-        isCloudFrontBlock,
-        hint: isCloudFrontBlock 
-          ? 'Still blocked by CloudFront. The India region may also be restricted.' 
-          : 'Connection failed for another reason. Check API credentials and network connectivity.'
-      });
     }
   });
 

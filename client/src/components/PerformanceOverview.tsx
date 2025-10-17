@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useRef, memo, Fragment } from "react";
+import { useMemo, useState, useEffect, memo, Fragment } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -6,8 +6,7 @@ import { Slider } from "@/components/ui/slider";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Calendar } from "@/components/ui/calendar";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { TrendingUp, TrendingDown, Target, Award, Activity, LineChart, DollarSign, Percent, Calendar as CalendarIcon, X, Wallet, Settings, ArrowLeftRight } from "lucide-react";
+import { TrendingUp, TrendingDown, Target, Award, Activity, LineChart, DollarSign, Percent, Calendar as CalendarIcon, X, Wallet, Settings } from "lucide-react";
 import { ComposedChart, Line, Area, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, ReferenceArea, ReferenceDot, Label } from "recharts";
 import { format, subDays, subMinutes, subHours, startOfDay, endOfDay } from "date-fns";
 import { useStrategyData } from "@/hooks/use-strategy-data";
@@ -78,9 +77,6 @@ interface AssetPerformance {
 }
 
 function PerformanceOverview() {
-  // Track if this is the first render to avoid unnecessary invalidations
-  const isFirstRender = useRef(true);
-  
   // Date range filter state - load from localStorage
   const [dateRange, setDateRange] = useState<{ start: Date | null; end: Date | null }>(() => {
     const saved = localStorage.getItem('chart-settings');
@@ -96,7 +92,6 @@ function PerformanceOverview() {
   const [dateFilterOpen, setDateFilterOpen] = useState(false);
   const [depositFilterOpen, setDepositFilterOpen] = useState(false);
   const [selectedDepositId, setSelectedDepositId] = useState<string | null>(null);
-  const [exchangeFilter, setExchangeFilter] = useState<string>("all");
   
   // Pagination and zoom state for chart
   const [chartEndIndex, setChartEndIndex] = useState<number | null>(null);
@@ -127,12 +122,12 @@ function PerformanceOverview() {
     realizedPnlCount,
     realizedPnlLoading,
     portfolioRisk,
-  } = useStrategyData(exchangeFilter !== 'all' ? exchangeFilter : undefined);
+  } = useStrategyData();
 
   // Fetch commissions and funding fees with date range filtering
   // No minimum start date - fetch all historical data unless user specifies a range
   const commissionsQuery = useQuery<{ records: any[]; total: number }>({
-    queryKey: ['/api/commissions', dateRange.start?.getTime(), dateRange.end?.getTime(), exchangeFilter !== 'all' ? exchangeFilter : null],
+    queryKey: ['/api/commissions', dateRange.start?.getTime(), dateRange.end?.getTime()],
     queryFn: async () => {
       const params = new URLSearchParams();
       
@@ -142,10 +137,6 @@ function PerformanceOverview() {
       
       if (dateRange.end) {
         params.append('endTime', dateRange.end.getTime().toString());
-      }
-      
-      if (exchangeFilter !== 'all') {
-        params.append('exchange', exchangeFilter);
       }
       
       const url = `/api/commissions?${params.toString()}`;
@@ -156,11 +147,8 @@ function PerformanceOverview() {
     staleTime: 30 * 1000, // 30 seconds
   });
 
-  // The hook now handles exchange filtering, so we can directly use closedPositions
-  const displayedClosedPositions = closedPositions;
-
   const fundingFeesQuery = useQuery<{ records: any[]; total: number }>({
-    queryKey: ['/api/funding-fees', dateRange.start?.getTime(), dateRange.end?.getTime(), exchangeFilter !== 'all' ? exchangeFilter : null],
+    queryKey: ['/api/funding-fees', dateRange.start?.getTime(), dateRange.end?.getTime()],
     queryFn: async () => {
       const params = new URLSearchParams();
       
@@ -170,10 +158,6 @@ function PerformanceOverview() {
       
       if (dateRange.end) {
         params.append('endTime', dateRange.end.getTime().toString());
-      }
-      
-      if (exchangeFilter !== 'all') {
-        params.append('exchange', exchangeFilter);
       }
       
       const url = `/api/funding-fees?${params.toString()}`;
@@ -224,7 +208,7 @@ function PerformanceOverview() {
     if (!realizedPnlEvents || realizedPnlEvents.length === 0) return [];
     
     // Create array of closed positions with timestamps for matching
-    const closedPosArray = displayedClosedPositions?.filter(pos => pos.closedAt).map(pos => ({
+    const closedPosArray = closedPositions?.filter(pos => pos.closedAt).map(pos => ({
       ...pos,
       closeTime: new Date(pos.closedAt).getTime()
     })) || [];
@@ -267,7 +251,7 @@ function PerformanceOverview() {
     });
     
     return chartData;
-  }, [realizedPnlEvents, displayedClosedPositions]);
+  }, [realizedPnlEvents, closedPositions]);
   
   // Apply date range filter
   const sourceChartData = useMemo(() => {
@@ -301,28 +285,6 @@ function PerformanceOverview() {
     setChartEndIndex(sourceChartData.length);
     setTradesPerPage(displayCount || 1); // Minimum 1 to prevent division by zero
   }, [dateRange, sourceChartData.length]);
-  
-  // Invalidate all queries when exchange filter changes to force refetch with new exchange
-  useEffect(() => {
-    // Skip invalidation on first render - only invalidate when user actually changes the filter
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
-      return;
-    }
-    
-    // Invalidate all exchange-dependent queries to force refetch with new exchange parameter
-    queryClient.invalidateQueries({ queryKey: ['/api/live/account'] });
-    queryClient.invalidateQueries({ queryKey: ['/api/live/positions'] });
-    queryClient.invalidateQueries({ queryKey: ['/api/live/positions-summary'] });
-    queryClient.invalidateQueries({ queryKey: ['/api/performance/overview'] });
-    queryClient.invalidateQueries({ queryKey: ['/api/performance/chart'] });
-    queryClient.invalidateQueries({ queryKey: ['/api/analytics/asset-performance'] });
-    queryClient.invalidateQueries({ queryKey: ['/api/realized-pnl-events'] });
-    queryClient.invalidateQueries({ queryKey: ['/api/commissions'] });
-    queryClient.invalidateQueries({ queryKey: ['/api/funding-fees'] });
-    queryClient.invalidateQueries({ queryKey: ['/api/transfers'] });
-    queryClient.invalidateQueries({ queryKey: ['/api/strategies'] }); // Also invalidate strategies for positions/changes
-  }, [exchangeFilter]);
   
   // Update chart when new trades arrive and user is viewing latest
   useEffect(() => {
@@ -633,14 +595,14 @@ function PerformanceOverview() {
     
     // Calculate average trade time from filtered closed positions
     let avgTradeTimeMs = 0;
-    if (displayedClosedPositions && displayedClosedPositions.length > 0) {
-      let filteredClosedPositions = displayedClosedPositions;
+    if (closedPositions && closedPositions.length > 0) {
+      let filteredClosedPositions = closedPositions;
       
       if (dateRange.start || dateRange.end) {
         const startTimestamp = dateRange.start ? dateRange.start.getTime() : 0;
         const endTimestamp = dateRange.end ? dateRange.end.getTime() : Date.now();
         
-        filteredClosedPositions = displayedClosedPositions.filter(pos => {
+        filteredClosedPositions = closedPositions.filter(pos => {
           if (!pos.closedAt) return false;
           const closeTime = new Date(pos.closedAt).getTime();
           return closeTime >= startTimestamp && closeTime <= endTimestamp;
@@ -679,7 +641,7 @@ function PerformanceOverview() {
       maxDrawdown: maxDrawdown,
       maxDrawdownPercent: maxDrawdownPercent,
     };
-  }, [performance, dateRange, realizedPnlEvents, commissions, fundingFees, sourceChartData, displayedClosedPositions]);
+  }, [performance, dateRange, realizedPnlEvents, commissions, fundingFees, sourceChartData, closedPositions]);
   const displayLoading = isLoading || chartLoading || liveAccountLoading;
   const showLoadingUI = displayLoading || !performance;
 
@@ -1245,21 +1207,6 @@ function PerformanceOverview() {
                   </PopoverContent>
                 </Popover>
               )}
-              
-              {/* Exchange Filter */}
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">Exchange:</span>
-                <Select value={exchangeFilter} onValueChange={setExchangeFilter}>
-                  <SelectTrigger className="w-32" data-testid="select-exchange-filter">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All</SelectItem>
-                    <SelectItem value="aster">Aster DEX</SelectItem>
-                    <SelectItem value="bybit">Bybit</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
               
               {/* Active Deposit Filter Indicator */}
               {selectedDeposit && (

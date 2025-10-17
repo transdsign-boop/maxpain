@@ -75,10 +75,10 @@ export interface IStorage {
   
   // Liquidation operations
   insertLiquidation(liquidation: InsertLiquidation): Promise<Liquidation>;
-  getLiquidations(limit?: number, exchange?: string): Promise<Liquidation[]>;
-  getLiquidationsBySymbol(symbols: string[], limit?: number, exchange?: string): Promise<Liquidation[]>;
-  getLiquidationsSince(timestamp: Date, limit?: number, exchange?: string): Promise<Liquidation[]>;
-  getLargestLiquidationSince(timestamp: Date, exchange?: string): Promise<Liquidation | undefined>;
+  getLiquidations(limit?: number): Promise<Liquidation[]>;
+  getLiquidationsBySymbol(symbols: string[], limit?: number): Promise<Liquidation[]>;
+  getLiquidationsSince(timestamp: Date, limit?: number): Promise<Liquidation[]>;
+  getLargestLiquidationSince(timestamp: Date): Promise<Liquidation | undefined>;
   getLiquidationsBySignature(symbol: string, side: string, size: string, price: string, since: Date): Promise<Liquidation[]>;
   getLiquidationsByEventTimestamp(eventTimestamp: string): Promise<Liquidation[]>;
   deleteOldLiquidations(olderThanDays: number): Promise<number>;
@@ -86,7 +86,7 @@ export interface IStorage {
   // Analytics operations
   getAvailableAssets(): Promise<{ symbol: string; count: number; latestTimestamp: Date }[]>;
   getLiquidationAnalytics(symbol: string, sinceTimestamp: Date): Promise<Liquidation[]>;
-  getAssetPerformance(exchange?: string): Promise<{ symbol: string; wins: number; losses: number; winRate: number; totalPnl: number; totalTrades: number }[]>;
+  getAssetPerformance(): Promise<{ symbol: string; wins: number; losses: number; winRate: number; totalPnl: number; totalTrades: number }[]>;
   
   // User settings operations
   getUserSettings(userId: string): Promise<UserSettings | undefined>;
@@ -134,9 +134,9 @@ export interface IStorage {
   getPosition(id: string): Promise<Position | undefined>;
   getPositionBySymbol(sessionId: string, symbol: string): Promise<Position | undefined>;
   getPositionBySymbolAndSide(sessionId: string, symbol: string, side: string): Promise<Position | undefined>;
-  getOpenPositions(sessionId: string, exchange?: string): Promise<Position[]>;
-  getClosedPositions(sessionId: string, exchange?: string): Promise<Position[]>;
-  getPositionsBySession(sessionId: string, exchange?: string): Promise<Position[]>;
+  getOpenPositions(sessionId: string): Promise<Position[]>;
+  getClosedPositions(sessionId: string): Promise<Position[]>;
+  getPositionsBySession(sessionId: string): Promise<Position[]>;
   updatePosition(id: string, updates: Partial<InsertPosition>): Promise<Position>;
   closePosition(id: string, closedAt: Date, realizedPnl: number, realizedPnlPercent?: number): Promise<Position>;
   clearPositionsBySession(sessionId: string): Promise<void>;
@@ -189,26 +189,17 @@ export class DatabaseStorage implements IStorage {
     return result[0];
   }
 
-  async getLiquidations(limit: number = 100, exchange?: string): Promise<Liquidation[]> {
-    const conditions = exchange ? eq(liquidations.exchange, exchange) : undefined;
-    return await db.select()
-      .from(liquidations)
-      .where(conditions)
-      .orderBy(desc(liquidations.timestamp))
-      .limit(limit);
+  async getLiquidations(limit: number = 100): Promise<Liquidation[]> {
+    return await db.select().from(liquidations).orderBy(desc(liquidations.timestamp)).limit(limit);
   }
 
-  async getLiquidationsBySymbol(symbols: string[], limit: number = 100, exchange?: string): Promise<Liquidation[]> {
+  async getLiquidationsBySymbol(symbols: string[], limit: number = 100): Promise<Liquidation[]> {
     if (symbols.length === 0) return [];
     
-    // Build conditions: symbol filter + optional exchange filter
-    const conditions = exchange 
-      ? and(inArray(liquidations.symbol, symbols), eq(liquidations.exchange, exchange))
-      : inArray(liquidations.symbol, symbols);
-    
+    // Use inArray for proper symbol filtering
     return await db.select()
       .from(liquidations)
-      .where(conditions)
+      .where(inArray(liquidations.symbol, symbols))
       .orderBy(desc(liquidations.timestamp))
       .limit(limit);
   }
@@ -242,26 +233,18 @@ export class DatabaseStorage implements IStorage {
       .limit(1);
   }
 
-  async getLiquidationsSince(timestamp: Date, limit: number = 100, exchange?: string): Promise<Liquidation[]> {
-    const conditions = exchange
-      ? and(gte(liquidations.timestamp, timestamp), eq(liquidations.exchange, exchange))
-      : gte(liquidations.timestamp, timestamp);
-    
+  async getLiquidationsSince(timestamp: Date, limit: number = 100): Promise<Liquidation[]> {
     return await db.select()
       .from(liquidations)
-      .where(conditions)
+      .where(gte(liquidations.timestamp, timestamp))
       .orderBy(desc(liquidations.timestamp))
       .limit(limit);
   }
 
-  async getLargestLiquidationSince(timestamp: Date, exchange?: string): Promise<Liquidation | undefined> {
-    const conditions = exchange
-      ? and(gte(liquidations.timestamp, timestamp), eq(liquidations.exchange, exchange))
-      : gte(liquidations.timestamp, timestamp);
-    
+  async getLargestLiquidationSince(timestamp: Date): Promise<Liquidation | undefined> {
     const result = await db.select()
       .from(liquidations)
-      .where(conditions)
+      .where(gte(liquidations.timestamp, timestamp))
       .orderBy(desc(liquidations.value))
       .limit(1);
     return result[0];
@@ -289,24 +272,17 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async getAssetPerformance(exchange?: string): Promise<{ symbol: string; wins: number; losses: number; winRate: number; totalPnl: number; totalTrades: number }[]> {
-    let query = db.select({
+  async getAssetPerformance(): Promise<{ symbol: string; wins: number; losses: number; winRate: number; totalPnl: number; totalTrades: number }[]> {
+    const result = await db.select({
       symbol: positions.symbol,
       wins: drizzleSql<number>`COUNT(CASE WHEN ${positions.isOpen} = false AND ${positions.realizedPnl} > 0 THEN 1 END)`,
       losses: drizzleSql<number>`COUNT(CASE WHEN ${positions.isOpen} = false AND ${positions.realizedPnl} < 0 THEN 1 END)`,
       totalPnl: drizzleSql<number>`COALESCE(SUM(CASE WHEN ${positions.isOpen} = false THEN ${positions.realizedPnl} ELSE 0 END), 0)`,
       totalTrades: drizzleSql<number>`COUNT(CASE WHEN ${positions.isOpen} = false THEN 1 END)`,
     })
-    .from(positions);
-    
-    // Filter by exchange if provided (and not 'all')
-    if (exchange && exchange !== 'all') {
-      query = query.where(eq(positions.exchange, exchange)) as any;
-    }
-    
-    const result = await query
-      .groupBy(positions.symbol)
-      .having(drizzleSql`COUNT(CASE WHEN ${positions.isOpen} = false THEN 1 END) > 0`);
+    .from(positions)
+    .groupBy(positions.symbol)
+    .having(drizzleSql`COUNT(CASE WHEN ${positions.isOpen} = false THEN 1 END) > 0`);
     
     return result.map(r => {
       const wins = parseInt(String(r.wins));
@@ -744,45 +720,21 @@ export class DatabaseStorage implements IStorage {
     return result[0];
   }
 
-  async getOpenPositions(sessionId: string, exchange?: string): Promise<Position[]> {
-    const conditions = [
-      eq(positions.sessionId, sessionId),
-      eq(positions.isOpen, true)
-    ];
-    
-    if (exchange) {
-      conditions.push(eq(positions.exchange, exchange));
-    }
-    
+  async getOpenPositions(sessionId: string): Promise<Position[]> {
     return await db.select().from(positions)
-      .where(and(...conditions))
+      .where(and(eq(positions.sessionId, sessionId), eq(positions.isOpen, true)))
       .orderBy(desc(positions.openedAt));
   }
 
-  async getClosedPositions(sessionId: string, exchange?: string): Promise<Position[]> {
-    const conditions = [
-      eq(positions.sessionId, sessionId),
-      eq(positions.isOpen, false)
-    ];
-    
-    if (exchange) {
-      conditions.push(eq(positions.exchange, exchange));
-    }
-    
+  async getClosedPositions(sessionId: string): Promise<Position[]> {
     return await db.select().from(positions)
-      .where(and(...conditions))
+      .where(and(eq(positions.sessionId, sessionId), eq(positions.isOpen, false)))
       .orderBy(desc(positions.closedAt));
   }
 
-  async getPositionsBySession(sessionId: string, exchange?: string): Promise<Position[]> {
-    const conditions = [eq(positions.sessionId, sessionId)];
-    
-    if (exchange) {
-      conditions.push(eq(positions.exchange, exchange));
-    }
-    
+  async getPositionsBySession(sessionId: string): Promise<Position[]> {
     return await db.select().from(positions)
-      .where(and(...conditions))
+      .where(eq(positions.sessionId, sessionId))
       .orderBy(desc(positions.openedAt));
   }
 

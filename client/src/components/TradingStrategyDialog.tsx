@@ -26,7 +26,6 @@ interface Strategy {
   id: string;
   name: string;
   userId: string;
-  exchange: "aster" | "bybit";
   selectedAssets: string[];
   percentileThreshold: number;
   liquidationLookbackHours: number;
@@ -44,7 +43,6 @@ interface Strategy {
   marginAmount: string;
   hedgeMode: boolean;
   isActive: boolean;
-  paused: boolean;
   maxOpenPositions: number;
   maxPortfolioRiskPercent: string;
   createdAt: string;
@@ -56,7 +54,6 @@ interface Strategy {
 // Form validation schema
 const strategyFormSchema = z.object({
   name: z.string().min(1, "Strategy name is required").max(50, "Name too long"),
-  exchange: z.enum(["aster", "bybit"]),
   selectedAssets: z.array(z.string()).min(1, "Select at least one asset"),
   percentileThreshold: z.number().min(1).max(100),
   liquidationLookbackHours: z.number().min(1).max(24),
@@ -745,12 +742,10 @@ interface TradingStrategyDialogProps {
 export default function TradingStrategyDialog({ open, onOpenChange }: TradingStrategyDialogProps) {
   const { toast } = useToast();
   const [activeStrategy, setActiveStrategy] = useState<Strategy | null>(null);
+  const [isStrategyRunning, setIsStrategyRunning] = useState(false);
   const [apiTestResult, setApiTestResult] = useState<{ success: boolean; message: string; accountInfo?: any } | null>(null);
   const [assetSortMode, setAssetSortMode] = useState<"liquidations" | "liquidity" | "alphabetical">("liquidations");
   const [dcaSaveTrigger, setDcaSaveTrigger] = useState(0);
-  
-  // Strategy is "running" only if it's active AND not paused
-  const isStrategyRunning = Boolean(activeStrategy?.isActive && !activeStrategy?.paused);
 
   // Fetch available symbols from Aster DEX
   const { data: symbols, isLoading: symbolsLoading } = useQuery({
@@ -825,7 +820,6 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
     resolver: zodResolver(strategyFormSchema),
     defaultValues: {
       name: "Liquidation Counter-Trade",
-      exchange: "aster",
       selectedAssets: ["ASTERUSDT"],
       percentileThreshold: 50,
       liquidationLookbackHours: 1,
@@ -1005,7 +999,6 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
       // Convert number fields to strings to match form field types
       form.reset({
         name: strategy.name,
-        exchange: strategy.exchange,
         selectedAssets: strategy.selectedAssets,
         percentileThreshold: strategy.percentileThreshold,
         liquidationLookbackHours: strategy.liquidationLookbackHours,
@@ -1053,6 +1046,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
       return await response.json() as Strategy;
     },
     onSuccess: (updatedStrategy) => {
+      setIsStrategyRunning(true);
       setActiveStrategy(updatedStrategy);
       toast({
         title: "Strategy Started",
@@ -1105,6 +1099,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
       });
       queryClient.invalidateQueries({ queryKey: ['/api/strategies'] });
       setActiveStrategy(null);
+      setIsStrategyRunning(false);
     },
     onError: () => {
       toast({
@@ -1323,11 +1318,11 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
       
       // Update state with the strategy (could be updated data for existing strategy)
       setActiveStrategy(strategy);
+      setIsStrategyRunning(strategy.isActive);
       
       // Always update form with latest strategy data to ensure UI reflects current state
       form.reset({
         name: strategy.name,
-        exchange: strategy.exchange || "aster",
         selectedAssets: strategy.selectedAssets,
         percentileThreshold: strategy.percentileThreshold,
         liquidationLookbackHours: strategy.liquidationLookbackHours,
@@ -1350,6 +1345,7 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
     } else if (strategies && strategies.length === 0) {
       // No strategies available, clear active strategy
       setActiveStrategy(null);
+      setIsStrategyRunning(false);
     }
   }, [strategies, form]); // Remove activeStrategy from dependencies to prevent stale state
 
@@ -1396,43 +1392,6 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
               
-              {/* Exchange Selection */}
-              <FormField
-                control={form.control}
-                name="exchange"
-                render={({ field }) => (
-                  <FormItem className="rounded-lg border p-4 bg-muted/30">
-                    <FormLabel data-testid="label-exchange">Exchange</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value} disabled={isStrategyRunning}>
-                      <FormControl>
-                        <SelectTrigger data-testid="select-exchange">
-                          <SelectValue placeholder="Select exchange" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="aster" data-testid="select-exchange-aster">
-                          Aster DEX
-                        </SelectItem>
-                        <SelectItem value="bybit" data-testid="select-exchange-bybit">
-                          Bybit Demo
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormDescription>
-                      Choose which exchange to trade on. All data is isolated per exchange.
-                      {isStrategyRunning && (
-                        <span className="block mt-1 text-orange-600 dark:text-orange-400 font-medium">
-                          Stop trading to change exchange
-                        </span>
-                      )}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <Separator />
-
               {/* Hedge Mode Toggle */}
               <FormField
                 control={form.control}
