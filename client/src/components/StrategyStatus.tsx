@@ -137,7 +137,7 @@ function AllTradesView({ formatCurrency, formatPercentage, getPnlColor }: AllTra
     withoutDetails: number;
   }>({
     queryKey: ['/api/all-trades'],
-    staleTime: 30 * 1000, // 30 seconds
+    staleTime: 0, // Always fetch fresh data
   });
 
   if (isLoading) {
