@@ -153,6 +153,18 @@ class LiveDataOrchestrator {
         bc: '0' // Balance change not provided by exchange
       }));
       
+      // Calculate unrealized P&L from current positions
+      const unrealizedPnl = (snapshot.positions || []).reduce((sum, pos) => {
+        const pnl = parseFloat(pos.unRealizedProfit || pos.unrealizedProfit || '0');
+        if (pnl !== 0) {
+          console.log(`💰 Position ${pos.symbol} unrealized P&L: $${pnl.toFixed(2)}`);
+        }
+        return sum + pnl;
+      }, 0);
+      if (unrealizedPnl !== 0) {
+        console.log(`💰 Total unrealized P&L: $${unrealizedPnl.toFixed(2)} (from ${(snapshot.positions || []).length} positions)`);
+      }
+      
       snapshot.account = {
         feeTier: 0,
         canTrade: true,
@@ -160,8 +172,8 @@ class LiveDataOrchestrator {
         canWithdraw: true,
         updateTime: Date.now(),
         totalWalletBalance: totalWalletBalance.toString(),
-        totalUnrealizedProfit: '0', // Calculated from positions
-        totalMarginBalance: totalWalletBalance.toString(),
+        totalUnrealizedProfit: unrealizedPnl.toString(),
+        totalMarginBalance: (totalWalletBalance + unrealizedPnl).toString(),
         totalInitialMargin: '0',
         availableBalance: totalAvailableBalance.toString(),
         usdcBalance: usdtWalletBalance, // Backward compatibility
@@ -284,6 +296,18 @@ class LiveDataOrchestrator {
         bc: '0' // Balance change not provided by exchange
       }));
       
+      // Calculate unrealized P&L from current positions
+      const unrealizedPnl = (snapshot.positions || []).reduce((sum: number, pos: any) => {
+        const pnl = parseFloat(pos.unRealizedProfit || pos.unrealizedProfit || '0');
+        if (pnl !== 0) {
+          console.log(`💰 Position ${pos.symbol} unrealized P&L: $${pnl.toFixed(2)}`);
+        }
+        return sum + pnl;
+      }, 0);
+      if (unrealizedPnl !== 0) {
+        console.log(`💰 Total unrealized P&L: $${unrealizedPnl.toFixed(2)} (from ${balances.length} positions)`);
+      }
+      
       // Match the HTTP API format exactly - include ALL fields the frontend expects
       snapshot.account = {
         feeTier: 0,
@@ -293,8 +317,8 @@ class LiveDataOrchestrator {
         updateTime: Date.now(),
         // Fields used by PerformanceOverview component
         totalWalletBalance: totalWalletBalance.toString(),
-        totalUnrealizedProfit: '0', // Calculated from positions
-        totalMarginBalance: totalWalletBalance.toString(),
+        totalUnrealizedProfit: unrealizedPnl.toString(),
+        totalMarginBalance: (totalWalletBalance + unrealizedPnl).toString(),
         totalInitialMargin: '0',
         availableBalance: totalAvailableBalance.toString(),
         // Legacy fields for compatibility
@@ -405,6 +429,12 @@ class LiveDataOrchestrator {
         reservedRiskDollars,
         reservedRiskPercentage
       };
+      
+      // Update account with calculated unrealized P&L
+      if (snapshot.account) {
+        snapshot.account.totalUnrealizedProfit = unrealizedPnl.toString();
+        snapshot.account.totalMarginBalance = (currentBalance + unrealizedPnl).toString();
+      }
       
       // Broadcast update
       this.broadcastSnapshot(strategyId);
