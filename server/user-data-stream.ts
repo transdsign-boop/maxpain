@@ -168,11 +168,8 @@ class UserDataStreamManager {
           const marginBalance = parseFloat(accountData.totalMarginBalance || '0');
           const initialMargin = parseFloat(accountData.totalInitialMargin || '0');
           
-          // Use the actual asset from the account data (prioritize USDF, fallback to USDT)
-          const assetSymbol = accountData.assets?.[0]?.a || 'USDT';
-          
           const balances = [{
-            asset: assetSymbol,
+            asset: 'USDT',
             walletBalance: balance.toString(),
             crossWalletBalance: available.toString(),
             unrealizedProfit: unrealized.toString(),
@@ -188,7 +185,7 @@ class UserDataStreamManager {
           if (activeStrategy) {
             const { liveDataOrchestrator } = await import('./live-data-orchestrator');
             liveDataOrchestrator.updateAccountFromWebSocket(activeStrategy.id, balances);
-            console.log(`✅ Initial account data loaded (${assetSymbol} $${balance.toFixed(2)})`);
+            console.log(`✅ Initial account data loaded ($${balance.toFixed(2)})`);
           }
         }
 

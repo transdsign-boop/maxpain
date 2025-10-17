@@ -58,19 +58,13 @@ export function useWebSocketData(options: UseWebSocketDataOptions = {}) {
               const snapshot = wsEvent.data?.snapshot;
               if (snapshot?.account) {
                 queryClient.setQueryData(['/api/live/account'], snapshot.account);
-                // Force re-render by invalidating (without refetching)
-                queryClient.invalidateQueries({ queryKey: ['/api/live/account'], refetchType: 'none' });
               }
               if (snapshot?.positions) {
                 queryClient.setQueryData(['/api/live/positions'], snapshot.positions);
-                // Force re-render by invalidating (without refetching)
-                queryClient.invalidateQueries({ queryKey: ['/api/live/positions'], refetchType: 'none' });
               }
               // Cache portfolio risk metrics for UI risk meter
               if (snapshot?.positionsSummary) {
                 queryClient.setQueryData(['/api/live/positions-summary'], snapshot.positionsSummary);
-                // Force re-render by invalidating (without refetching)
-                queryClient.invalidateQueries({ queryKey: ['/api/live/positions-summary'], refetchType: 'none' });
               }
               break;
             

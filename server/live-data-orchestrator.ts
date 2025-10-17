@@ -129,15 +129,12 @@ class LiveDataOrchestrator {
   private handleNormalizedAccountUpdate(strategyId: string, update: NormalizedAccountUpdate): void {
     const snapshot = this.getSnapshot(strategyId);
     
-    // Find stablecoin balance - prioritize USDF (user's collateral), then fall back to USDT/USDC
-    const stablecoinBalance = update.balances.find(b => b.asset === 'USDF') 
-                            || update.balances.find(b => b.asset === 'USDT')
-                            || update.balances.find(b => b.asset === 'USDC');
+    // Find USDT balance
+    const usdtBalance = update.balances.find(b => b.asset === 'USDT');
     
-    if (stablecoinBalance) {
-      const walletBalance = stablecoinBalance.walletBalance || '0';
-      const availableBalance = stablecoinBalance.availableBalance || '0';
-      const assetSymbol = stablecoinBalance.asset;
+    if (usdtBalance) {
+      const walletBalance = usdtBalance.walletBalance || '0';
+      const availableBalance = usdtBalance.availableBalance || '0';
       
       snapshot.account = {
         feeTier: 0,
@@ -153,7 +150,7 @@ class LiveDataOrchestrator {
         usdcBalance: walletBalance,
         usdtBalance: walletBalance,
         assets: [{
-          a: assetSymbol,
+          a: 'USDT',
           wb: walletBalance,
           cw: availableBalance,
           bc: '0'
@@ -163,7 +160,7 @@ class LiveDataOrchestrator {
       snapshot.timestamp = Date.now();
       
       if (Date.now() - this.lastAccountLogTime > 30000) {
-        console.log(`✅ Account updated from ${this.exchangeStreams.get(strategyId)?.exchangeType} stream (${assetSymbol} balance: $${parseFloat(walletBalance).toFixed(2)})`);
+        console.log(`✅ Account updated from ${this.exchangeStreams.get(strategyId)?.exchangeType} stream (balance: $${parseFloat(walletBalance).toFixed(2)})`);
         this.lastAccountLogTime = Date.now();
       }
       
@@ -245,19 +242,15 @@ class LiveDataOrchestrator {
 
   // Update account cache from WebSocket (called by user-data-stream)
   updateAccountFromWebSocket(strategyId: string, balances: any[]): void {
-    // Find stablecoin balance - prioritize USDF (user's collateral), then fall back to USDT/USDC
-    const stablecoinBalance = balances.find((b: any) => b.asset === 'USDF')
-                            || balances.find((b: any) => b.asset === 'USDT')
-                            || balances.find((b: any) => b.asset === 'USDC');
+    const usdtBalance = balances.find((b: any) => b.asset === 'USDT');
     
-    if (stablecoinBalance) {
+    if (usdtBalance) {
       const snapshot = this.getSnapshot(strategyId);
-      const walletBalance = stablecoinBalance.walletBalance || '0';
-      const crossWalletBalance = stablecoinBalance.crossWalletBalance || '0';
-      const unrealizedProfit = stablecoinBalance.unrealizedProfit || '0';
-      const marginBalance = stablecoinBalance.marginBalance || '0';
-      const initialMargin = stablecoinBalance.initialMargin || '0';
-      const assetSymbol = stablecoinBalance.asset;
+      const walletBalance = usdtBalance.walletBalance || '0';
+      const crossWalletBalance = usdtBalance.crossWalletBalance || '0';
+      const unrealizedProfit = usdtBalance.unrealizedProfit || '0';
+      const marginBalance = usdtBalance.marginBalance || '0';
+      const initialMargin = usdtBalance.initialMargin || '0';
       
       // Match the HTTP API format exactly - include ALL fields the frontend expects
       snapshot.account = {
@@ -276,7 +269,7 @@ class LiveDataOrchestrator {
         usdcBalance: walletBalance,
         usdtBalance: walletBalance,
         assets: [{
-          a: assetSymbol,
+          a: 'USDT',
           wb: walletBalance,
           cw: crossWalletBalance,
           bc: '0'
@@ -285,7 +278,7 @@ class LiveDataOrchestrator {
       snapshot.timestamp = Date.now();
       // Reduced logging - only log occasionally (every 30s) to reduce log spam
       if (Date.now() - this.lastAccountLogTime > 30000) {
-        console.log(`✅ Updated account cache from WebSocket (${assetSymbol} balance: $${parseFloat(walletBalance).toFixed(2)})`);
+        console.log('✅ Updated account cache from WebSocket (balance: $' + parseFloat(walletBalance).toFixed(2) + ')');
         this.lastAccountLogTime = Date.now();
       }
       this.broadcastSnapshot(strategyId);
