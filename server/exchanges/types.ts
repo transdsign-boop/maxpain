@@ -22,6 +22,7 @@ export interface NormalizedPosition {
   leverage: string;
   marginType: 'ISOLATED' | 'CROSSED';
   positionSide?: 'LONG' | 'SHORT' | 'BOTH'; // For hedge mode
+  liquidationPrice?: string; // Real-time liquidation price from exchange
 }
 
 export interface NormalizedAssetBalance {
