@@ -604,7 +604,6 @@ export async function calculateNextLayer(
     currentBalance,
     leverage,
     atrPercent,
-    minNotional: config.minNotional, // Pass through the exchange minimum
   });
   
   // Get the next level's price, quantity, and TP/SL
