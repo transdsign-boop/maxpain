@@ -6040,11 +6040,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all trades with database details when available
   app.get('/api/all-trades', async (req, res) => {
     try {
-      const { fetchRealizedPnlEvents } = await import('./exchange-sync');
+      const { getTradeHistory } = await import('./trade-history-service');
       
       // Fetch ALL P&L events from exchange (Oct 1 onwards for full history)
+      // Uses cached service to prevent rate limiting
       const startTime = 1759276800000; // Oct 1, 2025
-      const result = await fetchRealizedPnlEvents({ startTime, endTime: Date.now() });
+      const result = await getTradeHistory({ startTime, endTime: Date.now() });
       
       if (!result.success) {
         return res.status(500).json({ error: result.error || 'Failed to fetch trades' });
