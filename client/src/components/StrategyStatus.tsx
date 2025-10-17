@@ -223,7 +223,7 @@ function AllTradesView({ formatCurrency, formatPercentage, getPnlColor }: AllTra
 
               {!trade.hasDetails && (
                 <div className="col-span-2 text-center text-muted-foreground italic">
-                  Trade details not available (older than 7 days)
+                  Position record not found in database
                 </div>
               )}
             </div>
