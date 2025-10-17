@@ -6055,7 +6055,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .select()
         .from(positions)
         .where(eq(positions.isOpen, false))
-        .orderBy(positions.closedAt);
+        .orderBy(desc(positions.closedAt));
       
       // Match exchange P&L events with database positions
       const trades = result.events.map((event, index) => {
