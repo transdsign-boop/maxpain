@@ -71,6 +71,40 @@ PERMANENT DATA PRESERVATION: ALL trading data MUST be preserved forever. The use
 - **Trade Sync Pagination**: Handles exchange API limitations by chunking large date ranges into 7-day segments with backward cursor pagination.
 - **Position Architecture** (Updated Oct 15, 2025): Database has been fully consolidated to single-source-of-truth positions. Each realized P&L event is represented by ONE position with real exchange fills. **Legacy P&L sync permanently disabled** - the reconciliation loop no longer calls `syncCompletedTrades()`. **P&L STORAGE SYSTEM** (Oct 15, 2025): P&L is now stored permanently in database `realizedPnl` field when positions close, fetched from exchange `/fapi/v1/userTrades` API. Overcomes 7-day exchange API retention limit by capturing P&L at close time. **Nullable schema** (Oct 15, 2025): `realizedPnl` is nullable - NULL means "never stored", any other value (including '0') means "stored P&L". Eliminates ambiguity between "never fetched" and "fetched as zero". Manual SQL migration executed to make column nullable and set NULL for old positions. Manual close endpoint uses `fetchPositionPnL()` helper with fromId pagination to get actual P&L from exchange (handles positions with >1000 trades). Completed trades endpoint checks for NULL to distinguish never-stored positions - only NULL triggers exchange fallback. Backfill endpoint (`/api/admin/backfill-pnl`) targets NULL rows to populate P&L for recent positions (< 7 days old). **Fills attachment bug fixed** (Oct 15, 2025): `/api/strategies/:strategyId/positions/closed` endpoint now properly attaches fills array to each position. **Session ID resolution added** (Oct 15, 2025): Endpoint accepts both strategy IDs and session IDs. **Legacy layer tracking removed** (Oct 15, 2025): `position_layers` table fully removed from schema and codebase after migrating to position-level TP/SL managed by OrderProtectionService. **Critical matching fix**: Exchange P&L correctly matches CLOSING trades (SELL for longs, BUY for shorts) which contain realizedPnl values, not opening trades (which always show $0). Database positions retain layer/DCA tracking while exchange provides real money P&L values. Fully deterministic: Trades matched by symbol, position lifetime, and closing side direction - no timestamp heuristics.
 
+## Deployment & Always-On Requirements
+
+🚨 **CRITICAL: Liquidation Stream Uptime** 🚨
+
+This application connects to the **Aster DEX liquidation stream** via WebSocket (`wss://fstream.asterdex.com/stream?streams=!forceOrder@arr`) to receive real-time liquidation events. The stream MUST remain connected 24/7 to ensure:
+- All liquidations are captured without gaps
+- Cascade detector has complete data for risk analysis
+- Trading strategy receives real-time market signals
+
+**Development Environment:**
+- The Replit development environment may stop when inactive
+- This will disconnect the liquidation stream and cause data gaps
+- Manual workflow restarts may be required after periods of inactivity
+
+**Production Deployment (Always-On):**
+To ensure the liquidation stream stays connected permanently:
+1. **Use Reserved VM Deployment**: Publish your app using Replit's Reserved VM deployment type
+2. **Benefits**: Dedicated computing resources, always-on cloud server, no interruptions
+3. **Access**: Click "Deploy" in Replit and select "Reserved VM" option
+4. **Cost**: Predictable monthly cost for dedicated resources
+
+**Stream Health Monitoring:**
+The application includes automatic reconnection logic:
+- WebSocket reconnects automatically on disconnect (exponential backoff: 5s → 10s → 20s → 40s → 80s)
+- Maximum 10 reconnection attempts before recreating the connection
+- Logs show connection status: `✅ Successfully connected to Aster DEX liquidation stream`
+- Check logs for: `📨 Received Aster DEX message` and `✅ New liquidation stored`
+
+**Verification:**
+```bash
+# Check if stream is receiving liquidations
+grep "New liquidation stored" /tmp/logs/Start_application_*.log | tail -5
+```
+
 ## External Dependencies
 
 **Core:**
