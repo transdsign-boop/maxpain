@@ -52,9 +52,78 @@ class LiveDataOrchestrator {
   private lastAccountLogTime: number = 0;
   private lastPositionsLogTime: number = 0;
   private exchangeStreams: Map<string, IExchangeStream> = new Map();
+  private cachedUsdtBalance: Map<string, number> = new Map(); // Cache USDT balance per strategy
 
   constructor() {
     console.log('🎯 Live Data Orchestrator initialized - 100% WebSocket mode (NO POLLING)');
+    // Periodically refresh USDT balance from REST API (every 60s)
+    setInterval(() => this.refreshUsdtBalances(), 60000);
+  }
+
+  // Fetch USDT balance from REST API and cache it
+  private async refreshUsdtBalances(): Promise<void> {
+    try {
+      const { createHmac } = await import('crypto');
+      const apiKey = process.env.ASTER_DEX_API_KEY;
+      const secretKey = process.env.ASTER_DEX_SECRET_KEY;
+      
+      if (!apiKey || !secretKey) return;
+
+      const timestamp = Date.now();
+      const params = `timestamp=${timestamp}`;
+      const signature = createHmac('sha256', secretKey).update(params).digest('hex');
+      
+      const response = await fetch(
+        `https://fapi.asterdex.com/fapi/v2/account?${params}&signature=${signature}`,
+        { headers: { 'X-MBX-APIKEY': apiKey } }
+      );
+      
+      if (response.ok) {
+        const data = await response.json();
+        const usdtAsset = data.assets?.find((a: any) => a.asset === 'USDT');
+        if (usdtAsset) {
+          const usdtBalance = parseFloat(usdtAsset.walletBalance || '0');
+          // Store for all active strategies (simplified - could be per-strategy if needed)
+          for (const strategyId of this.cache.keys()) {
+            this.cachedUsdtBalance.set(strategyId, usdtBalance);
+          }
+        }
+      }
+    } catch (error) {
+      // Silently fail - not critical
+    }
+  }
+
+  // Initialize USDT balance for a strategy (called on startup)
+  async initializeUsdtBalance(strategyId: string): Promise<void> {
+    try {
+      const { createHmac } = await import('crypto');
+      const apiKey = process.env.ASTER_DEX_API_KEY;
+      const secretKey = process.env.ASTER_DEX_SECRET_KEY;
+      
+      if (!apiKey || !secretKey) return;
+
+      const timestamp = Date.now();
+      const params = `timestamp=${timestamp}`;
+      const signature = createHmac('sha256', secretKey).update(params).digest('hex');
+      
+      const response = await fetch(
+        `https://fapi.asterdex.com/fapi/v2/account?${params}&signature=${signature}`,
+        { headers: { 'X-MBX-APIKEY': apiKey } }
+      );
+      
+      if (response.ok) {
+        const data = await response.json();
+        const usdtAsset = data.assets?.find((a: any) => a.asset === 'USDT');
+        if (usdtAsset) {
+          const usdtBalance = parseFloat(usdtAsset.walletBalance || '0');
+          this.cachedUsdtBalance.set(strategyId, usdtBalance);
+          console.log(`💵 Cached USDT balance for strategy: $${usdtBalance.toFixed(2)}`);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to initialize USDT balance:', error);
+    }
   }
 
   /**
@@ -242,21 +311,59 @@ class LiveDataOrchestrator {
 
   // Update account cache from WebSocket (called by user-data-stream)
   updateAccountFromWebSocket(strategyId: string, balances: any[]): void {
-    const usdtBalance = balances.find((b: any) => b.asset === 'USDF');
+    // Find both USDF and USDT balances (user can have both)
+    const usdfBalance = balances.find((b: any) => b.asset === 'USDF');
+    const usdtBalance = balances.find((b: any) => b.asset === 'USDT');
     
-    if (usdtBalance) {
+    // At least one USD-based asset must exist
+    if (usdfBalance || usdtBalance) {
       const snapshot = this.getSnapshot(strategyId);
-      const walletBalance = usdtBalance.walletBalance || '0';
-      const crossWalletBalance = usdtBalance.crossWalletBalance || '0';
       
-      // ✅ Trust exchange-provided values when available
-      // The exchange already calculates these correctly including order margin, mark price, etc.
-      const totalUnrealizedProfit = usdtBalance.unrealizedProfit || '0';
-      const totalMarginBalance = usdtBalance.marginBalance || walletBalance;
-      const totalInitialMargin = usdtBalance.initialMargin || '0';
+      // Sum both USDF and USDT for total wallet balance
+      // WebSocket usually only sends USDF, so use cached USDT balance if WebSocket doesn't provide it
+      const usdfWallet = parseFloat(usdfBalance?.walletBalance || '0');
+      let usdtWallet = parseFloat(usdtBalance?.walletBalance || '0');
       
-      // crossWalletBalance from exchange represents true available balance
-      const availableBalance = crossWalletBalance;
+      // If WebSocket didn't provide USDT, use cached value from REST API
+      if (!usdtBalance && this.cachedUsdtBalance.has(strategyId)) {
+        usdtWallet = this.cachedUsdtBalance.get(strategyId) || 0;
+      }
+      
+      const totalWallet = usdfWallet + usdtWallet;
+      
+      // Sum available balances
+      const usdfAvailable = parseFloat(usdfBalance?.crossWalletBalance || '0');
+      const usdtAvailable = parseFloat(usdtBalance?.crossWalletBalance || '0');
+      const totalAvailable = usdfAvailable + usdtAvailable;
+      
+      // Sum unrealized P&L from both
+      const usdfUnrealized = parseFloat(usdfBalance?.unrealizedProfit || '0');
+      const usdtUnrealized = parseFloat(usdtBalance?.unrealizedProfit || '0');
+      const totalUnrealizedProfit = (usdfUnrealized + usdtUnrealized).toString();
+      
+      // Use USDF values as primary, fallback to USDT
+      const primaryBalance = usdfBalance || usdtBalance;
+      const totalMarginBalance = primaryBalance?.marginBalance || totalWallet.toString();
+      const totalInitialMargin = primaryBalance?.initialMargin || '0';
+      
+      // Build assets array with both USDF and USDT
+      const assets = [];
+      if (usdfBalance) {
+        assets.push({
+          a: 'USDF',
+          wb: usdfBalance.walletBalance,
+          cw: usdfBalance.crossWalletBalance,
+          bc: usdfBalance.balanceChange || '0'
+        });
+      }
+      if (usdtBalance) {
+        assets.push({
+          a: 'USDT',
+          wb: usdtBalance.walletBalance,
+          cw: usdtBalance.crossWalletBalance,
+          bc: usdtBalance.balanceChange || '0'
+        });
+      }
       
       // Match the HTTP API format exactly - include ALL fields the frontend expects
       snapshot.account = {
@@ -265,26 +372,21 @@ class LiveDataOrchestrator {
         canDeposit: true,
         canWithdraw: true,
         updateTime: Date.now(),
-        // Fields used by PerformanceOverview component
-        totalWalletBalance: walletBalance,
+        // Fields used by PerformanceOverview component - sum both USDF and USDT
+        totalWalletBalance: totalWallet.toString(),
         totalUnrealizedProfit,
         totalMarginBalance,
         totalInitialMargin,
-        availableBalance,
+        availableBalance: totalAvailable.toString(),
         // Legacy fields for compatibility
-        usdcBalance: walletBalance,
-        usdtBalance: walletBalance,
-        assets: [{
-          a: 'USDF',
-          wb: walletBalance,
-          cw: crossWalletBalance,
-          bc: '0'
-        }]
+        usdcBalance: totalWallet.toString(),
+        usdtBalance: totalWallet.toString(),
+        assets
       };
       snapshot.timestamp = Date.now();
       // Reduced logging - only log occasionally (every 30s) to reduce log spam
       if (Date.now() - this.lastAccountLogTime > 30000) {
-        console.log('✅ Updated account cache from WebSocket (balance: $' + parseFloat(walletBalance).toFixed(2) + ', unrealized: $' + parseFloat(totalUnrealizedProfit).toFixed(2) + ', available: $' + parseFloat(availableBalance).toFixed(2) + ')');
+        console.log('✅ Updated account cache from WebSocket (balance: $' + totalWallet.toFixed(2) + ', unrealized: $' + parseFloat(totalUnrealizedProfit).toFixed(2) + ', available: $' + totalAvailable.toFixed(2) + ')');
         this.lastAccountLogTime = Date.now();
       }
       this.broadcastSnapshot(strategyId);
