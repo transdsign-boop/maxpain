@@ -2694,7 +2694,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Sync P&L from exchange for all closed positions
+  // ❌ LEGACY ENDPOINT - DISABLED DUE TO DATA CORRUPTION
+  // This endpoint has flawed matching logic that overwrites correct P&L with wrong values:
+  // - Matches by symbol + 60-second window (multiple positions can close in same window)
+  // - Calls closePosition() on already-closed positions, corrupting realizedPnl
+  // - Caused ETHUSDT to show -$6577 when exchange total is only -$457
+  // 
+  // P&L is now stored at position close time via fetchPositionPnL() helper.
+  // See replit.md: "Legacy P&L sync permanently disabled"
+  /*
   app.post("/api/positions/sync-pnl-from-exchange", async (req, res) => {
     try {
       console.log('📥 Fetching realized P&L from Aster DEX exchange...');
@@ -2792,6 +2800,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ error: 'Failed to sync P&L from exchange' });
     }
   });
+  */
 
   // Get overall trading performance metrics
   app.get("/api/performance/overview", async (req, res) => {
