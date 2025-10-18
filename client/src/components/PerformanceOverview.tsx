@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
+import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Calendar } from "@/components/ui/calendar";
@@ -1145,23 +1146,117 @@ function PerformanceOverview() {
                 <PopoverContent className="w-auto p-4" align="start">
                   <div className="space-y-4">
                     <div>
-                      <label className="text-sm font-medium mb-2 block">Start Date</label>
+                      <label className="text-sm font-medium mb-2 block">Start Date & Time</label>
                       <Calendar
                         mode="single"
                         selected={dateRange.start || undefined}
-                        onSelect={(date) => setDateRange(prev => ({ ...prev, start: date || null }))}
+                        onSelect={(date) => {
+                          if (date) {
+                            const existing = dateRange.start || new Date();
+                            date.setHours(existing.getHours());
+                            date.setMinutes(existing.getMinutes());
+                          }
+                          setDateRange(prev => ({ ...prev, start: date || null }));
+                        }}
                         data-testid="calendar-start-date"
                       />
+                      <div className="flex gap-2 mt-2">
+                        <div className="flex-1">
+                          <label className="text-xs text-muted-foreground">Hour</label>
+                          <Input
+                            type="number"
+                            min="0"
+                            max="23"
+                            value={dateRange.start?.getHours() ?? 0}
+                            onChange={(e) => {
+                              const hours = parseInt(e.target.value) || 0;
+                              setDateRange(prev => {
+                                const newStart = prev.start ? new Date(prev.start) : new Date();
+                                newStart.setHours(Math.min(23, Math.max(0, hours)));
+                                return { ...prev, start: newStart };
+                              });
+                            }}
+                            className="h-8"
+                            data-testid="input-start-hour"
+                          />
+                        </div>
+                        <div className="flex-1">
+                          <label className="text-xs text-muted-foreground">Minute</label>
+                          <Input
+                            type="number"
+                            min="0"
+                            max="59"
+                            value={dateRange.start?.getMinutes() ?? 0}
+                            onChange={(e) => {
+                              const minutes = parseInt(e.target.value) || 0;
+                              setDateRange(prev => {
+                                const newStart = prev.start ? new Date(prev.start) : new Date();
+                                newStart.setMinutes(Math.min(59, Math.max(0, minutes)));
+                                return { ...prev, start: newStart };
+                              });
+                            }}
+                            className="h-8"
+                            data-testid="input-start-minute"
+                          />
+                        </div>
+                      </div>
                     </div>
                     <div>
-                      <label className="text-sm font-medium mb-2 block">End Date</label>
+                      <label className="text-sm font-medium mb-2 block">End Date & Time</label>
                       <Calendar
                         mode="single"
                         selected={dateRange.end || undefined}
-                        onSelect={(date) => setDateRange(prev => ({ ...prev, end: date || null }))}
+                        onSelect={(date) => {
+                          if (date) {
+                            const existing = dateRange.end || new Date();
+                            date.setHours(existing.getHours());
+                            date.setMinutes(existing.getMinutes());
+                          }
+                          setDateRange(prev => ({ ...prev, end: date || null }));
+                        }}
                         disabled={(date) => dateRange.start ? date < dateRange.start : false}
                         data-testid="calendar-end-date"
                       />
+                      <div className="flex gap-2 mt-2">
+                        <div className="flex-1">
+                          <label className="text-xs text-muted-foreground">Hour</label>
+                          <Input
+                            type="number"
+                            min="0"
+                            max="23"
+                            value={dateRange.end?.getHours() ?? 23}
+                            onChange={(e) => {
+                              const hours = parseInt(e.target.value) || 0;
+                              setDateRange(prev => {
+                                const newEnd = prev.end ? new Date(prev.end) : new Date();
+                                newEnd.setHours(Math.min(23, Math.max(0, hours)));
+                                return { ...prev, end: newEnd };
+                              });
+                            }}
+                            className="h-8"
+                            data-testid="input-end-hour"
+                          />
+                        </div>
+                        <div className="flex-1">
+                          <label className="text-xs text-muted-foreground">Minute</label>
+                          <Input
+                            type="number"
+                            min="0"
+                            max="59"
+                            value={dateRange.end?.getMinutes() ?? 59}
+                            onChange={(e) => {
+                              const minutes = parseInt(e.target.value) || 0;
+                              setDateRange(prev => {
+                                const newEnd = prev.end ? new Date(prev.end) : new Date();
+                                newEnd.setMinutes(Math.min(59, Math.max(0, minutes)));
+                                return { ...prev, end: newEnd };
+                              });
+                            }}
+                            className="h-8"
+                            data-testid="input-end-minute"
+                          />
+                        </div>
+                      </div>
                     </div>
                     <Button 
                       size="sm" 
@@ -1234,9 +1329,15 @@ function PerformanceOverview() {
               {(dateRange.start || dateRange.end) && !selectedDeposit && (
                 <Badge variant="secondary" className="gap-1" data-testid="badge-active-filter">
                   <CalendarIcon className="h-3 w-3" />
-                  {dateRange.start && format(dateRange.start, 'MMM d')}
+                  {dateRange.start && (() => {
+                    const hasTime = dateRange.start.getHours() !== 0 || dateRange.start.getMinutes() !== 0;
+                    return format(dateRange.start, hasTime ? 'MMM d HH:mm' : 'MMM d');
+                  })()}
                   {dateRange.start && dateRange.end && ' - '}
-                  {dateRange.end && format(dateRange.end, 'MMM d')}
+                  {dateRange.end && (() => {
+                    const hasTime = dateRange.end.getHours() !== 23 || dateRange.end.getMinutes() !== 59;
+                    return format(dateRange.end, hasTime ? 'MMM d HH:mm' : 'MMM d');
+                  })()}
                   <X 
                     className="h-3 w-3 ml-1 cursor-pointer hover:text-destructive" 
                     onClick={() => setDateRange({ start: null, end: null })}
