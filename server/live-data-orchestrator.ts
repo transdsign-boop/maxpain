@@ -129,8 +129,8 @@ class LiveDataOrchestrator {
   private handleNormalizedAccountUpdate(strategyId: string, update: NormalizedAccountUpdate): void {
     const snapshot = this.getSnapshot(strategyId);
     
-    // Find USDT balance
-    const usdtBalance = update.balances.find(b => b.asset === 'USDT');
+    // Find USDF balance
+    const usdtBalance = update.balances.find(b => b.asset === 'USDF');
     
     if (usdtBalance) {
       const walletBalance = usdtBalance.walletBalance || '0';
@@ -150,7 +150,7 @@ class LiveDataOrchestrator {
         usdcBalance: walletBalance,
         usdtBalance: walletBalance,
         assets: [{
-          a: 'USDT',
+          a: 'USDF',
           wb: walletBalance,
           cw: availableBalance,
           bc: '0'
@@ -242,7 +242,7 @@ class LiveDataOrchestrator {
 
   // Update account cache from WebSocket (called by user-data-stream)
   updateAccountFromWebSocket(strategyId: string, balances: any[]): void {
-    const usdtBalance = balances.find((b: any) => b.asset === 'USDT');
+    const usdtBalance = balances.find((b: any) => b.asset === 'USDF');
     
     if (usdtBalance) {
       const snapshot = this.getSnapshot(strategyId);
@@ -269,7 +269,7 @@ class LiveDataOrchestrator {
         usdcBalance: walletBalance,
         usdtBalance: walletBalance,
         assets: [{
-          a: 'USDT',
+          a: 'USDF',
           wb: walletBalance,
           cw: crossWalletBalance,
           bc: '0'
