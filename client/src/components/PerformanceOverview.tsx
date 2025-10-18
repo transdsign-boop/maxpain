@@ -782,7 +782,8 @@ function PerformanceOverview() {
 
   // ✅ Use exchange-provided values directly - don't recalculate
   const unrealizedPnl = liveAccount ? (parseFloat(liveAccount.totalUnrealizedProfit) || 0) : 0;
-  const totalBalance = liveAccount ? (parseFloat(liveAccount.totalWalletBalance || '0') || 0) : 0; // ✅ Wallet balance only (USDF + USDT, no unrealized)
+  const walletBalance = liveAccount ? (parseFloat(liveAccount.totalWalletBalance || '0') || 0) : 0;
+  const totalBalance = walletBalance + unrealizedPnl; // Wallet balance adjusted for unrealized P&L
   
   // Calculate margin in use and exposure (live-only mode)
   const marginInUse = liveAccount ? (parseFloat(liveAccount.totalInitialMargin || '0') || 0) : 0;
