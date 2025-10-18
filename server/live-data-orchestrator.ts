@@ -309,6 +309,20 @@ class LiveDataOrchestrator {
     return this.cache.get(strategyId)!;
   }
 
+  // Calculate total margin used from positions
+  private calculateMarginUsed(positions: any[]): number {
+    let totalMarginUsed = 0;
+    for (const pos of positions) {
+      const posAmt = Math.abs(parseFloat(pos.positionAmt || '0'));
+      const entryPrice = parseFloat(pos.entryPrice || '0');
+      const leverage = parseFloat(pos.leverage || '1');
+      // Margin = Position Value / Leverage
+      const positionMargin = (posAmt * entryPrice) / leverage;
+      totalMarginUsed += positionMargin;
+    }
+    return totalMarginUsed;
+  }
+
   // Update account cache from WebSocket (called by user-data-stream)
   updateAccountFromWebSocket(strategyId: string, balances: any[]): void {
     // Find both USDF and USDT balances (user can have both)
@@ -331,11 +345,6 @@ class LiveDataOrchestrator {
       
       const totalWallet = usdfWallet + usdtWallet;
       
-      // Sum available balances
-      const usdfAvailable = parseFloat(usdfBalance?.crossWalletBalance || '0');
-      const usdtAvailable = parseFloat(usdtBalance?.crossWalletBalance || '0');
-      const totalAvailable = usdfAvailable + usdtAvailable;
-      
       // Sum unrealized P&L from both
       const usdfUnrealized = parseFloat(usdfBalance?.unrealizedProfit || '0');
       const usdtUnrealized = parseFloat(usdtBalance?.unrealizedProfit || '0');
@@ -344,7 +353,11 @@ class LiveDataOrchestrator {
       // Use USDF values as primary, fallback to USDT
       const primaryBalance = usdfBalance || usdtBalance;
       const totalMarginBalance = primaryBalance?.marginBalance || totalWallet.toString();
-      const totalInitialMargin = primaryBalance?.initialMargin || '0';
+      
+      // Calculate margin from current positions (exchange doesn't provide reliable totalInitialMargin)
+      const openPositions = snapshot.positions.filter((pos: any) => parseFloat(pos.positionAmt || '0') !== 0);
+      const marginUsed = this.calculateMarginUsed(openPositions);
+      const actualAvailable = totalWallet - marginUsed;
       
       // Build assets array with both USDF and USDT
       const assets = [];
@@ -372,12 +385,14 @@ class LiveDataOrchestrator {
         canDeposit: true,
         canWithdraw: true,
         updateTime: Date.now(),
-        // Fields used by PerformanceOverview component - sum both USDF and USDT
+        // Total Balance = USDF + USDT wallet balance only (NO unrealized P&L)
         totalWalletBalance: totalWallet.toString(),
+        // Unrealized P&L tracked separately
         totalUnrealizedProfit,
         totalMarginBalance,
-        totalInitialMargin,
-        availableBalance: totalAvailable.toString(),
+        totalInitialMargin: marginUsed.toString(),
+        // Available for NEW positions = Total Wallet - Margin Already Used
+        availableBalance: actualAvailable.toString(),
         // Legacy fields for compatibility
         usdcBalance: totalWallet.toString(),
         usdtBalance: totalWallet.toString(),
@@ -386,7 +401,7 @@ class LiveDataOrchestrator {
       snapshot.timestamp = Date.now();
       // Reduced logging - only log occasionally (every 30s) to reduce log spam
       if (Date.now() - this.lastAccountLogTime > 30000) {
-        console.log('✅ Updated account cache from WebSocket (balance: $' + totalWallet.toFixed(2) + ', unrealized: $' + parseFloat(totalUnrealizedProfit).toFixed(2) + ', available: $' + totalAvailable.toFixed(2) + ')');
+        console.log('✅ Updated account cache from WebSocket (balance: $' + totalWallet.toFixed(2) + ', unrealized: $' + parseFloat(totalUnrealizedProfit).toFixed(2) + ', available: $' + actualAvailable.toFixed(2) + ')');
         this.lastAccountLogTime = Date.now();
       }
       this.broadcastSnapshot(strategyId);
@@ -403,13 +418,20 @@ class LiveDataOrchestrator {
     snapshot.positions = openPositions;
     snapshot.timestamp = Date.now();
     
-    // ✅ Do NOT recalculate account metrics - trust the exchange's values from ACCOUNT_UPDATE
-    // Position updates only affect the positions array, not the account-level balances
-    // The exchange sends separate ACCOUNT_UPDATE messages with correct account balances
+    // Calculate margin used from positions
+    const totalMarginUsed = this.calculateMarginUsed(openPositions);
+    
+    // Update account available balance based on calculated margin
+    if (snapshot.account) {
+      const totalWallet = parseFloat(snapshot.account.totalWalletBalance);
+      const actualAvailable = totalWallet - totalMarginUsed;
+      snapshot.account.availableBalance = actualAvailable.toString();
+      snapshot.account.totalInitialMargin = totalMarginUsed.toString();
+    }
     
     // Reduced logging - only log occasionally (every 30s) to reduce log spam
     if (Date.now() - this.lastPositionsLogTime > 30000) {
-      console.log(`✅ Updated positions cache from WebSocket (${positions.length} total, ${openPositions.length} open)`);
+      console.log(`✅ Updated positions cache from WebSocket (${positions.length} total, ${openPositions.length} open, margin used: $${totalMarginUsed.toFixed(2)})`);
       this.lastPositionsLogTime = Date.now();
     }
     this.calculatePositionSummary(strategyId);
