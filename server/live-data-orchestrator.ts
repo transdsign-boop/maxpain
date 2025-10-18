@@ -249,33 +249,14 @@ class LiveDataOrchestrator {
       const walletBalance = usdtBalance.walletBalance || '0';
       const crossWalletBalance = usdtBalance.crossWalletBalance || '0';
       
-      // ⚠️ For USDF, top-level fields like unrealizedProfit are always 0
-      // Calculate from positions instead
-      const totalUnrealizedProfit = snapshot.positions
-        .reduce((sum: number, p: any) => sum + parseFloat(p.unRealizedProfit || '0'), 0)
-        .toFixed(8);
+      // ✅ Trust exchange-provided values when available
+      // The exchange already calculates these correctly including order margin, mark price, etc.
+      const totalUnrealizedProfit = usdtBalance.unrealizedProfit || '0';
+      const totalMarginBalance = usdtBalance.marginBalance || walletBalance;
+      const totalInitialMargin = usdtBalance.initialMargin || '0';
       
-      // Calculate margin values from positions
-      let totalInitialMargin = '0';
-      let totalMarginBalance = walletBalance;
-      
-      if (snapshot.positions && snapshot.positions.length > 0) {
-        const initialMarginSum = snapshot.positions.reduce((sum: number, p: any) => {
-          const qty = Math.abs(parseFloat(p.positionAmt || '0'));
-          const price = parseFloat(p.entryPrice || '0');
-          const leverage = parseFloat(p.leverage || '1');
-          return sum + (qty * price / leverage);
-        }, 0);
-        totalInitialMargin = initialMarginSum.toFixed(8);
-        
-        // Margin balance = wallet balance + unrealized P&L
-        const marginBalanceCalc = parseFloat(walletBalance) + parseFloat(totalUnrealizedProfit);
-        totalMarginBalance = marginBalanceCalc.toFixed(8);
-      }
-      
-      // Available balance = wallet balance - initial margin used
-      const availableBalanceCalc = parseFloat(walletBalance) - parseFloat(totalInitialMargin);
-      const availableBalance = availableBalanceCalc.toFixed(8);
+      // crossWalletBalance from exchange represents true available balance
+      const availableBalance = crossWalletBalance;
       
       // Match the HTTP API format exactly - include ALL fields the frontend expects
       snapshot.account = {
@@ -320,33 +301,9 @@ class LiveDataOrchestrator {
     snapshot.positions = openPositions;
     snapshot.timestamp = Date.now();
     
-    // ⚠️ Recalculate account metrics after position update
-    // This ensures unrealized P&L and available balance reflect latest positions
-    if (snapshot.account) {
-      const totalUnrealizedProfit = snapshot.positions
-        .reduce((sum: number, p: any) => sum + parseFloat(p.unRealizedProfit || p.unrealizedProfit || '0'), 0)
-        .toFixed(8);
-      
-      let totalInitialMargin = '0';
-      if (snapshot.positions && snapshot.positions.length > 0) {
-        const initialMarginSum = snapshot.positions.reduce((sum: number, p: any) => {
-          const qty = Math.abs(parseFloat(p.positionAmt || '0'));
-          const price = parseFloat(p.entryPrice || '0');
-          const leverage = parseFloat(p.leverage || '1');
-          return sum + (qty * price / leverage);
-        }, 0);
-        totalInitialMargin = initialMarginSum.toFixed(8);
-      }
-      
-      const walletBalance = snapshot.account.totalWalletBalance || '0';
-      const marginBalanceCalc = parseFloat(walletBalance) + parseFloat(totalUnrealizedProfit);
-      const availableBalanceCalc = parseFloat(walletBalance) - parseFloat(totalInitialMargin);
-      
-      snapshot.account.totalUnrealizedProfit = totalUnrealizedProfit;
-      snapshot.account.totalInitialMargin = totalInitialMargin;
-      snapshot.account.totalMarginBalance = marginBalanceCalc.toFixed(8);
-      snapshot.account.availableBalance = availableBalanceCalc.toFixed(8);
-    }
+    // ✅ Do NOT recalculate account metrics - trust the exchange's values from ACCOUNT_UPDATE
+    // Position updates only affect the positions array, not the account-level balances
+    // The exchange sends separate ACCOUNT_UPDATE messages with correct account balances
     
     // Reduced logging - only log occasionally (every 30s) to reduce log spam
     if (Date.now() - this.lastPositionsLogTime > 30000) {
