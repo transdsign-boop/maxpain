@@ -440,7 +440,8 @@ function PerformanceOverview() {
 
     // ✅ Use exchange-provided values directly - don't recalculate
     const unrealizedPnl = liveAccount ? (parseFloat(liveAccount.totalUnrealizedProfit) || 0) : 0;
-    const totalBalance = liveAccount ? (parseFloat(liveAccount.totalWalletBalance || '0') || 0) : 0; // ✅ Wallet balance only
+    const walletBalance = liveAccount ? (parseFloat(liveAccount.totalWalletBalance || '0') || 0) : 0;
+    const totalBalance = walletBalance + unrealizedPnl; // Wallet balance adjusted for unrealized P&L
 
     const totalPotentialLoss = positions.reduce((sum, position) => {
       const entryPrice = parseFloat(position.entryPrice) || 0;
@@ -785,13 +786,20 @@ function PerformanceOverview() {
   const walletBalance = liveAccount ? (parseFloat(liveAccount.totalWalletBalance || '0') || 0) : 0;
   const totalBalance = walletBalance + unrealizedPnl; // Wallet balance adjusted for unrealized P&L
   
-  // Calculate margin in use and exposure (live-only mode)
-  const marginInUse = liveAccount ? (parseFloat(liveAccount.totalInitialMargin || '0') || 0) : 0;
-  const leverage = activeStrategy?.leverage || 1;
+  // Calculate margin in use from open positions
+  const positions = livePositions ? livePositions.filter(p => parseFloat(p.positionAmt) !== 0) : [];
+  const leverage = activeStrategy?.leverage || 10;
+  const marginInUse = positions.reduce((sum, position) => {
+    const positionAmt = Math.abs(parseFloat(position.positionAmt) || 0);
+    const entryPrice = parseFloat(position.entryPrice) || 0;
+    const positionValue = positionAmt * entryPrice;
+    const margin = positionValue / leverage;
+    return sum + margin;
+  }, 0);
   const totalExposure = marginInUse * leverage;
   
-  // ✅ Use exchange-provided available balance (live streamed from WebSocket)
-  const availableBalance = liveAccount ? (parseFloat(liveAccount.availableBalance || '0') || 0) : 0;
+  // ✅ Calculate available balance as total balance minus margin in use
+  const availableBalance = totalBalance - marginInUse;
 
   // Calculate percentages
   const unrealizedPnlPercent = totalBalance > 0 ? (unrealizedPnl / totalBalance) * 100 : 0;
