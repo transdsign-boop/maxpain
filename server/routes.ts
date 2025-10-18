@@ -1855,6 +1855,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // 🔍 DEBUG: Direct REST API account balance check (bypass WebSocket cache)
+  app.get('/api/debug/account-balance', async (req, res) => {
+    try {
+      const { exchangeRegistry } = await import('./exchanges/registry');
+      const { liveDataOrchestrator } = await import('./live-data-orchestrator');
+      
+      const activeStrategy = await db.query.strategies.findFirst({
+        where: eq(strategies.isActive, true)
+      });
+      
+      if (!activeStrategy) {
+        return res.status(404).json({ error: 'No active strategy found' });
+      }
+
+      const adapter = await exchangeRegistry.getAdapter(activeStrategy.id);
+      const accountInfo = await adapter.getAccountInfo();
+      
+      // Also get WebSocket cached data for comparison
+      const wsSnapshot = liveDataOrchestrator.getSnapshot(activeStrategy.id);
+      
+      res.json({
+        restAPI: {
+          totalBalance: accountInfo.totalBalance,
+          availableBalance: accountInfo.availableBalance,
+          totalUnrealizedPnl: accountInfo.totalUnrealizedPnl,
+          assets: accountInfo.assets,
+        },
+        webSocket: {
+          totalBalance: wsSnapshot.account?.totalWalletBalance,
+          availableBalance: wsSnapshot.account?.availableBalance,
+          totalUnrealizedPnl: wsSnapshot.account?.totalUnrealizedProfit,
+          assets: wsSnapshot.account?.assets,
+          lastUpdate: wsSnapshot.timestamp,
+        },
+        comparison: {
+          balanceDiff: parseFloat(accountInfo.totalBalance || '0') - parseFloat(wsSnapshot.account?.totalWalletBalance || '0'),
+          message: accountInfo.totalBalance === wsSnapshot.account?.totalWalletBalance 
+            ? 'REST API and WebSocket match ✅' 
+            : 'REST API and WebSocket differ ⚠️'
+        }
+      });
+    } catch (error: any) {
+      console.error('❌ Failed to fetch account balance:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Get live account balance from Aster DEX
   app.get("/api/live/account", async (req, res) => {
     try {
