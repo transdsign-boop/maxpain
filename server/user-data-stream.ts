@@ -269,6 +269,11 @@ class UserDataStreamManager {
           asset: b.a,
           walletBalance: b.wb,
           crossWalletBalance: b.cw,
+          // Include ALL exchange-provided balance fields to avoid manual recalculation
+          unrealizedProfit: b.up || '0',
+          marginBalance: b.mb || '0',
+          initialMargin: b.im || '0',
+          balanceChange: b.bc || '0',
         }));
         
         // Update orchestrator cache from WebSocket
