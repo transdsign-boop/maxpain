@@ -2802,6 +2802,120 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   */
 
+  // ✅ CLEANUP ENDPOINT - Recalculate P&L from fills for all closed positions
+  // This fixes data corruption caused by the legacy sync endpoint
+  app.post("/api/admin/recalculate-pnl-from-fills", async (req, res) => {
+    try {
+      console.log('🔧 Starting P&L recalculation from fills...');
+      
+      // Get all sessions and their closed positions
+      const allSessions = await storage.getAllTradeSessions(DEFAULT_USER_ID);
+      const allClosedPositions: any[] = [];
+      const allFills: any[] = [];
+      
+      for (const session of allSessions) {
+        const sessionClosedPositions = await storage.getClosedPositions(session.id);
+        const sessionFills = await storage.getFillsBySession(session.id);
+        allClosedPositions.push(...sessionClosedPositions);
+        allFills.push(...sessionFills);
+      }
+      
+      console.log(`📊 Processing ${allClosedPositions.length} closed positions with ${allFills.length} fills`);
+      
+      let updatedCount = 0;
+      let skippedCount = 0;
+      let errorCount = 0;
+      
+      for (const position of allClosedPositions) {
+        try {
+          // Get fills for this position
+          const positionFills = allFills.filter(f => f.positionId === position.id);
+          
+          if (positionFills.length === 0) {
+            console.log(`⚠️  No fills for ${position.symbol} ${position.side} (${position.id})`);
+            skippedCount++;
+            continue;
+          }
+          
+          // Separate entry and exit fills based on position direction
+          const isLong = position.side === 'long';
+          
+          // Entry fills: BUY for long, SELL for short
+          const entryFills = positionFills.filter((fill: any) => {
+            const matchingSide = (isLong && fill.side === 'buy') || (!isLong && fill.side === 'sell');
+            return matchingSide && (fill.layerNumber > 0 || fill.orderId.startsWith('entry-'));
+          });
+          
+          // Exit fills: SELL for long, BUY for short
+          const exitFills = positionFills.filter((fill: any) => {
+            const matchingSide = (isLong && fill.side === 'sell') || (!isLong && fill.side === 'buy');
+            return matchingSide && (fill.layerNumber === 0 || fill.orderId.startsWith('exit-'));
+          });
+          
+          // Calculate total values from fills
+          const entryValue = entryFills.reduce((sum: number, fill: any) => {
+            return sum + (parseFloat(fill.quantity || '0') * parseFloat(fill.price || '0'));
+          }, 0);
+          
+          const exitValue = exitFills.reduce((sum: number, fill: any) => {
+            return sum + (parseFloat(fill.quantity || '0') * parseFloat(fill.price || '0'));
+          }, 0);
+          
+          const totalFees = positionFills.reduce((sum: number, fill: any) => {
+            return sum + parseFloat(fill.fee || '0');
+          }, 0);
+          
+          // Calculate P&L based on position direction
+          // Long: profit when exit > entry (buy low, sell high)
+          // Short: profit when entry > exit (sell high, buy back low)
+          let grossPnl = 0;
+          if (isLong) {
+            grossPnl = exitValue - entryValue;
+          } else {
+            grossPnl = entryValue - exitValue;
+          }
+          
+          const netPnl = grossPnl - totalFees;
+          const pnlPercent = entryValue > 0 ? (grossPnl / entryValue) * 100 : 0;
+          
+          // Get current stored P&L
+          const currentPnl = parseFloat(position.realizedPnl || '0');
+          
+          // Only update if P&L has changed by more than $0.01
+          if (Math.abs(netPnl - currentPnl) > 0.01) {
+            console.log(`🔄 ${position.symbol} ${position.side}: $${currentPnl.toFixed(2)} → $${netPnl.toFixed(2)} (${pnlPercent.toFixed(2)}%)`);
+            
+            // Update the position with correct P&L
+            await storage.closePosition(position.id, new Date(position.closedAt!), netPnl, pnlPercent);
+            
+            // Update totalFees separately
+            await storage.updatePosition(position.id, {
+              totalFees: totalFees.toString()
+            });
+            
+            updatedCount++;
+          }
+        } catch (error) {
+          console.error(`❌ Error processing ${position.symbol} ${position.side}:`, error);
+          errorCount++;
+        }
+      }
+      
+      console.log(`✅ P&L recalculation complete: ${updatedCount} updated, ${skippedCount} skipped, ${errorCount} errors`);
+      
+      res.json({
+        success: true,
+        totalPositions: allClosedPositions.length,
+        updated: updatedCount,
+        skipped: skippedCount,
+        errors: errorCount
+      });
+    } catch (error) {
+      console.error('❌ Error recalculating P&L:', error);
+      res.status(500).json({ error: 'Failed to recalculate P&L from fills' });
+    }
+  });
+
   // Get overall trading performance metrics
   app.get("/api/performance/overview", async (req, res) => {
     try {
