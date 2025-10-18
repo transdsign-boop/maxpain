@@ -1875,7 +1875,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Also get WebSocket cached data for comparison
       const wsSnapshot = liveDataOrchestrator.getSnapshot(activeStrategy.id);
       
-      res.json({
+      const balanceDiff = parseFloat(accountInfo.totalBalance || '0') - parseFloat(wsSnapshot.account?.totalWalletBalance || '0');
+      const result = {
         restAPI: {
           totalBalance: accountInfo.totalBalance,
           availableBalance: accountInfo.availableBalance,
@@ -1890,12 +1891,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
           lastUpdate: wsSnapshot.timestamp,
         },
         comparison: {
-          balanceDiff: parseFloat(accountInfo.totalBalance || '0') - parseFloat(wsSnapshot.account?.totalWalletBalance || '0'),
+          balanceDiff,
           message: accountInfo.totalBalance === wsSnapshot.account?.totalWalletBalance 
             ? 'REST API and WebSocket match ✅' 
             : 'REST API and WebSocket differ ⚠️'
         }
-      });
+      };
+      
+      // Log comparison results
+      console.log('🔍 BALANCE COMPARISON:');
+      console.log(`  REST API Balance: $${accountInfo.totalBalance}`);
+      console.log(`  WebSocket Balance: $${wsSnapshot.account?.totalWalletBalance}`);
+      console.log(`  Difference: $${balanceDiff.toFixed(2)}`);
+      console.log(`  ${result.comparison.message}`);
+      
+      res.json(result);
     } catch (error: any) {
       console.error('❌ Failed to fetch account balance:', error);
       res.status(500).json({ error: error.message });
