@@ -1490,10 +1490,19 @@ export class StrategyEngine extends EventEmitter {
       const stopLossPercent = parseFloat(strategy.stopLossPercent);
       
       // Calculate BOTH filled risk (current exposure) and reserved risk (full DCA potential)
+      // DYNAMIC CALCULATION: Recalculate reserved risk using CURRENT strategy settings
       let totalFilledLoss = 0;
       let totalReservedLoss = 0;
       
-      deduplicatedPositions.forEach(position => {
+      // Import DCA calculator for dynamic risk calculation
+      const { calculateDCALevels, calculateATRPercent } = await import('./dca-calculator');
+      const { getStrategyWithDCA } = await import('./dca-sql');
+      
+      // Fetch current DCA parameters once (same for all positions)
+      const strategyWithDCA = await getStrategyWithDCA(strategy.id);
+      console.log(`   🔧 DEBUG: strategyWithDCA=${strategyWithDCA ? 'FOUND' : 'NULL'}, strategy.id=${strategy.id}`);
+      
+      for (const position of deduplicatedPositions) {
         const entryPrice = parseFloat(position.avgEntryPrice);
         const isLong = position.side === 'long';
         const filledQuantity = Math.abs(parseFloat(position.totalQuantity));
@@ -1512,37 +1521,63 @@ export class StrategyEngine extends EventEmitter {
         const filledLoss = lossPerUnit * filledQuantity;
         totalFilledLoss += filledLoss;
         
-        // Reserved risk: Use stored reserved risk OR calculate from DCA schedule
-        let reservedLoss = filledLoss; // Default to filled risk
+        // Reserved risk: DYNAMICALLY recalculate using CURRENT strategy settings
+        let reservedLoss = filledLoss; // Default fallback
         let scheduleSource = 'filled qty';
         
-        // Try to get pre-calculated reserved risk from position
-        if (position.reservedRiskDollars) {
+        // Recalculate reserved risk based on CURRENT maxLayers and other DCA settings
+        if (strategyWithDCA) {
+          try {
+            // Get current ATR for this symbol
+            const atrPercent = await calculateATRPercent(position.symbol, 10, process.env.ASTER_API_KEY, process.env.ASTER_SECRET_KEY);
+            
+            // Get symbol precision for min notional
+            const symbolPrecision = this.symbolPrecisionCache.get(position.symbol);
+            const minNotional = symbolPrecision?.minNotional || 5.0;
+            
+            // Build strategy with current DCA parameters
+            const fullStrategy = {
+              ...strategy,
+              dcaStartStepPercent: String(strategyWithDCA.dca_start_step_percent),
+              dcaSpacingConvexity: String(strategyWithDCA.dca_spacing_convexity),
+              dcaSizeGrowth: String(strategyWithDCA.dca_size_growth),
+              dcaMaxRiskPercent: String(strategyWithDCA.dca_max_risk_percent),
+              dcaVolatilityRef: String(strategyWithDCA.dca_volatility_ref),
+              dcaExitCushionMultiplier: String(strategyWithDCA.dca_exit_cushion_multiplier),
+              maxLayers: strategy.maxLayers, // ✅ Use CURRENT maxLayers setting
+            };
+            
+            // Recalculate DCA schedule with current settings
+            const dcaResult = calculateDCALevels(fullStrategy, {
+              entryPrice,
+              side: position.side,
+              currentBalance,
+              leverage: parseFloat(strategy.leverage),
+              atrPercent,
+              minNotional,
+            });
+            
+            // Use recalculated total risk (reflects current maxLayers)
+            reservedLoss = dcaResult.totalRiskDollars;
+            scheduleSource = `dynamic (${strategy.maxLayers} layers)`;
+          } catch (error: any) {
+            console.warn(`⚠️ Failed to recalculate reserved risk for ${position.symbol}:`, error.message);
+            // Fall back to stored value if available
+            if (position.reservedRiskDollars) {
+              reservedLoss = parseFloat(position.reservedRiskDollars);
+              scheduleSource = 'stored reserve (fallback)';
+            }
+          }
+        } else if (position.reservedRiskDollars) {
+          // No DCA config available, use stored value
           reservedLoss = parseFloat(position.reservedRiskDollars);
           scheduleSource = 'stored reserve';
-        } 
-        // Otherwise calculate from DCA schedule
-        else if (position.dcaSchedule) {
-          try {
-            const schedule = typeof position.dcaSchedule === 'string' 
-              ? JSON.parse(position.dcaSchedule) 
-              : position.dcaSchedule;
-            
-            // Calculate full potential quantity if all layers fill: q1 × totalWeight
-            if (schedule.q1 && schedule.totalWeight) {
-              const fullPotentialQuantity = schedule.q1 * schedule.totalWeight;
-              reservedLoss = lossPerUnit * fullPotentialQuantity;
-              scheduleSource = `DCA (${schedule.levels?.length || strategy.maxLayers} layers)`;
-            }
-          } catch (error) {
-            console.warn(`⚠️ Failed to parse DCA schedule for ${position.symbol}:`, error);
-          }
         }
         
         totalReservedLoss += reservedLoss;
         
         console.log(`   ${position.symbol} ${position.side}: filled=$${filledLoss.toFixed(2)}, reserved=$${reservedLoss.toFixed(2)} (${scheduleSource})`);
-      });
+      }
       
       // Calculate risk percentages
       const filledRiskPercentage = (totalFilledLoss / currentBalance) * 100;
