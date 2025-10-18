@@ -950,6 +950,7 @@ export const StrategyStatus = memo(function StrategyStatus() {
   // Use centralized hook for all strategy-related data (reduces API calls by 10-20x)
   const {
     activeStrategy,
+    liveAccount, // ✅ Extract account data for balance calculations
     livePositions: livePositionsData,
     livePositionsLoading: isLoading,
     livePositionsError: error,
