@@ -924,7 +924,7 @@ function PerformanceOverview() {
                 </svg>
                 {/* Centered content */}
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <div className="text-sm font-mono text-muted-foreground">Margin</div>
+                  <div className="text-sm font-mono text-muted-foreground">Filled</div>
                   <div className="text-xl font-mono font-bold">{filledRiskPercentage.toFixed(1)}%</div>
                   <div className="text-[10px] font-mono text-blue-500 dark:text-blue-400 mt-0.5">
                     Reserved: {reservedRiskPercentage.toFixed(1)}%
@@ -933,7 +933,7 @@ function PerformanceOverview() {
               </div>
               
               <div className="text-[10px] text-muted-foreground text-center mt-1">
-                <div>Margin: ${filledRisk.toFixed(2)}</div>
+                <div>Filled: ${filledRisk.toFixed(2)}</div>
                 <div className="text-blue-500 dark:text-blue-400">Reserved: ${reservedRisk.toFixed(2)}</div>
               </div>
               
