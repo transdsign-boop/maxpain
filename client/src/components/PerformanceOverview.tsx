@@ -902,8 +902,8 @@ function PerformanceOverview() {
                     r="42"
                     fill="none"
                     stroke="currentColor"
-                    strokeWidth="4"
-                    className="text-muted opacity-15"
+                    strokeWidth="6"
+                    className="text-muted opacity-40"
                   />
                   {/* Outer ring progress (reserved risk) */}
                   <circle
@@ -911,9 +911,9 @@ function PerformanceOverview() {
                     cy="50"
                     r="42"
                     fill="none"
-                    strokeWidth="4"
+                    strokeWidth="6"
                     strokeLinecap="round"
-                    className="stroke-blue-500 dark:stroke-blue-400 opacity-50 transition-all duration-300"
+                    className="stroke-blue-500 dark:stroke-blue-400 opacity-80 transition-all duration-300"
                     strokeDasharray={`${2 * Math.PI * 42}`}
                     strokeDashoffset={`${2 * Math.PI * 42 * (1 - Math.min(100, reservedRiskPercentage) / 100)}`}
                     data-testid="bar-reserved-risk"
@@ -926,8 +926,8 @@ function PerformanceOverview() {
                     r="36"
                     fill="none"
                     stroke="currentColor"
-                    strokeWidth="6"
-                    className="text-muted opacity-20"
+                    strokeWidth="8"
+                    className="text-muted opacity-40"
                   />
                   {/* Inner ring progress (filled risk) */}
                   <circle
@@ -935,7 +935,7 @@ function PerformanceOverview() {
                     cy="50"
                     r="36"
                     fill="none"
-                    strokeWidth="6"
+                    strokeWidth="8"
                     strokeLinecap="round"
                     className={`transition-all duration-300 ${
                       (() => {
