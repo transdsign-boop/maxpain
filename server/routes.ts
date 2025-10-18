@@ -703,6 +703,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Market Sentiment API routes
+  app.get("/api/sentiment/news", async (req, res) => {
+    try {
+      const newsApiKey = process.env.NEWS_API_KEY;
+      const category = (req.query.category as string) || 'all';
+      
+      if (!newsApiKey) {
+        return res.status(503).json({ 
+          error: "NEWS_API_KEY not configured",
+          articles: []
+        });
+      }
+      
+      // Determine search query based on category
+      let query = 'cryptocurrency OR bitcoin OR ethereum';
+      if (category === 'economic') {
+        query = 'federal reserve OR interest rate OR inflation OR economic policy';
+      } else if (category === 'crypto') {
+        query = 'cryptocurrency OR bitcoin OR ethereum OR blockchain OR crypto market';
+      }
+      
+      // Fetch from NewsAPI
+      const url = `https://newsapi.org/v2/everything?q=${encodeURIComponent(query)}&sortBy=publishedAt&pageSize=10&language=en&apiKey=${newsApiKey}`;
+      
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`NewsAPI returned ${response.status}`);
+      }
+      
+      const data = await response.json();
+      res.json(data);
+    } catch (error: any) {
+      console.error('Failed to fetch news:', error);
+      res.status(500).json({ error: error.message || "Failed to fetch news", articles: [] });
+    }
+  });
+
+  app.get("/api/sentiment/social", async (req, res) => {
+    try {
+      // Mock social sentiment data
+      // In production, integrate with LunarCrush, Reddit API, or Twitter API
+      const mockSentiment = {
+        score: Math.floor(Math.random() * 40) + 40, // 40-80 range
+        trending: ['bitcoin', 'ethereum', 'altseason', 'FOMC', 'rate-cuts'],
+        volume24h: Math.floor(Math.random() * 1000000) + 500000,
+        sources: ['twitter', 'reddit', 'telegram'],
+        lastUpdate: new Date().toISOString()
+      };
+      
+      res.json(mockSentiment);
+    } catch (error) {
+      console.error('Failed to fetch social sentiment:', error);
+      res.status(500).json({ error: "Failed to fetch social sentiment" });
+    }
+  });
+
   // User settings API routes
   app.get("/api/settings", async (req, res) => {
     try {
