@@ -893,7 +893,7 @@ function PerformanceOverview() {
             <div className="text-xs text-muted-foreground uppercase tracking-wider text-center whitespace-nowrap">Portfolio Risk</div>
             <div className="relative flex flex-col items-center">
               {/* Dual Ring Meter */}
-              <div className="relative w-28 h-28">
+              <div className="relative w-36 h-36">
                 <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
                   {/* Outer ring background (reserved risk) */}
                   <circle
@@ -969,7 +969,7 @@ function PerformanceOverview() {
               </div>
               
               {/* Risk Limit Slider */}
-              <div className="mt-3 w-28 space-y-1.5">
+              <div className="mt-3 w-36 space-y-1.5">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] text-muted-foreground">Max</span>
                   <span className="text-xs font-mono font-semibold">{localRiskLimit.toFixed(1)}%</span>
