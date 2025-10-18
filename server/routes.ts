@@ -1934,15 +1934,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const data = await response.json();
       
-      // Extract USDT balance from assets array (most common trading asset)
-      const usdtAsset = data.assets?.find((asset: any) => asset.asset === 'USDT');
+      // Extract USDF balance from assets array (most common trading asset)
+      const usdtAsset = data.assets?.find((asset: any) => asset.asset === 'USDF');
       const usdtBalance = usdtAsset ? parseFloat(usdtAsset.walletBalance) : 0;
       
       // Also check for USDC as fallback
       const usdcAsset = data.assets?.find((asset: any) => asset.asset === 'USDC');
       const usdcBalance = usdcAsset ? parseFloat(usdcAsset.walletBalance) : 0;
       
-      // Use USDT if available, otherwise USDC, otherwise fall back to availableBalance from top-level response
+      // Use USDF if available, otherwise USDC, otherwise fall back to availableBalance from top-level response
       const balance = usdtBalance || usdcBalance || parseFloat(data.availableBalance || '0');
       
       // Add balance to response
@@ -6482,7 +6482,7 @@ async function connectToUserDataStream() {
           // Extract balance data from WebSocket update
           if (event.a?.B) {
             const balances = event.a.B;
-            const usdtBalance = balances.find((b: any) => b.a === 'USDT');
+            const usdtBalance = balances.find((b: any) => b.a === 'USDF');
             const usdcBalance = balances.find((b: any) => b.a === 'USDC');
             
             const balance = usdtBalance ? parseFloat(usdtBalance.wb) : 
