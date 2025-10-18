@@ -275,9 +275,9 @@ export class DatabaseStorage implements IStorage {
   async getAssetPerformance(): Promise<{ symbol: string; wins: number; losses: number; winRate: number; totalPnl: number; totalTrades: number }[]> {
     const result = await db.select({
       symbol: positions.symbol,
-      wins: drizzleSql<number>`COUNT(CASE WHEN ${positions.isOpen} = false AND COALESCE(NULLIF(${positions.realizedPnl}, '')::numeric, 0) > 0 THEN 1 END)`,
-      losses: drizzleSql<number>`COUNT(CASE WHEN ${positions.isOpen} = false AND COALESCE(NULLIF(${positions.realizedPnl}, '')::numeric, 0) < 0 THEN 1 END)`,
-      totalPnl: drizzleSql<number>`COALESCE(SUM(CASE WHEN ${positions.isOpen} = false THEN COALESCE(NULLIF(${positions.realizedPnl}, '')::numeric, 0) ELSE 0::numeric END), 0)`,
+      wins: drizzleSql<number>`COUNT(CASE WHEN ${positions.isOpen} = false AND COALESCE((CASE WHEN ${positions.realizedPnl}::text ~ '^-?[0-9]+\\.?[0-9]*$' THEN ${positions.realizedPnl}::numeric ELSE NULL END), 0) > 0 THEN 1 END)`,
+      losses: drizzleSql<number>`COUNT(CASE WHEN ${positions.isOpen} = false AND COALESCE((CASE WHEN ${positions.realizedPnl}::text ~ '^-?[0-9]+\\.?[0-9]*$' THEN ${positions.realizedPnl}::numeric ELSE NULL END), 0) < 0 THEN 1 END)`,
+      totalPnl: drizzleSql<number>`COALESCE(SUM(CASE WHEN ${positions.isOpen} = false THEN COALESCE((CASE WHEN ${positions.realizedPnl}::text ~ '^-?[0-9]+\\.?[0-9]*$' THEN ${positions.realizedPnl}::numeric ELSE NULL END), 0) ELSE 0::numeric END), 0)`,
       totalTrades: drizzleSql<number>`COUNT(CASE WHEN ${positions.isOpen} = false THEN 1 END)`,
     })
     .from(positions)

@@ -934,6 +934,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const performance = await storage.getAssetPerformance();
       res.json(performance);
     } catch (error) {
+      console.error("❌ Asset performance error:", error);
       res.status(500).json({ error: "Failed to fetch asset performance" });
     }
   });
