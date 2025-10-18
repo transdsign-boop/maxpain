@@ -703,40 +703,148 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Market Sentiment API routes
+  // Unified Market News API - aggregates from Alpha Vantage, CryptoNews-API, and Truth Social
   app.get("/api/sentiment/news", async (req, res) => {
     try {
-      const newsApiKey = process.env.NEWS_API_KEY;
       const category = (req.query.category as string) || 'all';
+      const cacheKey = `news_${category}`;
+      const cached = getCached<any>(cacheKey, 300000); // 5-minute cache
       
-      if (!newsApiKey) {
-        return res.status(503).json({ 
-          error: "NEWS_API_KEY not configured",
-          articles: []
-        });
+      if (cached) {
+        return res.json(cached);
+      }
+
+      const allArticles: any[] = [];
+      
+      // Fetch from Alpha Vantage (market/economic news)
+      if (category === 'all' || category === 'economic') {
+        try {
+          const alphaVantageKey = process.env.ALPHA_VANTAGE_API_KEY;
+          if (alphaVantageKey) {
+            const topics = category === 'economic' 
+              ? 'economy_monetary,economy_fiscal,earnings,ipo,financial_markets'
+              : 'technology,finance,earnings';
+            
+            const avUrl = `https://www.alphavantage.co/query?function=NEWS_SENTIMENT&topics=${topics}&limit=10&apikey=${alphaVantageKey}`;
+            const avResponse = await fetch(avUrl);
+            
+            if (avResponse.ok) {
+              const avData = await avResponse.json();
+              if (avData.feed) {
+                avData.feed.forEach((item: any) => {
+                  allArticles.push({
+                    title: item.title,
+                    description: item.summary || '',
+                    url: item.url,
+                    source: { name: item.source || 'Alpha Vantage' },
+                    publishedAt: item.time_published,
+                    sourceType: 'market',
+                    sentiment: item.overall_sentiment_label?.toLowerCase() || null,
+                    sentimentScore: item.overall_sentiment_score || null
+                  });
+                });
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Alpha Vantage fetch failed:', error);
+        }
       }
       
-      // Determine search query based on category
-      let query = 'cryptocurrency OR bitcoin OR ethereum';
-      if (category === 'economic') {
-        query = 'federal reserve OR interest rate OR inflation OR economic policy';
-      } else if (category === 'crypto') {
-        query = 'cryptocurrency OR bitcoin OR ethereum OR blockchain OR crypto market';
+      // Fetch from CryptoNews-API (crypto-specific news)
+      if (category === 'all' || category === 'crypto') {
+        try {
+          const cryptoNewsKey = process.env.CRYPTO_NEWS_API_KEY;
+          if (cryptoNewsKey) {
+            const cnUrl = `https://cryptonews-api.com/api/v1?tickers=BTC,ETH,ASTER&items=10&token=${cryptoNewsKey}`;
+            const cnResponse = await fetch(cnUrl);
+            
+            if (cnResponse.ok) {
+              const cnData = await cnResponse.json();
+              if (cnData.data) {
+                cnData.data.forEach((item: any) => {
+                  allArticles.push({
+                    title: item.title || item.news_title,
+                    description: item.text || item.news_text || '',
+                    url: item.news_url || item.url,
+                    source: { name: item.source_name || 'CryptoNews' },
+                    publishedAt: item.date || item.published_at,
+                    sourceType: 'crypto',
+                    sentiment: item.sentiment?.toLowerCase() || null,
+                    sentimentScore: null
+                  });
+                });
+              }
+            }
+          }
+        } catch (error) {
+          console.error('CryptoNews-API fetch failed:', error);
+        }
       }
       
-      // Fetch from NewsAPI
-      const url = `https://newsapi.org/v2/everything?q=${encodeURIComponent(query)}&sortBy=publishedAt&pageSize=10&language=en&apiKey=${newsApiKey}`;
-      
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`NewsAPI returned ${response.status}`);
+      // Fetch from Truth Social (Trump posts - political category)
+      if (category === 'all' || category === 'political') {
+        try {
+          const truthSocialKey = process.env.TRUTH_SOCIAL_API_KEY;
+          if (truthSocialKey) {
+            const tsUrl = `https://api.scrapecreators.com/v1/truthsocial/profile?handle=realDonaldTrump`;
+            const tsResponse = await fetch(tsUrl, {
+              headers: { 'x-api-key': truthSocialKey }
+            });
+            
+            if (tsResponse.ok) {
+              const tsData = await tsResponse.json();
+              if (tsData.posts) {
+                tsData.posts.slice(0, 5).forEach((post: any) => {
+                  allArticles.push({
+                    title: `Trump: ${post.content?.substring(0, 100)}${post.content?.length > 100 ? '...' : ''}`,
+                    description: post.content || '',
+                    url: post.url || `https://truthsocial.com/@realDonaldTrump`,
+                    source: { name: 'Truth Social' },
+                    publishedAt: post.timestamp || post.created_at,
+                    sourceType: 'political',
+                    sentiment: null,
+                    sentimentScore: null,
+                    engagement: {
+                      likes: post.likes || post.favourites_count || 0,
+                      reposts: post.reposts || post.reblogs_count || 0
+                    }
+                  });
+                });
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Truth Social API fetch failed:', error);
+        }
       }
       
-      const data = await response.json();
-      res.json(data);
+      // Sort by date (newest first)
+      allArticles.sort((a, b) => {
+        const dateA = new Date(a.publishedAt).getTime();
+        const dateB = new Date(b.publishedAt).getTime();
+        return dateB - dateA;
+      });
+      
+      const result = {
+        articles: allArticles,
+        totalResults: allArticles.length,
+        sources: {
+          market: allArticles.filter(a => a.sourceType === 'market').length,
+          crypto: allArticles.filter(a => a.sourceType === 'crypto').length,
+          political: allArticles.filter(a => a.sourceType === 'political').length
+        }
+      };
+      
+      setCache(cacheKey, result);
+      res.json(result);
     } catch (error: any) {
-      console.error('Failed to fetch news:', error);
-      res.status(500).json({ error: error.message || "Failed to fetch news", articles: [] });
+      console.error('Failed to fetch aggregated news:', error);
+      res.status(500).json({ 
+        error: error.message || "Failed to fetch news", 
+        articles: [],
+        totalResults: 0
+      });
     }
   });
 

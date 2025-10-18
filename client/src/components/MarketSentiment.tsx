@@ -67,7 +67,7 @@ interface MarketSentimentData {
 }
 
 export default function MarketSentiment() {
-  const [newsCategory, setNewsCategory] = useState<'all' | 'economic' | 'crypto'>('all');
+  const [newsCategory, setNewsCategory] = useState<'all' | 'economic' | 'crypto' | 'political'>('all');
 
   // Fetch Crypto Fear & Greed Index (free API - no key needed)
   const fearGreedQuery = useQuery<{ data: FearGreedData[] }>({
@@ -378,8 +378,9 @@ export default function MarketSentiment() {
                 data-testid="select-news-category"
               >
                 <option value="all">All</option>
-                <option value="economic">Economic</option>
+                <option value="economic">Market</option>
                 <option value="crypto">Crypto</option>
+                <option value="political">Political</option>
               </select>
             </CardTitle>
           </CardHeader>
@@ -395,38 +396,89 @@ export default function MarketSentiment() {
                   News feed unavailable
                 </div>
                 <div className="text-xs text-muted-foreground mt-1">
-                  Configure NEWS_API_KEY to enable
+                  Configure API keys to enable:<br />
+                  ALPHA_VANTAGE_API_KEY (market)<br />
+                  CRYPTO_NEWS_API_KEY (crypto)<br />
+                  TRUTH_SOCIAL_API_KEY (political)
                 </div>
               </div>
             ) : (
               <div className="space-y-3 max-h-[300px] overflow-y-auto">
-                {newsQuery.data?.articles?.slice(0, 5).map((article, i) => (
-                  <a
-                    key={i}
-                    href={article.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block p-3 rounded-md border border-border hover-elevate active-elevate-2 transition-all"
-                    data-testid={`news-article-${i}`}
-                  >
-                    <div className="flex items-start gap-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="text-xs font-medium line-clamp-2 mb-1">
-                          {article.title}
+                {newsQuery.data?.articles?.slice(0, 10).map((article: any, i: number) => {
+                  const sourceTypeColor = 
+                    article.sourceType === 'market' ? 'bg-blue-500/10 text-blue-500 border-blue-500/20' :
+                    article.sourceType === 'crypto' ? 'bg-purple-500/10 text-purple-500 border-purple-500/20' :
+                    article.sourceType === 'political' ? 'bg-orange-500/10 text-orange-500 border-orange-500/20' :
+                    'bg-muted text-muted-foreground';
+                  
+                  const sentimentColor = 
+                    article.sentiment === 'bullish' || article.sentiment === 'positive' ? 'text-lime-500' :
+                    article.sentiment === 'bearish' || article.sentiment === 'negative' ? 'text-orange-500' :
+                    'text-muted-foreground';
+                  
+                  return (
+                    <a
+                      key={i}
+                      href={article.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block p-3 rounded-md border border-border hover-elevate active-elevate-2 transition-all"
+                      data-testid={`news-article-${i}`}
+                    >
+                      <div className="flex items-start gap-2">
+                        <div className="flex-1 min-w-0">
+                          {/* Title with source badge */}
+                          <div className="flex items-start gap-2 mb-1">
+                            <div className="text-xs font-medium line-clamp-2 flex-1">
+                              {article.title}
+                            </div>
+                            <Badge 
+                              variant="outline" 
+                              className={`text-xs px-1.5 py-0 ${sourceTypeColor} flex-shrink-0`}
+                              data-testid={`badge-source-${i}`}
+                            >
+                              {article.sourceType === 'market' ? '📊' : 
+                               article.sourceType === 'crypto' ? '💰' : '🇺🇸'}
+                            </Badge>
+                          </div>
+                          
+                          <div className="text-xs text-muted-foreground line-clamp-1 mb-1">
+                            {article.description}
+                          </div>
+                          
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+                            <span>{article.source.name}</span>
+                            <span>•</span>
+                            <span>{format(new Date(article.publishedAt), 'MMM d, h:mm a')}</span>
+                            
+                            {/* Sentiment indicator */}
+                            {article.sentiment && (
+                              <>
+                                <span>•</span>
+                                <span className={`font-medium ${sentimentColor}`} data-testid={`sentiment-${i}`}>
+                                  {article.sentiment === 'bullish' || article.sentiment === 'positive' ? '↗ Bullish' :
+                                   article.sentiment === 'bearish' || article.sentiment === 'negative' ? '↘ Bearish' :
+                                   '→ Neutral'}
+                                </span>
+                              </>
+                            )}
+                            
+                            {/* Engagement for political posts */}
+                            {article.engagement && (
+                              <>
+                                <span>•</span>
+                                <span data-testid={`engagement-${i}`}>
+                                  👍 {article.engagement.likes.toLocaleString()}
+                                </span>
+                              </>
+                            )}
+                          </div>
                         </div>
-                        <div className="text-xs text-muted-foreground line-clamp-1 mb-1">
-                          {article.description}
-                        </div>
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <span>{article.source.name}</span>
-                          <span>•</span>
-                          <span>{format(new Date(article.publishedAt), 'MMM d, h:mm a')}</span>
-                        </div>
+                        <ExternalLink className="h-3 w-3 text-muted-foreground flex-shrink-0" />
                       </div>
-                      <ExternalLink className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                    </div>
-                  </a>
-                ))}
+                    </a>
+                  );
+                })}
               </div>
             )}
           </CardContent>
