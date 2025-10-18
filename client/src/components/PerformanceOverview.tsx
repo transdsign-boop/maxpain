@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Calendar } from "@/components/ui/calendar";
@@ -1165,14 +1166,24 @@ function PerformanceOverview() {
                           <label className="text-xs text-muted-foreground">Hour</label>
                           <Input
                             type="number"
-                            min="0"
-                            max="23"
-                            value={dateRange.start?.getHours() ?? 0}
+                            min="1"
+                            max="12"
+                            value={(() => {
+                              const hours24 = dateRange.start?.getHours() ?? 0;
+                              const hours12 = hours24 === 0 ? 12 : hours24 > 12 ? hours24 - 12 : hours24;
+                              return hours12;
+                            })()}
                             onChange={(e) => {
-                              const hours = parseInt(e.target.value) || 0;
+                              const hours12 = parseInt(e.target.value) || 12;
+                              const clampedHours12 = Math.min(12, Math.max(1, hours12));
                               setDateRange(prev => {
                                 const newStart = prev.start ? new Date(prev.start) : new Date();
-                                newStart.setHours(Math.min(23, Math.max(0, hours)));
+                                const currentHours24 = newStart.getHours();
+                                const isPM = currentHours24 >= 12;
+                                let hours24 = clampedHours12;
+                                if (isPM && clampedHours12 !== 12) hours24 = clampedHours12 + 12;
+                                else if (!isPM && clampedHours12 === 12) hours24 = 0;
+                                newStart.setHours(hours24);
                                 return { ...prev, start: newStart };
                               });
                             }}
@@ -1199,6 +1210,35 @@ function PerformanceOverview() {
                             data-testid="input-start-minute"
                           />
                         </div>
+                        <div className="flex-1">
+                          <label className="text-xs text-muted-foreground">Period</label>
+                          <Select
+                            value={(dateRange.start?.getHours() ?? 0) >= 12 ? "PM" : "AM"}
+                            onValueChange={(value) => {
+                              setDateRange(prev => {
+                                const newStart = prev.start ? new Date(prev.start) : new Date();
+                                const currentHours24 = newStart.getHours();
+                                const currentHours12 = currentHours24 === 0 ? 12 : currentHours24 > 12 ? currentHours24 - 12 : currentHours24;
+                                let newHours24 = currentHours24;
+                                if (value === "PM" && currentHours24 < 12) {
+                                  newHours24 = currentHours12 === 12 ? 12 : currentHours12 + 12;
+                                } else if (value === "AM" && currentHours24 >= 12) {
+                                  newHours24 = currentHours12 === 12 ? 0 : currentHours12;
+                                }
+                                newStart.setHours(newHours24);
+                                return { ...prev, start: newStart };
+                              });
+                            }}
+                          >
+                            <SelectTrigger className="h-8" data-testid="select-start-period">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="AM">AM</SelectItem>
+                              <SelectItem value="PM">PM</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </div>
                     </div>
                     <div>
@@ -1222,14 +1262,24 @@ function PerformanceOverview() {
                           <label className="text-xs text-muted-foreground">Hour</label>
                           <Input
                             type="number"
-                            min="0"
-                            max="23"
-                            value={dateRange.end?.getHours() ?? 23}
+                            min="1"
+                            max="12"
+                            value={(() => {
+                              const hours24 = dateRange.end?.getHours() ?? 23;
+                              const hours12 = hours24 === 0 ? 12 : hours24 > 12 ? hours24 - 12 : hours24;
+                              return hours12;
+                            })()}
                             onChange={(e) => {
-                              const hours = parseInt(e.target.value) || 0;
+                              const hours12 = parseInt(e.target.value) || 12;
+                              const clampedHours12 = Math.min(12, Math.max(1, hours12));
                               setDateRange(prev => {
                                 const newEnd = prev.end ? new Date(prev.end) : new Date();
-                                newEnd.setHours(Math.min(23, Math.max(0, hours)));
+                                const currentHours24 = newEnd.getHours();
+                                const isPM = currentHours24 >= 12;
+                                let hours24 = clampedHours12;
+                                if (isPM && clampedHours12 !== 12) hours24 = clampedHours12 + 12;
+                                else if (!isPM && clampedHours12 === 12) hours24 = 0;
+                                newEnd.setHours(hours24);
                                 return { ...prev, end: newEnd };
                               });
                             }}
@@ -1255,6 +1305,35 @@ function PerformanceOverview() {
                             className="h-8"
                             data-testid="input-end-minute"
                           />
+                        </div>
+                        <div className="flex-1">
+                          <label className="text-xs text-muted-foreground">Period</label>
+                          <Select
+                            value={(dateRange.end?.getHours() ?? 23) >= 12 ? "PM" : "AM"}
+                            onValueChange={(value) => {
+                              setDateRange(prev => {
+                                const newEnd = prev.end ? new Date(prev.end) : new Date();
+                                const currentHours24 = newEnd.getHours();
+                                const currentHours12 = currentHours24 === 0 ? 12 : currentHours24 > 12 ? currentHours24 - 12 : currentHours24;
+                                let newHours24 = currentHours24;
+                                if (value === "PM" && currentHours24 < 12) {
+                                  newHours24 = currentHours12 === 12 ? 12 : currentHours12 + 12;
+                                } else if (value === "AM" && currentHours24 >= 12) {
+                                  newHours24 = currentHours12 === 12 ? 0 : currentHours12;
+                                }
+                                newEnd.setHours(newHours24);
+                                return { ...prev, end: newEnd };
+                              });
+                            }}
+                          >
+                            <SelectTrigger className="h-8" data-testid="select-end-period">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="AM">AM</SelectItem>
+                              <SelectItem value="PM">PM</SelectItem>
+                            </SelectContent>
+                          </Select>
                         </div>
                       </div>
                     </div>
@@ -1331,12 +1410,12 @@ function PerformanceOverview() {
                   <CalendarIcon className="h-3 w-3" />
                   {dateRange.start && (() => {
                     const hasTime = dateRange.start.getHours() !== 0 || dateRange.start.getMinutes() !== 0;
-                    return format(dateRange.start, hasTime ? 'MMM d HH:mm' : 'MMM d');
+                    return format(dateRange.start, hasTime ? 'MMM d h:mm a' : 'MMM d');
                   })()}
                   {dateRange.start && dateRange.end && ' - '}
                   {dateRange.end && (() => {
                     const hasTime = dateRange.end.getHours() !== 23 || dateRange.end.getMinutes() !== 59;
-                    return format(dateRange.end, hasTime ? 'MMM d HH:mm' : 'MMM d');
+                    return format(dateRange.end, hasTime ? 'MMM d h:mm a' : 'MMM d');
                   })()}
                   <X 
                     className="h-3 w-3 ml-1 cursor-pointer hover:text-destructive" 
