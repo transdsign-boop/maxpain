@@ -1858,7 +1858,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // 🔍 DEBUG: Direct REST API account balance check (bypass WebSocket cache)
   app.get('/api/debug/account-balance', async (req, res) => {
     try {
-      const { exchangeRegistry } = await import('./exchanges/registry');
+      const { AsterExchangeAdapter } = await import('./exchanges/aster-adapter');
       const { liveDataOrchestrator } = await import('./live-data-orchestrator');
       
       const activeStrategy = await db.query.strategies.findFirst({
@@ -1869,7 +1869,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: 'No active strategy found' });
       }
 
-      const adapter = await exchangeRegistry.getAdapter(activeStrategy.id);
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+      
+      if (!apiKey || !secretKey) {
+        return res.status(500).json({ error: 'Aster API keys not configured' });
+      }
+
+      const adapter = new AsterExchangeAdapter({
+        apiKey,
+        secretKey,
+        baseURL: 'https://fapi.asterdex.com'
+      });
       const accountInfo = await adapter.getAccountInfo();
       
       // Also get WebSocket cached data for comparison
