@@ -1040,7 +1040,7 @@ export const StrategyStatus = memo(function StrategyStatus() {
           realizedPnl: '0', // Live positions from exchange don't have realized P&L
           leverage, // Include leverage for liquidation donut calculation
           layersFilled,
-          maxLayers: activeStrategy?.maxLayers || 5,
+          maxLayers: activeStrategy?.maxLayers,
           lastLayerPrice: p.entryPrice, // Use entry price as last layer price
           isOpen: true,
           openedAt: new Date(),
