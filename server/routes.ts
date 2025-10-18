@@ -773,16 +773,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
       const liquidations = await storage.getLiquidationsSince(oneHourAgo, 1000);
       
-      // Get top 10 most actively liquidated symbols
-      const symbolCounts = new Map<string, number>();
-      liquidations.forEach(liq => {
-        symbolCounts.set(liq.symbol, (symbolCounts.get(liq.symbol) || 0) + 1);
-      });
+      // Get top symbols - if no liquidations, use default top symbols
+      let topSymbols: string[] = [];
       
-      const topSymbols = Array.from(symbolCounts.entries())
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 10)
-        .map(([symbol]) => symbol);
+      if (liquidations.length > 0) {
+        const symbolCounts = new Map<string, number>();
+        liquidations.forEach(liq => {
+          symbolCounts.set(liq.symbol, (symbolCounts.get(liq.symbol) || 0) + 1);
+        });
+        
+        topSymbols = Array.from(symbolCounts.entries())
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 10)
+          .map(([symbol]) => symbol);
+      } else {
+        // Default to top 5 symbols when no liquidations
+        topSymbols = ['BTCUSDT', 'ASTERUSDT', 'HYPEUSDT', 'BNBUSDT', 'AIAUSDT'];
+      }
       
       // Fetch order book data for top symbols (in parallel with limit)
       const orderBookPromises = topSymbols.slice(0, 5).map(async (symbol) => {
