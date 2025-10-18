@@ -438,9 +438,9 @@ function PerformanceOverview() {
     const stopLossPercent = Number(activeStrategy.stopLossPercent) || 2;
     const positions = livePositions ? livePositions.filter(p => parseFloat(p.positionAmt) !== 0) : [];
 
-    // Calculate total balance for percentage
+    // ✅ Use exchange-provided values directly - don't recalculate
     const unrealizedPnl = liveAccount ? (parseFloat(liveAccount.totalUnrealizedProfit) || 0) : 0;
-    const totalBalance = liveAccount ? (parseFloat(liveAccount.totalWalletBalance || '0') || 0) + unrealizedPnl : 0;
+    const totalBalance = liveAccount ? (parseFloat(liveAccount.totalWalletBalance || '0') || 0) : 0; // ✅ Wallet balance only
 
     const totalPotentialLoss = positions.reduce((sum, position) => {
       const entryPrice = parseFloat(position.entryPrice) || 0;
@@ -780,9 +780,9 @@ function PerformanceOverview() {
     return null;
   };
 
-  // Calculate unified account metrics (live-only mode)
+  // ✅ Use exchange-provided values directly - don't recalculate
   const unrealizedPnl = liveAccount ? (parseFloat(liveAccount.totalUnrealizedProfit) || 0) : 0;
-  const totalBalance = liveAccount ? (parseFloat(liveAccount.totalWalletBalance || '0') || 0) + unrealizedPnl : 0;
+  const totalBalance = liveAccount ? (parseFloat(liveAccount.totalWalletBalance || '0') || 0) : 0; // ✅ Wallet balance only
   
   // Calculate margin in use and exposure (live-only mode)
   const marginInUse = liveAccount ? (parseFloat(liveAccount.totalInitialMargin || '0') || 0) : 0;

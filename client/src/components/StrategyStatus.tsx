@@ -1053,14 +1053,14 @@ export const StrategyStatus = memo(function StrategyStatus() {
     totalExposure: livePositionsData.reduce((sum, p) => 
       sum + Math.abs(parseFloat(p.positionAmt) * parseFloat(p.markPrice || p.entryPrice || 0)), 0
     ),
-    currentBalance: 0, // Will be updated from account data
+    currentBalance: parseFloat(liveAccount?.totalWalletBalance || '0'), // ✅ Use exchange's actual wallet balance
     startingBalance: 0,
     totalPnl: 0,
     realizedPnl: 0,
     winRate: 0,
     totalTrades: 0,
     activePositions: livePositionsData.filter(p => parseFloat(p.positionAmt) !== 0).length,
-    unrealizedPnl: livePositionsData.reduce((sum, p) => sum + parseFloat(p.unRealizedProfit || '0'), 0),
+    unrealizedPnl: parseFloat(liveAccount?.totalUnrealizedProfit || '0'), // ✅ Use exchange's actual unrealized P&L
   } : undefined;
 
   // Use live positions summary (live-only mode)
