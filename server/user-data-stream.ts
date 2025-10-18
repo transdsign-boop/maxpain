@@ -184,6 +184,8 @@ class UserDataStreamManager {
           
           if (activeStrategy) {
             const { liveDataOrchestrator } = await import('./live-data-orchestrator');
+            // Initialize USDT balance cache from REST API
+            await liveDataOrchestrator.initializeUsdtBalance(activeStrategy.id);
             liveDataOrchestrator.updateAccountFromWebSocket(activeStrategy.id, balances);
             console.log(`✅ Initial account data loaded ($${balance.toFixed(2)})`);
           }
