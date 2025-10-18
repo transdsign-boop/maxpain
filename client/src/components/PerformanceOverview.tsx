@@ -173,37 +173,6 @@ function PerformanceOverview() {
   const commissions = commissionsQuery.data;
   const fundingFees = fundingFeesQuery.data;
 
-  // Calculate top 3 performing assets by total P&L (only from closed positions)
-  const top3Assets = useMemo(() => {
-    if (!assetPerformance || assetPerformance.length === 0) return [];
-    
-    // Filter out assets with no trades
-    const validAssets = assetPerformance.filter(asset => 
-      (asset.totalTrades || 0) > 0
-    );
-    
-    if (validAssets.length === 0) return [];
-    
-    return validAssets
-      .sort((a, b) => (b.totalPnl || 0) - (a.totalPnl || 0))
-      .slice(0, 3);
-  }, [assetPerformance]);
-
-  // Calculate bottom 3 performing assets by total P&L
-  const bottom3Assets = useMemo(() => {
-    if (!assetPerformance || assetPerformance.length === 0) return [];
-    
-    // Filter out assets with no trades
-    const validAssets = assetPerformance.filter(asset => 
-      (asset.totalTrades || 0) > 0
-    );
-    
-    if (validAssets.length === 0) return [];
-    
-    return validAssets
-      .sort((a, b) => (a.totalPnl || 0) - (b.totalPnl || 0))
-      .slice(0, 3);
-  }, [assetPerformance]);
 
   // Convert realized P&L events to chart data format
   const rawSourceData = useMemo(() => {
