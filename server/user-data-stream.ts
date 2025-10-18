@@ -169,7 +169,7 @@ class UserDataStreamManager {
           const initialMargin = parseFloat(accountData.totalInitialMargin || '0');
           
           const balances = [{
-            asset: 'USDT',
+            asset: 'USDF',
             walletBalance: balance.toString(),
             crossWalletBalance: available.toString(),
             unrealizedProfit: unrealized.toString(),

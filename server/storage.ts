@@ -518,8 +518,8 @@ export class DatabaseStorage implements IStorage {
 
       const data = await response.json();
       
-      // Check for USDT balance first (most common), then USDC, then fall back to top-level balance
-      const usdtAsset = data.assets?.find((asset: any) => asset.asset === 'USDT');
+      // Check for USDF balance first (most common), then USDC, then fall back to top-level balance
+      const usdtAsset = data.assets?.find((asset: any) => asset.asset === 'USDF');
       const usdtBalance = usdtAsset ? parseFloat(usdtAsset.walletBalance) : 0;
       
       const usdcAsset = data.assets?.find((asset: any) => asset.asset === 'USDC');
