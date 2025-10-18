@@ -3,6 +3,7 @@ import { useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import ConnectionStatus from "@/components/ConnectionStatus";
 import LiveLiquidationsSidebar from "@/components/LiveLiquidationsSidebar";
+import MarketSentiment from "@/components/MarketSentiment";
 import PerformanceOverview from "@/components/PerformanceOverview";
 import TradingStrategyDialog from "@/components/TradingStrategyDialog";
 import TradeErrorsDialog from "@/components/TradeErrorsDialog";
@@ -651,6 +652,9 @@ export default function Dashboard() {
       >
         {/* Cascade Risk Indicator */}
         <CascadeRiskIndicator />
+        
+        {/* Market Sentiment Dashboard */}
+        <MarketSentiment />
         
         {/* Performance Overview */}
         <PerformanceOverview />
