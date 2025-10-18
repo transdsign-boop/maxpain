@@ -1257,9 +1257,10 @@ export class StrategyEngine extends EventEmitter {
       }
 
       const data = await response.json();
-      // CRITICAL: Use totalWalletBalance (total account equity) NOT availableBalance
+      // CRITICAL: Extract USDF balance from assets array (Aster DEX uses USDF as collateral)
       // Risk must be calculated on total account value, not just leftover funds after positions are open
-      const totalWalletBalance = parseFloat(data.totalWalletBalance || '0');
+      const usdFAsset = data.assets?.find((asset: any) => asset.asset === 'USDF');
+      const totalWalletBalance = usdFAsset ? parseFloat(usdFAsset.walletBalance) : parseFloat(data.totalWalletBalance || '0');
       console.log(`💰 Exchange total wallet balance (for risk calc): $${totalWalletBalance.toFixed(2)}`);
       return totalWalletBalance;
     } catch (error) {
