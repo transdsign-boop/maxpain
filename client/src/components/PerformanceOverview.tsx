@@ -782,15 +782,15 @@ function PerformanceOverview() {
 
   // ✅ Use exchange-provided values directly - don't recalculate
   const unrealizedPnl = liveAccount ? (parseFloat(liveAccount.totalUnrealizedProfit) || 0) : 0;
-  const totalBalance = liveAccount ? (parseFloat(liveAccount.totalWalletBalance || '0') || 0) : 0; // ✅ Wallet balance only
+  const totalBalance = liveAccount ? (parseFloat(liveAccount.totalWalletBalance || '0') || 0) : 0; // ✅ Wallet balance only (USDF + USDT, no unrealized)
   
   // Calculate margin in use and exposure (live-only mode)
   const marginInUse = liveAccount ? (parseFloat(liveAccount.totalInitialMargin || '0') || 0) : 0;
   const leverage = activeStrategy?.leverage || 1;
   const totalExposure = marginInUse * leverage;
   
-  // Calculate available balance for new positions (Total Balance - Margin Already In Use)
-  const availableBalance = totalBalance - marginInUse;
+  // ✅ Use exchange-provided available balance (live streamed from WebSocket)
+  const availableBalance = liveAccount ? (parseFloat(liveAccount.availableBalance || '0') || 0) : 0;
 
   // Calculate percentages
   const unrealizedPnlPercent = totalBalance > 0 ? (unrealizedPnl / totalBalance) * 100 : 0;
