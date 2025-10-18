@@ -62,6 +62,7 @@ PERMANENT DATA PRESERVATION: ALL trading data MUST be preserved forever. The use
 - **Financial Metrics**: Realized P&L, commissions, and funding fees fetched directly from exchange API (e.g., `/fapi/v1/income`), not stored in DB.
 - **WebSocket Broadcasting**: `trade_block` event broadcasts system-wide blocking information.
 - **Exchange Limits UI**: Global Settings dialog displays real-time MIN_NOTIONAL, price precision, and quantity precision.
+- **Portfolio Risk Gauge** (Updated Oct 18, 2025): Displays actual margin used from exchange (`totalInitialMargin`) instead of calculated SL risk. "Margin" shows real funds locked on exchange; "Reserved" shows total risk allocated for full DCA schedules. Provides accurate view of capital utilization vs. risk exposure.
 
 **System Design Choices:**
 - **Data Persistence**: PostgreSQL via Neon serverless hosting.

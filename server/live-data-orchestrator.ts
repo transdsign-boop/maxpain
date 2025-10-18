@@ -423,7 +423,7 @@ class LiveDataOrchestrator {
     
     // Update account available balance based on calculated margin
     if (snapshot.account) {
-      const totalWallet = parseFloat(snapshot.account.totalWalletBalance);
+      const totalWallet = parseFloat(snapshot.account.totalWalletBalance || '0');
       const actualAvailable = totalWallet - totalMarginUsed;
       snapshot.account.availableBalance = actualAvailable.toString();
       snapshot.account.totalInitialMargin = totalMarginUsed.toString();
@@ -462,9 +462,12 @@ class LiveDataOrchestrator {
       const totalPnl = realizedPnl + unrealizedPnl;
       const startingBalance = currentBalance - totalPnl;
 
-      // Calculate portfolio risk (both filled and reserved)
-      let filledRiskDollars = 0;
-      let filledRiskPercentage = 0;
+      // Get actual margin used from exchange and calculate reserved risk
+      // Margin Used = actual margin locked on exchange (from totalInitialMargin)
+      // Reserved Risk = total risk allocated for full DCA schedules
+      const marginUsed = parseFloat(snapshot.account?.totalInitialMargin || '0');
+      const marginUsedPercentage = currentBalance > 0 ? (marginUsed / currentBalance) * 100 : 0;
+      
       let reservedRiskDollars = 0;
       let reservedRiskPercentage = 0;
 
@@ -486,8 +489,7 @@ class LiveDataOrchestrator {
             // Import strategyEngine singleton to access calculatePortfolioRisk
             const { strategyEngine } = await import('./strategy-engine');
             const portfolioRisk = await strategyEngine.calculatePortfolioRisk(strategy, session);
-            filledRiskDollars = portfolioRisk.filledRisk;
-            filledRiskPercentage = portfolioRisk.filledRiskPercentage;
+            // Use reserved risk from calculation (total allocated for full DCA)
             reservedRiskDollars = portfolioRisk.reservedRisk;
             reservedRiskPercentage = portfolioRisk.reservedRiskPercentage;
           }
@@ -504,8 +506,8 @@ class LiveDataOrchestrator {
         realizedPnl,
         currentBalance,
         startingBalance,
-        filledRiskDollars,
-        filledRiskPercentage,
+        filledRiskDollars: marginUsed, // Actual margin used on exchange
+        filledRiskPercentage: marginUsedPercentage,
         reservedRiskDollars,
         reservedRiskPercentage
       };
