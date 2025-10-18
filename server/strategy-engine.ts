@@ -1500,7 +1500,6 @@ export class StrategyEngine extends EventEmitter {
       
       // Fetch current DCA parameters once (same for all positions)
       const strategyWithDCA = await getStrategyWithDCA(strategy.id);
-      console.log(`   🔧 DEBUG: strategyWithDCA=${strategyWithDCA ? 'FOUND' : 'NULL'}, strategy.id=${strategy.id}`);
       
       for (const position of deduplicatedPositions) {
         const entryPrice = parseFloat(position.avgEntryPrice);
