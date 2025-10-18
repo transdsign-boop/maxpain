@@ -759,6 +759,158 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Comprehensive market sentiment endpoint (combines order book + liquidation data)
+  app.get("/api/sentiment/market", async (req, res) => {
+    try {
+      const cacheKey = 'market_sentiment';
+      const cached = getCached<any>(cacheKey, 30000); // 30 second cache
+      
+      if (cached) {
+        return res.json(cached);
+      }
+
+      // Fetch recent liquidations (last hour)
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      const liquidations = await storage.getLiquidationsSince(oneHourAgo, 1000);
+      
+      // Get top 10 most actively liquidated symbols
+      const symbolCounts = new Map<string, number>();
+      liquidations.forEach(liq => {
+        symbolCounts.set(liq.symbol, (symbolCounts.get(liq.symbol) || 0) + 1);
+      });
+      
+      const topSymbols = Array.from(symbolCounts.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10)
+        .map(([symbol]) => symbol);
+      
+      // Fetch order book data for top symbols (in parallel with limit)
+      const orderBookPromises = topSymbols.slice(0, 5).map(async (symbol) => {
+        try {
+          const response = await fetch(
+            `https://fapi.asterdex.com/fapi/v1/depth?symbol=${symbol}&limit=100`,
+            {
+              headers: {
+                'X-MBX-APIKEY': process.env.ASTER_API_KEY || ''
+              }
+            }
+          );
+          
+          if (!response.ok) {
+            console.warn(`Failed to fetch order book for ${symbol}: ${response.status}`);
+            return null;
+          }
+          
+          const orderBook = await response.json();
+          const bids = orderBook.bids || [];
+          const asks = orderBook.asks || [];
+          
+          // Calculate order book metrics
+          const bidDepth = bids.reduce((sum: number, [price, quantity]: [string, string]) => 
+            sum + parseFloat(price) * parseFloat(quantity), 0);
+          const askDepth = asks.reduce((sum: number, [price, quantity]: [string, string]) => 
+            sum + parseFloat(price) * parseFloat(quantity), 0);
+          
+          const totalDepth = bidDepth + askDepth;
+          const bidRatio = totalDepth > 0 ? bidDepth / totalDepth : 0.5;
+          
+          return {
+            symbol,
+            bidDepth,
+            askDepth,
+            bidRatio,
+            pressure: bidRatio > 0.55 ? 'bullish' : bidRatio < 0.45 ? 'bearish' : 'neutral'
+          };
+        } catch (error) {
+          console.error(`Error fetching order book for ${symbol}:`, error);
+          return null;
+        }
+      });
+      
+      const orderBookData = (await Promise.all(orderBookPromises)).filter(Boolean);
+      
+      // Calculate aggregate order book sentiment
+      let aggregateBidDepth = 0;
+      let aggregateAskDepth = 0;
+      let bullishCount = 0;
+      let bearishCount = 0;
+      let neutralCount = 0;
+      
+      orderBookData.forEach(data => {
+        if (data) {
+          aggregateBidDepth += data.bidDepth;
+          aggregateAskDepth += data.askDepth;
+          if (data.pressure === 'bullish') bullishCount++;
+          else if (data.pressure === 'bearish') bearishCount++;
+          else neutralCount++;
+        }
+      });
+      
+      const totalOrderBookDepth = aggregateBidDepth + aggregateAskDepth;
+      const overallBidRatio = totalOrderBookDepth > 0 ? aggregateBidDepth / totalOrderBookDepth : 0.5;
+      
+      // Calculate liquidation metrics
+      const longLiqs = liquidations.filter(l => l.side === 'long');
+      const shortLiqs = liquidations.filter(l => l.side === 'short');
+      
+      const longValue = longLiqs.reduce((sum, l) => sum + parseFloat(l.value), 0);
+      const shortValue = shortLiqs.reduce((sum, l) => sum + parseFloat(l.value), 0);
+      const totalLiqValue = longValue + shortValue;
+      
+      const longLiqRatio = totalLiqValue > 0 ? longValue / totalLiqValue : 0.5;
+      
+      // Combined sentiment logic:
+      // - Order book bidRatio > 0.55 = bullish pressure
+      // - Liquidations: more longs liquidated (longLiqRatio > 0.65) = bearish (longs getting rekt)
+      // - Combine both signals with weighting
+      const orderBookWeight = 0.6; // Order book is more predictive
+      const liquidationWeight = 0.4;
+      
+      // Invert liquidation ratio (more long liqs = bearish signal)
+      const liquidationBullishSignal = 1 - longLiqRatio;
+      
+      const combinedScore = (overallBidRatio * orderBookWeight) + (liquidationBullishSignal * liquidationWeight);
+      
+      let sentiment: 'bullish' | 'bearish' | 'neutral' = 'neutral';
+      if (combinedScore > 0.58) sentiment = 'bullish';
+      else if (combinedScore < 0.42) sentiment = 'bearish';
+      
+      const result = {
+        sentiment,
+        combinedScore: parseFloat(combinedScore.toFixed(4)),
+        orderBook: {
+          bidDepth: aggregateBidDepth.toFixed(2),
+          askDepth: aggregateAskDepth.toFixed(2),
+          bidRatio: overallBidRatio.toFixed(4),
+          pressure: overallBidRatio > 0.55 ? 'bullish' : overallBidRatio < 0.45 ? 'bearish' : 'neutral',
+          symbolsAnalyzed: orderBookData.length,
+          distribution: {
+            bullish: bullishCount,
+            bearish: bearishCount,
+            neutral: neutralCount
+          }
+        },
+        liquidations: {
+          totalValue: totalLiqValue.toFixed(2),
+          longValue: longValue.toFixed(2),
+          shortValue: shortValue.toFixed(2),
+          longRatio: longLiqRatio.toFixed(4),
+          count: liquidations.length,
+          longCount: longLiqs.length,
+          shortCount: shortLiqs.length
+        },
+        topSymbols,
+        timestamp: new Date().toISOString()
+      };
+      
+      setCache(cacheKey, result);
+      res.json(result);
+    } catch (error) {
+      console.error('Failed to fetch market sentiment:', error);
+      res.status(500).json({ error: "Failed to fetch market sentiment" });
+    }
+  });
+
   // User settings API routes
   app.get("/api/settings", async (req, res) => {
     try {

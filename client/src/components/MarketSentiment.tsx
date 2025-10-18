@@ -38,14 +38,32 @@ interface NewsArticle {
   content: string | null;
 }
 
-interface LiquidationMetrics {
-  totalValue: number;
-  longValue: number;
-  shortValue: number;
-  longCount: number;
-  shortCount: number;
+interface MarketSentimentData {
   sentiment: 'bullish' | 'bearish' | 'neutral';
-  trend: 'up' | 'down' | 'stable';
+  combinedScore: number;
+  orderBook: {
+    bidDepth: string;
+    askDepth: string;
+    bidRatio: string;
+    pressure: 'bullish' | 'bearish' | 'neutral';
+    symbolsAnalyzed: number;
+    distribution: {
+      bullish: number;
+      bearish: number;
+      neutral: number;
+    };
+  };
+  liquidations: {
+    totalValue: string;
+    longValue: string;
+    shortValue: string;
+    longRatio: string;
+    count: number;
+    longCount: number;
+    shortCount: number;
+  };
+  topSymbols: string[];
+  timestamp: string;
 }
 
 export default function MarketSentiment() {
@@ -63,15 +81,9 @@ export default function MarketSentiment() {
     refetchInterval: 5 * 60 * 1000,
   });
 
-  // Fetch recent liquidations for market metrics
-  const liquidationsQuery = useQuery<any[]>({
-    queryKey: ['/api/liquidations/recent'],
-    queryFn: async () => {
-      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-      const response = await fetch(`/api/liquidations/since/${oneHourAgo.toISOString()}?limit=1000`);
-      if (!response.ok) throw new Error('Failed to fetch liquidations');
-      return response.json();
-    },
+  // Fetch comprehensive market sentiment (order book + liquidations)
+  const marketSentimentQuery = useQuery<MarketSentimentData>({
+    queryKey: ['/api/sentiment/market'],
     staleTime: 30 * 1000, // Refresh every 30 seconds
     refetchInterval: 30 * 1000,
   });
@@ -100,52 +112,8 @@ export default function MarketSentiment() {
     refetchInterval: 5 * 60 * 1000,
   });
 
-  // Calculate liquidation metrics
-  const liquidationMetrics = useMemo((): LiquidationMetrics => {
-    const liquidations = liquidationsQuery.data || [];
-    
-    const longLiqs = liquidations.filter(l => l.side === 'long');
-    const shortLiqs = liquidations.filter(l => l.side === 'short');
-    
-    const longValue = longLiqs.reduce((sum, l) => sum + parseFloat(l.value), 0);
-    const shortValue = shortLiqs.reduce((sum, l) => sum + parseFloat(l.value), 0);
-    const totalValue = longValue + shortValue;
-    
-    // Determine sentiment based on liquidation ratio
-    // More long liquidations = bearish (longs getting rekt)
-    // More short liquidations = bullish (shorts getting squeezed)
-    const longRatio = totalValue > 0 ? longValue / totalValue : 0.5;
-    let sentiment: 'bullish' | 'bearish' | 'neutral' = 'neutral';
-    
-    if (longRatio > 0.65) {
-      sentiment = 'bearish'; // Longs getting liquidated
-    } else if (longRatio < 0.35) {
-      sentiment = 'bullish'; // Shorts getting liquidated
-    }
-    
-    // Determine trend based on recent activity
-    const recentLiqs = liquidations.slice(0, 20);
-    const olderLiqs = liquidations.slice(20, 40);
-    const recentValue = recentLiqs.reduce((sum, l) => sum + parseFloat(l.value), 0);
-    const olderValue = olderLiqs.reduce((sum, l) => sum + parseFloat(l.value), 0);
-    
-    let trend: 'up' | 'down' | 'stable' = 'stable';
-    if (recentValue > olderValue * 1.2) {
-      trend = 'up';
-    } else if (recentValue < olderValue * 0.8) {
-      trend = 'down';
-    }
-    
-    return {
-      totalValue,
-      longValue,
-      shortValue,
-      longCount: longLiqs.length,
-      shortCount: shortLiqs.length,
-      sentiment,
-      trend,
-    };
-  }, [liquidationsQuery.data]);
+  // Extract market sentiment data
+  const marketData = marketSentimentQuery.data;
 
   const fearGreedData = fearGreedQuery.data?.data?.[0];
   const fearGreedValue = fearGreedData ? parseInt(fearGreedData.value) : null;
@@ -188,63 +156,94 @@ export default function MarketSentiment() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-        {/* 1. Market Metrics Card */}
+        {/* 1. Market Metrics Card - Order Book + Liquidation Analysis */}
         <Card data-testid="card-market-metrics">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-2">
               <Activity className="h-4 w-4" />
-              Liquidation Sentiment
+              Market Sentiment
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Sentiment Indicator */}
-            <div className="text-center">
-              <div className={`text-4xl font-mono font-bold ${
-                liquidationMetrics.sentiment === 'bullish' 
-                  ? 'text-[rgb(190,242,100)]' 
-                  : liquidationMetrics.sentiment === 'bearish'
-                  ? 'text-[rgb(251,146,60)]'
-                  : 'text-muted-foreground'
-              }`} data-testid="icon-liq-sentiment">
-                {liquidationMetrics.sentiment === 'bullish' && <TrendingUp className="h-10 w-10 mx-auto" />}
-                {liquidationMetrics.sentiment === 'bearish' && <TrendingDown className="h-10 w-10 mx-auto" />}
-                {liquidationMetrics.sentiment === 'neutral' && <Minus className="h-10 w-10 mx-auto" />}
+            {marketSentimentQuery.isLoading ? (
+              <div className="text-center py-8 text-sm text-muted-foreground" data-testid="status-market-loading">
+                Analyzing markets...
               </div>
-              <div className="text-sm font-medium mt-2 capitalize" data-testid="text-liq-sentiment">
-                {liquidationMetrics.sentiment}
+            ) : marketSentimentQuery.error || !marketData ? (
+              <div className="text-center py-8" data-testid="status-market-error">
+                <AlertTriangle className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                <div className="text-xs text-muted-foreground">
+                  Market data unavailable
+                </div>
               </div>
-            </div>
+            ) : (
+              <>
+                {/* Combined Sentiment Indicator */}
+                <div className="text-center">
+                  <div className={`text-4xl font-mono font-bold ${
+                    marketData.sentiment === 'bullish' 
+                      ? 'text-[rgb(190,242,100)]' 
+                      : marketData.sentiment === 'bearish'
+                      ? 'text-[rgb(251,146,60)]'
+                      : 'text-muted-foreground'
+                  }`} data-testid="icon-market-sentiment">
+                    {marketData.sentiment === 'bullish' && <TrendingUp className="h-10 w-10 mx-auto" />}
+                    {marketData.sentiment === 'bearish' && <TrendingDown className="h-10 w-10 mx-auto" />}
+                    {marketData.sentiment === 'neutral' && <Minus className="h-10 w-10 mx-auto" />}
+                  </div>
+                  <div className="text-sm font-medium mt-2 capitalize" data-testid="text-market-sentiment">
+                    {marketData.sentiment}
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    Score: {(marketData.combinedScore * 100).toFixed(0)}%
+                  </div>
+                </div>
 
-            {/* Liquidation Stats */}
-            <div className="space-y-2 pt-2 border-t">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">Total Volume (1h)</span>
-                <span className="font-mono font-semibold" data-testid="value-liq-total">
-                  {formatCurrency(liquidationMetrics.totalValue)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-[rgb(251,146,60)]">Long Liquidations</span>
-                <span className="font-mono" data-testid="value-liq-long">{formatCurrency(liquidationMetrics.longValue)}</span>
-              </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-[rgb(190,242,100)]">Short Liquidations</span>
-                <span className="font-mono" data-testid="value-liq-short">{formatCurrency(liquidationMetrics.shortValue)}</span>
-              </div>
-              <div className="flex items-center justify-between text-xs pt-2 border-t">
-                <span className="text-muted-foreground">Trend</span>
-                <Badge 
-                  variant={liquidationMetrics.trend === 'up' ? 'default' : 'outline'} 
-                  className="text-xs"
-                  data-testid="badge-liq-trend"
-                >
-                  {liquidationMetrics.trend === 'up' && <ArrowUpRight className="h-3 w-3 mr-1" />}
-                  {liquidationMetrics.trend === 'down' && <ArrowDownRight className="h-3 w-3 mr-1" />}
-                  {liquidationMetrics.trend === 'stable' && <Minus className="h-3 w-3 mr-1" />}
-                  {liquidationMetrics.trend}
-                </Badge>
-              </div>
-            </div>
+                {/* Order Book Analysis */}
+                <div className="space-y-2 pt-2 border-t">
+                  <div className="text-xs font-medium text-muted-foreground mb-2">Order Book Pressure</div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Bid Depth</span>
+                    <span className="font-mono text-[rgb(190,242,100)]" data-testid="value-bid-depth">
+                      {formatCurrency(parseFloat(marketData.orderBook.bidDepth))}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Ask Depth</span>
+                    <span className="font-mono text-[rgb(251,146,60)]" data-testid="value-ask-depth">
+                      {formatCurrency(parseFloat(marketData.orderBook.askDepth))}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Pressure</span>
+                    <Badge 
+                      variant={marketData.orderBook.pressure === 'bullish' ? 'default' : 'outline'} 
+                      className="text-xs"
+                      data-testid="badge-orderbook-pressure"
+                    >
+                      {marketData.orderBook.pressure}
+                    </Badge>
+                  </div>
+                </div>
+
+                {/* Liquidation Stats */}
+                <div className="space-y-2 pt-2 border-t">
+                  <div className="text-xs font-medium text-muted-foreground mb-2">Liquidations (1h)</div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-[rgb(251,146,60)]">Long Liqs</span>
+                    <span className="font-mono" data-testid="value-liq-long">
+                      {formatCurrency(parseFloat(marketData.liquidations.longValue))}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-[rgb(190,242,100)]">Short Liqs</span>
+                    <span className="font-mono" data-testid="value-liq-short">
+                      {formatCurrency(parseFloat(marketData.liquidations.shortValue))}
+                    </span>
+                  </div>
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
 
