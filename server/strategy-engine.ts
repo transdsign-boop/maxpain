@@ -790,12 +790,19 @@ export class StrategyEngine extends EventEmitter {
     // NOTE: Cooldown is now checked BEFORE lock acquisition in evaluateStrategySignal
     // This function only checks portfolio risk and percentile thresholds
     
-    console.log(`🔍 DEBUG [shouldEnter]: START evaluation for ${liquidation.symbol} ${positionSide} $${parseFloat(liquidation.value).toFixed(2)}`);
+    console.log(`\n═══════════════════════════════════════════════════════════════`);
+    console.log(`🎯 TRADE EVALUATION: ${liquidation.symbol} ${positionSide.toUpperCase()} @ $${parseFloat(liquidation.price).toFixed(6)}`);
+    console.log(`   Liquidation Value: $${parseFloat(liquidation.value).toFixed(2)} | Time: ${liquidation.timestamp.toISOString()}`);
+    console.log(`═══════════════════════════════════════════════════════════════`);
     
     // PORTFOLIO RISK LIMITS CHECK: Block new entries if they WOULD exceed limits
-    console.log(`🔍 DEBUG [shouldEnter]: Calculating portfolio risk...`);
     const portfolioRisk = await this.calculatePortfolioRisk(strategy, session);
-    console.log(`🔍 DEBUG [shouldEnter]: Portfolio risk calculated - positions: ${portfolioRisk.openPositionCount}, reserved: ${portfolioRisk.reservedRiskPercentage.toFixed(1)}%`);
+    console.log(`\n📊 STEP 1: Portfolio Risk Check`);
+    console.log(`   Open Positions: ${portfolioRisk.openPositionCount}/${strategy.maxOpenPositions || 'unlimited'}`);
+    console.log(`   Filled Risk: ${portfolioRisk.filledRiskPercentage.toFixed(1)}%`);
+    console.log(`   Reserved Risk: ${portfolioRisk.reservedRiskPercentage.toFixed(1)}%`);
+    console.log(`   Actual Margin: ${portfolioRisk.actualMarginUsedPercentage.toFixed(1)}%`);
+    console.log(`   Max Allowed: ${strategy.maxPortfolioRiskPercent}%`);
     
     // Check max open positions limit (0 = unlimited)
     // Must check if adding ONE MORE position would exceed the limit
@@ -822,9 +829,13 @@ export class StrategyEngine extends EventEmitter {
       const maxRiskPercent = parseFloat(strategy.maxPortfolioRiskPercent);
       
       // CRITICAL: Check ACTUAL MARGIN USAGE first (hard limit)
+      console.log(`\n📊 STEP 2: Margin Limit Gate`);
       const actualMarginUsed = portfolioRisk.actualMarginUsedPercentage;
+      console.log(`   Actual Margin Used: ${actualMarginUsed.toFixed(1)}%`);
+      console.log(`   Max Risk Setting: ${maxRiskPercent}%`);
       if (actualMarginUsed > maxRiskPercent) {
-        console.log(`🚫 MARGIN LIMIT EXCEEDED: Actual margin usage ${actualMarginUsed.toFixed(1)}% > max ${maxRiskPercent}% - HALTING ALL TRADES`);
+        console.log(`   ❌ BLOCKED: Margin limit exceeded (${actualMarginUsed.toFixed(1)}% > ${maxRiskPercent}%)`);
+        console.log(`═══════════════════════════════════════════════════════════════\n`);
         wsBroadcaster.broadcastTradeBlock({
           blocked: true,
           reason: `Margin limit exceeded: ${actualMarginUsed.toFixed(1)}% > ${maxRiskPercent}%`,
@@ -832,6 +843,7 @@ export class StrategyEngine extends EventEmitter {
         });
         return false;
       }
+      console.log(`   ✅ PASSED: Margin within limits`);
       
       // Use RESERVED risk for preemptive checks on NEW positions
       const currentReservedRisk = portfolioRisk.reservedRiskPercentage;
@@ -1032,16 +1044,24 @@ export class StrategyEngine extends EventEmitter {
     
     // Check if current percentile meets or exceeds threshold
     // Example: 60% threshold means only enter if at 60th percentile or higher (top 40%)
+    console.log(`\n📊 STEP 3: Percentile Threshold Gate`);
+    console.log(`   Liquidation Value: $${currentLiquidationValue.toFixed(2)}`);
+    console.log(`   Calculated Percentile: ${currentPercentile}th`);
+    console.log(`   Threshold Required: ${strategy.percentileThreshold}th`);
+    console.log(`   Historical Sample: ${allHistoricalValues.length} ${liquidation.symbol} liquidations`);
+    console.log(`   Range: $${allHistoricalValues[0].toFixed(2)} - $${allHistoricalValues[allHistoricalValues.length-1].toFixed(2)}`);
+    
     const shouldEnter = currentPercentile >= strategy.percentileThreshold;
     
     if (shouldEnter) {
-      console.log(`✅ Percentile PASSED: $${currentLiquidationValue.toFixed(2)} is at ${currentPercentile}th percentile (≥ ${strategy.percentileThreshold}% threshold)`);
-      console.log(`   📊 Compared against ${allHistoricalValues.length} historical ${liquidation.symbol} liquidations: range $${allHistoricalValues[0].toFixed(2)}-$${allHistoricalValues[allHistoricalValues.length-1].toFixed(2)}`);
-      console.log(`   ✨ Entering top ${100 - strategy.percentileThreshold}% of liquidations (${strategy.percentileThreshold}th percentile and above)`);
+      console.log(`   ✅ PASSED: ${currentPercentile}th ≥ ${strategy.percentileThreshold}th percentile (top ${100 - strategy.percentileThreshold}%)`);
+      console.log(`\n🟢 FINAL DECISION: ENTRY APPROVED`);
+      console.log(`═══════════════════════════════════════════════════════════════\n`);
       // NOTE: Cooldown is now set at lock acquisition (line 634) - no need to set it here
     } else {
-      console.log(`❌ Percentile FILTERED: $${currentLiquidationValue.toFixed(2)} is at ${currentPercentile}th percentile (< ${strategy.percentileThreshold}% threshold)`);
-      console.log(`   📊 Need at least ${strategy.percentileThreshold}th percentile to enter (currently in bottom ${strategy.percentileThreshold}%)`);
+      console.log(`   ❌ BLOCKED: ${currentPercentile}th < ${strategy.percentileThreshold}th percentile (bottom ${strategy.percentileThreshold}%)`);
+      console.log(`\n🔴 FINAL DECISION: ENTRY REJECTED (Percentile Filter)`);
+      console.log(`═══════════════════════════════════════════════════════════════\n`);
       // Note: Percentile is a per-liquidation filter, NOT a system-wide block
       // So we don't broadcast trade_block for percentile failures
     }
@@ -1283,11 +1303,22 @@ export class StrategyEngine extends EventEmitter {
       }
 
       const data = await response.json();
-      // CRITICAL: Extract USDF balance from assets array (Aster DEX uses USDF as collateral)
-      // Risk must be calculated on total account value, not just leftover funds after positions are open
-      const usdFAsset = data.assets?.find((asset: any) => asset.asset === 'USDF');
-      const totalWalletBalance = usdFAsset ? parseFloat(usdFAsset.walletBalance) : parseFloat(data.totalWalletBalance || '0');
-      console.log(`💰 Exchange total wallet balance (for risk calc): $${totalWalletBalance.toFixed(2)}`);
+      // CRITICAL FIX: Sum ALL asset wallet balances (USDF + USDT + any others)
+      // This matches what calculatePortfolioRisk() does for margin balance calculation
+      // User requirement: "current balance" = total wallet balance across all assets
+      let totalWalletBalance = 0;
+      if (data.assets && Array.isArray(data.assets)) {
+        for (const asset of data.assets) {
+          const walletBalance = parseFloat(asset.crossWalletBalance || asset.walletBalance || '0');
+          totalWalletBalance += walletBalance;
+          console.log(`   💵 ${asset.asset || 'Unknown'}: $${walletBalance.toFixed(2)}`);
+        }
+      }
+      // Fallback to totalWalletBalance if assets array is empty
+      if (totalWalletBalance === 0) {
+        totalWalletBalance = parseFloat(data.totalWalletBalance || '0');
+      }
+      console.log(`💰 Exchange total wallet balance (ALL assets): $${totalWalletBalance.toFixed(2)}`);
       return totalWalletBalance;
     } catch (error) {
       console.error('❌ Error fetching exchange balance:', error);
@@ -1657,22 +1688,21 @@ export class StrategyEngine extends EventEmitter {
         if (accountInfo) {
           actualMarginUsed = parseFloat(accountInfo.totalInitialMargin || '0');
           
-          // CRITICAL: Calculate total margin balance from ALL assets (USDF + USDT)
-          // This matches what the user sees on their dashboard
-          let marginBalance = 0;
-          if (accountInfo.assets && Array.isArray(accountInfo.assets)) {
-            for (const asset of accountInfo.assets) {
-              const walletBalance = parseFloat(asset.crossWalletBalance || asset.walletBalance || '0');
-              marginBalance += walletBalance;
-            }
-          }
-          // Fallback to totalWalletBalance if assets array is empty
-          if (marginBalance === 0) {
-            marginBalance = parseFloat(accountInfo.totalWalletBalance || '0');
-          }
+          // CRITICAL FIX: Use currentBalance (same denominator as filled/reserved risk)
+          // This ensures all risk percentages use the same base: total wallet balance across ALL assets
+          // Previous bug: used marginBalance calculation here but currentBalance elsewhere
+          actualMarginUsedPercentage = currentBalance > 0 ? (actualMarginUsed / currentBalance) * 100 : 0;
+          console.log(`   📊 Actual Margin Used: $${actualMarginUsed.toFixed(2)} = ${actualMarginUsedPercentage.toFixed(1)}% of wallet balance ($${currentBalance.toFixed(2)})`);
           
-          actualMarginUsedPercentage = marginBalance > 0 ? (actualMarginUsed / marginBalance) * 100 : 0;
-          console.log(`   📊 Actual Margin Used: $${actualMarginUsed.toFixed(2)} = ${actualMarginUsedPercentage.toFixed(1)}% of margin balance ($${marginBalance.toFixed(2)})`);
+          // SYSTEM INTEGRITY CHECK: Detect inverted risk hierarchy
+          // Expected: actualMarginUsed ≤ filledRisk ≤ reservedRisk ≤ maxRisk
+          if (actualMarginUsed > totalFilledLoss) {
+            console.warn(`⚠️ RISK HIERARCHY VIOLATION: Actual margin ($${actualMarginUsed.toFixed(2)}) > Filled risk ($${totalFilledLoss.toFixed(2)})`);
+            console.warn(`   This indicates positions exist on exchange that are not tracked in database`);
+          }
+          if (actualMarginUsedPercentage > filledRiskPercentage) {
+            console.warn(`⚠️ PERCENTAGE MISMATCH: Actual margin ${actualMarginUsedPercentage.toFixed(1)}% > Filled risk ${filledRiskPercentage.toFixed(1)}%`);
+          }
         }
       } catch (error) {
         console.error('⚠️ Failed to fetch actual margin usage:', error);
