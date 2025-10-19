@@ -1600,17 +1600,21 @@ export class StrategyEngine extends EventEmitter {
         const now = Date.now();
         
         if (!lastWarning || (now - lastWarning) >= RISK_ALERT_COOLDOWN_MS) {
-          const { telegramService } = await import('./telegram-service');
-          telegramService.sendRiskLevelWarning(
-            totalReservedLoss,
-            RISK_THRESHOLD,
-            totalFilledLoss,
-            totalReservedLoss,
-            currentBalance
-          ).catch(err => console.error('Failed to send risk warning:', err));
-          
-          this.lastRiskWarningTime.set(strategy.id, now);
-          console.log(`⚠️ Risk warning sent: ${reservedRiskPercentage.toFixed(1)}% (threshold: ${RISK_THRESHOLD}%)`);
+          try {
+            const { telegramService } = await import('./telegram-service');
+            await telegramService.sendRiskLevelWarning(
+              reservedRiskPercentage,
+              RISK_THRESHOLD,
+              totalFilledLoss,
+              totalReservedLoss,
+              currentBalance
+            ).catch(err => console.error('Failed to send risk warning:', err));
+            
+            this.lastRiskWarningTime.set(strategy.id, now);
+            console.log(`⚠️ Risk warning sent: ${reservedRiskPercentage.toFixed(1)}% (threshold: ${RISK_THRESHOLD}%)`);
+          } catch (err) {
+            console.error('Error sending risk warning alert:', err);
+          }
         }
       }
       
