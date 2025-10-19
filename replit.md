@@ -60,6 +60,7 @@ PERMANENT DATA PRESERVATION: ALL trading data MUST be preserved forever. The use
 - **Data Integrity**: Idempotency for orders, atomic cooldowns, and permanent preservation of all trading data. Multi-layer race condition prevention.
 - **Performance Metrics**: Tracks deposited capital, ROI, transfer markers, commissions, and funding fees from exchange API.
 - **Portfolio Limit**: Counts unique symbols; hedged positions count as 1.
+- **Telegram Notifications** (Oct 19, 2025): Real-time position alerts (open/close with trade details, entry/exit prices, P&L) sent via Telegram bot. Daily performance report scheduler (midnight UTC) generates comprehensive trading summary with performance metrics, top trades, and strategy statistics. Uses `node-telegram-bot-api` for messaging and `chartjs-node-canvas` for chart generation (portfolio risk graphics, P&L graphs). Alert system integrated into strategy engine at position lifecycle events (creation, closure). Configurable via TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID environment variables. API endpoints: `/api/telegram/test`, `/api/telegram/daily-report`, `/api/telegram/scheduler/{start,stop,status}`.
 
 **Feature Specifications:**
 - **Financial Metrics**: Realized P&L, commissions, and funding fees fetched directly from exchange API (e.g., `/fapi/v1/income`), not stored in DB.
