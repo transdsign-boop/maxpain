@@ -16,7 +16,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Settings2, Pause, Play, AlertTriangle, BarChart3, Menu, BookOpen, AlertCircle } from "lucide-react";
+import { Settings2, Pause, Play, AlertTriangle, BarChart3, Menu, BookOpen, AlertCircle, Send } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -181,6 +181,29 @@ export default function Dashboard() {
       toast({
         title: "Error",
         description: error.message || "Failed to execute emergency stop",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Send manual Telegram report mutation
+  const sendReportMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest('POST', `/api/telegram/daily-report`, { 
+        strategyId: activeStrategy?.id 
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Report Sent",
+        description: "Performance report sent to Telegram successfully!",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to send Telegram report. Check your bot configuration.",
         variant: "destructive",
       });
     },
@@ -534,6 +557,20 @@ export default function Dashboard() {
               <AlertCircle className="h-4 w-4" />
             </Button>
             
+            {/* Send Telegram Report Button */}
+            {activeStrategy && (
+              <Button 
+                variant="outline" 
+                size="icon"
+                onClick={() => sendReportMutation.mutate()}
+                disabled={sendReportMutation.isPending}
+                data-testid="button-send-report"
+                title="Send Performance Report to Telegram"
+              >
+                <Send className="h-4 w-4" />
+              </Button>
+            )}
+            
             {/* Trading Strategy Button */}
             <Button 
               variant="default" 
@@ -619,6 +656,18 @@ export default function Dashboard() {
                         Documentation
                       </Button>
                     </Link>
+                    {activeStrategy && (
+                      <Button 
+                        variant="outline" 
+                        className="w-full justify-start"
+                        onClick={() => sendReportMutation.mutate()}
+                        disabled={sendReportMutation.isPending}
+                        data-testid="button-send-report-mobile"
+                      >
+                        <Send className="h-4 w-4 mr-2" />
+                        Send Telegram Report
+                      </Button>
+                    )}
                     <Button 
                       variant="outline" 
                       className="w-full justify-start"

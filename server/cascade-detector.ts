@@ -323,6 +323,23 @@ export class CascadeDetector {
     this.lastVolatilityRegime = volatility_regime;
     this.lastRQThresholdAdjusted = rq_threshold_adjusted;
 
+    // Send Telegram alert for high-quality setups (excellent or good RQ with high LQ)
+    if ((rq_bucket === 'excellent' || rq_bucket === 'good') && LQ >= 7 && this.currentLight === 'green') {
+      const cascadeScore = Math.round(score);
+      if (cascadeScore >= 60) { // Only alert on significant scores
+        import('./telegram-service').then(({ telegramService }) => {
+          const reason = `${rq_bucket === 'excellent' ? 'Excellent' : 'Good'} reversal quality with strong liquidation quality (LQ=${LQ}). Low cascade risk detected.`;
+          telegramService.sendCascadeDetectorAlert(
+            this.symbol,
+            cascadeScore,
+            reversal_quality,
+            LQ,
+            reason
+          ).catch(err => console.error('Failed to send cascade alert:', err));
+        });
+      }
+    }
+
     return {
       symbol: this.symbol,
       score,

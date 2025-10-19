@@ -69,6 +69,7 @@ export class StrategyEngine extends EventEmitter {
   private cleanupInProgress: boolean = false; // Prevent overlapping cleanup runs
   private exchangePositionMode: 'one-way' | 'dual' | null = null; // Cache exchange position mode
   private lastFillTime: Map<string, number> = new Map(); // "sessionId-symbol-side" -> timestamp of last fill
+  private lastRiskWarningTime: Map<string, number> = new Map(); // "strategyId" -> timestamp of last risk warning alert
   private leverageSetForSymbols: Map<string, number> = new Map(); // symbol -> leverage value (track actual leverage configured on exchange)
   private marginModeSetForSymbols: Map<string, 'isolated' | 'cross'> = new Map(); // symbol -> margin mode (track actual margin mode configured on exchange)
   private pendingQ1Values: Map<string, number> = new Map(); // "sessionId-symbol-side" -> q1 base layer size for position being created
@@ -1590,6 +1591,28 @@ export class StrategyEngine extends EventEmitter {
       
       console.log(`   💰 Filled Risk: $${totalFilledLoss.toFixed(2)} = ${filledRiskPercentage.toFixed(1)}% of balance`);
       console.log(`   🔒 Reserved Risk: $${totalReservedLoss.toFixed(2)} = ${reservedRiskPercentage.toFixed(1)}% of balance`);
+      
+      // Send risk warning alert if threshold exceeded (80%)
+      const RISK_THRESHOLD = 80;
+      const RISK_ALERT_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
+      if (reservedRiskPercentage >= RISK_THRESHOLD) {
+        const lastWarning = this.lastRiskWarningTime.get(strategy.id);
+        const now = Date.now();
+        
+        if (!lastWarning || (now - lastWarning) >= RISK_ALERT_COOLDOWN_MS) {
+          const { telegramService } = await import('./telegram-service');
+          telegramService.sendRiskLevelWarning(
+            totalReservedLoss,
+            RISK_THRESHOLD,
+            totalFilledLoss,
+            totalReservedLoss,
+            currentBalance
+          ).catch(err => console.error('Failed to send risk warning:', err));
+          
+          this.lastRiskWarningTime.set(strategy.id, now);
+          console.log(`⚠️ Risk warning sent: ${reservedRiskPercentage.toFixed(1)}% (threshold: ${RISK_THRESHOLD}%)`);
+        }
+      }
       
       return { 
         openPositionCount, 
