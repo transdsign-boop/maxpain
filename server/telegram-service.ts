@@ -242,7 +242,7 @@ ${emoji} <b>POSITION CLOSED</b>
       }
 
       const sessions = await storage.getSessionsByStrategy(strategyId);
-      const activeSession = sessions.find((s: any) => s.status === 'active');
+      const activeSession = sessions.find((s: any) => s.isActive === true);
       if (!activeSession) {
         console.warn('⚠️ No active session found for daily report');
         return;
