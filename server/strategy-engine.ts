@@ -1760,7 +1760,11 @@ export class StrategyEngine extends EventEmitter {
         return null;
       }
       
-      const quantity = firstLevel.quantity;
+      // CRITICAL FIX: Use q1 (base layer size) instead of firstLevel.quantity
+      // firstLevel.quantity might be pre-multiplied by total weight in some edge cases
+      const quantity = dcaResult.q1;
+      
+      console.log(`🔍 DEBUG: Layer 1 sizing - q1=${dcaResult.q1.toFixed(6)}, firstLevel.quantity=${firstLevel.quantity.toFixed(6)}, using q1 for entry`);
       
       // Store q1 (base layer size) for this position to ensure consistent sizing across all layers
       const q1Key = `${session.id}-${liquidation.symbol}-${positionSide}`;
