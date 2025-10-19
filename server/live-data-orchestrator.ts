@@ -218,8 +218,15 @@ class LiveDataOrchestrator {
       const usdfAsset = accountInfo.assets.find((a: any) => a.asset === 'USDF');
       const usdtAsset = accountInfo.assets.find((a: any) => a.asset === 'USDT');
       
-      const totalBalance = parseFloat(accountInfo.totalBalance || '0');
-      const availableBalance = parseFloat(accountInfo.availableBalance || '0');
+      // Calculate total balance by summing USDF + USDT (exchange API may not include all assets)
+      const usdfBalance = parseFloat(usdfAsset?.walletBalance || '0');
+      const usdtBalance = parseFloat(usdtAsset?.walletBalance || '0');
+      const totalWalletBalance = usdfBalance + usdtBalance;
+      
+      // Calculate available balance similarly
+      const usdfAvailable = parseFloat(usdfAsset?.availableBalance || '0');
+      const usdtAvailable = parseFloat(usdtAsset?.availableBalance || '0');
+      const totalAvailableBalance = usdfAvailable + usdtAvailable;
       
       snapshot.account = {
         feeTier: 0,
@@ -227,11 +234,11 @@ class LiveDataOrchestrator {
         canDeposit: true,
         canWithdraw: true,
         updateTime: Date.now(),
-        totalWalletBalance: accountInfo.totalBalance,
+        totalWalletBalance: totalWalletBalance.toString(),
         totalUnrealizedProfit: accountInfo.totalUnrealizedPnl,
-        totalMarginBalance: accountInfo.totalBalance,
+        totalMarginBalance: totalWalletBalance.toString(),
         totalInitialMargin: '0',
-        availableBalance: accountInfo.availableBalance,
+        availableBalance: totalAvailableBalance.toString(),
         usdcBalance: usdfAsset?.walletBalance || '0',
         usdtBalance: usdtAsset?.walletBalance || '0',
         assets: accountInfo.assets.map((a: any) => ({
@@ -265,7 +272,7 @@ class LiveDataOrchestrator {
       // Calculate position summary
       this.calculatePositionSummary(strategyId);
 
-      console.log(`✅ Snapshot bootstrapped: balance=$${totalBalance.toFixed(2)}, positions=${snapshot.positions.length}`);
+      console.log(`✅ Snapshot bootstrapped: balance=$${totalWalletBalance.toFixed(2)} (USDF: $${usdfBalance.toFixed(2)} + USDT: $${usdtBalance.toFixed(2)}), positions=${snapshot.positions.length}`);
       
       // Broadcast to frontend
       this.broadcastSnapshot(strategyId);
