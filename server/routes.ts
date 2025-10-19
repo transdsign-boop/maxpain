@@ -2031,42 +2031,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get transfers (deposits/withdrawals) from exchange with optional date range
+  // Get transfers (deposits/withdrawals) - returns database transfers with exclusion status
   app.get("/api/transfers", async (req, res) => {
     try {
-      const { fetchTransfers } = await import('./exchange-sync');
-      
-      const startTime = req.query.startTime ? parseInt(req.query.startTime as string) : undefined;
-      const endTime = req.query.endTime ? parseInt(req.query.endTime as string) : undefined;
-      
-      const result = await fetchTransfers({ startTime, endTime });
-      
-      if (!result.success) {
-        return res.status(500).json({ error: result.error, records: [], total: 0 });
-      }
-      
-      // Get exclusion data from database
-      const dbTransfers = await db.query.transfers.findMany({
+      // Fetch all transfers from database (primary source of truth for historical data)
+      const allTransfers = await db.query.transfers.findMany({
         where: eq(transfers.userId, DEFAULT_USER_ID),
-        columns: {
-          transactionId: true,
-          excluded: true,
-        }
+        orderBy: (transfers, { asc }) => [asc(transfers.timestamp)],
       });
       
-      const exclusionMap = new Map(
-        dbTransfers.map(t => [t.transactionId, t.excluded])
-      );
-      
-      // Transform to match the frontend's expected format and include exclusion status
-      const transformedRecords = result.records.map((transfer: any) => ({
-        id: transfer.tranId || `${transfer.time}`,
-        userId: DEFAULT_USER_ID,
-        amount: transfer.income || '0',
-        asset: transfer.asset || 'USDT',
-        transactionId: transfer.tranId || null,
-        timestamp: new Date(transfer.time),
-        excluded: exclusionMap.get(transfer.tranId?.toString()) || false,
+      // Transform to match the frontend's expected format
+      const transformedRecords = allTransfers.map(transfer => ({
+        id: transfer.transactionId || transfer.id,
+        userId: transfer.userId,
+        amount: transfer.amount,
+        asset: transfer.asset,
+        transactionId: transfer.transactionId,
+        timestamp: transfer.timestamp,
+        excluded: transfer.excluded,
       }));
       
       res.json(transformedRecords);
