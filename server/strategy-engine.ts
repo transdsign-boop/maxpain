@@ -820,7 +820,20 @@ export class StrategyEngine extends EventEmitter {
       }
       
       const maxRiskPercent = parseFloat(strategy.maxPortfolioRiskPercent);
-      // Use RESERVED risk (total allocated for full DCA schedules) not filled risk
+      
+      // CRITICAL: Check ACTUAL MARGIN USAGE first (hard limit)
+      const actualMarginUsed = portfolioRisk.actualMarginUsedPercentage;
+      if (actualMarginUsed > maxRiskPercent) {
+        console.log(`🚫 MARGIN LIMIT EXCEEDED: Actual margin usage ${actualMarginUsed.toFixed(1)}% > max ${maxRiskPercent}% - HALTING ALL TRADES`);
+        wsBroadcaster.broadcastTradeBlock({
+          blocked: true,
+          reason: `Margin limit exceeded: ${actualMarginUsed.toFixed(1)}% > ${maxRiskPercent}%`,
+          type: 'margin_limit_exceeded'
+        });
+        return false;
+      }
+      
+      // Use RESERVED risk for preemptive checks on NEW positions
       const currentReservedRisk = portfolioRisk.reservedRiskPercentage;
       const remainingRiskPercent = maxRiskPercent - currentReservedRisk;
       
@@ -1401,6 +1414,8 @@ export class StrategyEngine extends EventEmitter {
     filledRiskPercentage: number;
     reservedRisk: number;
     reservedRiskPercentage: number;
+    actualMarginUsed: number;
+    actualMarginUsedPercentage: number;
   }> {
     try {
       // AUTOMATIC POSITION RECONCILIATION: Close stale database positions before calculating risk
@@ -1473,7 +1488,9 @@ export class StrategyEngine extends EventEmitter {
           filledRisk: 0,
           filledRiskPercentage: 0,
           reservedRisk: 0,
-          reservedRiskPercentage: 0
+          reservedRiskPercentage: 0,
+          actualMarginUsed: 0,
+          actualMarginUsedPercentage: 0
         };
       }
       
@@ -1493,7 +1510,9 @@ export class StrategyEngine extends EventEmitter {
           filledRisk: 0,
           filledRiskPercentage: 0,
           reservedRisk: 0,
-          reservedRiskPercentage: 0
+          reservedRiskPercentage: 0,
+          actualMarginUsed: 0,
+          actualMarginUsedPercentage: 0
         };
       }
       
@@ -1598,6 +1617,21 @@ export class StrategyEngine extends EventEmitter {
       console.log(`   💰 Filled Risk: $${totalFilledLoss.toFixed(2)} = ${filledRiskPercentage.toFixed(1)}% of balance`);
       console.log(`   🔒 Reserved Risk: $${totalReservedLoss.toFixed(2)} = ${reservedRiskPercentage.toFixed(1)}% of balance`);
       
+      // Fetch ACTUAL MARGIN USAGE from exchange
+      let actualMarginUsed = 0;
+      let actualMarginUsedPercentage = 0;
+      try {
+        const accountInfo = await this.fetchAccountInfo(strategy);
+        if (accountInfo) {
+          actualMarginUsed = parseFloat(accountInfo.totalInitialMargin || '0');
+          const totalMarginBalance = parseFloat(accountInfo.totalMarginBalance || '0');
+          actualMarginUsedPercentage = totalMarginBalance > 0 ? (actualMarginUsed / totalMarginBalance) * 100 : 0;
+          console.log(`   📊 Actual Margin Used: $${actualMarginUsed.toFixed(2)} = ${actualMarginUsedPercentage.toFixed(1)}% of margin balance`);
+        }
+      } catch (error) {
+        console.error('⚠️ Failed to fetch actual margin usage:', error);
+      }
+      
       // Send risk warning alert if threshold exceeded (80%)
       const RISK_THRESHOLD = 80;
       const RISK_ALERT_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
@@ -1631,7 +1665,9 @@ export class StrategyEngine extends EventEmitter {
         filledRisk: totalFilledLoss,
         filledRiskPercentage,
         reservedRisk: totalReservedLoss,
-        reservedRiskPercentage
+        reservedRiskPercentage,
+        actualMarginUsed,
+        actualMarginUsedPercentage
       };
     } catch (error) {
       console.error('❌ Error calculating portfolio risk:', error);
@@ -1642,7 +1678,9 @@ export class StrategyEngine extends EventEmitter {
         filledRisk: 0,
         filledRiskPercentage: 0,
         reservedRisk: 0,
-        reservedRiskPercentage: 0
+        reservedRiskPercentage: 0,
+        actualMarginUsed: 0,
+        actualMarginUsedPercentage: 0
       };
     }
   }
