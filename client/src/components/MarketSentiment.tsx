@@ -64,15 +64,15 @@ interface MarketSentimentData {
   timestamp: string;
 }
 
-// Memoized format helpers
-const formatCurrency = memo((value: number) => {
+// Helper functions
+const formatCurrency = (value: number) => {
   if (value >= 1_000_000) {
     return `$${(value / 1_000_000).toFixed(2)}M`;
   } else if (value >= 1_000) {
     return `$${(value / 1_000).toFixed(1)}K`;
   }
   return `$${value.toFixed(0)}`;
-});
+};
 
 const getFearGreedColor = (value: number | null) => {
   if (value === null) return 'text-muted-foreground';
