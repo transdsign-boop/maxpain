@@ -100,7 +100,7 @@ const MarketMetric = memo(({ data, isLoading, error }: {
 }) => {
   if (isLoading) {
     return (
-      <div className="text-center py-4 text-xs text-muted-foreground" data-testid="status-market-loading">
+      <div className="text-center py-2 text-xs text-muted-foreground" data-testid="status-market-loading">
         Analyzing...
       </div>
     );
@@ -108,38 +108,38 @@ const MarketMetric = memo(({ data, isLoading, error }: {
 
   if (error || !data) {
     return (
-      <div className="text-center py-4" data-testid="status-market-error">
-        <AlertTriangle className="h-6 w-6 mx-auto text-muted-foreground mb-1" />
+      <div className="text-center py-2" data-testid="status-market-error">
+        <AlertTriangle className="h-4 w-4 mx-auto text-muted-foreground mb-0.5" />
         <div className="text-xs text-muted-foreground">Data unavailable</div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       {/* Sentiment Indicator */}
       <div className="text-center">
-        <div className={`text-3xl font-mono font-bold ${
+        <div className={`text-2xl font-mono font-bold ${
           data.sentiment === 'bullish' 
             ? 'text-[rgb(190,242,100)]' 
             : data.sentiment === 'bearish'
             ? 'text-[rgb(251,146,60)]'
             : 'text-muted-foreground'
         }`} data-testid="icon-market-sentiment">
-          {data.sentiment === 'bullish' && <TrendingUp className="h-8 w-8 mx-auto" />}
-          {data.sentiment === 'bearish' && <TrendingDown className="h-8 w-8 mx-auto" />}
-          {data.sentiment === 'neutral' && <Minus className="h-8 w-8 mx-auto" />}
+          {data.sentiment === 'bullish' && <TrendingUp className="h-6 w-6 mx-auto" />}
+          {data.sentiment === 'bearish' && <TrendingDown className="h-6 w-6 mx-auto" />}
+          {data.sentiment === 'neutral' && <Minus className="h-6 w-6 mx-auto" />}
         </div>
-        <div className="text-sm font-medium mt-1 capitalize" data-testid="text-market-sentiment">
+        <div className="text-xs font-medium mt-0.5 capitalize" data-testid="text-market-sentiment">
           {data.sentiment}
         </div>
         <div className="text-xs text-muted-foreground">
-          Score: {(data.combinedScore * 100).toFixed(0)}%
+          {(data.combinedScore * 100).toFixed(0)}%
         </div>
       </div>
 
       {/* Order Book */}
-      <div className="space-y-1 pt-2 border-t">
+      <div className="space-y-0.5 pt-1.5 border-t">
         <div className="text-xs font-medium text-muted-foreground">Order Book</div>
         <div className="flex items-center justify-between text-xs">
           <span className="text-muted-foreground">Bid</span>
@@ -156,7 +156,7 @@ const MarketMetric = memo(({ data, isLoading, error }: {
       </div>
 
       {/* Liquidations */}
-      <div className="space-y-1 pt-2 border-t">
+      <div className="space-y-0.5 pt-1.5 border-t">
         <div className="text-xs font-medium text-muted-foreground">Liquidations (1h)</div>
         <div className="flex items-center justify-between text-xs">
           <span className="text-[rgb(251,146,60)]">Long</span>
@@ -186,29 +186,29 @@ const FearGreedMetric = memo(({ data, isLoading, error }: {
 
   if (isLoading) {
     return (
-      <div className="text-center py-4 text-xs text-muted-foreground">
+      <div className="text-center py-2 text-xs text-muted-foreground">
         Loading...
       </div>
     );
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       <div className="text-center">
         <div 
-          className={`text-5xl font-mono font-bold ${getFearGreedColor(fearGreedValue)}`}
+          className={`text-3xl font-mono font-bold ${getFearGreedColor(fearGreedValue)}`}
           data-testid="value-fear-greed"
         >
           {fearGreedValue ?? '--'}
         </div>
-        <div className="text-sm font-medium mt-1" data-testid="text-fear-greed-label">
+        <div className="text-xs font-medium mt-0.5" data-testid="text-fear-greed-label">
           {getFearGreedLabel(fearGreedValue)}
         </div>
       </div>
 
       {/* Gauge Bar */}
-      <div className="space-y-1">
-        <div className="h-2 bg-muted rounded-full overflow-hidden">
+      <div className="space-y-0.5">
+        <div className="h-1.5 bg-muted rounded-full overflow-hidden">
           <div 
             className="h-full transition-all duration-500 rounded-full"
             style={{
@@ -226,7 +226,7 @@ const FearGreedMetric = memo(({ data, isLoading, error }: {
       </div>
 
       {fearGreedData && (
-        <div className="text-xs text-muted-foreground text-center pt-2 border-t">
+        <div className="text-xs text-muted-foreground text-center pt-1.5 border-t">
           {format(new Date(parseInt(fearGreedData.timestamp) * 1000), 'MMM d, h:mm a')}
         </div>
       )}
@@ -242,7 +242,7 @@ const SocialMetric = memo(({ data, isLoading, error }: {
 }) => {
   if (isLoading) {
     return (
-      <div className="text-center py-4 text-xs text-muted-foreground" data-testid="status-social-loading">
+      <div className="text-center py-2 text-xs text-muted-foreground" data-testid="status-social-loading">
         Loading...
       </div>
     );
@@ -250,18 +250,18 @@ const SocialMetric = memo(({ data, isLoading, error }: {
 
   if (error) {
     return (
-      <div className="text-center py-4" data-testid="status-social-error">
-        <AlertTriangle className="h-6 w-6 mx-auto text-muted-foreground mb-1" />
+      <div className="text-center py-2" data-testid="status-social-error">
+        <AlertTriangle className="h-4 w-4 mx-auto text-muted-foreground mb-0.5" />
         <div className="text-xs text-muted-foreground">Data unavailable</div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       <div className="text-center">
         <div 
-          className={`text-5xl font-mono font-bold ${
+          className={`text-3xl font-mono font-bold ${
             (data?.score || 0) > 60 
               ? 'text-[rgb(190,242,100)]' 
               : (data?.score || 0) < 40
@@ -272,7 +272,7 @@ const SocialMetric = memo(({ data, isLoading, error }: {
         >
           {data?.score || '--'}
         </div>
-        <div className="text-sm font-medium mt-1" data-testid="text-social-label">
+        <div className="text-xs font-medium mt-0.5" data-testid="text-social-label">
           {(data?.score || 0) > 60 
             ? 'Positive' 
             : (data?.score || 0) < 40
@@ -282,7 +282,7 @@ const SocialMetric = memo(({ data, isLoading, error }: {
       </div>
 
       {/* Trending Topics */}
-      <div className="space-y-1 pt-2 border-t">
+      <div className="space-y-0.5 pt-1.5 border-t">
         <div className="text-xs font-medium text-muted-foreground">
           Trending
         </div>
@@ -317,8 +317,8 @@ const NewsTicker = memo(({ articles, category, onCategoryChange }: {
   return (
     <div className="border-t bg-muted/30">
       {/* Ticker Header */}
-      <div className="flex items-center justify-between px-4 py-2 border-b">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between px-3 py-1.5 border-b">
+        <div className="flex items-center gap-1.5">
           <Newspaper className="h-3 w-3 text-muted-foreground" />
           <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
             Market News
@@ -328,25 +328,25 @@ const NewsTicker = memo(({ articles, category, onCategoryChange }: {
           type="single" 
           value={category} 
           onValueChange={(value) => value && onCategoryChange(value)}
-          className="gap-1"
+          className="gap-0.5"
         >
-          <ToggleGroupItem value="all" className="h-6 px-2 text-xs" data-testid="toggle-news-all">
+          <ToggleGroupItem value="all" className="h-5 px-2 text-xs" data-testid="toggle-news-all">
             All
           </ToggleGroupItem>
-          <ToggleGroupItem value="economic" className="h-6 px-2 text-xs" data-testid="toggle-news-market">
+          <ToggleGroupItem value="economic" className="h-5 px-2 text-xs" data-testid="toggle-news-market">
             Market
           </ToggleGroupItem>
-          <ToggleGroupItem value="crypto" className="h-6 px-2 text-xs" data-testid="toggle-news-crypto">
+          <ToggleGroupItem value="crypto" className="h-5 px-2 text-xs" data-testid="toggle-news-crypto">
             Crypto
           </ToggleGroupItem>
-          <ToggleGroupItem value="political" className="h-6 px-2 text-xs" data-testid="toggle-news-political">
+          <ToggleGroupItem value="political" className="h-5 px-2 text-xs" data-testid="toggle-news-political">
             Political
           </ToggleGroupItem>
         </ToggleGroup>
       </div>
 
       {/* Scrolling Ticker */}
-      <div className="relative overflow-hidden h-10">
+      <div className="relative overflow-hidden h-8">
         <div className="ticker-wrapper absolute inset-0 flex items-center">
           <div className="ticker-content flex gap-8 whitespace-nowrap">
             {duplicatedArticles.map((article, i) => {
@@ -476,12 +476,12 @@ export default function MarketSentiment() {
 
       {/* Consolidated Card */}
       <Card data-testid="card-market-sentiment">
-        <CardHeader className="pb-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <CardHeader className="pb-2">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {/* Market Sentiment Column */}
             <div>
-              <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-2 mb-3">
-                <Activity className="h-4 w-4" />
+              <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 mb-2">
+                <Activity className="h-3.5 w-3.5" />
                 Market Sentiment
               </CardTitle>
               <MarketMetric 
@@ -492,9 +492,9 @@ export default function MarketSentiment() {
             </div>
 
             {/* Fear & Greed Column */}
-            <div className="md:border-l md:pl-4">
-              <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-2 mb-3">
-                <TrendingUpIcon className="h-4 w-4" />
+            <div className="md:border-l md:pl-3">
+              <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 mb-2">
+                <TrendingUpIcon className="h-3.5 w-3.5" />
                 Fear & Greed
               </CardTitle>
               <FearGreedMetric 
@@ -505,9 +505,9 @@ export default function MarketSentiment() {
             </div>
 
             {/* Social Sentiment Column */}
-            <div className="md:border-l md:pl-4">
-              <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-2 mb-3">
-                <Activity className="h-4 w-4" />
+            <div className="md:border-l md:pl-3">
+              <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 mb-2">
+                <Activity className="h-3.5 w-3.5" />
                 Social Sentiment
               </CardTitle>
               <SocialMetric 
@@ -527,16 +527,16 @@ export default function MarketSentiment() {
             onCategoryChange={(value) => setNewsCategory(value as any)}
           />
         ) : newsQuery.isLoading ? (
-          <div className="border-t py-4 text-center text-xs text-muted-foreground" data-testid="status-news-loading">
+          <div className="border-t py-2 text-center text-xs text-muted-foreground" data-testid="status-news-loading">
             Loading news...
           </div>
         ) : (
-          <div className="border-t py-4 text-center" data-testid="status-news-error">
-            <AlertTriangle className="h-6 w-6 mx-auto text-muted-foreground mb-1" />
+          <div className="border-t py-2 text-center" data-testid="status-news-error">
+            <AlertTriangle className="h-4 w-4 mx-auto text-muted-foreground mb-0.5" />
             <div className="text-xs text-muted-foreground">
               News feed unavailable
             </div>
-            <div className="text-xs text-muted-foreground mt-1">
+            <div className="text-xs text-muted-foreground mt-0.5">
               Configure API keys: ALPHA_VANTAGE_API_KEY, CRYPTO_NEWS_API_KEY, TRUTH_SOCIAL_API_KEY
             </div>
           </div>
