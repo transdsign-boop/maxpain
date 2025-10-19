@@ -339,50 +339,57 @@ export class StrategyEngine extends EventEmitter {
     // Sync cascade detector with strategy's selected assets
     await cascadeDetectorService.syncSymbols();
     
-    // Start WebSocket user data stream for real-time account/position updates
-    // IMPORTANT: Only run in deployed environment to avoid listen key conflicts
-    // Aster DEX only allows ONE active user data stream per API key
+    // Connect exchange WebSocket stream for real-time account/position updates via LiveDataOrchestrator
     const apiKey = process.env.ASTER_API_KEY;
     const secretKey = process.env.ASTER_SECRET_KEY;
-    const isDeployed = process.env.REPLIT_DEPLOYMENT === '1';
     
-    if (apiKey && isDeployed) {
+    if (apiKey && secretKey) {
       try {
-        await userDataStreamManager.start({
-          apiKey,
-          onAccountUpdate: (data) => {
-            console.log('💰 Account balance updated via WebSocket');
-          },
-          onPositionUpdate: (data) => {
-            console.log('📈 Position updated via WebSocket');
-          },
-          onOrderUpdate: (data) => {
-            console.log('📦 Order updated via WebSocket');
-          },
-          onTradeFill: async (order) => {
-            // CRITICAL: Immediately update protective orders when position changes from trade fill
-            console.log(`🚨 TRADE FILL detected for ${order.symbol} ${order.positionSide} - triggering immediate protective order update`);
-            try {
-              const session = this.activeSessions.get(strategy.id);
-              if (!session) {
-                console.log('⏭️ No active session, skipping protective order update');
-                return;
-              }
+        const { liveDataOrchestrator } = await import('./live-data-orchestrator');
+        const { exchangeRegistry } = await import('./exchanges/registry');
+        
+        // Initialize cache for this strategy
+        liveDataOrchestrator.start(strategy.id);
+        
+        // Get or create stream for this strategy
+        const stream = exchangeRegistry.getStream(strategy.id, 'aster');
+        
+        // Connect stream to orchestrator (this will set up all event handlers)
+        await liveDataOrchestrator.connectExchangeStream(strategy.id, stream);
+        
+        console.log(`✅ Exchange stream connected for strategy ${strategy.id} via LiveDataOrchestrator`);
+        
+        // Set up trade fill handler for protective order updates
+        stream.onTradeUpdate(async (tradeUpdate) => {
+          // Determine if this is an entry fill or exit fill
+          // Entry: LONG position BUY trade, or SHORT position SELL trade
+          // Exit: LONG position SELL trade, or SHORT position BUY trade
+          const isLongPosition = tradeUpdate.positionSide === 'LONG';
+          const isBuyTrade = tradeUpdate.side === 'BUY';
+          const isEntryFill = (isLongPosition && isBuyTrade) || (!isLongPosition && !isBuyTrade);
+          
+          // CRITICAL: Immediately update protective orders when position changes from trade fill
+          console.log(`🚨 TRADE FILL detected for ${tradeUpdate.symbol} ${tradeUpdate.positionSide} - triggering immediate protective order update`);
+          try {
+            const session = this.activeSessions.get(strategy.id);
+            if (!session) {
+              console.log('⏭️ No active session, skipping protective order update');
+              return;
+            }
 
-              // Find the specific position that just filled
-              const positionSide = order.positionSide === 'LONG' ? 'long' : 'short';
-              const position = await storage.getPositionBySymbolAndSide(
-                session.id,
-                order.symbol,
-                positionSide
-              );
+            // Find the specific position that just filled
+            const positionSide = tradeUpdate.positionSide === 'LONG' ? 'long' : 'short';
+            const position = await storage.getPositionBySymbolAndSide(
+              session.id,
+              tradeUpdate.symbol,
+              positionSide
+            );
 
-              if (position && position.isOpen) {
-                // CRITICAL FIX: Only increment layersFilled for DCA ENTRY fills
-                // DCA entry orders are NOT reduce-only, while TP/SL orders ARE reduce-only
-                const isEntryFill = order.isReduceOnly === false || order.isReduceOnly === 'false';
-                
-                if (isEntryFill) {
+            if (position && position.isOpen) {
+              // CRITICAL FIX: Only increment layersFilled for DCA ENTRY fills
+              // DCA entry orders are NOT reduce-only, while TP/SL orders ARE reduce-only
+              
+              if (isEntryFill) {
                   const currentLayers = position.layersFilled || 0;
                   const maxLayers = position.maxLayers || 5; // Default to 5 if not set
                   
@@ -393,77 +400,32 @@ export class StrategyEngine extends EventEmitter {
                     });
                     // Update the in-memory position object so downstream logic sees the new count
                     position.layersFilled = nextLayerNumber;
-                    console.log(`📊 Layer counter updated: ${nextLayerNumber}/${maxLayers} layers filled for ${order.symbol} ${positionSide} (entry fill)`);
+                    console.log(`📊 Layer counter updated: ${nextLayerNumber}/${maxLayers} layers filled for ${tradeUpdate.symbol} ${positionSide} (entry fill)`);
                   } else {
-                    console.log(`⏸️ Layer counter at max (${currentLayers}/${maxLayers}) for ${order.symbol} ${positionSide}`);
+                    console.log(`⏸️ Layer counter at max (${currentLayers}/${maxLayers}) for ${tradeUpdate.symbol} ${positionSide}`);
                   }
                 } else {
-                  console.log(`⏭️ Skipping layer increment for ${order.symbol} ${positionSide} (reduce-only order: TP/SL)`);
+                  console.log(`⏭️ Skipping layer increment for ${tradeUpdate.symbol} ${positionSide} (reduce-only order: TP/SL)`);
                 }
                 
                 // Update protective orders ONLY for the position that just filled
                 // Position object now has updated layersFilled count
                 await orderProtectionService.updateProtectiveOrders(position, strategy);
-                console.log(`✅ Protective orders updated immediately for ${order.symbol} ${positionSide}`);
-              } else {
-                console.log(`⏭️ No open ${order.symbol} ${positionSide} position found`);
-              }
-            } catch (error) {
-              console.error('❌ Failed to update protective orders after fill:', error);
+                console.log(`✅ Protective orders updated immediately for ${tradeUpdate.symbol} ${positionSide}`);
+            } else {
+              console.log(`⏭️ No open ${tradeUpdate.symbol} ${positionSide} position found`);
             }
+          } catch (error) {
+            console.error('❌ Failed to update protective orders after fill:', error);
           }
         });
-        console.log('✅ User data stream started for real-time updates (deployed mode)');
+        
       } catch (error) {
-        console.error('⚠️ Failed to start user data stream:', error);
+        console.error('⚠️ Failed to connect exchange stream:', error);
+        // Continue without exchange stream - will fall back to REST API
       }
-    } else if (apiKey && secretKey && !isDeployed) {
-      // Preview mode: Use polling instead of WebSocket (5-second intervals)
-      console.log('🔄 Starting polling mode for preview (5-second intervals)');
-      console.log('   📱 Deployed version uses WebSocket for real-time updates');
-      
-      // Poll account and positions every 5 seconds
-      this.pollingInterval = setInterval(async () => {
-        try {
-          const timestamp = Date.now();
-          
-          // Fetch account data
-          const accountParams = `timestamp=${timestamp}`;
-          const accountSignature = createHmac('sha256', secretKey)
-            .update(accountParams)
-            .digest('hex');
-          
-          const accountResponse = await fetch(
-            `https://fapi.asterdex.com/fapi/v2/account?${accountParams}&signature=${accountSignature}`,
-            { headers: { 'X-MBX-APIKEY': apiKey } }
-          );
-          
-          if (accountResponse.ok) {
-            const accountData = await accountResponse.json();
-            liveDataOrchestrator.updateAccountFromWebSocket(strategy.id, accountData.assets || []);
-          }
-          
-          // Fetch position data
-          const positionParams = `timestamp=${timestamp}`;
-          const positionSignature = createHmac('sha256', secretKey)
-            .update(positionParams)
-            .digest('hex');
-          
-          const positionResponse = await fetch(
-            `https://fapi.asterdex.com/fapi/v2/positionRisk?${positionParams}&signature=${positionSignature}`,
-            { headers: { 'X-MBX-APIKEY': apiKey } }
-          );
-          
-          if (positionResponse.ok) {
-            const positionData = await positionResponse.json();
-            liveDataOrchestrator.updatePositionsFromWebSocket(strategy.id, positionData);
-          }
-        } catch (error) {
-          console.error('⚠️ Polling error:', error);
-        }
-      }, 5000); // 5 seconds
-      
-      console.log('✅ Polling started for account/position updates (preview mode)');
+    } else {
+      console.warn('⚠️ No exchange credentials found - real-time updates disabled');
     }
   }
 
@@ -471,19 +433,13 @@ export class StrategyEngine extends EventEmitter {
   async unregisterStrategy(strategyId: string) {
     console.log(`📤 Unregistering strategy: ${strategyId}`);
     
-    // Stop WebSocket user data stream
+    // Disconnect exchange stream and stop live data orchestrator
     try {
-      await userDataStreamManager.stop();
-      console.log('✅ User data stream stopped');
+      const { liveDataOrchestrator } = await import('./live-data-orchestrator');
+      await liveDataOrchestrator.stop(strategyId);
+      console.log('✅ Exchange stream disconnected');
     } catch (error) {
-      console.error('⚠️ Error stopping user data stream:', error);
-    }
-    
-    // Stop polling interval if running (preview mode)
-    if (this.pollingInterval) {
-      clearInterval(this.pollingInterval);
-      this.pollingInterval = undefined;
-      console.log('✅ Polling stopped');
+      console.error('⚠️ Error disconnecting exchange stream:', error);
     }
     
     // CRITICAL: Capture session BEFORE removing from maps
