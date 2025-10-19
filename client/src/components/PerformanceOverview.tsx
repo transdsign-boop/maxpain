@@ -956,12 +956,12 @@ function PerformanceOverview() {
                     strokeLinecap="butt"
                     className={`transition-all duration-300 ${
                       (() => {
-                        const maxMargin = 100; // Margin can go up to 100%
-                        const redThreshold = 90;
-                        const orangeThreshold = 75;
+                        // CRITICAL: Check actual margin usage against user's max setting
+                        const isOverLimit = marginUsedPercentage > localRiskLimit;
+                        const warningThreshold = localRiskLimit * 0.8; // 80% of max
                         
-                        return marginUsedPercentage >= redThreshold ? 'stroke-red-600 dark:stroke-red-500' :
-                          marginUsedPercentage >= orangeThreshold ? 'stroke-orange-500 dark:stroke-orange-400' :
+                        return isOverLimit ? 'stroke-red-600 dark:stroke-red-500' :
+                          marginUsedPercentage >= warningThreshold ? 'stroke-orange-500 dark:stroke-orange-400' :
                           'stroke-lime-600 dark:stroke-lime-500';
                       })()
                     }`}
