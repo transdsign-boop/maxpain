@@ -1870,8 +1870,6 @@ export class StrategyEngine extends EventEmitter {
       this.lastFillTime.set(cooldownKey, Date.now());
       console.log(`🔒 PROVISIONAL layer cooldown set for ${liquidation.symbol} ${positionSide} (${strategy.dcaLayerDelayMs / 1000}s) - will refresh on exchange confirmation`);
       
-      let exchangeConfirmed = false; // Track if we successfully placed order
-      
       const side = position.side === 'long' ? 'buy' : 'sell';
       const nextLayer = position.layersFilled + 1;
       
