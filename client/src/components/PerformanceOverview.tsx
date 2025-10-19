@@ -814,11 +814,11 @@ function PerformanceOverview() {
           <>
         {/* Main Balance Section with Risk Bar */}
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_2fr_auto] gap-6">
-          {/* Total Balance - Prominent */}
+          {/* Current Balance - Prominent */}
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <DollarSign className="h-5 w-5 text-muted-foreground" />
-              <div className="text-sm text-muted-foreground uppercase tracking-wider">Total Balance</div>
+              <div className="text-sm text-muted-foreground uppercase tracking-wider">Current Balance</div>
             </div>
             <div className="text-7xl font-mono font-bold" data-testid="text-total-balance">
               ${totalBalance.toFixed(2)}
