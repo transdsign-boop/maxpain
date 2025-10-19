@@ -171,6 +171,94 @@ class LiveDataOrchestrator {
     // Connect the stream
     await stream.connect();
     console.log(`✅ Exchange stream connected for strategy ${strategyId}`);
+    
+    // Bootstrap snapshot with initial data from exchange API
+    await this.bootstrapSnapshot(strategyId);
+  }
+
+  /**
+   * Bootstrap snapshot with initial data from exchange API
+   * Called when strategy starts to populate UI immediately
+   */
+  async bootstrapSnapshot(strategyId: string): Promise<void> {
+    try {
+      console.log(`🚀 Bootstrapping snapshot for strategy ${strategyId}...`);
+      
+      // Get exchange stream (contains the adapter)
+      const stream = this.exchangeStreams.get(strategyId);
+      if (!stream) {
+        console.warn(`⚠️ No exchange stream found for strategy ${strategyId}, skipping bootstrap`);
+        return;
+      }
+
+      // Use the stream's adapter to fetch account info
+      const accountInfo = await (stream as any).adapter?.getAccountInfo();
+      if (!accountInfo) {
+        console.warn(`⚠️ Failed to fetch account info for bootstrap`);
+        return;
+      }
+
+      const snapshot = this.getSnapshot(strategyId);
+
+      // Bootstrap account data
+      const usdfAsset = accountInfo.assets.find((a: any) => a.asset === 'USDF');
+      const usdtAsset = accountInfo.assets.find((a: any) => a.asset === 'USDT');
+      
+      const totalBalance = parseFloat(accountInfo.totalBalance || '0');
+      const availableBalance = parseFloat(accountInfo.availableBalance || '0');
+      
+      snapshot.account = {
+        feeTier: 0,
+        canTrade: true,
+        canDeposit: true,
+        canWithdraw: true,
+        updateTime: Date.now(),
+        totalWalletBalance: accountInfo.totalBalance,
+        totalUnrealizedProfit: accountInfo.totalUnrealizedPnl,
+        totalMarginBalance: accountInfo.totalBalance,
+        totalInitialMargin: '0',
+        availableBalance: accountInfo.availableBalance,
+        usdcBalance: usdfAsset?.walletBalance || '0',
+        usdtBalance: usdtAsset?.walletBalance || '0',
+        assets: accountInfo.assets.map((a: any) => ({
+          a: a.asset,
+          wb: a.walletBalance,
+          cw: a.availableBalance,
+          bc: '0'
+        }))
+      };
+
+      // Bootstrap positions
+      if (accountInfo.positions && accountInfo.positions.length > 0) {
+        snapshot.positions = accountInfo.positions.map((p: any) => ({
+          symbol: p.symbol,
+          positionAmt: p.side === 'LONG' ? p.size : `-${p.size}`,
+          entryPrice: p.entryPrice,
+          markPrice: p.markPrice,
+          unRealizedProfit: p.unrealizedPnl,
+          unrealizedProfit: p.unrealizedPnl,
+          marginType: p.marginType === 'CROSSED' ? 'cross' : 'isolated',
+          isolatedWallet: '0',
+          positionSide: p.positionSide,
+          leverage: p.leverage
+        }));
+      } else {
+        snapshot.positions = [];
+      }
+
+      snapshot.timestamp = Date.now();
+      
+      // Calculate position summary
+      this.calculatePositionSummary(strategyId);
+
+      console.log(`✅ Snapshot bootstrapped: balance=$${totalBalance.toFixed(2)}, positions=${snapshot.positions.length}`);
+      
+      // Broadcast to frontend
+      this.broadcastSnapshot(strategyId);
+      
+    } catch (error) {
+      console.error(`❌ Failed to bootstrap snapshot for strategy ${strategyId}:`, error);
+    }
   }
 
   /**
