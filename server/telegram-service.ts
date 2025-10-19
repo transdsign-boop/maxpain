@@ -1,7 +1,11 @@
 import TelegramBot from 'node-telegram-bot-api';
 import { ChartJSNodeCanvas } from 'chartjs-node-canvas';
+import { Chart, registerables } from 'chart.js';
 import type { Position, Fill } from '@shared/schema';
 import { storage } from './storage';
+
+// Register Chart.js components before creating chart renderer
+Chart.register(...registerables);
 
 class TelegramService {
   private bot: TelegramBot | null = null;
@@ -287,20 +291,28 @@ ${emoji} <b>POSITION CLOSED</b>
 
       const winRate = recentClosed.length > 0 ? (winningTrades / recentClosed.length) * 100 : 0;
 
-      // Generate portfolio risk chart
+      // Fetch account balance for risk percentage calculation
+      const balance = parseFloat(activeSession.currentBalance || '0');
+      const totalRisk = filledRiskTotal + reservedRiskTotal;
+      
+      // Generate portfolio risk chart (as percentage of account balance)
       const riskChartData = Array.from(riskBySymbol.entries()).map(([symbol, risk]) => ({
         label: symbol,
-        value: risk.filled + risk.reserved,
+        value: balance > 0 ? ((risk.filled + risk.reserved) / balance) * 100 : 0,
         color: `hsl(${Math.random() * 360}, 70%, 50%)`
       }));
 
-      // Add available balance to chart
-      const totalRisk = filledRiskTotal + reservedRiskTotal;
-      riskChartData.push({
-        label: 'Available',
-        value: Math.max(0, 100 - totalRisk), // Approximate as percentage
-        color: '#666666'
-      });
+      // Add available balance to chart (percentage)
+      const riskPercent = balance > 0 ? (totalRisk / balance) * 100 : 0;
+      const availablePercent = Math.max(0, 100 - riskPercent);
+      
+      if (availablePercent > 0) {
+        riskChartData.push({
+          label: 'Available',
+          value: availablePercent,
+          color: '#666666'
+        });
+      }
 
       // Generate P&L history (simplified - hourly buckets)
       const pnlHistory: { date: string; pnl: number }[] = [];

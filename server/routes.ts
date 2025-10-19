@@ -6564,6 +6564,83 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Telegram notification routes
+  app.post("/api/telegram/test", async (req, res) => {
+    try {
+      const { telegramService } = await import('./telegram-service');
+      const success = await telegramService.sendTestMessage();
+      
+      if (success) {
+        res.json({ success: true, message: 'Test message sent successfully' });
+      } else {
+        res.status(500).json({ error: 'Failed to send test message - check server logs' });
+      }
+    } catch (error: any) {
+      console.error('❌ Error sending test message:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/telegram/daily-report", async (req, res) => {
+    try {
+      const { strategyId } = req.body;
+      
+      if (!strategyId) {
+        return res.status(400).json({ error: 'strategyId is required' });
+      }
+      
+      const { telegramService } = await import('./telegram-service');
+      await telegramService.sendDailyReport(strategyId);
+      
+      res.json({ success: true, message: 'Daily report sent successfully' });
+    } catch (error: any) {
+      console.error('❌ Error sending daily report:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/telegram/scheduler/start", async (req, res) => {
+    try {
+      const { strategyId } = req.body;
+      
+      if (!strategyId) {
+        return res.status(400).json({ error: 'strategyId is required' });
+      }
+      
+      const { telegramScheduler } = await import('./telegram-scheduler');
+      telegramScheduler.start(strategyId);
+      
+      res.json({ success: true, message: 'Daily report scheduler started' });
+    } catch (error: any) {
+      console.error('❌ Error starting scheduler:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/telegram/scheduler/stop", async (req, res) => {
+    try {
+      const { telegramScheduler } = await import('./telegram-scheduler');
+      telegramScheduler.stop();
+      
+      res.json({ success: true, message: 'Daily report scheduler stopped' });
+    } catch (error: any) {
+      console.error('❌ Error stopping scheduler:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/telegram/scheduler/status", async (req, res) => {
+    try {
+      const { telegramScheduler } = await import('./telegram-scheduler');
+      const status = telegramScheduler.getStatus();
+      
+      res.json(status);
+    } catch (error: any) {
+      console.error('❌ Error getting scheduler status:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   return httpServer;
 }
 
@@ -6962,82 +7039,4 @@ async function connectToUserDataStream() {
   } catch (error) {
     console.error('❌ Failed to connect to User Data Stream:', error);
   }
-}
-
-// Telegram notification routes
-app.post("/api/telegram/test", async (req, res) => {
-  try {
-    const { telegramService } = await import('./telegram-service');
-    const success = await telegramService.sendTestMessage();
-    
-    if (success) {
-      res.json({ success: true, message: 'Test message sent successfully' });
-    } else {
-      res.status(500).json({ error: 'Failed to send test message - check server logs' });
-    }
-  } catch (error: any) {
-    console.error('❌ Error sending test message:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.post("/api/telegram/daily-report", async (req, res) => {
-  try {
-    const { strategyId } = req.body;
-    
-    if (!strategyId) {
-      return res.status(400).json({ error: 'strategyId is required' });
-    }
-    
-    const { telegramService } = await import('./telegram-service');
-    await telegramService.sendDailyReport(strategyId);
-    
-    res.json({ success: true, message: 'Daily report sent successfully' });
-  } catch (error: any) {
-    console.error('❌ Error sending daily report:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.post("/api/telegram/scheduler/start", async (req, res) => {
-  try {
-    const { strategyId } = req.body;
-    
-    if (!strategyId) {
-      return res.status(400).json({ error: 'strategyId is required' });
-    }
-    
-    const { telegramScheduler } = await import('./telegram-scheduler');
-    telegramScheduler.start(strategyId);
-    
-    res.json({ success: true, message: 'Daily report scheduler started' });
-  } catch (error: any) {
-    console.error('❌ Error starting scheduler:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.post("/api/telegram/scheduler/stop", async (req, res) => {
-  try {
-    const { telegramScheduler } = await import('./telegram-scheduler');
-    telegramScheduler.stop();
-    
-    res.json({ success: true, message: 'Daily report scheduler stopped' });
-  } catch (error: any) {
-    console.error('❌ Error stopping scheduler:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.get("/api/telegram/scheduler/status", async (req, res) => {
-  try {
-    const { telegramScheduler } = await import('./telegram-scheduler');
-    const status = telegramScheduler.getStatus();
-    
-    res.json(status);
-  } catch (error: any) {
-    console.error('❌ Error getting scheduler status:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
 }
