@@ -1851,8 +1851,8 @@ export class StrategyEngine extends EventEmitter {
     positionSide: string
   ) {
     try {
-      // ATOMIC COOLDOWN CHECK: Must be FIRST to prevent race conditions
-      // Check cooldown and set it atomically if passing
+      // ATOMIC COOLDOWN CHECK AND SET: Must be FIRST to prevent race conditions
+      // Check cooldown and set it IMMEDIATELY if passing to block concurrent liquidations
       const cooldownKey = `${session.id}-${liquidation.symbol}-${positionSide}`;
       const lastFill = this.lastFillTime.get(cooldownKey);
       if (lastFill) {
@@ -1863,6 +1863,14 @@ export class StrategyEngine extends EventEmitter {
           return;
         }
       }
+      
+      // CRITICAL FIX: Set PROVISIONAL cooldown IMMEDIATELY after passing check
+      // This prevents rapid-fire liquidations from all passing the cooldown check
+      // We'll refresh this when exchange confirms to ensure accurate timing
+      this.lastFillTime.set(cooldownKey, Date.now());
+      console.log(`🔒 PROVISIONAL layer cooldown set for ${liquidation.symbol} ${positionSide} (${strategy.dcaLayerDelayMs / 1000}s) - will refresh on exchange confirmation`);
+      
+      let exchangeConfirmed = false; // Track if we successfully placed order
       
       const side = position.side === 'long' ? 'buy' : 'sell';
       const nextLayer = position.layersFilled + 1;
@@ -2017,6 +2025,13 @@ export class StrategyEngine extends EventEmitter {
         storageSuccess = true;
         console.log(`✅ Layer ${nextLayer} completed for ${liquidation.symbol}`);
       } finally {
+        // CRITICAL: Rollback provisional cooldown if order placement failed
+        // If exchange never confirmed, clear cooldown to allow retry
+        if (!exchangeConfirmed) {
+          this.lastFillTime.delete(cooldownKey);
+          console.log(`🔓 ROLLBACK: Cleared provisional layer cooldown for ${liquidation.symbol} ${positionSide} (order placement failed)`);
+        }
+        
         // CRITICAL: Only clear pending marker if storage succeeded
         // If exchange confirmed but storage failed, keep marker to block duplicates until reconciliation
         if (storageSuccess || !exchangeConfirmed) {
@@ -2033,6 +2048,10 @@ export class StrategyEngine extends EventEmitter {
       }
     } catch (error) {
       console.error('❌ Error executing layer:', error);
+      // ROLLBACK: Clear provisional cooldown on any error
+      const cooldownKey = `${session.id}-${liquidation.symbol}-${positionSide}`;
+      this.lastFillTime.delete(cooldownKey);
+      console.log(`🔓 ROLLBACK: Cleared provisional layer cooldown for ${liquidation.symbol} ${positionSide} (error occurred)`);
     }
   }
 
