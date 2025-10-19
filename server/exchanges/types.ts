@@ -1,16 +1,15 @@
 /**
  * Exchange Adapter Types
  * 
- * Defines standardized interfaces for multi-exchange support.
- * Each exchange (Aster DEX, Bybit, etc.) implements these interfaces
- * to provide a consistent API for the trading system.
+ * Defines standardized interfaces for exchange support.
+ * Currently supports Aster DEX with extensible architecture for future exchanges.
  */
 
 // ============================================================================
 // Normalized Types (Exchange-Agnostic)
 // ============================================================================
 
-export type ExchangeType = 'aster' | 'bybit';
+export type ExchangeType = 'aster';
 
 export interface NormalizedPosition {
   symbol: string;
@@ -280,7 +279,6 @@ export interface ExchangeConfig {
 
 export interface ExchangeCredentials {
   aster?: ExchangeConfig;
-  bybit?: ExchangeConfig;
 }
 
 // ============================================================================
