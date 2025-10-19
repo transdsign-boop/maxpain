@@ -378,21 +378,27 @@ export class StrategyEngine extends EventEmitter {
               );
 
               if (position && position.isOpen) {
-                // CRITICAL FIX: Increment layersFilled when a DCA layer fills
-                // Always increment if we haven't reached maxLayers yet
-                const currentLayers = position.layersFilled || 0;
-                const maxLayers = position.maxLayers || 5; // Default to 5 if not set
+                // CRITICAL FIX: Only increment layersFilled for DCA ENTRY fills
+                // DCA entry orders are NOT reduce-only, while TP/SL orders ARE reduce-only
+                const isEntryFill = order.isReduceOnly === false || order.isReduceOnly === 'false';
                 
-                if (currentLayers < maxLayers) {
-                  const nextLayerNumber = currentLayers + 1;
-                  await storage.updatePosition(position.id, {
-                    layersFilled: nextLayerNumber
-                  });
-                  // Update the in-memory position object so downstream logic sees the new count
-                  position.layersFilled = nextLayerNumber;
-                  console.log(`📊 Layer counter updated: ${nextLayerNumber}/${maxLayers} layers filled for ${order.symbol} ${positionSide}`);
+                if (isEntryFill) {
+                  const currentLayers = position.layersFilled || 0;
+                  const maxLayers = position.maxLayers || 5; // Default to 5 if not set
+                  
+                  if (currentLayers < maxLayers) {
+                    const nextLayerNumber = currentLayers + 1;
+                    await storage.updatePosition(position.id, {
+                      layersFilled: nextLayerNumber
+                    });
+                    // Update the in-memory position object so downstream logic sees the new count
+                    position.layersFilled = nextLayerNumber;
+                    console.log(`📊 Layer counter updated: ${nextLayerNumber}/${maxLayers} layers filled for ${order.symbol} ${positionSide} (entry fill)`);
+                  } else {
+                    console.log(`⏸️ Layer counter at max (${currentLayers}/${maxLayers}) for ${order.symbol} ${positionSide}`);
+                  }
                 } else {
-                  console.log(`⚠️ Layer counter NOT updated - already at max (${currentLayers}/${maxLayers}) for ${order.symbol} ${positionSide}`);
+                  console.log(`⏭️ Skipping layer increment for ${order.symbol} ${positionSide} (reduce-only order: TP/SL)`);
                 }
                 
                 // Update protective orders ONLY for the position that just filled

@@ -435,22 +435,29 @@ function PerformanceOverview() {
     return groups;
   }, [chartData]);
 
-  // Calculate total risk (WebSocket data preferred, fallback to local calculation)
-  const { totalRisk, riskPercentage, filledRisk, reservedRisk, filledRiskPercentage, reservedRiskPercentage } = useMemo(() => {
+  // Calculate portfolio risk metrics
+  const { totalRisk, riskPercentage, filledRisk, reservedRisk, filledRiskPercentage, reservedRiskPercentage, marginUsedPercentage, marginUsed } = useMemo(() => {
+    // ACTUAL MARGIN USAGE from exchange (most accurate metric)
+    const marginUsed = liveAccount ? parseFloat(liveAccount.totalInitialMargin || '0') : 0;
+    const totalMargin = liveAccount ? parseFloat(liveAccount.totalMarginBalance || '0') : 0;
+    const marginUsedPercentage = totalMargin > 0 ? (marginUsed / totalMargin) * 100 : 0;
+    
     // Try to use WebSocket risk data first (includes filled vs reserved metrics)
     if (portfolioRisk?.filledRiskDollars !== undefined) {
       return {
         totalRisk: portfolioRisk.filledRiskDollars,
-        riskPercentage: portfolioRisk.filledRiskPercentage,
+        riskPercentage: marginUsedPercentage, // Use actual margin instead of theoretical risk
         filledRisk: portfolioRisk.filledRiskDollars,
         reservedRisk: portfolioRisk.reservedRiskDollars,
         filledRiskPercentage: portfolioRisk.filledRiskPercentage,
         reservedRiskPercentage: portfolioRisk.reservedRiskPercentage,
+        marginUsedPercentage,
+        marginUsed,
       };
     }
 
     // Fallback: Calculate risk locally (legacy behavior)
-    if (!activeStrategy) return { totalRisk: 0, riskPercentage: 0, filledRisk: 0, reservedRisk: 0, filledRiskPercentage: 0, reservedRiskPercentage: 0 };
+    if (!activeStrategy) return { totalRisk: 0, riskPercentage: 0, filledRisk: 0, reservedRisk: 0, filledRiskPercentage: 0, reservedRiskPercentage: 0, marginUsedPercentage: 0, marginUsed: 0 };
 
     const stopLossPercent = Number(activeStrategy.stopLossPercent) || 2;
     const positions = livePositions ? livePositions.filter(p => parseFloat(p.positionAmt) !== 0) : [];
@@ -477,14 +484,21 @@ function PerformanceOverview() {
       return sum + positionLoss;
     }, 0);
 
+    // Calculate actual margin usage for fallback
+    const marginUsed = liveAccount ? parseFloat(liveAccount.totalInitialMargin || '0') : 0;
+    const totalMargin = liveAccount ? parseFloat(liveAccount.totalMarginBalance || '0') : 0;
+    const marginUsedPercentage = totalMargin > 0 ? (marginUsed / totalMargin) * 100 : 0;
+    
     const riskPct = totalBalance > 0 ? (totalPotentialLoss / totalBalance) * 100 : 0;
     return { 
       totalRisk: totalPotentialLoss, 
-      riskPercentage: riskPct,
+      riskPercentage: marginUsedPercentage, // Use actual margin instead of theoretical risk
       filledRisk: totalPotentialLoss,
       reservedRisk: totalPotentialLoss,
       filledRiskPercentage: riskPct,
       reservedRiskPercentage: riskPct,
+      marginUsedPercentage,
+      marginUsed,
     };
   }, [activeStrategy, livePositions, liveAccount, portfolioRisk]);
 
@@ -896,9 +910,9 @@ function PerformanceOverview() {
             </div>
           </div>
 
-          {/* Risk Pressure Meter - Dual Ring (Filled vs Reserved) */}
+          {/* Margin Usage Meter - Dual Ring (Margin Used vs Reserved Risk) */}
           <div className="flex flex-col items-center gap-3 lg:border-l lg:pl-6" data-testid="container-risk-bar">
-            <div className="text-xs text-muted-foreground uppercase tracking-wider text-center whitespace-nowrap">Portfolio Risk</div>
+            <div className="text-xs text-muted-foreground uppercase tracking-wider text-center whitespace-nowrap">Margin Usage</div>
             <div className="relative flex flex-col items-center">
               {/* Dual Ring Meter */}
               <div className="relative w-36 h-36">
@@ -927,7 +941,7 @@ function PerformanceOverview() {
                     data-testid="bar-reserved-risk"
                   />
                   
-                  {/* Inner ring background (filled risk) */}
+                  {/* Inner ring background (margin used) */}
                   <circle
                     cx="50"
                     cy="50"
@@ -937,7 +951,7 @@ function PerformanceOverview() {
                     strokeWidth="8"
                     className="opacity-60"
                   />
-                  {/* Inner ring progress (filled risk) */}
+                  {/* Inner ring progress (margin used) */}
                   <circle
                     cx="50"
                     cy="50"
@@ -947,33 +961,33 @@ function PerformanceOverview() {
                     strokeLinecap="butt"
                     className={`transition-all duration-300 ${
                       (() => {
-                        const maxRisk = activeStrategy ? parseFloat(activeStrategy.maxPortfolioRiskPercent) : 15;
-                        const redThreshold = maxRisk * 0.9;
-                        const orangeThreshold = maxRisk * 0.75;
+                        const maxMargin = 100; // Margin can go up to 100%
+                        const redThreshold = 90;
+                        const orangeThreshold = 75;
                         
-                        return filledRiskPercentage >= redThreshold ? 'stroke-red-600 dark:stroke-red-500' :
-                          filledRiskPercentage >= orangeThreshold ? 'stroke-orange-500 dark:stroke-orange-400' :
+                        return marginUsedPercentage >= redThreshold ? 'stroke-red-600 dark:stroke-red-500' :
+                          marginUsedPercentage >= orangeThreshold ? 'stroke-orange-500 dark:stroke-orange-400' :
                           'stroke-lime-600 dark:stroke-lime-500';
                       })()
                     }`}
                     strokeDasharray={`${2 * Math.PI * 36}`}
-                    strokeDashoffset={`${2 * Math.PI * 36 * (1 - Math.min(100, filledRiskPercentage) / 100)}`}
-                    data-testid="bar-filled-risk"
+                    strokeDashoffset={`${2 * Math.PI * 36 * (1 - Math.min(100, marginUsedPercentage) / 100)}`}
+                    data-testid="bar-margin-used"
                   />
                 </svg>
                 {/* Centered content */}
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <div className="text-sm font-mono text-muted-foreground">Filled</div>
-                  <div className="text-xl font-mono font-bold">{filledRiskPercentage.toFixed(1)}%</div>
+                  <div className="text-sm font-mono text-muted-foreground">Margin</div>
+                  <div className="text-xl font-mono font-bold">{marginUsedPercentage.toFixed(1)}%</div>
                   <div className="text-[10px] font-mono text-blue-500 dark:text-blue-400 mt-0.5">
-                    Reserved: {reservedRiskPercentage.toFixed(1)}%
+                    Risk: {reservedRiskPercentage.toFixed(1)}%
                   </div>
                 </div>
               </div>
               
               <div className="text-[10px] text-muted-foreground text-center mt-1">
-                <div>Filled: ${filledRisk.toFixed(2)}</div>
-                <div className="text-blue-500 dark:text-blue-400">Reserved: ${reservedRisk.toFixed(2)}</div>
+                <div>Used: ${marginUsed.toFixed(2)}</div>
+                <div className="text-blue-500 dark:text-blue-400">Risk: ${reservedRisk.toFixed(2)}</div>
               </div>
               
               {/* Risk Limit Slider */}
