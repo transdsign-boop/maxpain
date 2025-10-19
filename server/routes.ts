@@ -2045,7 +2045,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(500).json({ error: result.error, records: [], total: 0 });
       }
       
-      // Transform to match the frontend's expected format
+      // Get exclusion data from database
+      const dbTransfers = await db.query.transfers.findMany({
+        where: eq(transfers.userId, DEFAULT_USER_ID),
+        columns: {
+          transactionId: true,
+          excluded: true,
+        }
+      });
+      
+      const exclusionMap = new Map(
+        dbTransfers.map(t => [t.transactionId, t.excluded])
+      );
+      
+      // Transform to match the frontend's expected format and include exclusion status
       const transformedRecords = result.records.map((transfer: any) => ({
         id: transfer.tranId || `${transfer.time}`,
         userId: DEFAULT_USER_ID,
@@ -2053,12 +2066,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         asset: transfer.asset || 'USDT',
         transactionId: transfer.tranId || null,
         timestamp: new Date(transfer.time),
+        excluded: exclusionMap.get(transfer.tranId?.toString()) || false,
       }));
       
       res.json(transformedRecords);
     } catch (error: any) {
       console.error('❌ Error fetching transfers:', error);
       res.status(500).json({ error: `Failed to fetch transfers: ${error.message}`, records: [] });
+    }
+  });
+
+  // Delete a specific transfer by ID
+  app.delete("/api/transfers/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Delete from database
+      await db.delete(transfers).where(eq(transfers.id, id));
+      
+      console.log(`✅ Deleted transfer: ${id}`);
+      res.json({ success: true, id });
+    } catch (error: any) {
+      console.error('❌ Error deleting transfer:', error);
+      res.status(500).json({ error: error.message });
     }
   });
 

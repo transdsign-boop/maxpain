@@ -228,8 +228,10 @@ function PerformanceOverview() {
   const { totalDeposited, depositCount, depositsList } = useMemo(() => {
     if (!transfers || transfers.length === 0) return { totalDeposited: 0, depositCount: 0, depositsList: [] };
     
-    // Filter to only include deposits (positive amounts)
-    const deposits = transfers.filter(t => parseFloat(t.amount || '0') > 0);
+    // Filter to only include deposits (positive amounts) and exclude marked transfers
+    const deposits = transfers.filter(t => 
+      parseFloat(t.amount || '0') > 0 && !(t as any).excluded
+    );
     const totalDeposited = deposits.reduce((sum, transfer) => sum + parseFloat(transfer.amount || '0'), 0);
     
     // Sort deposits by timestamp (newest first for easy selection)

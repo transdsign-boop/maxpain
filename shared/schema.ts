@@ -391,6 +391,7 @@ export const transfers = pgTable("transfers", {
   asset: text("asset").notNull().default("USDT"),
   transactionId: varchar("transaction_id"), // Exchange transaction ID (if available)
   timestamp: timestamp("timestamp").notNull(), // Exchange timestamp
+  excluded: boolean("excluded").notNull().default(false), // Exclude from account size calculations
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => [
   index("idx_transfers_user_timestamp").on(table.userId, table.timestamp),
