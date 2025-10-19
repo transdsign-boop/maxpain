@@ -19,6 +19,7 @@ import { liveDataOrchestrator } from './live-data-orchestrator';
 import { syncCompletedTrades } from './exchange-sync';
 import { ProtectiveOrderRecovery } from './protective-order-recovery';
 import { wsBroadcaster } from './websocket-broadcaster';
+import { telegramService } from './telegram-service';
 
 // Aster DEX fee schedule
 const ASTER_MAKER_FEE_PERCENT = 0.01;  // 0.01% for limit orders (adds liquidity) 
@@ -3919,6 +3920,12 @@ export class StrategyEngine extends EventEmitter {
         } else {
           console.warn(`⚠️ No first layer TP/SL data found for ${q1Key}`);
         }
+        
+        // Send Telegram alert for new position
+        const positionFills = [fill];
+        telegramService.sendPositionOpenedAlert(position, positionFills).catch(err => 
+          console.error('Failed to send Telegram position opened alert:', err)
+        );
       } catch (positionError) {
         console.error(`❌ Failed to create position:`, positionError);
         // Don't clean up data on position creation failure - we might retry
@@ -4259,6 +4266,12 @@ export class StrategyEngine extends EventEmitter {
       }
 
       console.log(`✅ Position closed: ${position.symbol} - P&L: ${realizedPnlPercent.toFixed(2)}% ($${dollarPnl.toFixed(2)}, Fee: $${actualExitFee.toFixed(4)})`);
+      
+      // Send Telegram alert for closed position
+      const closedPositionFills = exitTrades || [];
+      telegramService.sendPositionClosedAlert(position, dollarPnl, closedPositionFills).catch(err => 
+        console.error('Failed to send Telegram position closed alert:', err)
+      );
     } catch (error) {
       console.error('❌ Error closing position:', error);
     }
