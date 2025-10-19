@@ -2007,11 +2007,11 @@ export class StrategyEngine extends EventEmitter {
           positionId: position.id,
           positionSide: this.exchangePositionMode === 'dual' ? positionSide : undefined,
           onExchangeConfirmation: () => {
-            // CRITICAL: Set cooldown IMMEDIATELY when exchange confirms (atomic with order acceptance)
-            // This prevents duplicates even if subsequent storage operations fail
+            // CRITICAL: REFRESH cooldown when exchange confirms (was provisionally set earlier)
+            // This ensures accurate timing from actual order confirmation
             this.lastFillTime.set(cooldownKey, Date.now());
             exchangeConfirmed = true;
-            console.log(`🔒 Layer cooldown set ATOMICALLY for ${liquidation.symbol} ${positionSide} (${strategy.dcaLayerDelayMs / 1000}s) at exchange confirmation`);
+            console.log(`🔒 Layer cooldown REFRESHED for ${liquidation.symbol} ${positionSide} (${strategy.dcaLayerDelayMs / 1000}s) at exchange confirmation`);
           }
         });
 
