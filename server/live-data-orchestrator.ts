@@ -184,19 +184,33 @@ class LiveDataOrchestrator {
     try {
       console.log(`🚀 Bootstrapping snapshot for strategy ${strategyId}...`);
       
-      // Get exchange stream (contains the adapter)
+      // Get exchange stream to verify connection
       const stream = this.exchangeStreams.get(strategyId);
       if (!stream) {
         console.warn(`⚠️ No exchange stream found for strategy ${strategyId}, skipping bootstrap`);
         return;
       }
 
-      // Use the stream's adapter to fetch account info
-      const accountInfo = await (stream as any).adapter?.getAccountInfo();
-      if (!accountInfo) {
-        console.warn(`⚠️ Failed to fetch account info for bootstrap`);
+      // Get adapter from registry (streams and adapters are separate)
+      const { exchangeRegistry } = await import('./exchanges/registry');
+      
+      // Guard against missing adapter
+      let adapter;
+      try {
+        adapter = exchangeRegistry.getAdapter(stream.exchangeType);
+      } catch (error) {
+        console.error(`❌ Failed to get exchange adapter for ${stream.exchangeType}:`, error);
+        console.warn(`⚠️ Skipping bootstrap - adapter not available yet`);
         return;
       }
+      
+      if (!adapter) {
+        console.warn(`⚠️ Exchange adapter not found for ${stream.exchangeType}, skipping bootstrap`);
+        return;
+      }
+      
+      // Fetch initial account info from exchange API
+      const accountInfo = await adapter.getAccountInfo();
 
       const snapshot = this.getSnapshot(strategyId);
 
