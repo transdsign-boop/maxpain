@@ -391,6 +391,138 @@ ${pnlEmoji} <b>24h P&L:</b> ${pnlSign}$${totalPnl24h.toFixed(2)}
       return false;
     }
   }
+
+  /**
+   * Send market condition change alert
+   */
+  async sendMarketConditionAlert(changes: { symbol: string; oldCondition: string; newCondition: string; reason: string }[]): Promise<void> {
+    if (!this.bot || !this.chatId || changes.length === 0) return;
+
+    try {
+      const changesList = changes.map(c => 
+        `• <b>${c.symbol}:</b> ${c.oldCondition} → ${c.newCondition}\n  <i>${c.reason}</i>`
+      ).join('\n\n');
+
+      const message = `
+🌍 <b>MARKET CONDITION CHANGE</b>
+
+${changesList}
+
+<b>Time:</b> ${new Date().toLocaleString()}
+      `.trim();
+
+      await this.bot.sendMessage(this.chatId, message, { parse_mode: 'HTML' });
+      console.log(`📤 Sent market condition alert for ${changes.length} symbols`);
+    } catch (error) {
+      console.error('❌ Failed to send market condition alert:', error);
+    }
+  }
+
+  /**
+   * Send risk level warning alert
+   */
+  async sendRiskLevelWarning(portfolioRisk: number, threshold: number, filledRisk: number, reservedRisk: number, accountBalance: number): Promise<void> {
+    if (!this.bot || !this.chatId) return;
+
+    try {
+      const riskPct = (portfolioRisk / accountBalance) * 100;
+      const emoji = riskPct >= 90 ? '🔴' : riskPct >= 80 ? '🟠' : '🟡';
+
+      const message = `
+${emoji} <b>RISK LEVEL WARNING</b>
+
+<b>Total Portfolio Risk:</b> ${riskPct.toFixed(1)}% (${emoji} Threshold: ${threshold}%)
+
+<b>Risk Breakdown:</b>
+• Filled Risk: $${filledRisk.toFixed(2)}
+• Reserved Risk: $${reservedRisk.toFixed(2)}
+• Total Risk: $${portfolioRisk.toFixed(2)}
+
+<b>Account Balance:</b> $${accountBalance.toFixed(2)}
+
+⚠️ <b>Action Required:</b> Consider closing positions or reducing exposure
+
+<b>Time:</b> ${new Date().toLocaleString()}
+      `.trim();
+
+      await this.bot.sendMessage(this.chatId, message, { parse_mode: 'HTML' });
+      console.log(`📤 Sent risk level warning: ${riskPct.toFixed(1)}%`);
+    } catch (error) {
+      console.error('❌ Failed to send risk level warning:', error);
+    }
+  }
+
+  /**
+   * Send cascade detector alert for high-quality setups
+   */
+  async sendCascadeDetectorAlert(symbol: string, score: number, reversalQuality: number, liquidationQuality: number, reason: string): Promise<void> {
+    if (!this.bot || !this.chatId) return;
+
+    try {
+      const scoreEmoji = score >= 80 ? '🟢' : score >= 60 ? '🟡' : '🟠';
+
+      const message = `
+${scoreEmoji} <b>HIGH-QUALITY SETUP DETECTED</b>
+
+<b>Symbol:</b> ${symbol}
+<b>Cascade Score:</b> ${score}/100
+
+<b>Quality Metrics:</b>
+• Reversal Quality: ${reversalQuality}/10
+• Liquidation Quality: ${liquidationQuality}/10
+
+<b>Reason:</b>
+${reason}
+
+<b>Time:</b> ${new Date().toLocaleString()}
+      `.trim();
+
+      await this.bot.sendMessage(this.chatId, message, { parse_mode: 'HTML' });
+      console.log(`📤 Sent cascade detector alert for ${symbol} (score: ${score})`);
+    } catch (error) {
+      console.error('❌ Failed to send cascade detector alert:', error);
+    }
+  }
+
+  /**
+   * Send system health alert
+   */
+  async sendSystemHealthAlert(type: 'error' | 'warning' | 'reconnect' | 'pause', message: string, details?: string): Promise<void> {
+    if (!this.bot || !this.chatId) return;
+
+    try {
+      const emojiMap = {
+        error: '🔴',
+        warning: '🟡',
+        reconnect: '🔄',
+        pause: '⏸️'
+      };
+
+      const titleMap = {
+        error: 'SYSTEM ERROR',
+        warning: 'SYSTEM WARNING',
+        reconnect: 'CONNECTION RESTORED',
+        pause: 'TRADING PAUSED'
+      };
+
+      const emoji = emojiMap[type];
+      const title = titleMap[type];
+
+      const alertMessage = `
+${emoji} <b>${title}</b>
+
+<b>Message:</b> ${message}
+${details ? `\n<b>Details:</b>\n${details}` : ''}
+
+<b>Time:</b> ${new Date().toLocaleString()}
+      `.trim();
+
+      await this.bot.sendMessage(this.chatId, alertMessage, { parse_mode: 'HTML' });
+      console.log(`📤 Sent system health alert: ${type} - ${message}`);
+    } catch (error) {
+      console.error('❌ Failed to send system health alert:', error);
+    }
+  }
 }
 
 // Export singleton instance
