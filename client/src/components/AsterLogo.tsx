@@ -31,7 +31,7 @@ export default function AsterLogo({ className = "" }: { className?: string }) {
       
       <div className="flex flex-col leading-tight">
         <span className="text-xl font-bold tracking-tight">MPI<sup className="text-[20px] ml-0.5 font-normal">™</sup></span>
-        <span className="text-xs text-muted-foreground tracking-wider">LIQUIDATION HUNTER BOT</span>
+        <span className="text-xs text-muted-foreground tracking-wider">LIQUIDATION HUNTER BOT - Aster DEX</span>
       </div>
     </div>
   );
