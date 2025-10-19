@@ -214,19 +214,32 @@ class LiveDataOrchestrator {
 
       const snapshot = this.getSnapshot(strategyId);
 
-      // Bootstrap account data
+      // Bootstrap account data - sum ALL assets to get complete balance
+      let totalWalletBalance = 0;
+      let totalAvailableBalance = 0;
+      const assetBreakdown: Array<{asset: string, balance: number}> = [];
+      
+      for (const asset of accountInfo.assets) {
+        const walletBalance = parseFloat(asset.walletBalance || '0');
+        const availableBalance = parseFloat(asset.availableBalance || '0');
+        
+        // Skip invalid values
+        if (isNaN(walletBalance) || isNaN(availableBalance)) {
+          continue;
+        }
+        
+        totalWalletBalance += walletBalance;
+        totalAvailableBalance += availableBalance;
+        
+        // Track significant assets (> $0.01) for logging
+        if (walletBalance > 0.01) {
+          assetBreakdown.push({ asset: asset.asset, balance: walletBalance });
+        }
+      }
+      
+      // Find USDF and USDT for backward compatibility with existing code
       const usdfAsset = accountInfo.assets.find((a: any) => a.asset === 'USDF');
       const usdtAsset = accountInfo.assets.find((a: any) => a.asset === 'USDT');
-      
-      // Calculate total balance by summing USDF + USDT (exchange API may not include all assets)
-      const usdfBalance = parseFloat(usdfAsset?.walletBalance || '0');
-      const usdtBalance = parseFloat(usdtAsset?.walletBalance || '0');
-      const totalWalletBalance = usdfBalance + usdtBalance;
-      
-      // Calculate available balance similarly
-      const usdfAvailable = parseFloat(usdfAsset?.availableBalance || '0');
-      const usdtAvailable = parseFloat(usdtAsset?.availableBalance || '0');
-      const totalAvailableBalance = usdfAvailable + usdtAvailable;
       
       snapshot.account = {
         feeTier: 0,
@@ -272,7 +285,12 @@ class LiveDataOrchestrator {
       // Calculate position summary
       this.calculatePositionSummary(strategyId);
 
-      console.log(`✅ Snapshot bootstrapped: balance=$${totalWalletBalance.toFixed(2)} (USDF: $${usdfBalance.toFixed(2)} + USDT: $${usdtBalance.toFixed(2)}), positions=${snapshot.positions.length}`);
+      // Format asset breakdown for logging
+      const assetLog = assetBreakdown.length > 0 
+        ? assetBreakdown.map(a => `${a.asset}: $${a.balance.toFixed(2)}`).join(' + ')
+        : 'no significant assets';
+      
+      console.log(`✅ Snapshot bootstrapped: balance=$${totalWalletBalance.toFixed(2)} (${assetLog}), positions=${snapshot.positions.length}`);
       
       // Broadcast to frontend
       this.broadcastSnapshot(strategyId);
