@@ -41,7 +41,8 @@ PERMANENT DATA PRESERVATION: ALL trading data MUST be preserved forever. The use
 - **Frameworks**: React 18, TypeScript, Vite.
 - **Design**: Radix UI, shadcn/ui, Tailwind CSS (financial trading-focused with lime for profit, orange for loss). Dark/light modes, responsive layout (Inter font for text, JetBrains Mono for numerical data), optimized tables/cards, mobile-first approach.
 - **Features**: Collapsible trade details, live strategy editing with performance charts, interactive P&L charts, hedge position detection, intelligent asset/risk recommendations, consolidated Global Settings dialog, DCA settings, API management (export/import JSON settings).
-- **Performance**: `React.memo` optimization on key components.
+- **Market Sentiment Dashboard** (Oct 19, 2025): Consolidated UI redesign combining 4 separate cards into ONE comprehensive bar with CSS Grid (3-column desktop layout for Market Sentiment, Fear & Greed Index, Social Sentiment). Integrated CSS marquee-based scrolling news ticker at bottom with pause-on-hover accessibility. News aggregation from 3 sources: Alpha Vantage (market/stock news), CryptoNews-API (crypto news with sentiment), ScrapeCreators (Trump Truth Social posts). Category filtering via ToggleGroup (All/Market/Crypto/Political). Per-source error handling ensures one API failure doesn't block others. 5-minute category-scoped caching prevents rate limiting.
+- **Performance**: `React.memo` optimization on key components. Memoized metric subcomponents (MarketMetric, FearGreedMetric, SocialMetric) prevent unnecessary re-renders. CSS keyframe animations (GPU-accelerated) for ticker instead of JS timers.
 
 **Technical Implementations:**
 - **Frontend State Management**: React hooks with TanStack Query.
