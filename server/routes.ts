@@ -4126,17 +4126,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { liveDataOrchestrator } = await import('./live-data-orchestrator');
       liveDataOrchestrator.start(strategyId);
       
-      // Connect exchange WebSocket stream for real-time account/position updates
-      const { exchangeRegistry } = await import('./exchanges/registry');
-      try {
-        const stream = exchangeRegistry.getStream(strategyId, 'aster');
-        await liveDataOrchestrator.connectExchangeStream(strategyId, stream);
-        console.log(`✅ Exchange stream connected for strategy ${strategyId}`);
-      } catch (streamError) {
-        console.error(`⚠️ Failed to connect exchange stream:`, streamError);
-        // Continue even if stream connection fails - strategy will still work with REST API polling
-      }
-      
       res.status(200).json(updatedStrategy);
     } catch (error) {
       console.error('Error starting strategy:', error);
