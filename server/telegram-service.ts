@@ -201,7 +201,7 @@ ${emoji} <b>POSITION CLOSED</b>
           },
           title: {
             display: true,
-            text: '24h P&L Performance',
+            text: 'All-Time P&L Performance',
             color: '#ffffff',
             font: { size: 18, weight: 'bold' as const }
           }
@@ -246,48 +246,78 @@ ${emoji} <b>POSITION CLOSED</b>
         throw new Error('No active trading session found. Please start trading first.');
       }
 
-      // Fetch open positions for portfolio risk
+      // Fetch ALL positions for metrics
       const allPositions = await storage.getPositionsBySession(activeSession.id);
       const openPositions = allPositions.filter((p: any) => p.isOpen);
-      
-      // Calculate portfolio risk allocation
-      let filledRiskTotal = 0;
-      let reservedRiskTotal = 0;
-      const riskBySymbol: Map<string, { filled: number; reserved: number }> = new Map();
-
-      for (const pos of openPositions) {
-        // Calculate filled risk from actual position cost
-        const filledRisk = parseFloat(pos.totalCost || '0');
-        const reservedRisk = parseFloat(pos.reservedRiskDollars || '0');
-        
-        filledRiskTotal += filledRisk;
-        reservedRiskTotal += reservedRisk;
-
-        const existing = riskBySymbol.get(pos.symbol) || { filled: 0, reserved: 0 };
-        riskBySymbol.set(pos.symbol, {
-          filled: existing.filled + filledRisk,
-          reserved: existing.reserved + reservedRisk
-        });
-      }
-
-      // Fetch closed positions from last 24h
-      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
       const closedPositions = allPositions.filter((p: any) => !p.isOpen);
-      const recentClosed = closedPositions.filter((p: any) => p.closedAt && new Date(p.closedAt) >= oneDayAgo);
-
-      // Calculate 24h P&L
-      let totalPnl24h = 0;
+      
+      // Calculate ALL-TIME P&L from closed positions
+      let totalRealizedPnl = 0;
       let winningTrades = 0;
       let losingTrades = 0;
 
-      for (const pos of recentClosed) {
+      for (const pos of closedPositions) {
         const pnl = parseFloat(pos.realizedPnl || '0');
-        totalPnl24h += pnl;
+        totalRealizedPnl += pnl;
         if (pnl > 0) winningTrades++;
         if (pnl < 0) losingTrades++;
       }
 
-      const winRate = recentClosed.length > 0 ? (winningTrades / recentClosed.length) * 100 : 0;
+      const winRate = closedPositions.length > 0 ? (winningTrades / closedPositions.length) * 100 : 0;
+      
+      // Calculate portfolio risk from LIVE exchange data
+      let filledRiskTotal = 0;
+      let reservedRiskTotal = 0;
+      const riskBySymbol: Map<string, { filled: number; reserved: number }> = new Map();
+
+      // Fetch live positions from exchange for accurate filled risk
+      const { exchangeRegistry } = await import('./exchanges/registry');
+      const adapter = exchangeRegistry.getAdapter(strategy.exchange as any || 'aster');
+      
+      try {
+        const livePositions = await adapter.getPositions();
+        const livePositionMap = new Map(livePositions.map((p: any) => [`${p.symbol}-${p.side}`, p]));
+        
+        for (const pos of openPositions) {
+          const key = `${pos.symbol}-${pos.side}`;
+          const livePos: any = livePositionMap.get(key);
+          
+          // Use live position data if available, otherwise fall back to DB
+          const quantity = livePos ? Math.abs(parseFloat(livePos.positionAmt)) : parseFloat(pos.totalQuantity || '0');
+          const entryPrice = livePos ? parseFloat(livePos.entryPrice) : parseFloat(pos.avgEntryPrice || '0');
+          const leverage = parseFloat(strategy.leverage?.toString() || '10');
+          
+          // Calculate actual filled risk (notional / leverage)
+          const notional = quantity * entryPrice;
+          const filledRisk = notional / leverage;
+          const reservedRisk = parseFloat(pos.reservedRiskDollars || '0');
+          
+          filledRiskTotal += filledRisk;
+          reservedRiskTotal += reservedRisk;
+
+          const existing = riskBySymbol.get(pos.symbol) || { filled: 0, reserved: 0 };
+          riskBySymbol.set(pos.symbol, {
+            filled: existing.filled + filledRisk,
+            reserved: existing.reserved + reservedRisk
+          });
+        }
+      } catch (error) {
+        console.error('Failed to fetch live positions for report, using DB values:', error);
+        // Fallback to DB values if exchange fetch fails
+        for (const pos of openPositions) {
+          const filledRisk = parseFloat(pos.totalCost || '0');
+          const reservedRisk = parseFloat(pos.reservedRiskDollars || '0');
+          
+          filledRiskTotal += filledRisk;
+          reservedRiskTotal += reservedRisk;
+
+          const existing = riskBySymbol.get(pos.symbol) || { filled: 0, reserved: 0 };
+          riskBySymbol.set(pos.symbol, {
+            filled: existing.filled + filledRisk,
+            reserved: existing.reserved + reservedRisk
+          });
+        }
+      }
 
       // Fetch account balance for risk percentage calculation
       const balance = parseFloat(activeSession.currentBalance || '0');
@@ -312,16 +342,21 @@ ${emoji} <b>POSITION CLOSED</b>
         });
       }
 
-      // Generate P&L history (simplified - hourly buckets)
+      // Generate P&L history (simplified - last 24 hours in hourly buckets)
       const pnlHistory: { date: string; pnl: number }[] = [];
-      let cumulativePnl = 0;
       
+      // Sort closed positions by close time
+      const sortedClosed = closedPositions
+        .filter((p: any) => p.closedAt)
+        .sort((a: any, b: any) => new Date(a.closedAt).getTime() - new Date(b.closedAt).getTime());
+      
+      // Build cumulative P&L over last 24 hours
       for (let i = 23; i >= 0; i--) {
         const hourDate = new Date(Date.now() - i * 60 * 60 * 1000);
-        const hourPositions = recentClosed.filter((p: any) => 
-          p.closedAt && new Date(p.closedAt) <= hourDate
+        const hourPositions = sortedClosed.filter((p: any) => 
+          new Date(p.closedAt) <= hourDate
         );
-        cumulativePnl = hourPositions.reduce((sum: number, p: any) => sum + parseFloat(p.realizedPnl || '0'), 0);
+        const cumulativePnl = hourPositions.reduce((sum: number, p: any) => sum + parseFloat(p.realizedPnl || '0'), 0);
         
         pnlHistory.push({
           date: hourDate.getHours() + ':00',
@@ -336,17 +371,17 @@ ${emoji} <b>POSITION CLOSED</b>
       ]);
 
       // Send performance message
-      const pnlSign = totalPnl24h >= 0 ? '+' : '';
-      const pnlEmoji = totalPnl24h >= 0 ? '🟢' : '🔴';
+      const pnlSign = totalRealizedPnl >= 0 ? '+' : '';
+      const pnlEmoji = totalRealizedPnl >= 0 ? '🟢' : '🔴';
 
       const message = `
-📊 <b>DAILY PERFORMANCE REPORT</b>
+📊 <b>PERFORMANCE REPORT</b>
 📅 ${new Date().toLocaleDateString()}
 
-${pnlEmoji} <b>24h P&L:</b> ${pnlSign}$${totalPnl24h.toFixed(2)}
+${pnlEmoji} <b>Realized P&L:</b> ${pnlSign}$${totalRealizedPnl.toFixed(2)}
 
 <b>📈 Trading Activity:</b>
-• Total Trades: ${recentClosed.length}
+• Total Trades: ${closedPositions.length}
 • Winning: ${winningTrades} (${winRate.toFixed(1)}%)
 • Losing: ${losingTrades}
 
@@ -363,7 +398,7 @@ ${pnlEmoji} <b>24h P&L:</b> ${pnlSign}$${totalPnl24h.toFixed(2)}
       // Send message with charts
       await this.bot.sendMessage(this.chatId, message, { parse_mode: 'HTML' });
       await this.bot.sendPhoto(this.chatId, riskChart, { caption: 'Portfolio Risk Allocation' });
-      await this.bot.sendPhoto(this.chatId, pnlChart, { caption: '24h P&L Performance' });
+      await this.bot.sendPhoto(this.chatId, pnlChart, { caption: 'All-Time P&L Performance' });
 
       console.log('✅ Daily Telegram report sent successfully');
     } catch (error) {
