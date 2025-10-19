@@ -1656,9 +1656,23 @@ export class StrategyEngine extends EventEmitter {
         const accountInfo = await this.fetchAccountInfo(strategy);
         if (accountInfo) {
           actualMarginUsed = parseFloat(accountInfo.totalInitialMargin || '0');
-          const totalMarginBalance = parseFloat(accountInfo.totalMarginBalance || '0');
-          actualMarginUsedPercentage = totalMarginBalance > 0 ? (actualMarginUsed / totalMarginBalance) * 100 : 0;
-          console.log(`   📊 Actual Margin Used: $${actualMarginUsed.toFixed(2)} = ${actualMarginUsedPercentage.toFixed(1)}% of margin balance`);
+          
+          // CRITICAL: Calculate total margin balance from ALL assets (USDF + USDT)
+          // This matches what the user sees on their dashboard
+          let marginBalance = 0;
+          if (accountInfo.assets && Array.isArray(accountInfo.assets)) {
+            for (const asset of accountInfo.assets) {
+              const walletBalance = parseFloat(asset.crossWalletBalance || asset.walletBalance || '0');
+              marginBalance += walletBalance;
+            }
+          }
+          // Fallback to totalWalletBalance if assets array is empty
+          if (marginBalance === 0) {
+            marginBalance = parseFloat(accountInfo.totalWalletBalance || '0');
+          }
+          
+          actualMarginUsedPercentage = marginBalance > 0 ? (actualMarginUsed / marginBalance) * 100 : 0;
+          console.log(`   📊 Actual Margin Used: $${actualMarginUsed.toFixed(2)} = ${actualMarginUsedPercentage.toFixed(1)}% of margin balance ($${marginBalance.toFixed(2)})`);
         }
       } catch (error) {
         console.error('⚠️ Failed to fetch actual margin usage:', error);
