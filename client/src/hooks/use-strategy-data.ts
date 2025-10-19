@@ -92,7 +92,8 @@ export function useStrategyData() {
       const response = await fetch('/api/live/snapshot');
       if (!response.ok) return null;
       const data = await response.json();
-      return data?.snapshot?.positionsSummary || null;
+      // API returns snapshot directly, not wrapped
+      return data?.positionsSummary || null;
     },
     staleTime: Infinity,
     gcTime: Infinity,
