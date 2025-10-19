@@ -293,24 +293,44 @@ function PerformanceOverview() {
   const chartData = useMemo(() => {
     if (paginatedSourceData.length === 0) return [];
     
+    // Helper function to calculate cumulative deposits up to a given timestamp
+    const getCumulativeDepositsAtTime = (timestamp: number): number => {
+      if (!transfers || transfers.length === 0) return 0;
+      
+      // Sum all non-excluded deposits that occurred before or at this timestamp
+      return transfers
+        .filter(t => {
+          const transferTime = new Date(t.timestamp).getTime();
+          const amount = parseFloat(t.amount || '0');
+          return transferTime <= timestamp && !(t as any).excluded && amount !== 0;
+        })
+        .reduce((sum, t) => sum + parseFloat(t.amount || '0'), 0);
+    };
+    
     // Rebase cumulative P&L to start at zero for the visible window
     const baseline = paginatedSourceData[0].cumulativePnl;
-    const rebasedData = paginatedSourceData.map(trade => ({
-      ...trade,
-      cumulativePnl: trade.cumulativePnl - baseline,
-      // Calculate account size = deposits + cumulative P&L (absolute, not rebased)
-      accountSize: totalDeposited + trade.cumulativePnl,
-    }));
+    const rebasedData = paginatedSourceData.map(trade => {
+      // Calculate cumulative deposits at this trade's timestamp
+      const depositsAtTime = getCumulativeDepositsAtTime(trade.timestamp);
+      
+      return {
+        ...trade,
+        cumulativePnl: trade.cumulativePnl - baseline,
+        // Calculate account size = cumulative deposits at this time + cumulative P&L (absolute, not rebased)
+        accountSize: depositsAtTime + trade.cumulativePnl,
+      };
+    });
     
     // Add starting point at zero for cumulative P&L line
     const firstTrade = rebasedData[0];
+    const depositsAtStart = getCumulativeDepositsAtTime(paginatedSourceData[0].timestamp);
     const startingPoint = {
       ...firstTrade,
       tradeNumber: firstTrade.tradeNumber - 0.5,
       timestamp: firstTrade.timestamp - 1000,
       pnl: 0,
       cumulativePnl: 0,
-      accountSize: totalDeposited + (paginatedSourceData[0].cumulativePnl - baseline), // Starting account size
+      accountSize: depositsAtStart + (paginatedSourceData[0].cumulativePnl - baseline), // Starting account size
     };
     
     const withStartPoint = [startingPoint, ...rebasedData];
@@ -355,7 +375,7 @@ function PerformanceOverview() {
       
       return [curr];
     });
-  }, [paginatedSourceData, totalDeposited]);
+  }, [paginatedSourceData, transfers]);
 
   // Group trades by day for visual blocks - MOVED HERE to fix React Hooks order
   const dayGroups = useMemo(() => {
