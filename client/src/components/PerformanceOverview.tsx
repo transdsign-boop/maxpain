@@ -484,11 +484,6 @@ function PerformanceOverview() {
       return sum + positionLoss;
     }, 0);
 
-    // Calculate actual margin usage for fallback
-    const marginUsed = liveAccount ? parseFloat(liveAccount.totalInitialMargin || '0') : 0;
-    const totalMargin = liveAccount ? parseFloat(liveAccount.totalMarginBalance || '0') : 0;
-    const marginUsedPercentage = totalMargin > 0 ? (marginUsed / totalMargin) * 100 : 0;
-    
     const riskPct = totalBalance > 0 ? (totalPotentialLoss / totalBalance) * 100 : 0;
     return { 
       totalRisk: totalPotentialLoss, 
