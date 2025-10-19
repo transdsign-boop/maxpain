@@ -6,6 +6,8 @@ The Aster DEX Liquidations Dashboard is a real-time monitoring and trading platf
 ## User Preferences
 Preferred communication style: Simple, everyday language.
 
+**Transfer Exclusion**: Specific deposits can be excluded from account size calculations using the `excluded` column in the transfers table. Excluded transfers are filtered out when calculating totalDeposited, effectively starting the account size calculation from zero (if all initial deposits are excluded).
+
 🚨 CRITICAL: DATABASE CONFIGURATION 🚨
 🛑 NEVER USE `execute_sql_tool` FOR THIS PROJECT 🛑
 THIS APPLICATION USES NEON DATABASE EXCLUSIVELY
