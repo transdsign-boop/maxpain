@@ -1734,6 +1734,32 @@ export class StrategyEngine extends EventEmitter {
         }
       }
       
+      // PROACTIVE TRADE BLOCK: Broadcast trade block status if margin exceeds max risk
+      // This ensures UI reflects current state even when no liquidations are being evaluated
+      const maxRiskPercent = parseFloat(strategy.maxPortfolioRiskPercent);
+      if (actualMarginUsedPercentage > maxRiskPercent) {
+        console.log(`🚨 PROACTIVE BLOCK: Actual margin ${actualMarginUsedPercentage.toFixed(1)}% exceeds max ${maxRiskPercent}% - broadcasting trade block`);
+        wsBroadcaster.broadcastTradeBlock({
+          blocked: true,
+          reason: `Margin limit exceeded: ${actualMarginUsedPercentage.toFixed(1)}% > ${maxRiskPercent}%`,
+          type: 'margin_limit_exceeded'
+        });
+      } else if (reservedRiskPercentage > maxRiskPercent) {
+        console.log(`⚠️ PROACTIVE BLOCK: Reserved risk ${reservedRiskPercentage.toFixed(1)}% exceeds max ${maxRiskPercent}% - broadcasting trade block`);
+        wsBroadcaster.broadcastTradeBlock({
+          blocked: true,
+          reason: `Risk limit exceeded: ${reservedRiskPercentage.toFixed(1)}% > ${maxRiskPercent}%`,
+          type: 'risk_limit'
+        });
+      } else {
+        // Clear trade block if within limits
+        wsBroadcaster.broadcastTradeBlock({
+          blocked: false,
+          reason: null,
+          type: null
+        });
+      }
+      
       return { 
         openPositionCount, 
         riskPercentage: reservedRiskPercentage, // Use reserved risk as the main risk metric
