@@ -237,15 +237,13 @@ ${emoji} <b>POSITION CLOSED</b>
       // Fetch strategy and session data
       const strategy = await storage.getStrategy(strategyId);
       if (!strategy) {
-        console.error('❌ Strategy not found for daily report');
-        return;
+        throw new Error('Strategy not found');
       }
 
       const sessions = await storage.getSessionsByStrategy(strategyId);
       const activeSession = sessions.find((s: any) => s.isActive === true);
       if (!activeSession) {
-        console.warn('⚠️ No active session found for daily report');
-        return;
+        throw new Error('No active trading session found. Please start trading first.');
       }
 
       // Fetch open positions for portfolio risk
