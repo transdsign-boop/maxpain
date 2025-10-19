@@ -384,14 +384,14 @@ export default function MarketSentiment() {
               </select>
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-2">
             {newsQuery.isLoading ? (
-              <div className="text-center py-8 text-sm text-muted-foreground" data-testid="status-news-loading">
+              <div className="text-center py-4 text-xs text-muted-foreground" data-testid="status-news-loading">
                 Loading news...
               </div>
             ) : newsQuery.error ? (
-              <div className="text-center py-8" data-testid="status-news-error">
-                <AlertTriangle className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+              <div className="text-center py-4" data-testid="status-news-error">
+                <AlertTriangle className="h-6 w-6 mx-auto text-muted-foreground mb-1" />
                 <div className="text-xs text-muted-foreground">
                   News feed unavailable
                 </div>
@@ -403,7 +403,7 @@ export default function MarketSentiment() {
                 </div>
               </div>
             ) : (
-              <div className="space-y-3 max-h-[300px] overflow-y-auto">
+              <div className="space-y-1.5 max-h-[300px] overflow-y-auto">
                 {newsQuery.data?.articles?.slice(0, 10).map((article: any, i: number) => {
                   const sourceTypeColor = 
                     article.sourceType === 'market' ? 'bg-blue-500/10 text-blue-500 border-blue-500/20' :
@@ -422,19 +422,19 @@ export default function MarketSentiment() {
                       href={article.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="block p-3 rounded-md border border-border hover-elevate active-elevate-2 transition-all"
+                      className="block p-2 rounded-md border border-border hover-elevate active-elevate-2 transition-all"
                       data-testid={`news-article-${i}`}
                     >
-                      <div className="flex items-start gap-2">
+                      <div className="flex items-start gap-1.5">
                         <div className="flex-1 min-w-0">
                           {/* Title with source badge */}
-                          <div className="flex items-start gap-2 mb-1">
-                            <div className="text-xs font-medium line-clamp-2 flex-1">
+                          <div className="flex items-start gap-1.5 mb-0.5">
+                            <div className="text-xs font-medium line-clamp-1 flex-1">
                               {article.title}
                             </div>
                             <Badge 
                               variant="outline" 
-                              className={`text-xs px-1.5 py-0 ${sourceTypeColor} flex-shrink-0`}
+                              className={`text-xs px-1 py-0 ${sourceTypeColor} flex-shrink-0`}
                               data-testid={`badge-source-${i}`}
                             >
                               {article.sourceType === 'market' ? '📊' : 
@@ -442,23 +442,17 @@ export default function MarketSentiment() {
                             </Badge>
                           </div>
                           
-                          <div className="text-xs text-muted-foreground line-clamp-1 mb-1">
-                            {article.description}
-                          </div>
-                          
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
-                            <span>{article.source.name}</span>
-                            <span>•</span>
-                            <span>{format(new Date(article.publishedAt), 'MMM d, h:mm a')}</span>
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground flex-wrap">
+                            <span className="text-[10px]">{format(new Date(article.publishedAt), 'MMM d, h:mm a')}</span>
                             
                             {/* Sentiment indicator */}
                             {article.sentiment && (
                               <>
                                 <span>•</span>
-                                <span className={`font-medium ${sentimentColor}`} data-testid={`sentiment-${i}`}>
-                                  {article.sentiment === 'bullish' || article.sentiment === 'positive' ? '↗ Bullish' :
-                                   article.sentiment === 'bearish' || article.sentiment === 'negative' ? '↘ Bearish' :
-                                   '→ Neutral'}
+                                <span className={`font-medium text-[10px] ${sentimentColor}`} data-testid={`sentiment-${i}`}>
+                                  {article.sentiment === 'bullish' || article.sentiment === 'positive' ? '↗' :
+                                   article.sentiment === 'bearish' || article.sentiment === 'negative' ? '↘' :
+                                   '→'}
                                 </span>
                               </>
                             )}
@@ -467,14 +461,14 @@ export default function MarketSentiment() {
                             {article.engagement && (
                               <>
                                 <span>•</span>
-                                <span data-testid={`engagement-${i}`}>
-                                  👍 {article.engagement.likes.toLocaleString()}
+                                <span className="text-[10px]" data-testid={`engagement-${i}`}>
+                                  👍 {article.engagement.likes > 1000 ? `${(article.engagement.likes / 1000).toFixed(1)}k` : article.engagement.likes}
                                 </span>
                               </>
                             )}
                           </div>
                         </div>
-                        <ExternalLink className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                        <ExternalLink className="h-3 w-3 text-muted-foreground flex-shrink-0 mt-0.5" />
                       </div>
                     </a>
                   );
