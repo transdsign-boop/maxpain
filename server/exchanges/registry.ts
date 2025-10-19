@@ -38,22 +38,6 @@ export class ExchangeRegistry {
     } else {
       console.warn('⚠️ Aster DEX credentials not found in environment');
     }
-
-    // Bybit Demo configuration
-    const bybitApiKey = process.env.BYBIT_API_KEY;
-    const bybitSecretKey = process.env.BYBIT_SECRET_KEY;
-    
-    if (bybitApiKey && bybitSecretKey) {
-      this.configs.set('bybit', {
-        apiKey: bybitApiKey,
-        secretKey: bybitSecretKey,
-        baseURL: 'https://api-demo.bybit.com', // Demo testnet
-        wsURL: 'wss://stream-demo.bybit.com', // Demo testnet WebSocket
-      });
-      console.log('✅ Bybit Demo credentials loaded');
-    } else {
-      console.warn('⚠️ Bybit Demo credentials not found in environment');
-    }
   }
 
   /**
@@ -71,19 +55,8 @@ export class ExchangeRegistry {
       throw new Error(`No configuration found for exchange: ${exchangeType}`);
     }
 
-    // Create new adapter based on exchange type
-    let adapter: IExchangeAdapter;
-    
-    switch (exchangeType) {
-      case 'aster':
-        adapter = new AsterExchangeAdapter(config);
-        break;
-      case 'bybit':
-        // TODO: Implement BybitExchangeAdapter
-        throw new Error('Bybit adapter not yet implemented');
-      default:
-        throw new Error(`Unsupported exchange type: ${exchangeType}`);
-    }
+    // Create new adapter (currently only supports Aster DEX)
+    const adapter = new AsterExchangeAdapter(config);
 
     // Cache and return
     this.adapters.set(exchangeType, adapter);
@@ -109,19 +82,8 @@ export class ExchangeRegistry {
       throw new Error(`No configuration found for exchange: ${exchangeType}`);
     }
 
-    // Create new stream based on exchange type
-    let stream: IExchangeStream;
-    
-    switch (exchangeType) {
-      case 'aster':
-        stream = new AsterWebSocketStream(config);
-        break;
-      case 'bybit':
-        // TODO: Implement BybitWebSocketStream
-        throw new Error('Bybit stream not yet implemented');
-      default:
-        throw new Error(`Unsupported exchange type: ${exchangeType}`);
-    }
+    // Create new stream (currently only supports Aster DEX)
+    const stream = new AsterWebSocketStream(config);
 
     // Cache and return
     this.streams.set(streamKey, stream);
