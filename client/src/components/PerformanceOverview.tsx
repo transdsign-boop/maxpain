@@ -224,6 +224,22 @@ function PerformanceOverview() {
     return chartData;
   }, [realizedPnlEvents, closedPositions]);
   
+  // Calculate total deposited capital EARLY (needed for chart data calculation)
+  const { totalDeposited, depositCount, depositsList } = useMemo(() => {
+    if (!transfers || transfers.length === 0) return { totalDeposited: 0, depositCount: 0, depositsList: [] };
+    
+    // Filter to only include deposits (positive amounts)
+    const deposits = transfers.filter(t => parseFloat(t.amount || '0') > 0);
+    const totalDeposited = deposits.reduce((sum, transfer) => sum + parseFloat(transfer.amount || '0'), 0);
+    
+    // Sort deposits by timestamp (newest first for easy selection)
+    const sortedDeposits = [...deposits].sort((a, b) => 
+      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
+    
+    return { totalDeposited, depositCount: deposits.length, depositsList: sortedDeposits };
+  }, [transfers]);
+  
   // Apply date range filter
   const sourceChartData = useMemo(() => {
     if (!dateRange.start && !dateRange.end) return rawSourceData;
@@ -280,6 +296,8 @@ function PerformanceOverview() {
     const rebasedData = paginatedSourceData.map(trade => ({
       ...trade,
       cumulativePnl: trade.cumulativePnl - baseline,
+      // Calculate account size = deposits + cumulative P&L (absolute, not rebased)
+      accountSize: totalDeposited + trade.cumulativePnl,
     }));
     
     // Add starting point at zero for cumulative P&L line
@@ -290,6 +308,7 @@ function PerformanceOverview() {
       timestamp: firstTrade.timestamp - 1000,
       pnl: 0,
       cumulativePnl: 0,
+      accountSize: totalDeposited + (paginatedSourceData[0].cumulativePnl - baseline), // Starting account size
     };
     
     const withStartPoint = [startingPoint, ...rebasedData];
@@ -308,20 +327,25 @@ function PerformanceOverview() {
         const interpolatedTradeNumber = prev.tradeNumber + ratio * (curr.tradeNumber - prev.tradeNumber);
         const interpolatedTimestamp = prev.timestamp + ratio * (curr.timestamp - prev.timestamp);
         
+        // Interpolate account size at crossing point
+        const interpolatedAccountSize = prev.accountSize + ratio * (curr.accountSize - prev.accountSize);
+        
         return [
           {
             ...prev,
             tradeNumber: interpolatedTradeNumber - 0.001,
             timestamp: interpolatedTimestamp - 1,
             cumulativePnl: 0,
-            pnl: 0
+            pnl: 0,
+            accountSize: interpolatedAccountSize,
           },
           {
             ...curr,
             tradeNumber: interpolatedTradeNumber + 0.001,
             timestamp: interpolatedTimestamp + 1,
             cumulativePnl: 0,
-            pnl: 0
+            pnl: 0,
+            accountSize: interpolatedAccountSize,
           },
           curr
         ];
@@ -329,7 +353,7 @@ function PerformanceOverview() {
       
       return [curr];
     });
-  }, [paginatedSourceData]);
+  }, [paginatedSourceData, totalDeposited]);
 
   // Group trades by day for visual blocks - MOVED HERE to fix React Hooks order
   const dayGroups = useMemo(() => {
@@ -467,23 +491,6 @@ function PerformanceOverview() {
       setLocalRiskLimit(parseFloat(activeStrategy.maxPortfolioRiskPercent));
     }
   }, [activeStrategy?.maxPortfolioRiskPercent]);
-
-  // Calculate total deposited capital (only positive deposits, exclude withdrawals)
-  // MUST be calculated before displayPerformance to avoid reference errors
-  const { totalDeposited, depositCount, depositsList } = useMemo(() => {
-    if (!transfers || transfers.length === 0) return { totalDeposited: 0, depositCount: 0, depositsList: [] };
-    
-    // Filter to only include deposits (positive amounts)
-    const deposits = transfers.filter(t => parseFloat(t.amount || '0') > 0);
-    const totalDeposited = deposits.reduce((sum, transfer) => sum + parseFloat(transfer.amount || '0'), 0);
-    
-    // Sort deposits by timestamp (newest first for easy selection)
-    const sortedDeposits = [...deposits].sort((a, b) => 
-      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-    );
-    
-    return { totalDeposited, depositCount: deposits.length, depositsList: sortedDeposits };
-  }, [transfers]);
 
   // Use unified performance data (live-only mode)
   // Recalculate metrics when date filter is active
@@ -712,19 +719,24 @@ function PerformanceOverview() {
     const saved = localStorage.getItem('chart-settings');
     return saved ? JSON.parse(saved).showDeposits ?? true : true;
   });
+  const [showAccountSize, setShowAccountSize] = useState(() => {
+    const saved = localStorage.getItem('chart-settings');
+    return saved ? JSON.parse(saved).showAccountSize ?? true : true;
+  });
   
   // Save chart settings to localStorage whenever they change
   useEffect(() => {
     const settings = {
       showStrategyUpdates,
       showDeposits,
+      showAccountSize,
       dateRange: {
         start: dateRange.start ? dateRange.start.toISOString() : null,
         end: dateRange.end ? dateRange.end.toISOString() : null,
       },
     };
     localStorage.setItem('chart-settings', JSON.stringify(settings));
-  }, [showStrategyUpdates, showDeposits, dateRange]);
+  }, [showStrategyUpdates, showDeposits, showAccountSize, dateRange]);
   
   // Get selected deposit info
   const selectedDeposit = useMemo(() => {
@@ -746,6 +758,11 @@ function PerformanceOverview() {
           <p className={`text-sm font-mono font-semibold ${data.cumulativePnl >= 0 ? 'text-lime-500' : 'text-red-600'}`}>
             Cumulative: {data.cumulativePnl >= 0 ? '+' : ''}${Math.abs(data.cumulativePnl).toFixed(2)}
           </p>
+          {data.accountSize !== undefined && (
+            <p className="text-sm font-mono font-semibold text-blue-500">
+              Account: ${data.accountSize.toFixed(2)}
+            </p>
+          )}
         </div>
       );
     }
@@ -1436,6 +1453,14 @@ function PerformanceOverview() {
                   tick={false}
                   axisLine={false}
                 />
+                <YAxis 
+                  yAxisId="accountSize"
+                  orientation="right"
+                  domain={['dataMin - 100', 'dataMax + 100']}
+                  tick={false}
+                  axisLine={false}
+                  hide={!showAccountSize}
+                />
                 <Tooltip content={<CustomTooltip />} />
                 <Legend 
                   verticalAlign="bottom" 
@@ -1444,9 +1469,10 @@ function PerformanceOverview() {
                   iconSize={10}
                   content={(props) => {
                     const legendItems = [
-                      { name: 'Cumulative P&L', color: 'rgb(190, 242, 100)', active: true },
-                      { name: 'Strategy Update', color: 'hsl(var(--primary))', active: showStrategyUpdates },
-                      { name: 'Deposit', color: 'rgb(34, 197, 94)', active: showDeposits }
+                      { name: 'Cumulative P&L', color: 'rgb(190, 242, 100)', active: true, toggleable: false },
+                      { name: 'Account Size', color: 'rgb(59, 130, 246)', active: showAccountSize, toggleable: true },
+                      { name: 'Strategy Update', color: 'hsl(var(--primary))', active: showStrategyUpdates, toggleable: true },
+                      { name: 'Deposit', color: 'rgb(34, 197, 94)', active: showDeposits, toggleable: true }
                     ];
                     
                     return (
@@ -1454,12 +1480,14 @@ function PerformanceOverview() {
                         {legendItems.map((item, index) => (
                           <li 
                             key={`legend-${index}`} 
-                            className={item.name === 'Cumulative P&L' ? 'flex items-center gap-1' : 'flex items-center gap-1 cursor-pointer hover:opacity-70 transition-opacity'}
+                            className={item.toggleable ? 'flex items-center gap-1 cursor-pointer hover:opacity-70 transition-opacity' : 'flex items-center gap-1'}
                             onClick={() => {
                               if (item.name === 'Strategy Update') {
                                 setShowStrategyUpdates(!showStrategyUpdates);
                               } else if (item.name === 'Deposit') {
                                 setShowDeposits(!showDeposits);
+                              } else if (item.name === 'Account Size') {
+                                setShowAccountSize(!showAccountSize);
                               }
                             }}
                             style={{
@@ -1721,6 +1749,21 @@ function PerformanceOverview() {
                   isAnimationActive={false}
                   legendType="none"
                 />
+                {/* Account Size line */}
+                {showAccountSize && (
+                  <Line
+                    yAxisId="accountSize"
+                    type="monotone"
+                    dataKey="accountSize"
+                    name="Account Size"
+                    stroke="rgb(59, 130, 246)"
+                    strokeWidth={2}
+                    strokeDasharray="3 3"
+                    dot={false}
+                    isAnimationActive={false}
+                    legendType="none"
+                  />
+                )}
               </ComposedChart>
               </ResponsiveContainer>
             </>
