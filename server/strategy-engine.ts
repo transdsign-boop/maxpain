@@ -1295,6 +1295,38 @@ export class StrategyEngine extends EventEmitter {
     }
   }
 
+  // Fetch full account info from exchange (for margin usage calculation)
+  private async fetchAccountInfo(strategy: Strategy): Promise<any | null> {
+    try {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+
+      if (!apiKey || !secretKey) {
+        return null;
+      }
+
+      const timestamp = Date.now();
+      const params = `timestamp=${timestamp}`;
+      const signature = createHmac('sha256', secretKey)
+        .update(params)
+        .digest('hex');
+
+      const response = await fetch(
+        `https://fapi.asterdex.com/fapi/v2/account?${params}&signature=${signature}`,
+        { headers: { 'X-MBX-APIKEY': apiKey } }
+      );
+
+      if (!response.ok) {
+        return null;
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      return null;
+    }
+  }
+
   // Reconcile stale positions: close database positions that are already closed on the exchange
   private async reconcileStalePositions(sessionId: string, strategy: Strategy): Promise<void> {
     try {
