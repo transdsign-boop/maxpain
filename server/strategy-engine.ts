@@ -1617,6 +1617,28 @@ export class StrategyEngine extends EventEmitter {
     onExchangeConfirmation?: () => void
   ): Promise<string | null> {
     try {
+      // ATOMIC COOLDOWN CHECK AND SET: Must be FIRST to prevent race conditions
+      // Check if we recently entered this symbol+side, if so skip to prevent duplicates
+      const cooldownKey = `${session.id}-${liquidation.symbol}-${positionSide}`;
+      const lastEntry = this.lastFillTime.get(cooldownKey);
+      if (lastEntry) {
+        const timeSinceLastEntry = Date.now() - lastEntry;
+        if (timeSinceLastEntry < strategy.dcaLayerDelayMs) {
+          const waitTime = ((strategy.dcaLayerDelayMs - timeSinceLastEntry) / 1000).toFixed(1);
+          console.log(`⏸️ Entry cooldown active for ${liquidation.symbol} ${positionSide} - wait ${waitTime}s before next entry`);
+          return null;
+        }
+      }
+      
+      // CRITICAL FIX: Set PROVISIONAL cooldown IMMEDIATELY after passing check
+      // This prevents rapid-fire liquidations from all passing the cooldown check
+      // We'll refresh this when exchange confirms to ensure accurate timing
+      this.lastFillTime.set(cooldownKey, Date.now());
+      console.log(`🔒 PROVISIONAL entry cooldown set for ${liquidation.symbol} ${positionSide} (${strategy.dcaLayerDelayMs / 1000}s) - will refresh on exchange confirmation`);
+      
+      // Track if exchange confirmed (for rollback logic)
+      let exchangeConfirmed = false;
+      
       // Counter-trade: if LONG liquidated → go LONG (buy the dip), if SHORT liquidated → go SHORT (sell the rally)
       const side = liquidation.side === 'long' ? 'buy' : 'sell';
       const orderSide = liquidation.side === 'long' ? 'long' : 'short';
@@ -1816,25 +1838,40 @@ export class StrategyEngine extends EventEmitter {
         await new Promise(resolve => setTimeout(resolve, strategy.orderDelayMs));
       }
 
-      // Place order with price chasing
-      // Only pass positionSide if the EXCHANGE is in dual mode (not based on strategy settings)
-      // Pass callback to set cooldown atomically when exchange confirms (prevents duplicate positions)
-      await this.placeOrderWithRetry({
-        strategy,
-        session,
-        symbol: liquidation.symbol,
-        side,
-        orderSide,
-        quantity,
-        targetPrice: price,
-        triggerLiquidationId: liquidation.id,
-        layerNumber: 1,
-        positionSide: this.exchangePositionMode === 'dual' ? positionSide : undefined, // Only include if EXCHANGE is in dual mode
-        onExchangeConfirmation, // Set cooldown atomically with exchange confirmation
-      });
+      try {
+        // Place order with price chasing
+        // Only pass positionSide if the EXCHANGE is in dual mode (not based on strategy settings)
+        // Pass callback to refresh cooldown atomically when exchange confirms (prevents duplicate positions)
+        await this.placeOrderWithRetry({
+          strategy,
+          session,
+          symbol: liquidation.symbol,
+          side,
+          orderSide,
+          quantity,
+          targetPrice: price,
+          triggerLiquidationId: liquidation.id,
+          layerNumber: 1,
+          positionSide: this.exchangePositionMode === 'dual' ? positionSide : undefined, // Only include if EXCHANGE is in dual mode
+          onExchangeConfirmation: () => {
+            // CRITICAL: REFRESH cooldown when exchange confirms (was provisionally set earlier)
+            // This ensures accurate timing from actual order confirmation
+            this.lastFillTime.set(cooldownKey, Date.now());
+            exchangeConfirmed = true;
+            console.log(`🔒 Entry cooldown REFRESHED for ${liquidation.symbol} ${positionSide} (${strategy.dcaLayerDelayMs / 1000}s) at exchange confirmation`);
+          }
+        });
 
-      // Return a tracking ID to indicate order was placed successfully
-      return `order-placed-${liquidation.id}`;
+        // Return a tracking ID to indicate order was placed successfully
+        return `order-placed-${liquidation.id}`;
+      } finally {
+        // CRITICAL: Rollback provisional cooldown if order placement failed
+        // If exchange never confirmed, clear cooldown to allow retry
+        if (!exchangeConfirmed) {
+          this.lastFillTime.delete(cooldownKey);
+          console.log(`🔓 ROLLBACK: Cleared provisional entry cooldown for ${liquidation.symbol} ${positionSide} (order placement failed)`);
+        }
+      }
 
     } catch (error) {
       console.error('❌ Error executing entry:', error);
