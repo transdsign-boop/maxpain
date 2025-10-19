@@ -437,20 +437,43 @@ function PerformanceOverview() {
 
   // Calculate portfolio risk metrics
   const { totalRisk, riskPercentage, filledRisk, reservedRisk, filledRiskPercentage, reservedRiskPercentage, marginUsedPercentage, marginUsed } = useMemo(() => {
-    // ACTUAL MARGIN USAGE from exchange (most accurate metric)
+    // Try to use WebSocket risk data first (includes filled vs reserved metrics + actual margin)
+    if (portfolioRisk?.filledRiskDollars !== undefined && portfolioRisk?.actualMarginUsed !== undefined) {
+      // Use actual margin from backend calculation (includes ALL assets: USDF + USDT)
+      const actualMarginUsed = portfolioRisk.actualMarginUsed;
+      const actualMarginUsedPct = portfolioRisk.actualMarginUsedPercentage;
+      
+      // Calculate total potential risk (filled + reserved)
+      const totalPotentialRisk = portfolioRisk.filledRiskDollars + portfolioRisk.reservedRiskDollars;
+      
+      return {
+        totalRisk: totalPotentialRisk,
+        riskPercentage: actualMarginUsedPct, // Use backend's actual margin percentage
+        filledRisk: portfolioRisk.filledRiskDollars,
+        reservedRisk: totalPotentialRisk, // Show total potential risk (not just reserved)
+        filledRiskPercentage: portfolioRisk.filledRiskPercentage,
+        reservedRiskPercentage: portfolioRisk.filledRiskPercentage + portfolioRisk.reservedRiskPercentage,
+        marginUsedPercentage: actualMarginUsedPct,
+        marginUsed: actualMarginUsed,
+      };
+    }
+    
+    // Fallback: Calculate from exchange data if WebSocket data not available
     const marginUsed = liveAccount ? parseFloat(liveAccount.totalInitialMargin || '0') : 0;
     const totalMargin = liveAccount ? parseFloat(liveAccount.totalMarginBalance || '0') : 0;
     const marginUsedPercentage = totalMargin > 0 ? (marginUsed / totalMargin) * 100 : 0;
     
-    // Try to use WebSocket risk data first (includes filled vs reserved metrics)
+    // If we have partial WebSocket data (without actualMarginUsed), use it with fallback margin
     if (portfolioRisk?.filledRiskDollars !== undefined) {
+      const totalPotentialRisk = portfolioRisk.filledRiskDollars + portfolioRisk.reservedRiskDollars;
+      
       return {
-        totalRisk: portfolioRisk.filledRiskDollars,
-        riskPercentage: marginUsedPercentage, // Use actual margin instead of theoretical risk
+        totalRisk: totalPotentialRisk,
+        riskPercentage: marginUsedPercentage, // Fallback to calculated margin
         filledRisk: portfolioRisk.filledRiskDollars,
-        reservedRisk: portfolioRisk.reservedRiskDollars,
+        reservedRisk: totalPotentialRisk,
         filledRiskPercentage: portfolioRisk.filledRiskPercentage,
-        reservedRiskPercentage: portfolioRisk.reservedRiskPercentage,
+        reservedRiskPercentage: portfolioRisk.filledRiskPercentage + portfolioRisk.reservedRiskPercentage,
         marginUsedPercentage,
         marginUsed,
       };
