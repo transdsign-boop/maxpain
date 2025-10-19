@@ -6,6 +6,118 @@ import { positions, transfers } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import { calculateDCALevels, calculateATRPercent } from './dca-calculator';
 
+/**
+ * Shared helper to validate orphan positions against DCA Layer 1 sizing limits.
+ * Used by both syncOpenPositions and live-snapshot endpoint to ensure consistent enforcement.
+ * @returns { valid: true } if position passes DCA validation, { valid: false, error: string } otherwise
+ */
+export async function validateOrphanPosition(
+  symbol: string,
+  side: 'long' | 'short',
+  quantity: number,
+  entryPrice: number,
+  sessionId: string,
+  storage: any
+): Promise<{ valid: true } | { valid: false; error: string }> {
+  const MAX_ORPHAN_MULTIPLIER = 2.0; // Allow up to 2 DCA layers already filled
+  
+  // Get strategy for session
+  const strategy = await storage.getStrategyBySession(sessionId);
+  
+  if (!strategy) {
+    return { valid: false, error: `No strategy found for session ${sessionId}` };
+  }
+
+  // Get API keys for balance/ATR fetching
+  const apiKey = process.env.ASTER_API_KEY;
+  const secretKey = process.env.ASTER_SECRET_KEY;
+  
+  if (!apiKey || !secretKey) {
+    return { valid: false, error: 'API keys not configured for DCA validation' };
+  }
+
+  try {
+    // Fetch account balance
+    const balanceTimestamp = Date.now();
+    const balanceParams = `timestamp=${balanceTimestamp}`;
+    const balanceSignature = createHmac('sha256', secretKey)
+      .update(balanceParams)
+      .digest('hex');
+
+    const balanceResponse = await fetch(
+      `https://fapi.asterdex.com/fapi/v2/balance?${balanceParams}&signature=${balanceSignature}`,
+      {
+        headers: {
+          'X-MBX-APIKEY': apiKey,
+        },
+      }
+    );
+
+    if (!balanceResponse.ok) {
+      return { valid: false, error: 'Failed to fetch balance for DCA validation' };
+    }
+
+    const balances = await balanceResponse.json();
+    const usdtBalance = balances.find((b: any) => b.asset === 'USDT');
+    const currentBalance = parseFloat(usdtBalance?.balance || '0');
+
+    if (currentBalance === 0 || isNaN(currentBalance)) {
+      return { valid: false, error: `Zero or invalid balance: ${currentBalance}` };
+    }
+
+    // Calculate ATR for the symbol
+    const atrPercent = await calculateATRPercent(symbol, 10, apiKey, secretKey);
+
+    // Build full strategy with DCA parameters for validation
+    const fullStrategy = {
+      ...strategy,
+      dcaStartStepPercent: String(strategy.dcaStartStepPercent || '0.4'),
+      dcaSpacingConvexity: String(strategy.dcaSpacingConvexity || '1.5'),
+      dcaSizeGrowth: String(strategy.dcaSizeGrowth || '2.0'),
+      dcaMaxRiskPercent: String(strategy.dcaMaxRiskPercent || '5.0'),
+      dcaVolatilityRef: String(strategy.dcaVolatilityRef || '1.2'),
+      dcaExitCushionMultiplier: String(strategy.dcaExitCushionMultiplier || '1.2'),
+    };
+
+    // Calculate what DCA Layer 1 size SHOULD be for this symbol
+    const leverage = strategy.leverage || 10;
+    const dcaResult = calculateDCALevels(fullStrategy, {
+      entryPrice,
+      side,
+      currentBalance,
+      leverage,
+      atrPercent,
+      minNotional: 5, // Use conservative minimum
+    });
+
+    const expectedLayer1Quantity = dcaResult.levels[0]?.quantity || 0;
+    const expectedLayer1Notional = expectedLayer1Quantity * entryPrice;
+    const notionalValue = entryPrice * quantity;
+
+    // Calculate size ratio: how many times larger is the orphan vs expected Layer 1?
+    const sizeRatio = quantity / expectedLayer1Quantity;
+
+    console.log(`   📏 DCA Validation: orphan=${quantity.toFixed(6)}, expected Layer 1=${expectedLayer1Quantity.toFixed(6)}, ratio=${sizeRatio.toFixed(1)}x`);
+    console.log(`   💵 Notional: orphan=$${notionalValue.toFixed(2)}, expected Layer 1=$${expectedLayer1Notional.toFixed(2)}`);
+
+    // STRICT ENFORCEMENT: Reject orphans larger than MAX_ORPHAN_MULTIPLIER × Layer 1 size
+    if (sizeRatio > MAX_ORPHAN_MULTIPLIER) {
+      const errorMsg = `Position size ${sizeRatio.toFixed(1)}x larger than DCA Layer 1 limit (expected max: ${(expectedLayer1Quantity * MAX_ORPHAN_MULTIPLIER).toFixed(6)} units)`;
+      console.error(`❌ ORPHAN REJECTED: ${errorMsg}`);
+      console.error(`   Symbol: ${symbol}, Side: ${side}, Quantity: ${quantity.toFixed(6)}`);
+      console.error(`   ⚠️  MANUAL ACTION REQUIRED: Close this position manually on the exchange to comply with DCA policy`);
+      return { valid: false, error: errorMsg };
+    }
+
+    // Orphan passes validation
+    console.log(`✅ Orphan position passes DCA validation (${sizeRatio.toFixed(2)}x Layer 1 size)`);
+    return { valid: true };
+
+  } catch (error: any) {
+    return { valid: false, error: `DCA validation exception: ${error.message}` };
+  }
+}
+
 // Fetch all account trades from Aster DEX within a time range
 export async function fetchAccountTrades(params: {
   symbol?: string;
@@ -1250,106 +1362,21 @@ export async function syncOpenPositions(sessionId: string): Promise<{
       const notionalValue = entryPrice * quantity;
       const margin = notionalValue / leverage;
 
-      // Get strategy for session
-      const strategy = await storage.getStrategyBySession(sessionId);
-      
-      if (!strategy) {
-        console.error(`❌ ORPHAN REJECTED: No strategy found for session ${sessionId}`);
-        continue;
-      }
-
       // CRITICAL: Validate orphan position size against DCA Layer 1 limits
       // This prevents tracking positions that violate DCA sizing policy
-      try {
-        // Get current account balance for DCA calculation
-        const apiKey = process.env.ASTER_API_KEY;
-        const secretKey = process.env.ASTER_SECRET_KEY;
-        
-        if (!apiKey || !secretKey) {
-          console.error(`❌ ORPHAN REJECTED: API keys not configured for DCA validation`);
-          continue;
-        }
+      const validationResult = await validateOrphanPosition(
+        symbol,
+        side,
+        quantity,
+        entryPrice,
+        sessionId,
+        storage
+      );
 
-        // Fetch account balance
-        const balanceTimestamp = Date.now();
-        const balanceParams = `timestamp=${balanceTimestamp}`;
-        const balanceSignature = createHmac('sha256', secretKey)
-          .update(balanceParams)
-          .digest('hex');
-
-        const balanceResponse = await fetch(
-          `https://fapi.asterdex.com/fapi/v2/balance?${balanceParams}&signature=${balanceSignature}`,
-          {
-            headers: {
-              'X-MBX-APIKEY': apiKey,
-            },
-          }
-        );
-
-        if (!balanceResponse.ok) {
-          console.error(`❌ ORPHAN REJECTED: Failed to fetch balance for DCA validation`);
-          continue;
-        }
-
-        const balances = await balanceResponse.json();
-        const usdtBalance = balances.find((b: any) => b.asset === 'USDT');
-        const currentBalance = parseFloat(usdtBalance?.balance || '0');
-
-        if (currentBalance === 0) {
-          console.error(`❌ ORPHAN REJECTED: Zero balance - cannot validate DCA sizing`);
-          continue;
-        }
-
-        // Calculate ATR for the symbol
-        const atrPercent = await calculateATRPercent(symbol, 10, apiKey, secretKey);
-
-        // Build full strategy with DCA parameters for validation
-        const fullStrategy = {
-          ...strategy,
-          dcaStartStepPercent: String(strategy.dcaStartStepPercent || '0.4'),
-          dcaSpacingConvexity: String(strategy.dcaSpacingConvexity || '1.5'),
-          dcaSizeGrowth: String(strategy.dcaSizeGrowth || '2.0'),
-          dcaMaxRiskPercent: String(strategy.dcaMaxRiskPercent || '5.0'),
-          dcaVolatilityRef: String(strategy.dcaVolatilityRef || '1.2'),
-          dcaExitCushionMultiplier: String(strategy.dcaExitCushionMultiplier || '1.2'),
-        };
-
-        // Calculate what DCA Layer 1 size SHOULD be for this symbol
-        const dcaResult = calculateDCALevels(fullStrategy, {
-          entryPrice,
-          side: side as 'long' | 'short',
-          currentBalance,
-          leverage,
-          atrPercent,
-          minNotional: 5, // Use conservative minimum
-        });
-
-        const expectedLayer1Quantity = dcaResult.levels[0]?.quantity || 0;
-        const expectedLayer1Notional = expectedLayer1Quantity * entryPrice;
-
-        // Calculate size ratio: how many times larger is the orphan vs expected Layer 1?
-        const sizeRatio = quantity / expectedLayer1Quantity;
-
-        console.log(`   📏 DCA Validation: orphan=${quantity.toFixed(6)}, expected Layer 1=${expectedLayer1Quantity.toFixed(6)}, ratio=${sizeRatio.toFixed(1)}x`);
-        console.log(`   💵 Notional: orphan=$${notionalValue.toFixed(2)}, expected Layer 1=$${expectedLayer1Notional.toFixed(2)}`);
-
-        // STRICT ENFORCEMENT: Reject orphans larger than 2x Layer 1 size
-        // (2x tolerance allows for positions with 1-2 DCA layers already filled)
-        if (sizeRatio > 2.0) {
-          console.error(`❌ ORPHAN REJECTED: Position size ${sizeRatio.toFixed(1)}x larger than DCA Layer 1 limit`);
-          console.error(`   This position violates DCA sizing policy and will NOT be tracked`);
-          console.error(`   Symbol: ${symbol}, Side: ${side}, Quantity: ${quantity.toFixed(6)} (expected max: ${(expectedLayer1Quantity * 2).toFixed(6)})`);
-          console.error(`   ⚠️  MANUAL ACTION REQUIRED: Close this position manually on the exchange to comply with DCA policy`);
-          continue; // Skip this orphan - do NOT add to database
-        }
-
-        // Orphan passes validation - safe to track
-        console.log(`✅ Orphan position passes DCA validation (${sizeRatio.toFixed(2)}x Layer 1 size)`);
-
-      } catch (error) {
-        console.error(`❌ ORPHAN REJECTED: DCA validation failed - ${error}`);
+      if (!validationResult.valid) {
+        console.error(`❌ ORPHAN REJECTED: ${validationResult.error}`);
         console.error(`   Position will NOT be tracked to maintain DCA policy compliance`);
-        continue;
+        continue; // Skip this orphan - do NOT add to database
       }
 
       // Create orphan position in database (only if it passed DCA validation)
