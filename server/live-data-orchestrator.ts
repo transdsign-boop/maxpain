@@ -42,6 +42,8 @@ interface LiveSnapshot {
     filledRiskPercentage: number;
     reservedRiskDollars: number;
     reservedRiskPercentage: number;
+    actualMarginUsed: number;
+    actualMarginUsedPercentage: number;
   } | null;
   timestamp: number;
   error: string | null;
@@ -462,11 +464,13 @@ class LiveDataOrchestrator {
       const totalPnl = realizedPnl + unrealizedPnl;
       const startingBalance = currentBalance - totalPnl;
 
-      // Calculate portfolio risk (both filled and reserved)
+      // Calculate portfolio risk (both filled, reserved, and actual margin usage)
       let filledRiskDollars = 0;
       let filledRiskPercentage = 0;
       let reservedRiskDollars = 0;
       let reservedRiskPercentage = 0;
+      let actualMarginUsed = 0;
+      let actualMarginUsedPercentage = 0;
 
       try {
         // Get active strategy and active session
@@ -490,6 +494,8 @@ class LiveDataOrchestrator {
             filledRiskPercentage = portfolioRisk.filledRiskPercentage;
             reservedRiskDollars = portfolioRisk.reservedRisk;
             reservedRiskPercentage = portfolioRisk.reservedRiskPercentage;
+            actualMarginUsed = portfolioRisk.actualMarginUsed;
+            actualMarginUsedPercentage = portfolioRisk.actualMarginUsedPercentage;
           }
         }
       } catch (riskError: any) {
@@ -507,7 +513,9 @@ class LiveDataOrchestrator {
         filledRiskDollars,
         filledRiskPercentage,
         reservedRiskDollars,
-        reservedRiskPercentage
+        reservedRiskPercentage,
+        actualMarginUsed,
+        actualMarginUsedPercentage
       };
       
       // Broadcast update
