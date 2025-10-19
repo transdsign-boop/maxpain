@@ -4855,72 +4855,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 const entryPrice = parseFloat(exPos.entryPrice || '0');
                 const quantity = Math.abs(posAmt);
                 
-                // DCA VALIDATION: Reject orphans that are larger than 2x DCA Layer 1 size
-                // This prevents manually created oversized positions from being tracked
-                const MAX_ORPHAN_MULTIPLIER = 2; // Allow up to 2 DCA layers already filled
+                // CRITICAL: Validate orphan position size against DCA Layer 1 limits
+                // Use shared validation helper to ensure consistent enforcement
+                const { validateOrphanPosition } = await import('./exchange-sync.js');
+                const validationResult = await validateOrphanPosition(
+                  exPos.symbol,
+                  side,
+                  quantity,
+                  entryPrice,
+                  liveSession.id,
+                  storage
+                );
                 
-                try {
-                  // 1. Fetch account balance for DCA calculation
-                  const balanceTimestamp = Date.now();
-                  const balanceParams = `timestamp=${balanceTimestamp}`;
-                  const balanceSignature = crypto
-                    .createHmac('sha256', secretKey)
-                    .update(balanceParams)
-                    .digest('hex');
-                  
-                  const balanceResponse = await fetch(
-                    `https://fapi.asterdex.com/fapi/v2/account?${balanceParams}&signature=${balanceSignature}`,
-                    {
-                      headers: { 'X-MBX-APIKEY': apiKey },
-                    }
-                  );
-                  
-                  if (!balanceResponse.ok) {
-                    console.error(`❌ ORPHAN REJECTED: ${exPos.symbol} ${side} - Failed to fetch balance for DCA validation`);
-                    continue; // Skip this orphan
-                  }
-                  
-                  const accountData = await balanceResponse.json();
-                  const totalBalance = parseFloat(accountData.totalWalletBalance || '0');
-                  
-                  if (totalBalance === 0 || isNaN(totalBalance)) {
-                    console.error(`❌ ORPHAN REJECTED: ${exPos.symbol} ${side} - Zero or invalid balance: ${totalBalance}`);
-                    continue;
-                  }
-                  
-                  // 2. Calculate ATR for the symbol
-                  const { calculateATRPercent, calculateDCALevels } = await import('./dca-calculator.js');
-                  const atrPercent = await calculateATRPercent(exPos.symbol);
-                  
-                  // 3. Calculate expected DCA Layer 1 size
-                  const dcaResult = calculateDCALevels(strategy, {
-                    entryPrice,
-                    side: side as 'long' | 'short',
-                    currentBalance: totalBalance,
-                    leverage: strategy.leverage,
-                    atrPercent,
-                    minNotional: 5
-                  });
-                  
-                  const expectedLayer1Quantity = dcaResult.q1;
-                  const maxAllowedQuantity = expectedLayer1Quantity * MAX_ORPHAN_MULTIPLIER;
-                  
-                  // 4. Validate orphan size against DCA limits
-                  if (quantity > maxAllowedQuantity) {
-                    const multiplier = (quantity / expectedLayer1Quantity).toFixed(1);
-                    console.error(`❌ ORPHAN REJECTED: ${exPos.symbol} ${side} quantity ${quantity} exceeds DCA Layer 1 limits!`);
-                    console.error(`   Expected Layer 1: ${expectedLayer1Quantity.toFixed(6)} units`);
-                    console.error(`   Actual quantity: ${quantity} (${multiplier}x larger than Layer 1)`);
-                    console.error(`   Max allowed: ${maxAllowedQuantity.toFixed(6)} (${MAX_ORPHAN_MULTIPLIER}x Layer 1)`);
-                    console.error(`   This position will NOT be added to database to enforce DCA sizing policy`);
-                    continue; // Skip this oversized orphan
-                  }
-                  
-                  console.log(`✅ Orphan size validation passed: ${quantity} ≤ ${maxAllowedQuantity.toFixed(6)} (${MAX_ORPHAN_MULTIPLIER}x Layer 1)`);
-                  
-                } catch (validationError: any) {
-                  console.error(`❌ ORPHAN REJECTED: ${exPos.symbol} ${side} - DCA validation failed:`, validationError.message);
-                  continue; // Skip this orphan if validation fails
+                if (!validationResult.valid) {
+                  console.error(`❌ ORPHAN REJECTED: ${validationResult.error}`);
+                  console.error(`   Position will NOT be tracked to maintain DCA policy compliance`);
+                  continue; // Skip this orphan - do NOT add to database
                 }
                 
                 // Validation passed - create position in database
