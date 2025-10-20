@@ -641,6 +641,18 @@ export class StrategyEngine extends EventEmitter {
     // Cooldown key for DCA layer delay tracking
     const cooldownKey = `${session.id}-${liquidation.symbol}-${positionSide}`;
     
+    // PRE-LOCK COOLDOWN CHECK: Check cooldown BEFORE lock acquisition to prevent race conditions
+    // This catches cases where two liquidations arrive simultaneously and both pass lock check
+    const preCheckLastFill = this.lastFillTime.get(cooldownKey);
+    if (preCheckLastFill) {
+      const timeSinceLastFill = Date.now() - preCheckLastFill;
+      if (timeSinceLastFill < currentStrategy.dcaLayerDelayMs) {
+        const waitTime = ((currentStrategy.dcaLayerDelayMs - timeSinceLastFill) / 1000).toFixed(1);
+        console.log(`⏸️ PRE-LOCK COOLDOWN BLOCK: ${liquidation.symbol} ${positionSide} - wait ${waitTime}s (prevents simultaneous entries)`);
+        return;
+      }
+    }
+    
     // ATOMIC lock acquisition: Try to acquire lock, if already exists, wait and re-evaluate
     const existingLock = this.positionCreationLocks.get(lockKey);
     if (existingLock) {

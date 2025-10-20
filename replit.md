@@ -43,24 +43,24 @@ PERMANENT DATA PRESERVATION: ALL trading data MUST be preserved forever. The use
 - **Frameworks**: React 18, TypeScript, Vite.
 - **Design**: Radix UI, shadcn/ui, Tailwind CSS (financial trading-focused with lime for profit, orange for loss). Dark/light modes, responsive layout (Inter font for text, JetBrains Mono for numerical data), optimized tables/cards, mobile-first approach.
 - **Features**: Collapsible trade details, live strategy editing with performance charts, interactive P&L charts, hedge position detection, intelligent asset/risk recommendations, consolidated Global Settings dialog, DCA settings, API management (export/import JSON settings).
-- **Market Sentiment Dashboard** (Oct 19, 2025): Consolidated UI redesign combining 4 separate cards into ONE comprehensive bar with CSS Grid (3-column desktop layout for Market Sentiment, Fear & Greed Index, Social Sentiment). Integrated CSS marquee-based scrolling news ticker at bottom with pause-on-hover accessibility. News aggregation from 3 sources: Alpha Vantage (market/stock news), CryptoNews-API (crypto news with sentiment), ScrapeCreators (Trump Truth Social posts). Category filtering via ToggleGroup (All/Market/Crypto/Political). Per-source error handling ensures one API failure doesn't block others. 5-minute category-scoped caching prevents rate limiting.
-- **Performance**: `React.memo` optimization on key components. Memoized metric subcomponents (MarketMetric, FearGreedMetric, SocialMetric) prevent unnecessary re-renders. CSS keyframe animations (GPU-accelerated) for ticker instead of JS timers.
+- **Market Sentiment Dashboard**: Consolidated UI with Market Sentiment, Fear & Greed Index, Social Metric, and a CSS marquee-based scrolling news ticker. News aggregation from Alpha Vantage, CryptoNews-API, and ScrapeCreators with category filtering and per-source error handling.
+- **Performance**: `React.memo` optimization on key components. Memoized metric subcomponents prevent unnecessary re-renders. CSS keyframe animations for ticker.
 
 **Technical Implementations:**
 - **Frontend State Management**: React hooks with TanStack Query.
 - **Routing**: Wouter.
 - **Backend Runtime**: Node.js with Express.js (TypeScript).
 - **Database ORM**: Drizzle ORM (raw SQL for critical operations).
-- **API**: RESTful endpoints with `/api` prefix for strategy management and data.
+- **API**: RESTful endpoints for strategy management and data.
 - **Real-time Data**: WebSocket connection to Aster DEX for live liquidation streaming and user data (ACCOUNT_UPDATE, ORDER_TRADE_UPDATE), managed by a Live Data Orchestrator.
 - **Trade Logic**: Includes cascade detection, percentile threshold filtering, automatic position reconciliation, comprehensive real-time trade blocking (system-wide and per-liquidation filters), and a robust DCA system.
-- **DCA System**: Integrates ATR-based volatility scaling, convex level spacing, exponential size growth, and liquidation-aware risk management. Position sizing for Layer 1 uses Start Step %; Max Portfolio Risk acts as a trade blocker. Full potential DCA risk is reserved upfront, visible in UI. Configurable DCA layer delay prevents rapid-fire entries. Atomic cooldown checks prevent race conditions. **Layer Tracking**: `layersFilled` counter increments in real-time via WebSocket fill events (updates both DB and in-memory position object for downstream logic). **Dynamic Risk Calculation** (Oct 18, 2025): Portfolio risk now recalculates reserved risk on-the-fly using CURRENT strategy settings (maxLayers, DCA parameters, ATR). Each time portfolio risk is calculated, it fetches fresh strategy config and recalculates full DCA potential using live ATR data - no reliance on stored values. Ensures risk metrics always reflect actual configured parameters. **DCA Rapid-Fire Fix** (Oct 19, 2025): Fixed race condition in layer cooldown mechanism where multiple liquidations could bypass cooldown check before any updated the timestamp. Now sets PROVISIONAL cooldown IMMEDIATELY when executeLayer starts (line 1873), refreshes on exchange confirmation, and rolls back if order fails. This prevents back-to-back layer entries within dcaLayerDelayMs window. **Self-Blocking Bug Fix** (Oct 20, 2025): Removed duplicate cooldown check from executeEntry function that was blocking approved trades. evaluateStrategySignal sets provisional cooldown (line 719) to prevent race conditions, then calls executeEntry - the duplicate check in executeEntry was finding that same provisional cooldown and blocking legitimate trades. executeEntry now only refreshes the provisional cooldown without checking it again (cooldown already validated in evaluateStrategySignal at lines 702-714). Single atomic cooldown check within lock prevents both race conditions and self-blocking.
+- **DCA System**: Integrates ATR-based volatility scaling, convex level spacing, exponential size growth, and liquidation-aware risk management. Position sizing for Layer 1 uses Start Step %; Max Portfolio Risk acts as a trade blocker. Full potential DCA risk is reserved upfront and visible in UI. Configurable DCA layer delay (default: 120 seconds). Multi-layer race condition prevention with provisional cooldowns. Dynamic risk calculation recalculates reserved risk on-the-fly using current strategy settings and live ATR data.
 - **Protective Orders**: Simplified position-level TP/SL orders with place-then-cancel pattern, scheduled reconciliation, and automatic retry.
-- **Trading System**: Live-only trading with HMAC-SHA256 authentication, automatic ATR-based TP/SL, queue-based locking, and session-based tracking. Features user-facing Pause/Resume controls. Configures isolated/cross margin and uses `positionSide` for hedge mode.
+- **Trading System**: Live-only trading with HMAC-SHA256 authentication, automatic ATR-based TP/SL, queue-based locking, and session-based tracking. Features user-facing Pause/Resume controls, configures isolated/cross margin, and uses `positionSide` for hedge mode.
 - **Data Integrity**: Idempotency for orders, atomic cooldowns, and permanent preservation of all trading data. Multi-layer race condition prevention.
 - **Performance Metrics**: Tracks deposited capital, ROI, transfer markers, commissions, and funding fees from exchange API.
 - **Portfolio Limit**: Counts unique symbols; hedged positions count as 1.
-- **Telegram Notifications** (Oct 19, 2025): Real-time position alerts (open/close with trade details, entry/exit prices, P&L) sent via Telegram bot. Daily performance report scheduler (midnight UTC) generates comprehensive trading summary with performance metrics, top trades, and strategy statistics. Uses `node-telegram-bot-api` for messaging and `chartjs-node-canvas` for chart generation (portfolio risk graphics, P&L graphs). Alert system integrated into strategy engine at position lifecycle events (creation, closure). Configurable via TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID environment variables. API endpoints: `/api/telegram/test`, `/api/telegram/daily-report`, `/api/telegram/scheduler/{start,stop,status}`.
+- **Telegram Notifications**: Real-time position alerts (open/close with trade details, entry/exit prices, P&L) and daily performance reports via Telegram bot using `node-telegram-bot-api` and `chartjs-node-canvas`.
 
 **Feature Specifications:**
 - **Financial Metrics**: Realized P&L, commissions, and funding fees fetched directly from exchange API (e.g., `/fapi/v1/income`), not stored in DB.
@@ -69,45 +69,11 @@ PERMANENT DATA PRESERVATION: ALL trading data MUST be preserved forever. The use
 
 **System Design Choices:**
 - **Data Persistence**: PostgreSQL via Neon serverless hosting.
-- **Schema**: 13 core tables (liquidations, strategies, trade sessions, positions, fills, orders, etc.). **Removed `position_layers` table** (Oct 15, 2025) after migrating to simplified position-level TP/SL.
+- **Schema**: 13 core tables (liquidations, strategies, trade sessions, positions, fills, orders, etc.). `position_layers` table has been removed.
 - **Schema Changes**: Exclusively manual SQL scripts.
 - **Data Retention**: Liquidation data for 30 days; trading data and financial records are permanently preserved through archiving.
 - **Trade Sync Pagination**: Handles exchange API limitations by chunking large date ranges into 7-day segments with backward cursor pagination.
-- **Position Architecture** (Updated Oct 15, 2025): Database has been fully consolidated to single-source-of-truth positions. Each realized P&L event is represented by ONE position with real exchange fills. **Legacy P&L sync permanently disabled** - the reconciliation loop no longer calls `syncCompletedTrades()`. **P&L STORAGE SYSTEM** (Oct 15, 2025): P&L is now stored permanently in database `realizedPnl` field when positions close, fetched from exchange `/fapi/v1/userTrades` API. Overcomes 7-day exchange API retention limit by capturing P&L at close time. **Nullable schema** (Oct 15, 2025): `realizedPnl` is nullable - NULL means "never stored", any other value (including '0') means "stored P&L". Eliminates ambiguity between "never fetched" and "fetched as zero". Manual SQL migration executed to make column nullable and set NULL for old positions. Manual close endpoint uses `fetchPositionPnL()` helper with fromId pagination to get actual P&L from exchange (handles positions with >1000 trades). Completed trades endpoint checks for NULL to distinguish never-stored positions - only NULL triggers exchange fallback. Backfill endpoint (`/api/admin/backfill-pnl`) targets NULL rows to populate P&L for recent positions (< 7 days old). **Fills attachment bug fixed** (Oct 15, 2025): `/api/strategies/:strategyId/positions/closed` endpoint now properly attaches fills array to each position. **Session ID resolution added** (Oct 15, 2025): Endpoint accepts both strategy IDs and session IDs. **Legacy layer tracking removed** (Oct 15, 2025): `position_layers` table fully removed from schema and codebase after migrating to position-level TP/SL managed by OrderProtectionService. **Critical matching fix**: Exchange P&L correctly matches CLOSING trades (SELL for longs, BUY for shorts) which contain realizedPnl values, not opening trades (which always show $0). Database positions retain layer/DCA tracking while exchange provides real money P&L values. Fully deterministic: Trades matched by symbol, position lifetime, and closing side direction - no timestamp heuristics.
-
-## Deployment & Always-On Requirements
-
-🚨 **CRITICAL: Liquidation Stream Uptime** 🚨
-
-This application connects to the **Aster DEX liquidation stream** via WebSocket (`wss://fstream.asterdex.com/stream?streams=!forceOrder@arr`) to receive real-time liquidation events. The stream MUST remain connected 24/7 to ensure:
-- All liquidations are captured without gaps
-- Cascade detector has complete data for risk analysis
-- Trading strategy receives real-time market signals
-
-**Development Environment:**
-- The Replit development environment may stop when inactive
-- This will disconnect the liquidation stream and cause data gaps
-- Manual workflow restarts may be required after periods of inactivity
-
-**Production Deployment (Always-On):**
-To ensure the liquidation stream stays connected permanently:
-1. **Use Reserved VM Deployment**: Publish your app using Replit's Reserved VM deployment type
-2. **Benefits**: Dedicated computing resources, always-on cloud server, no interruptions
-3. **Access**: Click "Deploy" in Replit and select "Reserved VM" option
-4. **Cost**: Predictable monthly cost for dedicated resources
-
-**Stream Health Monitoring:**
-The application includes automatic reconnection logic:
-- WebSocket reconnects automatically on disconnect (exponential backoff: 5s → 10s → 20s → 40s → 80s)
-- Maximum 10 reconnection attempts before recreating the connection
-- Logs show connection status: `✅ Successfully connected to Aster DEX liquidation stream`
-- Check logs for: `📨 Received Aster DEX message` and `✅ New liquidation stored`
-
-**Verification:**
-```bash
-# Check if stream is receiving liquidations
-grep "New liquidation stored" /tmp/logs/Start_application_*.log | tail -5
-```
+- **Position Architecture**: Database fully consolidated to single-source-of-truth positions. Each realized P&L event represented by one position with real exchange fills. P&L stored permanently in database `realizedPnl` field when positions close, fetched from exchange `/fapi/v1/userTrades` API. `realizedPnl` is nullable to distinguish between "never stored" and "stored as zero".
 
 ## External Dependencies
 
@@ -116,6 +82,8 @@ grep "New liquidation stored" /tmp/logs/Start_application_*.log | tail -5
 - **@tanstack/react-query**: Server state management.
 - **drizzle-orm**: Type-safe PostgreSQL ORM.
 - **@neondatabase/serverless**: Serverless PostgreSQL client for Neon.
+- **node-telegram-bot-api**: Telegram bot integration.
+- **chartjs-node-canvas**: Chart generation for Telegram reports.
 
 **UI & Styling:**
 - **Tailwind CSS**: Utility-first CSS framework.
@@ -124,3 +92,9 @@ grep "New liquidation stored" /tmp/logs/Start_application_*.log | tail -5
 - **Lucide React**: Icon library.
 - **date-fns**: Date manipulation.
 - **Google Fonts**: Inter, JetBrains Mono.
+
+**External APIs/Services:**
+- **Aster DEX**: WebSocket for liquidation stream and user data.
+- **Alpha Vantage**: Market/stock news.
+- **CryptoNews-API**: Crypto news with sentiment.
+- **ScrapeCreators**: Trump Truth Social posts.
