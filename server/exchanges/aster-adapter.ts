@@ -38,14 +38,17 @@ export class AsterExchangeAdapter implements IExchangeAdapter {
     minNotional: number;
   }>();
   private exchangeInfoFetched = false;
+  private static exchangeInfoCache: any = null;
+  private static exchangeInfoCacheTime: number = 0;
+  private static readonly CACHE_DURATION_MS = 6 * 60 * 60 * 1000; // 6 hours
 
   constructor(config: ExchangeConfig) {
     this.baseURL = config.baseURL || 'https://fapi.asterdex.com';
     this.apiKey = config.apiKey;
     this.secretKey = config.secretKey;
 
-    // Fetch exchange info on initialization
-    this.fetchExchangeInfo();
+    // Load from cache instead of fetching immediately
+    this.loadCachedExchangeInfo();
   }
 
   // ============================================================================
@@ -705,16 +708,50 @@ export class AsterExchangeAdapter implements IExchangeAdapter {
 
   private async ensureExchangeInfo(): Promise<void> {
     if (this.exchangeInfoFetched) return;
+    
+    // Check if cache is still valid
+    const cacheAge = Date.now() - AsterExchangeAdapter.exchangeInfoCacheTime;
+    if (AsterExchangeAdapter.exchangeInfoCache && cacheAge < AsterExchangeAdapter.CACHE_DURATION_MS) {
+      this.loadCachedExchangeInfo();
+      return;
+    }
+    
     await this.fetchExchangeInfo();
+  }
+
+  private loadCachedExchangeInfo(): void {
+    const cacheAge = Date.now() - AsterExchangeAdapter.exchangeInfoCacheTime;
+    
+    if (AsterExchangeAdapter.exchangeInfoCache && cacheAge < AsterExchangeAdapter.CACHE_DURATION_MS) {
+      const exchangeInfo = AsterExchangeAdapter.exchangeInfoCache;
+      
+      for (const symbol of exchangeInfo.symbols) {
+        const tickSize = '0.01';
+        this.symbolPrecisionCache.set(symbol.symbol, {
+          quantityPrecision: symbol.quantityPrecision,
+          pricePrecision: symbol.pricePrecision,
+          stepSize: symbol.stepSize,
+          tickSize,
+          minNotional: parseFloat(symbol.minNotional),
+        });
+      }
+      
+      this.exchangeInfoFetched = true;
+      const ageMinutes = Math.floor(cacheAge / 60000);
+      console.log(`✅ [Aster] Loaded precision info from cache (age: ${ageMinutes}m, ${this.symbolPrecisionCache.size} symbols)`);
+    }
   }
 
   private async fetchExchangeInfo(): Promise<void> {
     try {
       const exchangeInfo = await this.getExchangeInfo();
       
+      // Cache it for future instances
+      AsterExchangeAdapter.exchangeInfoCache = exchangeInfo;
+      AsterExchangeAdapter.exchangeInfoCacheTime = Date.now();
+      
       for (const symbol of exchangeInfo.symbols) {
-        // Extract tick size from step size (for price rounding)
-        const tickSize = '0.01'; // Default tick size
+        const tickSize = '0.01';
         
         this.symbolPrecisionCache.set(symbol.symbol, {
           quantityPrecision: symbol.quantityPrecision,
@@ -726,7 +763,7 @@ export class AsterExchangeAdapter implements IExchangeAdapter {
       }
       
       this.exchangeInfoFetched = true;
-      console.log(`✅ [Aster] Cached precision info for ${this.symbolPrecisionCache.size} symbols`);
+      console.log(`✅ [Aster] Fetched and cached precision info for ${this.symbolPrecisionCache.size} symbols`);
     } catch (error) {
       console.error('❌ [Aster] Error fetching exchange info:', error);
     }

@@ -4481,8 +4481,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Initialize cascade detector service with ULTRA-MINIMAL POLLING
   // ⚠️ Uses rotating OI fetch + batch prices = ~24 API calls/min (vs 1,620/min before)
   // DO NOT change polling config without user permission!
+  // Delay start by 30 seconds to avoid startup rate limits
   cascadeDetectorService.setClients(clients);
-  await cascadeDetectorService.start();
+  console.log('⏳ Delaying cascade detector by 30s to avoid startup rate limits...');
+  setTimeout(async () => {
+    try {
+      await cascadeDetectorService.start();
+      console.log('🚨 Cascade detector started (delayed startup complete)');
+    } catch (error) {
+      console.error('❌ Failed to start cascade detector:', error);
+    }
+  }, 30000); // 30 second delay
   
   // Connect to Aster DEX WebSocket and relay data
   connectToAsterDEX(clients);
