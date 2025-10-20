@@ -546,6 +546,27 @@ function PerformanceOverview() {
     }
   }, [activeStrategy?.maxPortfolioRiskPercent]);
 
+  // Memoized risk color helper - uses server-backed limit to avoid desynchronization
+  const getRiskColorClass = useMemo(() => {
+    const serverRiskLimit = activeStrategy ? parseFloat(activeStrategy.maxPortfolioRiskPercent) : 15;
+    const isOverLimit = filledRiskPercentage > serverRiskLimit;
+    const warningThreshold = serverRiskLimit * 0.8; // 80% of max
+    
+    return isOverLimit ? 'text-red-600 dark:text-red-500' :
+      filledRiskPercentage >= warningThreshold ? 'text-orange-500 dark:text-orange-400' :
+      'text-blue-500 dark:text-blue-400';
+  }, [activeStrategy?.maxPortfolioRiskPercent, filledRiskPercentage]);
+
+  const getRiskStrokeClass = useMemo(() => {
+    const serverRiskLimit = activeStrategy ? parseFloat(activeStrategy.maxPortfolioRiskPercent) : 15;
+    const isOverLimit = filledRiskPercentage > serverRiskLimit;
+    const warningThreshold = serverRiskLimit * 0.8; // 80% of max
+    
+    return isOverLimit ? 'stroke-red-600 dark:stroke-red-500' :
+      filledRiskPercentage >= warningThreshold ? 'stroke-orange-500 dark:stroke-orange-400' :
+      'stroke-blue-500 dark:stroke-blue-400';
+  }, [activeStrategy?.maxPortfolioRiskPercent, filledRiskPercentage]);
+
   // Use unified performance data (live-only mode)
   // Recalculate metrics when date filter is active
   const displayPerformance = useMemo(() => {
@@ -953,7 +974,7 @@ function PerformanceOverview() {
                     fill="none"
                     strokeWidth="6"
                     strokeLinecap="butt"
-                    className="stroke-blue-500 dark:stroke-blue-400 transition-all duration-300"
+                    className={`transition-all duration-300 ${getRiskStrokeClass}`}
                     strokeDasharray={`${2 * Math.PI * 42}`}
                     strokeDashoffset={`${2 * Math.PI * 42 * (1 - Math.min(100, filledRiskPercentage) / 100)}`}
                     data-testid="bar-filled-risk"
@@ -977,17 +998,7 @@ function PerformanceOverview() {
                     fill="none"
                     strokeWidth="8"
                     strokeLinecap="butt"
-                    className={`transition-all duration-300 ${
-                      (() => {
-                        // CRITICAL: Check actual margin usage against user's max setting
-                        const isOverLimit = marginUsedPercentage > localRiskLimit;
-                        const warningThreshold = localRiskLimit * 0.8; // 80% of max
-                        
-                        return isOverLimit ? 'stroke-red-600 dark:stroke-red-500' :
-                          marginUsedPercentage >= warningThreshold ? 'stroke-orange-500 dark:stroke-orange-400' :
-                          'stroke-lime-600 dark:stroke-lime-500';
-                      })()
-                    }`}
+                    className="stroke-lime-600 dark:stroke-lime-500 transition-all duration-300"
                     strokeDasharray={`${2 * Math.PI * 36}`}
                     strokeDashoffset={`${2 * Math.PI * 36 * (1 - Math.min(100, marginUsedPercentage) / 100)}`}
                     data-testid="bar-margin-used"
@@ -997,7 +1008,7 @@ function PerformanceOverview() {
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
                   <div className="text-sm font-mono text-muted-foreground">Margin</div>
                   <div className="text-xl font-mono font-bold">{marginUsedPercentage.toFixed(1)}%</div>
-                  <div className="text-[10px] font-mono text-blue-500 dark:text-blue-400 mt-0.5">
+                  <div className={`text-[10px] font-mono mt-0.5 ${getRiskColorClass}`}>
                     Risk: {filledRiskPercentage.toFixed(1)}%
                   </div>
                 </div>
@@ -1005,7 +1016,7 @@ function PerformanceOverview() {
               
               <div className="text-[10px] text-muted-foreground text-center mt-1">
                 <div>Used: ${marginUsed.toFixed(2)}</div>
-                <div className="text-blue-500 dark:text-blue-400">Risk: ${filledRisk.toFixed(2)}</div>
+                <div className={getRiskColorClass}>Risk: ${filledRisk.toFixed(2)}</div>
               </div>
               
               {/* Risk Limit Slider */}
