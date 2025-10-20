@@ -1836,23 +1836,11 @@ export class StrategyEngine extends EventEmitter {
     strategy: Strategy, 
     session: TradeSession, 
     liquidation: Liquidation, 
-    positionSide: string,
-    onExchangeConfirmation?: () => void
+    positionSide: string
   ): Promise<string | null> {
     try {
-      // NOTE: Cooldown already checked in evaluateStrategySignal (line 702-714)
-      // This function is only called AFTER cooldown check passes
-      // We just need to refresh the provisional cooldown that was already set
-      const cooldownKey = `${session.id}-${liquidation.symbol}-${positionSide}`;
-      
-      // CRITICAL FIX: REFRESH provisional cooldown (was already set in evaluateStrategySignal at line 719)
-      // This prevents rapid-fire liquidations from all passing the cooldown check
-      // We'll refresh again when exchange confirms to ensure accurate timing
-      this.lastFillTime.set(cooldownKey, Date.now());
-      console.log(`🔒 PROVISIONAL entry cooldown REFRESHED for ${liquidation.symbol} ${positionSide} (${strategy.dcaLayerDelayMs / 1000}s) - will refresh again on exchange confirmation`);
-      
-      // Track if exchange confirmed (for rollback logic)
-      let exchangeConfirmed = false;
+      // NOTE: Cooldown already checked in evaluateStrategySignal before calling this function
+      // Cooldown will be set when the order actually FILLS (in fillLiveOrder/fillPaperOrder)
       
       // Counter-trade: if LONG liquidated → go LONG (buy the dip), if SHORT liquidated → go SHORT (sell the rally)
       const side = liquidation.side === 'long' ? 'buy' : 'sell';
@@ -2057,40 +2045,24 @@ export class StrategyEngine extends EventEmitter {
         await new Promise(resolve => setTimeout(resolve, strategy.orderDelayMs));
       }
 
-      try {
-        // Place order with price chasing
-        // Only pass positionSide if the EXCHANGE is in dual mode (not based on strategy settings)
-        // Pass callback to refresh cooldown atomically when exchange confirms (prevents duplicate positions)
-        await this.placeOrderWithRetry({
-          strategy,
-          session,
-          symbol: liquidation.symbol,
-          side,
-          orderSide,
-          quantity,
-          targetPrice: price,
-          triggerLiquidationId: liquidation.id,
-          layerNumber: 1,
-          positionSide: this.exchangePositionMode === 'dual' ? positionSide : undefined, // Only include if EXCHANGE is in dual mode
-          onExchangeConfirmation: () => {
-            // CRITICAL: REFRESH cooldown when exchange confirms (was provisionally set earlier)
-            // This ensures accurate timing from actual order confirmation
-            this.lastFillTime.set(cooldownKey, Date.now());
-            exchangeConfirmed = true;
-            console.log(`🔒 Entry cooldown REFRESHED for ${liquidation.symbol} ${positionSide} (${strategy.dcaLayerDelayMs / 1000}s) at exchange confirmation`);
-          }
-        });
+      // Place order with price chasing
+      // Only pass positionSide if the EXCHANGE is in dual mode (not based on strategy settings)
+      // Cooldown will be set when order actually FILLS, not when placed
+      await this.placeOrderWithRetry({
+        strategy,
+        session,
+        symbol: liquidation.symbol,
+        side,
+        orderSide,
+        quantity,
+        targetPrice: price,
+        triggerLiquidationId: liquidation.id,
+        layerNumber: 1,
+        positionSide: this.exchangePositionMode === 'dual' ? positionSide : undefined, // Only include if EXCHANGE is in dual mode
+      });
 
-        // Return a tracking ID to indicate order was placed successfully
-        return `order-placed-${liquidation.id}`;
-      } finally {
-        // CRITICAL: Rollback provisional cooldown if order placement failed
-        // If exchange never confirmed, clear cooldown to allow retry
-        if (!exchangeConfirmed) {
-          this.lastFillTime.delete(cooldownKey);
-          console.log(`🔓 ROLLBACK: Cleared provisional entry cooldown for ${liquidation.symbol} ${positionSide} (order placement failed)`);
-        }
-      }
+      // Return a tracking ID to indicate order was placed successfully
+      return `order-placed-${liquidation.id}`;
 
     } catch (error) {
       console.error('❌ Error executing entry:', error);
@@ -2107,24 +2079,18 @@ export class StrategyEngine extends EventEmitter {
     positionSide: string
   ) {
     try {
-      // ATOMIC COOLDOWN CHECK AND SET: Must be FIRST to prevent race conditions
-      // Check cooldown and set it IMMEDIATELY if passing to block concurrent liquidations
+      // COOLDOWN CHECK: Verify minimum time has passed since last FILL
+      // This ensures 2-minute spacing between consecutive fills on same symbol+side
       const cooldownKey = `${session.id}-${liquidation.symbol}-${positionSide}`;
       const lastFill = this.lastFillTime.get(cooldownKey);
       if (lastFill) {
         const timeSinceLastFill = Date.now() - lastFill;
         if (timeSinceLastFill < strategy.dcaLayerDelayMs) {
           const waitTime = ((strategy.dcaLayerDelayMs - timeSinceLastFill) / 1000).toFixed(1);
-          console.log(`⏸️ Layer cooldown active for ${liquidation.symbol} ${positionSide} - wait ${waitTime}s before next layer`);
+          console.log(`⏸️ FILL COOLDOWN active for ${liquidation.symbol} ${positionSide} - last fill was ${timeSinceLastFill / 1000}s ago, wait ${waitTime}s more`);
           return;
         }
       }
-      
-      // CRITICAL FIX: Set PROVISIONAL cooldown IMMEDIATELY after passing check
-      // This prevents rapid-fire liquidations from all passing the cooldown check
-      // We'll refresh this when exchange confirms to ensure accurate timing
-      this.lastFillTime.set(cooldownKey, Date.now());
-      console.log(`🔒 PROVISIONAL layer cooldown set for ${liquidation.symbol} ${positionSide} (${strategy.dcaLayerDelayMs / 1000}s) - will refresh on exchange confirmation`);
       
       const side = position.side === 'long' ? 'buy' : 'sell';
       const nextLayer = position.layersFilled + 1;
@@ -2241,13 +2207,12 @@ export class StrategyEngine extends EventEmitter {
         await new Promise(resolve => setTimeout(resolve, strategy.orderDelayMs));
       }
 
-      let exchangeConfirmed = false;
+      let orderPlaced = false;
       let storageSuccess = false;
       
       try {
         // Place layer order with price chasing
-        // Pass callback to set cooldown IMMEDIATELY after exchange accepts order
-        // This atomic operation prevents duplicates even if storage operations fail
+        // Cooldown will be set when order actually FILLS, not when placed
         await this.placeOrderWithRetry({
           strategy,
           session,
@@ -2260,14 +2225,9 @@ export class StrategyEngine extends EventEmitter {
           layerNumber: nextLayer,
           positionId: position.id,
           positionSide: this.exchangePositionMode === 'dual' ? positionSide : undefined,
-          onExchangeConfirmation: () => {
-            // CRITICAL: REFRESH cooldown when exchange confirms (was provisionally set earlier)
-            // This ensures accurate timing from actual order confirmation
-            this.lastFillTime.set(cooldownKey, Date.now());
-            exchangeConfirmed = true;
-            console.log(`🔒 Layer cooldown REFRESHED for ${liquidation.symbol} ${positionSide} (${strategy.dcaLayerDelayMs / 1000}s) at exchange confirmation`);
-          }
         });
+
+        orderPlaced = true;
 
         // CRITICAL: Increment layersPlaced after order is placed
         // This prevents rapid liquidations from triggering the same layer twice
@@ -2277,18 +2237,11 @@ export class StrategyEngine extends EventEmitter {
         console.log(`📊 Updated layersPlaced=${nextLayer} for ${liquidation.symbol} (prevents duplicate layer triggers)`);
 
         storageSuccess = true;
-        console.log(`✅ Layer ${nextLayer} completed for ${liquidation.symbol}`);
+        console.log(`✅ Layer ${nextLayer} order placed for ${liquidation.symbol}`);
       } finally {
-        // CRITICAL: Rollback provisional cooldown if order placement failed
-        // If exchange never confirmed, clear cooldown to allow retry
-        if (!exchangeConfirmed) {
-          this.lastFillTime.delete(cooldownKey);
-          console.log(`🔓 ROLLBACK: Cleared provisional layer cooldown for ${liquidation.symbol} ${positionSide} (order placement failed)`);
-        }
-        
-        // CRITICAL: Only clear pending marker if storage succeeded
-        // If exchange confirmed but storage failed, keep marker to block duplicates until reconciliation
-        if (storageSuccess || !exchangeConfirmed) {
+        // CRITICAL: Only clear pending marker if storage succeeded or order placement failed
+        // If order placed but storage failed, keep marker to block duplicates until reconciliation
+        if (storageSuccess || !orderPlaced) {
           const layers = this.pendingLayerOrders.get(position.id);
           if (layers) {
             layers.delete(nextLayer);
@@ -2297,15 +2250,11 @@ export class StrategyEngine extends EventEmitter {
             }
           }
         } else {
-          console.warn(`⚠️ ORPHANED LAYER: Exchange confirmed layer ${nextLayer} for ${liquidation.symbol} but storage failed - pending marker kept for reconciliation`);
+          console.warn(`⚠️ ORPHANED LAYER: Order placed for layer ${nextLayer} on ${liquidation.symbol} but storage failed - pending marker kept for reconciliation`);
         }
       }
     } catch (error) {
       console.error('❌ Error executing layer:', error);
-      // ROLLBACK: Clear provisional cooldown on any error
-      const cooldownKey = `${session.id}-${liquidation.symbol}-${positionSide}`;
-      this.lastFillTime.delete(cooldownKey);
-      console.log(`🔓 ROLLBACK: Cleared provisional layer cooldown for ${liquidation.symbol} ${positionSide} (error occurred)`);
     }
   }
 
@@ -2322,7 +2271,6 @@ export class StrategyEngine extends EventEmitter {
     layerNumber: number;
     positionId?: string;
     positionSide?: string; // 'long' or 'short' for hedge mode
-    onExchangeConfirmation?: () => void; // Callback to set cooldown immediately after exchange confirms
   }) {
     const { strategy, session, symbol, side, orderSide, quantity, targetPrice, triggerLiquidationId, layerNumber, positionId, positionSide } = params;
     const maxRetryDuration = strategy.maxRetryDurationMs;
@@ -2393,13 +2341,7 @@ export class StrategyEngine extends EventEmitter {
           }
           
           console.log(`✅ LIVE ORDER EXECUTED on Aster DEX: ${quantity.toFixed(4)} ${symbol} at $${orderPrice}`);
-          console.log(`📝 Order ID: ${liveOrderResult.orderId || 'N/A'}`);
-          
-          // CRITICAL: Signal exchange confirmation immediately (sets cooldown)
-          // This MUST happen BEFORE storage operations to prevent duplicates even if storage fails
-          if (params.onExchangeConfirmation) {
-            params.onExchangeConfirmation();
-          }
+          console.log(`📝 Order ID: ${liveOrderResult.orderId || 'N/A'}`)
           
           // Track live order execution locally for position management
           const order = await storage.placePaperOrder({
@@ -3941,6 +3883,15 @@ export class StrategyEngine extends EventEmitter {
 
     // FIRST: Ensure position exists and get its ID
     const position = await this.ensurePositionForFill(order, fillPrice, fillQuantity);
+    
+    // CRITICAL: Set cooldown timestamp when order FILLS (not when placed)
+    // This ensures 2-minute spacing between actual fills, not just order placements
+    if (position && order.sessionId) {
+      const positionSide = position.side;
+      const cooldownKey = `${order.sessionId}-${order.symbol}-${positionSide}`;
+      this.lastFillTime.set(cooldownKey, Date.now());
+      console.log(`🔒 FILL COOLDOWN set for ${order.symbol} ${positionSide} - blocks new orders for 2 minutes`);
+    }
 
     // Create fill record with Aster DEX taker fee AND position_id
     const fillValue = fillPrice * fillQuantity;
@@ -3983,10 +3934,6 @@ export class StrategyEngine extends EventEmitter {
       quantity: fillQuantity,
       value: fillValue
     });
-    
-    // NOTE: Cooldown is already set in executeLayer/executeEntry when the order is PLACED
-    // Do NOT reset it here on fill, as that would allow duplicate orders to slip through
-    // The cooldown protects against rapid order PLACEMENT, not fills
   }
 
   // Fill a live order using ACTUAL exchange data (price, qty, commission, timestamp)
@@ -3996,6 +3943,15 @@ export class StrategyEngine extends EventEmitter {
 
     // FIRST: Ensure position exists and get its ID
     const position = await this.ensurePositionForFill(order, actualFillPrice, actualFillQty);
+    
+    // CRITICAL: Set cooldown timestamp when order FILLS (not when placed)
+    // This ensures 2-minute spacing between actual fills, not just order placements
+    if (position && order.sessionId) {
+      const positionSide = position.side;
+      const cooldownKey = `${order.sessionId}-${order.symbol}-${positionSide}`;
+      this.lastFillTime.set(cooldownKey, Date.now());
+      console.log(`🔒 FILL COOLDOWN set for ${order.symbol} ${positionSide} - blocks new orders for 2 minutes`);
+    }
 
     // Create fill record with ACTUAL exchange data
     const fillValue = actualFillPrice * actualFillQty;
