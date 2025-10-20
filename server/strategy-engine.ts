@@ -576,14 +576,12 @@ export class StrategyEngine extends EventEmitter {
   // Evaluate if a liquidation triggers a trading signal for a strategy
   private async evaluateStrategySignal(strategy: Strategy, liquidation: Liquidation) {
     // CRITICAL: Check if we've already processed this liquidation (deduplication)
-    // This ensures 1 order per liquidation, maximum
+    // NOTE: We mark as processed ONLY when an order is actually placed (not here)
+    // This allows other strategies to evaluate if the first one filters out
     if (this.processedLiquidations.has(liquidation.id)) {
       console.log(`⏭️ SKIPPING: Liquidation ${liquidation.id} already processed (deduplication)`);
       return;
     }
-    
-    // Mark this liquidation as processed immediately to prevent duplicates
-    this.processedLiquidations.add(liquidation.id);
     
     // Double-check strategy is still active (prevents race condition during unregister)
     if (!this.activeStrategies.has(strategy.id)) return;
@@ -605,18 +603,18 @@ export class StrategyEngine extends EventEmitter {
 
     console.log(`🎯 Evaluating strategy "${currentStrategy.name}" for ${liquidation.symbol}`);
     
-    // SIMPLE 1-MINUTE ORDER PLACEMENT THROTTLE: Check if 1 minute has passed since last order placement
-    // This prevents rapid-fire orders by checking when we PLACED the last order, not when it filled
-    // Critical: Set timestamp immediately when placing order, before exchange confirms fill
+    // GLOBAL 1-MINUTE ORDER PLACEMENT THROTTLE: Check if ANY strategy has placed an order recently
+    // CRITICAL FIX: Use GLOBAL cooldown key (symbol+side only, NOT per-session) to prevent duplicates
+    // NOTE: Cooldown is set AFTER entry decision (not here) to avoid blocking valid entries if first strategy filters out
     const positionSide = liquidation.side === "long" ? "long" : "short";
-    const cooldownKey = `${session.id}-${liquidation.symbol}-${positionSide}`;
-    const lastOrderPlacement = this.lastFillTime.get(cooldownKey); // Using lastFillTime Map, but tracking placement time
+    const cooldownKey = `${liquidation.symbol}-${positionSide}`; // GLOBAL key (no session ID)
+    const lastOrderPlacement = this.lastFillTime.get(cooldownKey);
     if (lastOrderPlacement) {
       const timeSinceLastOrder = Date.now() - lastOrderPlacement;
       const oneMinuteMs = 60000; // 1 minute in milliseconds
       if (timeSinceLastOrder < oneMinuteMs) {
         const waitTime = ((oneMinuteMs - timeSinceLastOrder) / 1000).toFixed(1);
-        console.log(`⏸️ ORDER THROTTLE: ${liquidation.symbol} ${positionSide} - last order placed ${(timeSinceLastOrder / 1000).toFixed(1)}s ago, wait ${waitTime}s more`);
+        console.log(`⏸️ GLOBAL ORDER THROTTLE: ${liquidation.symbol} ${positionSide} - last order placed ${(timeSinceLastOrder / 1000).toFixed(1)}s ago by ANY strategy, wait ${waitTime}s more`);
         
         // Log error to database for audit trail
         await this.logTradeEntryError({
@@ -624,8 +622,8 @@ export class StrategyEngine extends EventEmitter {
           symbol: liquidation.symbol,
           side: positionSide,
           attemptType: 'entry',
-          reason: 'order_placement_cooldown',
-          errorDetails: `Last order placed ${(timeSinceLastOrder / 1000).toFixed(1)}s ago, wait ${waitTime}s more (1-minute throttle)`,
+          reason: 'global_order_placement_cooldown',
+          errorDetails: `Last order placed ${(timeSinceLastOrder / 1000).toFixed(1)}s ago by any strategy, wait ${waitTime}s more (1-minute global throttle)`,
           liquidationValue: parseFloat(liquidation.value),
         });
         
@@ -704,6 +702,10 @@ export class StrategyEngine extends EventEmitter {
         if (positionAfterWait.side === positionSide) {
           const shouldLayer = await this.shouldAddLayer(currentStrategy, positionAfterWait, liquidation);
           if (shouldLayer) {
+            // Set GLOBAL cooldown and mark liquidation as processed BEFORE placing order
+            this.lastFillTime.set(cooldownKey, Date.now());
+            this.processedLiquidations.add(liquidation.id);
+            console.log(`🔒 GLOBAL RESERVATION (LAYER): ${liquidation.symbol} ${positionSide} - cooldown + liquidation ID marked`);
             await this.executeLayer(currentStrategy, session, positionAfterWait, liquidation, positionSide);
           }
         } else {
@@ -731,7 +733,10 @@ export class StrategyEngine extends EventEmitter {
         if (actualPosition && actualPosition.isOpen && actualPosition.side === positionSide) {
           const shouldLayer = await this.shouldAddLayer(currentStrategy, actualPosition, liquidation);
           if (shouldLayer) {
-            // LAYER 2+: Cooldown set in exchange callback to prevent self-blocking
+            // Set GLOBAL cooldown and mark liquidation as processed BEFORE placing order
+            this.lastFillTime.set(cooldownKey, Date.now());
+            this.processedLiquidations.add(liquidation.id);
+            console.log(`🔒 GLOBAL RESERVATION (LAYER): ${liquidation.symbol} ${positionSide} - cooldown + liquidation ID marked`);
             await this.executeLayer(currentStrategy, session, actualPosition, liquidation, positionSide);
           }
           return;
@@ -747,7 +752,10 @@ export class StrategyEngine extends EventEmitter {
         if (existingPosition.side === positionSide) {
           const shouldLayer = await this.shouldAddLayer(currentStrategy, existingPosition, liquidation);
           if (shouldLayer) {
-            // LAYER 2+: Cooldown set in exchange callback to prevent self-blocking
+            // Set GLOBAL cooldown and mark liquidation as processed BEFORE placing order
+            this.lastFillTime.set(cooldownKey, Date.now());
+            this.processedLiquidations.add(liquidation.id);
+            console.log(`🔒 GLOBAL RESERVATION (LAYER): ${liquidation.symbol} ${positionSide} - cooldown + liquidation ID marked`);
             await this.executeLayer(currentStrategy, session, existingPosition, liquidation, positionSide);
           }
         } else {
@@ -761,12 +769,15 @@ export class StrategyEngine extends EventEmitter {
         console.log(`🔍 DEBUG: shouldEnterPositionWithoutCooldown returned: ${shouldEnter} for ${liquidation.symbol} ${positionSide}`);
         
         if (shouldEnter) {
-          // LAYER 1 (INITIAL ENTRY): Set cooldown when exchange confirms fill
-          // This prevents another entry on same symbol+side for dcaLayerDelayMs milliseconds
+          // LAYER 1 (INITIAL ENTRY): Set GLOBAL cooldown and mark liquidation as processed BEFORE placing order
+          // This creates a "reservation" that prevents duplicate orders from ANY strategy
+          this.lastFillTime.set(cooldownKey, Date.now());
+          this.processedLiquidations.add(liquidation.id);
+          console.log(`🔒 GLOBAL RESERVATION (ENTRY): ${liquidation.symbol} ${positionSide} - cooldown + liquidation ID marked`);
+          
           console.log(`✅ DEBUG: Proceeding with entry for ${liquidation.symbol} ${positionSide}`);
           const positionId = await this.executeEntry(currentStrategy, session, liquidation, positionSide, () => {
-            this.lastFillTime.set(cooldownKey, Date.now());
-            console.log(`🔒 Entry cooldown SET for ${liquidation.symbol} ${positionSide} (${currentStrategy.dcaLayerDelayMs / 1000}s) - blocks future entries until cooldown expires`);
+            console.log(`✅ Fill confirmed for ${liquidation.symbol} ${positionSide} - cooldown already active`);
           });
           
           if (positionId) {
@@ -778,14 +789,15 @@ export class StrategyEngine extends EventEmitter {
             });
             console.log(`📝 Tracked position ${positionId} in-memory for ${lockKey}`);
           } else {
-            // Entry failed - clear the cooldown that was set by executeEntry callback
+            // Entry failed - clear the cooldown AND remove from processed set to allow retry
             this.lastFillTime.delete(cooldownKey);
-            console.log(`🔓 Entry failed - cleared cooldown for ${liquidation.symbol} ${positionSide} to allow retry`);
+            this.processedLiquidations.delete(liquidation.id);
+            console.log(`🔓 Entry failed - cleared cooldown and liquidation ID for ${liquidation.symbol} ${positionSide} to allow retry`);
           }
         } else {
           // Liquidation didn't qualify (below percentile threshold or risk limits exceeded)
-          // DO NOT set cooldown - let next liquidation be evaluated immediately
-          console.log(`⏭️  Liquidation rejected (below threshold or risk limit) - no cooldown set, next liquidation can proceed immediately`);
+          // DO NOT set cooldown or mark as processed - let other strategies evaluate this liquidation
+          console.log(`⏭️ Liquidation rejected (below threshold or risk limit) - no reservation set, other strategies can try`);
         }
       }
     } catch (error) {
@@ -2185,11 +2197,9 @@ export class StrategyEngine extends EventEmitter {
         positionSide: this.exchangePositionMode === 'dual' ? positionSide : undefined, // Only include if EXCHANGE is in dual mode
       });
 
-      // CRITICAL: Set timestamp IMMEDIATELY after placing order (not after fill)
-      // This prevents rapid-fire orders by blocking subsequent liquidations for 1 minute
-      const cooldownKey = `${session.id}-${liquidation.symbol}-${positionSide}`;
-      this.lastFillTime.set(cooldownKey, Date.now());
-      console.log(`🔒 ORDER PLACED timestamp set for ${liquidation.symbol} ${positionSide} - blocks new orders for 1 minute`);
+      // NOTE: Cooldown timestamp already set at the TOP of evaluateStrategySignal (before processing)
+      // This ensures duplicate prevention even if order placement fails
+      console.log(`✅ Layer 1 order placed for ${liquidation.symbol} ${positionSide}`);
 
       // Return a tracking ID to indicate order was placed successfully
       return `order-placed-${liquidation.id}`;
@@ -2348,11 +2358,9 @@ export class StrategyEngine extends EventEmitter {
 
         orderPlaced = true;
 
-        // CRITICAL: Set timestamp IMMEDIATELY after placing order (not after fill)
-        // This prevents rapid-fire DCA layers by blocking subsequent liquidations for 1 minute
-        const cooldownKey = `${session.id}-${liquidation.symbol}-${positionSide}`;
-        this.lastFillTime.set(cooldownKey, Date.now());
-        console.log(`🔒 LAYER ${nextLayer} ORDER PLACED timestamp set for ${liquidation.symbol} ${positionSide} - blocks new orders for 1 minute`);
+        // NOTE: Cooldown timestamp already set at the TOP of evaluateStrategySignal (before processing)
+        // This ensures duplicate prevention even if order placement fails
+        console.log(`✅ Layer ${nextLayer} order placed for ${liquidation.symbol} ${positionSide}`);
 
         // CRITICAL: Increment layersPlaced after order is placed
         // This prevents rapid liquidations from triggering the same layer twice
