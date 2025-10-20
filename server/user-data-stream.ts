@@ -44,16 +44,18 @@ class UserDataStreamManager {
     } catch (error) {
       console.error('❌ Failed to start user data stream:', error);
 
-      // Check if it's a rate limit error (429)
+      // Check if it's a rate limit error (429 or 418 = IP banned)
       const isRateLimit = error instanceof Error && 
-        (error.message.includes('429') || error.message.includes('Too Many Requests'));
+        (error.message.includes('429') || error.message.includes('418') || 
+         error.message.includes('Too Many Requests') || error.message.includes('banned'));
 
       if (isRateLimit && this.listenKeyRetryAttempts < this.maxListenKeyRetries) {
         // Exponential backoff for rate limits: 5s, 10s, 20s, 40s, 80s, etc.
+        // Cap at 5 minutes to avoid waiting too long
         const delay = Math.min(5000 * Math.pow(2, this.listenKeyRetryAttempts), 300000);
         this.listenKeyRetryAttempts++;
         
-        console.log(`⏳ Rate limit hit. Retrying listen key creation in ${delay/1000}s (attempt ${this.listenKeyRetryAttempts}/${this.maxListenKeyRetries})`);
+        console.log(`⏳ Rate limit/ban detected. Retrying listen key creation in ${delay/1000}s (attempt ${this.listenKeyRetryAttempts}/${this.maxListenKeyRetries})`);
         
         this.reconnectTimeout = setTimeout(() => {
           this.startWithRetry();

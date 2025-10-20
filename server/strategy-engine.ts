@@ -94,10 +94,42 @@ export class StrategyEngine extends EventEmitter {
     this.on('liquidation', this.handleLiquidation.bind(this));
   }
 
+  // Static cache shared across all instances (6 hour TTL)
+  private static exchangeInfoCache: any = null;
+  private static exchangeInfoCacheTime: number = 0;
+  private static readonly CACHE_DURATION_MS = 6 * 60 * 60 * 1000;
+
   // Fetch exchange info to get symbol precision requirements
   private async fetchExchangeInfo() {
     if (this.exchangeInfoFetched) return;
     
+    // Try to load from cache first
+    const cacheAge = Date.now() - StrategyEngine.exchangeInfoCacheTime;
+    if (StrategyEngine.exchangeInfoCache && cacheAge < StrategyEngine.CACHE_DURATION_MS) {
+      const data = StrategyEngine.exchangeInfoCache;
+      
+      for (const symbol of data.symbols || []) {
+        const lotSizeFilter = symbol.filters?.find((f: any) => f.filterType === 'LOT_SIZE');
+        const priceFilter = symbol.filters?.find((f: any) => f.filterType === 'PRICE_FILTER');
+        const minNotionalFilter = symbol.filters?.find((f: any) => f.filterType === 'MIN_NOTIONAL');
+        const parsedMinNotional = minNotionalFilter?.notional ? parseFloat(minNotionalFilter.notional) : 5.0;
+        
+        this.symbolPrecisionCache.set(symbol.symbol, {
+          quantityPrecision: symbol.quantityPrecision || 8,
+          pricePrecision: symbol.pricePrecision || 8,
+          stepSize: lotSizeFilter?.stepSize || '1',
+          tickSize: priceFilter?.tickSize || '0.01',
+          minNotional: parsedMinNotional,
+        });
+      }
+      
+      this.exchangeInfoFetched = true;
+      const ageMinutes = Math.floor(cacheAge / 60000);
+      console.log(`✅ Loaded precision info from cache (age: ${ageMinutes}m, ${this.symbolPrecisionCache.size} symbols)`);
+      return;
+    }
+    
+    // Cache miss - fetch from exchange
     try {
       const response = await fetch('https://fapi.asterdex.com/fapi/v1/exchangeInfo');
       if (!response.ok) {
@@ -107,16 +139,17 @@ export class StrategyEngine extends EventEmitter {
       
       const data = await response.json();
       
+      // Store in static cache
+      StrategyEngine.exchangeInfoCache = data;
+      StrategyEngine.exchangeInfoCacheTime = Date.now();
+      
       // Cache precision info for each symbol
       for (const symbol of data.symbols || []) {
         const lotSizeFilter = symbol.filters?.find((f: any) => f.filterType === 'LOT_SIZE');
         const priceFilter = symbol.filters?.find((f: any) => f.filterType === 'PRICE_FILTER');
         const minNotionalFilter = symbol.filters?.find((f: any) => f.filterType === 'MIN_NOTIONAL');
-        
-        // Always cache symbol info - use defaults if filters are missing
         const parsedMinNotional = minNotionalFilter?.notional ? parseFloat(minNotionalFilter.notional) : 5.0;
         
-        // Debug logging for missing filters
         if (!lotSizeFilter || !priceFilter) {
           console.log(`⚠️ ${symbol.symbol} missing filters:`, {
             hasLotSize: !!lotSizeFilter,
@@ -130,12 +163,12 @@ export class StrategyEngine extends EventEmitter {
           pricePrecision: symbol.pricePrecision || 8,
           stepSize: lotSizeFilter?.stepSize || '1',
           tickSize: priceFilter?.tickSize || '0.01',
-          minNotional: parsedMinNotional, // Use exchange value or fallback to $5
+          minNotional: parsedMinNotional,
         });
       }
       
       this.exchangeInfoFetched = true;
-      console.log(`✅ Cached precision info for ${this.symbolPrecisionCache.size} symbols`);
+      console.log(`✅ Fetched and cached precision info for ${this.symbolPrecisionCache.size} symbols`);
     } catch (error) {
       console.error('❌ Error fetching exchange info:', error);
     }
@@ -201,9 +234,14 @@ export class StrategyEngine extends EventEmitter {
     // Exchange will automatically execute these orders, and we'll receive ORDER_TRADE_UPDATE events via WebSocket
     // this.startExitMonitoring(); // DISABLED - no longer needed
     
-    // Start periodic cleanup of orphaned TP/SL orders (every 5 minutes)
-    // NOTE: TP/SL updates are handled by updateProtectiveOrders() after each fill
-    this.startCleanupMonitoring();
+    // Delay cleanup monitoring by 60 seconds to avoid rate limits on startup
+    console.log('⏳ Delaying order reconciliation by 60s to avoid startup rate limits...');
+    setTimeout(() => {
+      if (this.isRunning) {
+        this.startCleanupMonitoring();
+        console.log('🔄 Order reconciliation started (delayed startup complete)');
+      }
+    }, 60000); // 60 second delay
     
     console.log(`✅ StrategyEngine started with ${this.activeStrategies.size} active strategies`);
   }
