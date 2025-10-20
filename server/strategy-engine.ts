@@ -605,18 +605,19 @@ export class StrategyEngine extends EventEmitter {
 
     console.log(`🎯 Evaluating strategy "${currentStrategy.name}" for ${liquidation.symbol}`);
     
-    // SIMPLE 1-MINUTE FILL THROTTLE: Check if 1 minute has passed since last fill
-    // This check happens BEFORE percentile evaluation - keeps things simple and natural
+    // SIMPLE 1-MINUTE ORDER PLACEMENT THROTTLE: Check if 1 minute has passed since last order placement
+    // This prevents rapid-fire orders by checking when we PLACED the last order, not when it filled
+    // Critical: Set timestamp immediately when placing order, before exchange confirms fill
     const positionSide = liquidation.side === "long" ? "long" : "short";
     const cooldownKey = `${session.id}-${liquidation.symbol}-${positionSide}`;
-    const lastFill = this.lastFillTime.get(cooldownKey);
-    if (lastFill) {
-      const timeSinceLastFill = Date.now() - lastFill;
+    const lastOrderPlacement = this.lastFillTime.get(cooldownKey); // Using lastFillTime Map, but tracking placement time
+    if (lastOrderPlacement) {
+      const timeSinceLastOrder = Date.now() - lastOrderPlacement;
       const oneMinuteMs = 60000; // 1 minute in milliseconds
-      if (timeSinceLastFill < oneMinuteMs) {
-        const waitTime = ((oneMinuteMs - timeSinceLastFill) / 1000).toFixed(1);
-        console.log(`⏸️ FILL THROTTLE: ${liquidation.symbol} ${positionSide} - last fill was ${(timeSinceLastFill / 1000).toFixed(1)}s ago, wait ${waitTime}s more`);
-        return; // Exit early - let next liquidation retry after 1 minute
+      if (timeSinceLastOrder < oneMinuteMs) {
+        const waitTime = ((oneMinuteMs - timeSinceLastOrder) / 1000).toFixed(1);
+        console.log(`⏸️ ORDER THROTTLE: ${liquidation.symbol} ${positionSide} - last order placed ${(timeSinceLastOrder / 1000).toFixed(1)}s ago, wait ${waitTime}s more`);
+        return; // Exit early - prevents queuing multiple orders before first one fills
       }
     }
 
@@ -643,10 +644,6 @@ export class StrategyEngine extends EventEmitter {
     console.log(`📈 Found ${recentLiquidations.length} liquidations in last ${currentStrategy.liquidationLookbackHours}h for ${liquidation.symbol}`);
 
     if (recentLiquidations.length === 0) return;
-
-    // Determine position side (SAME as liquidation side) for counter-trading
-    // When longs liquidated → go LONG (buy the dip), when shorts liquidated → go SHORT (sell the rally)
-    const positionSide = liquidation.side === "long" ? "long" : "short";
 
     // Create lock key for this session + symbol (+ side if hedge mode enabled) to prevent duplicate positions
     // In hedge mode, we allow both long and short positions on the same symbol, so include side in lock key
@@ -733,18 +730,8 @@ export class StrategyEngine extends EventEmitter {
           console.log(`⏭️ Skipping layer: Existing ${existingPosition.side} position doesn't match ${positionSide} liquidation signal`);
         }
       } else {
-        // No open position - check cooldown BEFORE evaluating (only blocks qualifying trades)
-        const lastFill = this.lastFillTime.get(cooldownKey);
-        if (lastFill) {
-          const timeSinceLastFill = Date.now() - lastFill;
-          if (timeSinceLastFill < currentStrategy.dcaLayerDelayMs) {
-            const waitTime = ((currentStrategy.dcaLayerDelayMs - timeSinceLastFill) / 1000).toFixed(1);
-            console.log(`⏸️ ENTRY COOLDOWN: ${liquidation.symbol} ${positionSide} - recent qualifying trade ${waitTime}s ago, wait ${waitTime}s more`);
-            return; // Exit early - cooldown active from previous qualifying trade
-          }
-        }
-        
-        // Evaluate if we should enter (checks percentile threshold + risk limits)
+        // No open position - evaluate if we should enter
+        // Note: 1-minute fill throttle already checked at TOP of evaluateStrategySignal
         console.log(`🔍 DEBUG: No existing position for ${liquidation.symbol} ${positionSide}, checking entry conditions...`);
         const shouldEnter = await this.shouldEnterPositionWithoutCooldown(currentStrategy, liquidation, recentLiquidations, session, positionSide);
         console.log(`🔍 DEBUG: shouldEnterPositionWithoutCooldown returned: ${shouldEnter} for ${liquidation.symbol} ${positionSide}`);
@@ -2026,7 +2013,6 @@ export class StrategyEngine extends EventEmitter {
 
       // Place order with price chasing
       // Only pass positionSide if the EXCHANGE is in dual mode (not based on strategy settings)
-      // Cooldown will be set when order actually FILLS, not when placed
       await this.placeOrderWithRetry({
         strategy,
         session,
@@ -2039,6 +2025,12 @@ export class StrategyEngine extends EventEmitter {
         layerNumber: 1,
         positionSide: this.exchangePositionMode === 'dual' ? positionSide : undefined, // Only include if EXCHANGE is in dual mode
       });
+
+      // CRITICAL: Set timestamp IMMEDIATELY after placing order (not after fill)
+      // This prevents rapid-fire orders by blocking subsequent liquidations for 1 minute
+      const cooldownKey = `${session.id}-${liquidation.symbol}-${positionSide}`;
+      this.lastFillTime.set(cooldownKey, Date.now());
+      console.log(`🔒 ORDER PLACED timestamp set for ${liquidation.symbol} ${positionSide} - blocks new orders for 1 minute`);
 
       // Return a tracking ID to indicate order was placed successfully
       return `order-placed-${liquidation.id}`;
@@ -2058,18 +2050,8 @@ export class StrategyEngine extends EventEmitter {
     positionSide: string
   ) {
     try {
-      // COOLDOWN CHECK: Verify minimum time has passed since last FILL
-      // This ensures 2-minute spacing between consecutive fills on same symbol+side
-      const cooldownKey = `${session.id}-${liquidation.symbol}-${positionSide}`;
-      const lastFill = this.lastFillTime.get(cooldownKey);
-      if (lastFill) {
-        const timeSinceLastFill = Date.now() - lastFill;
-        if (timeSinceLastFill < strategy.dcaLayerDelayMs) {
-          const waitTime = ((strategy.dcaLayerDelayMs - timeSinceLastFill) / 1000).toFixed(1);
-          console.log(`⏸️ FILL COOLDOWN active for ${liquidation.symbol} ${positionSide} - last fill was ${timeSinceLastFill / 1000}s ago, wait ${waitTime}s more`);
-          return;
-        }
-      }
+      // Note: 1-minute fill throttle is checked at the TOP of evaluateStrategySignal
+      // No need to check cooldown here - liquidation already passed the throttle check
       
       const side = position.side === 'long' ? 'buy' : 'sell';
       const nextLayer = position.layersFilled + 1;
@@ -2191,7 +2173,6 @@ export class StrategyEngine extends EventEmitter {
       
       try {
         // Place layer order with price chasing
-        // Cooldown will be set when order actually FILLS, not when placed
         await this.placeOrderWithRetry({
           strategy,
           session,
@@ -2207,6 +2188,12 @@ export class StrategyEngine extends EventEmitter {
         });
 
         orderPlaced = true;
+
+        // CRITICAL: Set timestamp IMMEDIATELY after placing order (not after fill)
+        // This prevents rapid-fire DCA layers by blocking subsequent liquidations for 1 minute
+        const cooldownKey = `${session.id}-${liquidation.symbol}-${positionSide}`;
+        this.lastFillTime.set(cooldownKey, Date.now());
+        console.log(`🔒 LAYER ${nextLayer} ORDER PLACED timestamp set for ${liquidation.symbol} ${positionSide} - blocks new orders for 1 minute`);
 
         // CRITICAL: Increment layersPlaced after order is placed
         // This prevents rapid liquidations from triggering the same layer twice
@@ -3882,14 +3869,8 @@ export class StrategyEngine extends EventEmitter {
       // FIRST: Ensure position exists and get its ID
       const position = await this.ensurePositionForFill(order, fillPrice, fillQuantity);
       
-      // CRITICAL: Set cooldown timestamp when order FILLS (not when placed)
-      // This ensures 2-minute spacing between actual fills, not just order placements
-      // Mutex ensures this check+set is atomic across concurrent fills
-      if (position && order.sessionId) {
-        const cooldownKey = `${order.sessionId}-${order.symbol}-${position.side}`;
-        this.lastFillTime.set(cooldownKey, Date.now());
-        console.log(`🔒 FILL COOLDOWN set for ${order.symbol} ${position.side} - blocks new orders for 2 minutes`);
-      }
+      // Note: Order placement timestamp is set in executeEntry/executeLayer
+      // We don't update it here on fill since the throttle is based on placement time
 
     // Create fill record with Aster DEX taker fee AND position_id
     const fillValue = fillPrice * fillQuantity;
@@ -3971,14 +3952,8 @@ export class StrategyEngine extends EventEmitter {
       // FIRST: Ensure position exists and get its ID
       const position = await this.ensurePositionForFill(order, actualFillPrice, actualFillQty);
       
-      // CRITICAL: Set cooldown timestamp when order FILLS (not when placed)
-      // This ensures 2-minute spacing between actual fills, not just order placements
-      // Mutex ensures this check+set is atomic across concurrent fills
-      if (position && order.sessionId) {
-        const cooldownKey = `${order.sessionId}-${order.symbol}-${position.side}`;
-        this.lastFillTime.set(cooldownKey, Date.now());
-        console.log(`🔒 FILL COOLDOWN set for ${order.symbol} ${position.side} - blocks new orders for 2 minutes`);
-      }
+      // Note: Order placement timestamp is set in executeEntry/executeLayer
+      // We don't update it here on fill since the throttle is based on placement time
 
     // Create fill record with ACTUAL exchange data
     const fillValue = actualFillPrice * actualFillQty;
