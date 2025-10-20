@@ -833,6 +833,21 @@ export class StrategyEngine extends EventEmitter {
     console.log(`   Liquidation Value: $${parseFloat(liquidation.value).toFixed(2)} | Time: ${liquidation.timestamp.toISOString()}`);
     console.log(`═══════════════════════════════════════════════════════════════`);
     
+    // CASCADE AUTO-BLOCK CHECK: Block trades on symbols with cascade detection
+    if (cascadeDetectorService.isBlocking(liquidation.symbol)) {
+      console.log(`\n🚫 CASCADE AUTO-BLOCK: ${liquidation.symbol} is currently blocked by cascade detector`);
+      console.log(`   Symbol has autoBlock=true (cascade detected)`);
+      console.log(`\n🔴 FINAL DECISION: ENTRY REJECTED (Cascade Auto-Block)`);
+      console.log(`═══════════════════════════════════════════════════════════════\n`);
+      wsBroadcaster.broadcastTradeBlock({
+        blocked: true,
+        reason: `Cascade detected on ${liquidation.symbol}`,
+        type: 'cascade_auto_block_symbol',
+        symbol: liquidation.symbol
+      });
+      return false;
+    }
+    
     // PORTFOLIO RISK LIMITS CHECK: Block new entries if they WOULD exceed limits
     const portfolioRisk = await this.calculatePortfolioRisk(strategy, session);
     console.log(`\n📊 STEP 1: Portfolio Risk Check`);
