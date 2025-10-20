@@ -67,8 +67,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Auto-register active strategies on server startup
   console.log('🔄 Checking for active strategies to auto-register...');
-  const allStrategies = await storage.getStrategies();
-  const activeStrategies = allStrategies.filter(s => s.isActive);
+  const activeStrategies = await storage.getAllActiveStrategies();
   
   if (activeStrategies.length > 0) {
     console.log(`📋 Found ${activeStrategies.length} active strategy(ies) - registering with strategy engine...`);
