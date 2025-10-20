@@ -833,14 +833,14 @@ export class StrategyEngine extends EventEmitter {
       return false;
     }
     
-    // PORTFOLIO RISK LIMITS CHECK: Block new entries if they WOULD exceed limits
+    // PORTFOLIO RISK LIMITS CHECK: Block based on FILLED RISK only
+    // Filled risk = actual loss exposure if all stop losses hit simultaneously
     const portfolioRisk = await this.calculatePortfolioRisk(strategy, session);
-    console.log(`\n📊 STEP 1: Portfolio Risk Check`);
+    console.log(`\n📊 Portfolio Risk Check`);
     console.log(`   Open Positions: ${portfolioRisk.openPositionCount}/${strategy.maxOpenPositions || 'unlimited'}`);
-    console.log(`   Filled Risk: ${portfolioRisk.filledRiskPercentage.toFixed(1)}%`);
-    console.log(`   Reserved Risk: ${portfolioRisk.reservedRiskPercentage.toFixed(1)}%`);
-    console.log(`   Actual Margin: ${portfolioRisk.actualMarginUsedPercentage.toFixed(1)}%`);
-    console.log(`   Max Allowed: ${strategy.maxPortfolioRiskPercent}%`);
+    console.log(`   💰 Filled Risk: ${portfolioRisk.filledRiskPercentage.toFixed(1)}% (loss if all SLs hit)`);
+    console.log(`   📊 Actual Margin: ${portfolioRisk.actualMarginUsedPercentage.toFixed(1)}% (capital allocated)`);
+    console.log(`   🎯 Max Risk Allowed: ${strategy.maxPortfolioRiskPercent}%`);
     
     // Check max open positions limit (0 = unlimited)
     // Must check if adding ONE MORE position would exceed the limit
@@ -865,23 +865,6 @@ export class StrategyEngine extends EventEmitter {
       }
       
       const maxRiskPercent = parseFloat(strategy.maxPortfolioRiskPercent);
-      
-      // CRITICAL: Check ACTUAL MARGIN USAGE first (hard limit)
-      console.log(`\n📊 STEP 2: Margin Limit Gate`);
-      const actualMarginUsed = portfolioRisk.actualMarginUsedPercentage;
-      console.log(`   Actual Margin Used: ${actualMarginUsed.toFixed(1)}%`);
-      console.log(`   Max Risk Setting: ${maxRiskPercent}%`);
-      if (actualMarginUsed > maxRiskPercent) {
-        console.log(`   ❌ BLOCKED: Margin limit exceeded (${actualMarginUsed.toFixed(1)}% > ${maxRiskPercent}%)`);
-        console.log(`═══════════════════════════════════════════════════════════════\n`);
-        wsBroadcaster.broadcastTradeBlock({
-          blocked: true,
-          reason: `Margin limit exceeded: ${actualMarginUsed.toFixed(1)}% > ${maxRiskPercent}%`,
-          type: 'margin_limit_exceeded'
-        });
-        return false;
-      }
-      console.log(`   ✅ PASSED: Margin within limits`);
       
       // Use FILLED risk (current positions at SL) to block new positions
       // This ensures if all SLs hit at once, max loss <= maxRiskPercent
