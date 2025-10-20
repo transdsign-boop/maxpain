@@ -55,15 +55,16 @@ class LiveDataOrchestrator {
   private lastPositionsLogTime: number = 0;
   private exchangeStreams: Map<string, IExchangeStream> = new Map();
   private cachedUsdtBalance: Map<string, number> = new Map(); // Cache USDT balance per strategy
+  private cachedUsdfBalance: Map<string, number> = new Map(); // Cache USDF balance per strategy
 
   constructor() {
     console.log('🎯 Live Data Orchestrator initialized - 100% WebSocket mode (NO POLLING)');
-    // Periodically refresh USDT balance from REST API (every 60s)
-    setInterval(() => this.refreshUsdtBalances(), 60000);
+    // Periodically refresh USDT and USDF balances from REST API (every 60s)
+    setInterval(() => this.refreshAllBalances(), 60000);
   }
 
-  // Fetch USDT balance from REST API and cache it
-  private async refreshUsdtBalances(): Promise<void> {
+  // Fetch USDF and USDT balances from REST API and cache them
+  private async refreshAllBalances(): Promise<void> {
     try {
       const { createHmac } = await import('crypto');
       const apiKey = process.env.ASTER_DEX_API_KEY;
@@ -82,10 +83,20 @@ class LiveDataOrchestrator {
       
       if (response.ok) {
         const data = await response.json();
+        
+        // Cache USDF balance
+        const usdfAsset = data.assets?.find((a: any) => a.asset === 'USDF');
+        if (usdfAsset) {
+          const usdfBalance = parseFloat(usdfAsset.walletBalance || '0');
+          for (const strategyId of this.cache.keys()) {
+            this.cachedUsdfBalance.set(strategyId, usdfBalance);
+          }
+        }
+        
+        // Cache USDT balance
         const usdtAsset = data.assets?.find((a: any) => a.asset === 'USDT');
         if (usdtAsset) {
           const usdtBalance = parseFloat(usdtAsset.walletBalance || '0');
-          // Store for all active strategies (simplified - could be per-strategy if needed)
           for (const strategyId of this.cache.keys()) {
             this.cachedUsdtBalance.set(strategyId, usdtBalance);
           }
@@ -96,7 +107,7 @@ class LiveDataOrchestrator {
     }
   }
 
-  // Initialize USDT balance for a strategy (called on startup)
+  // Initialize USDF and USDT balances for a strategy (called on startup)
   async initializeUsdtBalance(strategyId: string): Promise<void> {
     try {
       const { createHmac } = await import('crypto');
@@ -116,6 +127,16 @@ class LiveDataOrchestrator {
       
       if (response.ok) {
         const data = await response.json();
+        
+        // Cache USDF balance
+        const usdfAsset = data.assets?.find((a: any) => a.asset === 'USDF');
+        if (usdfAsset) {
+          const usdfBalance = parseFloat(usdfAsset.walletBalance || '0');
+          this.cachedUsdfBalance.set(strategyId, usdfBalance);
+          console.log(`💵 Cached USDF balance for strategy: $${usdfBalance.toFixed(2)}`);
+        }
+        
+        // Cache USDT balance
         const usdtAsset = data.assets?.find((a: any) => a.asset === 'USDT');
         if (usdtAsset) {
           const usdtBalance = parseFloat(usdtAsset.walletBalance || '0');
@@ -124,7 +145,7 @@ class LiveDataOrchestrator {
         }
       }
     } catch (error) {
-      console.error('Failed to initialize USDT balance:', error);
+      console.error('Failed to initialize balances:', error);
     }
   }
 
@@ -336,9 +357,14 @@ class LiveDataOrchestrator {
       const snapshot = this.getSnapshot(strategyId);
       
       // Sum both USDF and USDT for total wallet balance
-      // WebSocket usually only sends USDF, so use cached USDT balance if WebSocket doesn't provide it
-      const usdfWallet = parseFloat(usdfBalance?.walletBalance || '0');
+      // WebSocket may not send complete balance data, so use cached values as fallback
+      let usdfWallet = parseFloat(usdfBalance?.walletBalance || '0');
       let usdtWallet = parseFloat(usdtBalance?.walletBalance || '0');
+      
+      // If WebSocket didn't provide USDF, use cached value from REST API
+      if (!usdfBalance && this.cachedUsdfBalance.has(strategyId)) {
+        usdfWallet = this.cachedUsdfBalance.get(strategyId) || 0;
+      }
       
       // If WebSocket didn't provide USDT, use cached value from REST API
       if (!usdtBalance && this.cachedUsdtBalance.has(strategyId)) {
@@ -425,7 +451,7 @@ class LiveDataOrchestrator {
     
     // Update account available balance based on calculated margin
     if (snapshot.account) {
-      const totalWallet = parseFloat(snapshot.account.totalWalletBalance);
+      const totalWallet = parseFloat(snapshot.account.totalWalletBalance || '0');
       const actualAvailable = totalWallet - totalMarginUsed;
       snapshot.account.availableBalance = actualAvailable.toString();
       snapshot.account.totalInitialMargin = totalMarginUsed.toString();
