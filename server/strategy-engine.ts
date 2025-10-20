@@ -575,13 +575,16 @@ export class StrategyEngine extends EventEmitter {
 
   // Evaluate if a liquidation triggers a trading signal for a strategy
   private async evaluateStrategySignal(strategy: Strategy, liquidation: Liquidation) {
-    // CRITICAL: Check if we've already processed this liquidation (deduplication)
-    // NOTE: We mark as processed ONLY when an order is actually placed (not here)
-    // This allows other strategies to evaluate if the first one filters out
+    // CRITICAL ATOMIC CHECK-AND-SET: Prevent race condition where multiple concurrent
+    // evaluations all pass the check before any reach the "add" later in the code.
+    // We mark as processed IMMEDIATELY to create an atomic reservation.
     if (this.processedLiquidations.has(liquidation.id)) {
       console.log(`⏭️ SKIPPING: Liquidation ${liquidation.id} already processed (deduplication)`);
       return;
     }
+    // ATOMIC: Mark as processed RIGHT NOW (not 200 lines later) to prevent race
+    this.processedLiquidations.add(liquidation.id);
+    console.log(`🔒 ATOMIC RESERVATION: Liquidation ${liquidation.id} marked as processed to prevent concurrent duplicates`);
     
     // Double-check strategy is still active (prevents race condition during unregister)
     if (!this.activeStrategies.has(strategy.id)) return;
@@ -702,10 +705,9 @@ export class StrategyEngine extends EventEmitter {
         if (positionAfterWait.side === positionSide) {
           const shouldLayer = await this.shouldAddLayer(currentStrategy, positionAfterWait, liquidation);
           if (shouldLayer) {
-            // Set GLOBAL cooldown and mark liquidation as processed BEFORE placing order
+            // Set GLOBAL cooldown BEFORE placing order
             this.lastFillTime.set(cooldownKey, Date.now());
-            this.processedLiquidations.add(liquidation.id);
-            console.log(`🔒 GLOBAL RESERVATION (LAYER): ${liquidation.symbol} ${positionSide} - cooldown + liquidation ID marked`);
+            console.log(`🔒 GLOBAL RESERVATION (LAYER): ${liquidation.symbol} ${positionSide} - cooldown set`);
             await this.executeLayer(currentStrategy, session, positionAfterWait, liquidation, positionSide);
           }
         } else {
@@ -733,10 +735,9 @@ export class StrategyEngine extends EventEmitter {
         if (actualPosition && actualPosition.isOpen && actualPosition.side === positionSide) {
           const shouldLayer = await this.shouldAddLayer(currentStrategy, actualPosition, liquidation);
           if (shouldLayer) {
-            // Set GLOBAL cooldown and mark liquidation as processed BEFORE placing order
+            // Set GLOBAL cooldown BEFORE placing order
             this.lastFillTime.set(cooldownKey, Date.now());
-            this.processedLiquidations.add(liquidation.id);
-            console.log(`🔒 GLOBAL RESERVATION (LAYER): ${liquidation.symbol} ${positionSide} - cooldown + liquidation ID marked`);
+            console.log(`🔒 GLOBAL RESERVATION (LAYER): ${liquidation.symbol} ${positionSide} - cooldown set`);
             await this.executeLayer(currentStrategy, session, actualPosition, liquidation, positionSide);
           }
           return;
@@ -752,10 +753,9 @@ export class StrategyEngine extends EventEmitter {
         if (existingPosition.side === positionSide) {
           const shouldLayer = await this.shouldAddLayer(currentStrategy, existingPosition, liquidation);
           if (shouldLayer) {
-            // Set GLOBAL cooldown and mark liquidation as processed BEFORE placing order
+            // Set GLOBAL cooldown BEFORE placing order
             this.lastFillTime.set(cooldownKey, Date.now());
-            this.processedLiquidations.add(liquidation.id);
-            console.log(`🔒 GLOBAL RESERVATION (LAYER): ${liquidation.symbol} ${positionSide} - cooldown + liquidation ID marked`);
+            console.log(`🔒 GLOBAL RESERVATION (LAYER): ${liquidation.symbol} ${positionSide} - cooldown set`);
             await this.executeLayer(currentStrategy, session, existingPosition, liquidation, positionSide);
           }
         } else {
@@ -769,11 +769,10 @@ export class StrategyEngine extends EventEmitter {
         console.log(`🔍 DEBUG: shouldEnterPositionWithoutCooldown returned: ${shouldEnter} for ${liquidation.symbol} ${positionSide}`);
         
         if (shouldEnter) {
-          // LAYER 1 (INITIAL ENTRY): Set GLOBAL cooldown and mark liquidation as processed BEFORE placing order
+          // LAYER 1 (INITIAL ENTRY): Set GLOBAL cooldown BEFORE placing order
           // This creates a "reservation" that prevents duplicate orders from ANY strategy
           this.lastFillTime.set(cooldownKey, Date.now());
-          this.processedLiquidations.add(liquidation.id);
-          console.log(`🔒 GLOBAL RESERVATION (ENTRY): ${liquidation.symbol} ${positionSide} - cooldown + liquidation ID marked`);
+          console.log(`🔒 GLOBAL RESERVATION (ENTRY): ${liquidation.symbol} ${positionSide} - cooldown set`);
           
           console.log(`✅ DEBUG: Proceeding with entry for ${liquidation.symbol} ${positionSide}`);
           const positionId = await this.executeEntry(currentStrategy, session, liquidation, positionSide, () => {
