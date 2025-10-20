@@ -641,18 +641,6 @@ export class StrategyEngine extends EventEmitter {
     // Cooldown key for DCA layer delay tracking
     const cooldownKey = `${session.id}-${liquidation.symbol}-${positionSide}`;
     
-    // PRE-LOCK COOLDOWN CHECK: Check cooldown BEFORE lock acquisition to prevent race conditions
-    // This catches cases where two liquidations arrive simultaneously and both pass lock check
-    const preCheckLastFill = this.lastFillTime.get(cooldownKey);
-    if (preCheckLastFill) {
-      const timeSinceLastFill = Date.now() - preCheckLastFill;
-      if (timeSinceLastFill < currentStrategy.dcaLayerDelayMs) {
-        const waitTime = ((currentStrategy.dcaLayerDelayMs - timeSinceLastFill) / 1000).toFixed(1);
-        console.log(`⏸️ PRE-LOCK COOLDOWN BLOCK: ${liquidation.symbol} ${positionSide} - wait ${waitTime}s (prevents simultaneous entries)`);
-        return;
-      }
-    }
-    
     // ATOMIC lock acquisition: Try to acquire lock, if already exists, wait and re-evaluate
     const existingLock = this.positionCreationLocks.get(lockKey);
     if (existingLock) {
@@ -709,35 +697,13 @@ export class StrategyEngine extends EventEmitter {
     });
     this.positionCreationLocks.set(lockKey, lockPromise);
     
-    // ATOMIC COOLDOWN CHECK: Check cooldown INSIDE lock to prevent race conditions
-    // This is the ONLY cooldown check - happens after lock acquisition, making it atomic
-    const lastFill = this.lastFillTime.get(cooldownKey);
-    if (lastFill) {
-      const timeSinceLastFill = Date.now() - lastFill;
-      if (timeSinceLastFill < currentStrategy.dcaLayerDelayMs) {
-        const waitTime = ((currentStrategy.dcaLayerDelayMs - timeSinceLastFill) / 1000).toFixed(1);
-        console.log(`⏸️ COOLDOWN BLOCK (Inside Lock): ${liquidation.symbol} ${positionSide} - wait ${waitTime}s before processing`);
-        releaseLock!(); // Release lock before returning
-        setTimeout(() => {
-          this.positionCreationLocks.delete(lockKey);
-        }, 100);
-        return;
-      }
-    }
-    
-    // CRITICAL FIX: Set provisional cooldown AFTER check passes to prevent duplicate positions
-    // This prevents queued liquidations from passing cooldown check while we're processing entry
-    // If entry fails, we'll clear this cooldown in the catch block
-    this.lastFillTime.set(cooldownKey, Date.now());
-    console.log(`🔒 Lock acquired for ${liquidation.symbol} ${positionSide} - PROVISIONAL cooldown set (${currentStrategy.dcaLayerDelayMs / 1000}s)`);
+    console.log(`🔒 Lock acquired for ${liquidation.symbol} ${positionSide} - evaluating entry conditions...`);
     
     try {
       // Check in-memory positions first (before DB query)
       const inMemoryPos = this.inMemoryPositions.get(lockKey);
       if (inMemoryPos) {
         console.log(`🔍 Found in-memory position: ${inMemoryPos.positionId} (created ${Date.now() - inMemoryPos.createdAt}ms ago)`);
-        // ROLLBACK: Position exists, clear provisional cooldown (we'll set layer cooldown if needed)
-        this.lastFillTime.delete(cooldownKey);
         const actualPosition = await storage.getPosition(inMemoryPos.positionId);
         if (actualPosition && actualPosition.isOpen && actualPosition.side === positionSide) {
           const shouldLayer = await this.shouldAddLayer(currentStrategy, actualPosition, liquidation);
@@ -755,8 +721,6 @@ export class StrategyEngine extends EventEmitter {
         : await storage.getPositionBySymbol(session.id, liquidation.symbol);
       
       if (existingPosition && existingPosition.isOpen) {
-        // ROLLBACK: Position exists, clear provisional cooldown (we'll set layer cooldown if needed)
-        this.lastFillTime.delete(cooldownKey);
         if (existingPosition.side === positionSide) {
           const shouldLayer = await this.shouldAddLayer(currentStrategy, existingPosition, liquidation);
           if (shouldLayer) {
@@ -767,18 +731,29 @@ export class StrategyEngine extends EventEmitter {
           console.log(`⏭️ Skipping layer: Existing ${existingPosition.side} position doesn't match ${positionSide} liquidation signal`);
         }
       } else {
-        // No open position - evaluate if we should enter
+        // No open position - check cooldown BEFORE evaluating (only blocks qualifying trades)
+        const lastFill = this.lastFillTime.get(cooldownKey);
+        if (lastFill) {
+          const timeSinceLastFill = Date.now() - lastFill;
+          if (timeSinceLastFill < currentStrategy.dcaLayerDelayMs) {
+            const waitTime = ((currentStrategy.dcaLayerDelayMs - timeSinceLastFill) / 1000).toFixed(1);
+            console.log(`⏸️ ENTRY COOLDOWN: ${liquidation.symbol} ${positionSide} - recent qualifying trade ${waitTime}s ago, wait ${waitTime}s more`);
+            return; // Exit early - cooldown active from previous qualifying trade
+          }
+        }
+        
+        // Evaluate if we should enter (checks percentile threshold + risk limits)
         console.log(`🔍 DEBUG: No existing position for ${liquidation.symbol} ${positionSide}, checking entry conditions...`);
         const shouldEnter = await this.shouldEnterPositionWithoutCooldown(currentStrategy, liquidation, recentLiquidations, session, positionSide);
         console.log(`🔍 DEBUG: shouldEnterPositionWithoutCooldown returned: ${shouldEnter} for ${liquidation.symbol} ${positionSide}`);
         
         if (shouldEnter) {
-          // LAYER 1 (INITIAL ENTRY): Cooldown already set at lock acquisition (line 642)
-          // We refresh it here when exchange confirms to ensure full 30s from confirmation
+          // LAYER 1 (INITIAL ENTRY): Set cooldown when exchange confirms fill
+          // This prevents another entry on same symbol+side for dcaLayerDelayMs milliseconds
           console.log(`✅ DEBUG: Proceeding with entry for ${liquidation.symbol} ${positionSide}`);
           const positionId = await this.executeEntry(currentStrategy, session, liquidation, positionSide, () => {
             this.lastFillTime.set(cooldownKey, Date.now());
-            console.log(`🔒 Layer 1 cooldown REFRESHED for ${liquidation.symbol} ${positionSide} (${currentStrategy.dcaLayerDelayMs / 1000}s) at exchange confirmation`);
+            console.log(`🔒 Entry cooldown SET for ${liquidation.symbol} ${positionSide} (${currentStrategy.dcaLayerDelayMs / 1000}s) - blocks future entries until cooldown expires`);
           });
           
           if (positionId) {
@@ -790,21 +765,18 @@ export class StrategyEngine extends EventEmitter {
             });
             console.log(`📝 Tracked position ${positionId} in-memory for ${lockKey}`);
           } else {
-            // ROLLBACK: Entry failed, clear provisional cooldown to allow retry
+            // Entry failed - clear the cooldown that was set by executeEntry callback
             this.lastFillTime.delete(cooldownKey);
-            console.log(`🔓 ROLLBACK: Cleared provisional cooldown for ${liquidation.symbol} ${positionSide} (entry failed)`);
+            console.log(`🔓 Entry failed - cleared cooldown for ${liquidation.symbol} ${positionSide} to allow retry`);
           }
         } else {
-          // ROLLBACK: Didn't enter (risk limits, etc.), clear provisional cooldown
-          this.lastFillTime.delete(cooldownKey);
-          console.log(`🔓 ROLLBACK: Cleared provisional cooldown for ${liquidation.symbol} ${positionSide} (entry not triggered)`);
+          // Liquidation didn't qualify (below percentile threshold or risk limits exceeded)
+          // DO NOT set cooldown - let next liquidation be evaluated immediately
+          console.log(`⏭️  Liquidation rejected (below threshold or risk limit) - no cooldown set, next liquidation can proceed immediately`);
         }
       }
     } catch (error) {
-      // ROLLBACK: Any error during evaluation, clear provisional cooldown
-      this.lastFillTime.delete(cooldownKey);
       console.error(`❌ Error evaluating strategy signal for ${liquidation.symbol}:`, error);
-      console.log(`🔓 ROLLBACK: Cleared provisional cooldown for ${liquidation.symbol} ${positionSide} (error occurred)`);
       throw error;
     } finally {
       // ALWAYS release the lock and clean up
