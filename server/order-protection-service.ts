@@ -294,6 +294,7 @@ export class OrderProtectionService {
 
   /**
    * Calculate desired TP/SL orders based on position
+   * CRITICAL: Handles positions that exceed exchange max quantity by splitting into multiple orders
    */
   private async calculateDesiredOrders(position: Position, strategy: Strategy): Promise<DesiredOrder[]> {
     const entryPrice = parseFloat(position.avgEntryPrice);
@@ -331,40 +332,109 @@ export class OrderProtectionService {
       slSide = 'BUY';
     }
 
-    // CRITICAL: Round quantities separately with correct order types
-    // TP uses LIMIT order type (LOT_SIZE filter)
-    // SL uses STOP_MARKET order type (MARKET_LOT_SIZE filter - usually more restrictive!)
-    const tpRoundedQty = this.roundQuantity(position.symbol, quantity, 'LIMIT');
-    const slRoundedQty = this.roundQuantity(position.symbol, quantity, 'STOP_MARKET');
+    // Get max quantities for each order type
+    const precision = this.symbolPrecisionCache.get(position.symbol);
+    const tpMaxQty = precision ? parseFloat(precision.maxQty) : Infinity;
+    const slMaxQty = precision ? parseFloat(precision.marketMaxQty) : Infinity;
 
-    return [
-      {
+    const orders: DesiredOrder[] = [];
+
+    // Split TP orders if quantity exceeds LIMIT max
+    if (quantity > tpMaxQty) {
+      console.log(`⚠️ Position quantity ${quantity} exceeds TP max ${tpMaxQty} for ${position.symbol}, splitting into multiple orders`);
+      let remaining = quantity;
+      let orderNum = 1;
+      
+      while (remaining > 0) {
+        const orderQty = Math.min(remaining, tpMaxQty);
+        const roundedQty = this.roundQuantity(position.symbol, orderQty, 'LIMIT');
+        
+        orders.push({
+          type: 'LIMIT',
+          price: tpPrice,
+          quantity: roundedQty,
+          side: tpSide,
+          purpose: 'take_profit',
+          orderNumber: orderNum
+        } as any);
+        
+        remaining -= roundedQty;
+        orderNum++;
+        
+        if (orderNum > 10) { // Safety limit
+          console.error(`❌ Too many TP orders needed for ${position.symbol}, aborting split`);
+          break;
+        }
+      }
+    } else {
+      const tpRoundedQty = this.roundQuantity(position.symbol, quantity, 'LIMIT');
+      orders.push({
         type: 'LIMIT',
         price: tpPrice,
         quantity: tpRoundedQty,
         side: tpSide,
         purpose: 'take_profit'
-      },
-      {
+      });
+    }
+
+    // Split SL orders if quantity exceeds STOP_MARKET max
+    if (quantity > slMaxQty) {
+      console.log(`⚠️ Position quantity ${quantity} exceeds SL max ${slMaxQty} for ${position.symbol}, splitting into multiple orders`);
+      let remaining = quantity;
+      let orderNum = 1;
+      
+      while (remaining > 0) {
+        const orderQty = Math.min(remaining, slMaxQty);
+        const roundedQty = this.roundQuantity(position.symbol, orderQty, 'STOP_MARKET');
+        
+        orders.push({
+          type: 'STOP_MARKET',
+          price: slPrice,
+          quantity: roundedQty,
+          side: slSide,
+          purpose: 'stop_loss',
+          orderNumber: orderNum
+        } as any);
+        
+        remaining -= roundedQty;
+        orderNum++;
+        
+        if (orderNum > 10) { // Safety limit
+          console.error(`❌ Too many SL orders needed for ${position.symbol}, aborting split`);
+          break;
+        }
+      }
+    } else {
+      const slRoundedQty = this.roundQuantity(position.symbol, quantity, 'STOP_MARKET');
+      orders.push({
         type: 'STOP_MARKET',
         price: slPrice,
         quantity: slRoundedQty,
         side: slSide,
         purpose: 'stop_loss'
-      }
-    ];
+      });
+    }
+
+    return orders;
   }
 
   /**
    * Generate order signature for comparison
+   * Handles multiple TP/SL orders by concatenating their quantities
    */
   private getOrderSignature(orders: DesiredOrder[]): OrderSignature {
-    const tpOrder = orders.find(o => o.purpose === 'take_profit')!;
-    const slOrder = orders.find(o => o.purpose === 'stop_loss')!;
+    const tpOrders = orders.filter(o => o.purpose === 'take_profit');
+    const slOrders = orders.filter(o => o.purpose === 'stop_loss');
+
+    const tpTotalQty = tpOrders.reduce((sum, o) => sum + o.quantity, 0);
+    const slTotalQty = slOrders.reduce((sum, o) => sum + o.quantity, 0);
+    
+    const tpPrice = tpOrders[0]?.price || 0;
+    const slPrice = slOrders[0]?.price || 0;
 
     return {
-      tp: `${tpOrder.type}-${tpOrder.price}-${tpOrder.quantity}`,
-      sl: `${slOrder.type}-${slOrder.price}-${slOrder.quantity}`
+      tp: `${tpOrders[0]?.type}-${tpPrice}-${tpTotalQty}x${tpOrders.length}`,
+      sl: `${slOrders[0]?.type}-${slPrice}-${slTotalQty}x${slOrders.length}`
     };
   }
 
