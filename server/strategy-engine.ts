@@ -1764,6 +1764,7 @@ export class StrategyEngine extends EventEmitter {
       
       // PROACTIVE TRADE BLOCK: Broadcast trade block status if filled risk exceeds max risk
       // This ensures UI reflects current state even when no liquidations are being evaluated
+      // ONLY checks filled risk (actual current exposure), NOT reserved risk (theoretical max)
       const maxRiskPercent = parseFloat(strategy.maxPortfolioRiskPercent);
       if (filledRiskPercentage > maxRiskPercent) {
         console.log(`🚨 PROACTIVE BLOCK: Filled risk ${filledRiskPercentage.toFixed(1)}% exceeds max ${maxRiskPercent}% - broadcasting trade block`);
@@ -1771,13 +1772,6 @@ export class StrategyEngine extends EventEmitter {
           blocked: true,
           reason: `Risk limit exceeded: ${filledRiskPercentage.toFixed(1)}% > ${maxRiskPercent}%`,
           type: 'risk_limit_exceeded'
-        });
-      } else if (reservedRiskPercentage > maxRiskPercent) {
-        console.log(`⚠️ PROACTIVE BLOCK: Reserved risk ${reservedRiskPercentage.toFixed(1)}% exceeds max ${maxRiskPercent}% - broadcasting trade block`);
-        wsBroadcaster.broadcastTradeBlock({
-          blocked: true,
-          reason: `Risk limit exceeded: ${reservedRiskPercentage.toFixed(1)}% > ${maxRiskPercent}%`,
-          type: 'risk_limit'
         });
       } else {
         // Clear trade block if within limits
