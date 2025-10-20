@@ -617,6 +617,18 @@ export class StrategyEngine extends EventEmitter {
       if (timeSinceLastOrder < oneMinuteMs) {
         const waitTime = ((oneMinuteMs - timeSinceLastOrder) / 1000).toFixed(1);
         console.log(`⏸️ ORDER THROTTLE: ${liquidation.symbol} ${positionSide} - last order placed ${(timeSinceLastOrder / 1000).toFixed(1)}s ago, wait ${waitTime}s more`);
+        
+        // Log error to database for audit trail
+        await this.logTradeEntryError({
+          strategy: currentStrategy,
+          symbol: liquidation.symbol,
+          side: positionSide,
+          attemptType: 'entry',
+          reason: 'order_placement_cooldown',
+          errorDetails: `Last order placed ${(timeSinceLastOrder / 1000).toFixed(1)}s ago, wait ${waitTime}s more (1-minute throttle)`,
+          liquidationValue: parseFloat(liquidation.value),
+        });
+        
         return; // Exit early - prevents queuing multiple orders before first one fills
       }
     }
@@ -631,6 +643,18 @@ export class StrategyEngine extends EventEmitter {
         reason: aggregateStatus.reason || 'Cascade auto-blocking active',
         type: 'cascade_auto_block'
       });
+      
+      // Log error to database for audit trail
+      await this.logTradeEntryError({
+        strategy: currentStrategy,
+        symbol: liquidation.symbol,
+        side: positionSide,
+        attemptType: 'entry',
+        reason: 'cascade_system_block',
+        errorDetails: aggregateStatus.reason || 'Cascade auto-blocking active (system-wide)',
+        liquidationValue: parseFloat(liquidation.value),
+      });
+      
       return;
     }
 
@@ -833,6 +857,18 @@ export class StrategyEngine extends EventEmitter {
         type: 'cascade_auto_block_symbol',
         symbol: liquidation.symbol
       });
+      
+      // Log error to database for audit trail
+      await this.logTradeEntryError({
+        strategy,
+        symbol: liquidation.symbol,
+        side: positionSide,
+        attemptType: 'entry',
+        reason: 'cascade_auto_block',
+        errorDetails: `Symbol has autoBlock=true (cascade detected)`,
+        liquidationValue: parseFloat(liquidation.value),
+      });
+      
       return false;
     }
     
@@ -856,6 +892,18 @@ export class StrategyEngine extends EventEmitter {
         reason: `Portfolio limit: ${portfolioRisk.openPositionCount + 1} > ${strategy.maxOpenPositions} positions`,
         type: 'portfolio_limit'
       });
+      
+      // Log error to database for audit trail
+      await this.logTradeEntryError({
+        strategy,
+        symbol: liquidation.symbol,
+        side: positionSide,
+        attemptType: 'entry',
+        reason: 'portfolio_position_limit',
+        errorDetails: `Opening new position would exceed limit (${portfolioRisk.openPositionCount + 1} > ${strategy.maxOpenPositions})`,
+        liquidationValue: parseFloat(liquidation.value),
+      });
+      
       return false;
     }
     
@@ -884,6 +932,18 @@ export class StrategyEngine extends EventEmitter {
           reason: `Risk limit: ${currentFilledRisk.toFixed(1)}% of ${maxRiskPercent}% used`,
           type: 'risk_limit'
         });
+        
+        // Log error to database for audit trail
+        await this.logTradeEntryError({
+          strategy,
+          symbol: liquidation.symbol,
+          side: positionSide,
+          attemptType: 'entry',
+          reason: 'no_remaining_risk_budget',
+          errorDetails: `No remaining risk budget (filled: ${currentFilledRisk.toFixed(1)}%, max: ${maxRiskPercent}%, remaining: ${remainingRiskPercent.toFixed(2)}%)`,
+          liquidationValue: parseFloat(liquidation.value),
+        });
+        
         return false;
       }
       
@@ -1053,6 +1113,18 @@ export class StrategyEngine extends EventEmitter {
     if (!symbolHistory || symbolHistory.length === 0) {
       console.log(`❌ No historical liquidations found for ${liquidation.symbol} - entry filtered`);
       // Note: No historical data is per-symbol filter, NOT a system-wide block
+      
+      // Log error to database for audit trail
+      await this.logTradeEntryError({
+        strategy,
+        symbol: liquidation.symbol,
+        side: positionSide,
+        attemptType: 'entry',
+        reason: 'no_historical_data',
+        errorDetails: `No historical liquidations found for ${liquidation.symbol} to calculate percentile`,
+        liquidationValue: parseFloat(liquidation.value),
+      });
+      
       return false;
     }
     
@@ -1097,6 +1169,17 @@ export class StrategyEngine extends EventEmitter {
       console.log(`═══════════════════════════════════════════════════════════════\n`);
       // Note: Percentile is a per-liquidation filter, NOT a system-wide block
       // So we don't broadcast trade_block for percentile failures
+      
+      // Log error to database for audit trail
+      await this.logTradeEntryError({
+        strategy,
+        symbol: liquidation.symbol,
+        side: positionSide,
+        attemptType: 'entry',
+        reason: 'percentile_threshold_not_met',
+        errorDetails: `Liquidation at ${currentPercentile}th percentile < ${strategy.percentileThreshold}th threshold (value: $${currentLiquidationValue.toFixed(2)})`,
+        liquidationValue: currentLiquidationValue,
+      });
     }
     
     return shouldEnter;
@@ -1115,6 +1198,18 @@ export class StrategyEngine extends EventEmitter {
     
     if (totalLayers >= strategy.maxLayers) {
       console.log(`🚫 Max layers reached: ${position.layersFilled} filled + ${pendingCount} pending = ${totalLayers}/${strategy.maxLayers}`);
+      
+      // Log error to database for audit trail
+      await this.logTradeEntryError({
+        strategy,
+        symbol: liquidation.symbol,
+        side: position.side,
+        attemptType: 'layer',
+        reason: 'max_layers_reached',
+        errorDetails: `Position already has ${totalLayers}/${strategy.maxLayers} layers (${position.layersFilled} filled + ${pendingCount} pending)`,
+        liquidationValue: parseFloat(liquidation.value),
+      });
+      
       return false;
     }
 
@@ -1149,6 +1244,18 @@ export class StrategyEngine extends EventEmitter {
         
         if (remainingRiskPercent < 0.05) {
           console.log(`🚫 PORTFOLIO RISK LIMIT (Layer/Legacy): No remaining risk budget (filled: ${portfolioRisk.filledRiskPercentage.toFixed(1)}%, max: ${maxRiskPercent}%, remaining: ${remainingRiskPercent.toFixed(2)}%)`);
+          
+          // Log error to database for audit trail
+          await this.logTradeEntryError({
+            strategy,
+            symbol: liquidation.symbol,
+            side: position.side,
+            attemptType: 'layer',
+            reason: 'risk_budget_exceeded_legacy',
+            errorDetails: `Legacy position: No remaining risk budget (filled: ${portfolioRisk.filledRiskPercentage.toFixed(1)}%, max: ${maxRiskPercent}%, remaining: ${remainingRiskPercent.toFixed(2)}%)`,
+            liquidationValue: parseFloat(liquidation.value),
+          });
+          
           return false;
         }
       }
@@ -1226,6 +1333,18 @@ export class StrategyEngine extends EventEmitter {
         if (projectedPositionRisk > reservedRiskDollars * 1.01) { // 1% tolerance for float precision
           console.log(`🚫 RESERVED BUDGET EXCEEDED: New layer $${newLayerRiskDollars.toFixed(2)} would exceed position's reserved budget`);
           console.log(`   Current filled: $${currentFilledRiskDollars.toFixed(2)}, Reserved: $${reservedRiskDollars.toFixed(2)}, Projected: $${projectedPositionRisk.toFixed(2)}`);
+          
+          // Log error to database for audit trail
+          await this.logTradeEntryError({
+            strategy,
+            symbol: liquidation.symbol,
+            side: position.side,
+            attemptType: 'layer',
+            reason: 'reserved_budget_exceeded',
+            errorDetails: `New layer $${newLayerRiskDollars.toFixed(2)} would exceed position's reserved budget (filled: $${currentFilledRiskDollars.toFixed(2)}, reserved: $${reservedRiskDollars.toFixed(2)}, projected: $${projectedPositionRisk.toFixed(2)})`,
+            liquidationValue: parseFloat(liquidation.value),
+          });
+          
           return false;
         }
         
@@ -1259,6 +1378,18 @@ export class StrategyEngine extends EventEmitter {
     const symbolHistory = await storage.getLiquidationsBySymbol([liquidation.symbol], 10000);
     if (!symbolHistory || symbolHistory.length === 0) {
       console.log(`❌ No historical liquidations found for ${liquidation.symbol} - layer blocked`);
+      
+      // Log error to database for audit trail
+      await this.logTradeEntryError({
+        strategy,
+        symbol: liquidation.symbol,
+        side: position.side,
+        attemptType: 'layer',
+        reason: 'no_historical_data',
+        errorDetails: `No historical liquidations found for ${liquidation.symbol} to calculate percentile for layer`,
+        liquidationValue: parseFloat(liquidation.value),
+      });
+      
       return false;
     }
     
@@ -1287,6 +1418,17 @@ export class StrategyEngine extends EventEmitter {
       console.log(`✅ Layer APPROVED: $${currentLiquidationValue.toFixed(2)} is at ${currentPercentile}th percentile (≥ ${strategy.percentileThreshold}% threshold)`);
     } else {
       console.log(`❌ Layer BLOCKED: $${currentLiquidationValue.toFixed(2)} is at ${currentPercentile}th percentile (< ${strategy.percentileThreshold}% threshold)`);
+      
+      // Log error to database for audit trail
+      await this.logTradeEntryError({
+        strategy,
+        symbol: liquidation.symbol,
+        side: position.side,
+        attemptType: 'layer',
+        reason: 'percentile_threshold_not_met',
+        errorDetails: `Layer at ${currentPercentile}th percentile < ${strategy.percentileThreshold}th threshold (value: $${currentLiquidationValue.toFixed(2)})`,
+        liquidationValue: currentLiquidationValue,
+      });
     }
     
     return shouldAddLayer;
