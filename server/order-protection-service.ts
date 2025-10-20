@@ -39,7 +39,14 @@ interface OrderSignature {
  */
 export class OrderProtectionService {
   private updateLocks = new Map<string, Promise<void>>(); // lockKey -> promise
-  private symbolPrecisionCache = new Map<string, { stepSize: string; tickSize: string }>();
+  private symbolPrecisionCache = new Map<string, { 
+    stepSize: string; 
+    tickSize: string; 
+    maxQty: string;
+    minQty: string;
+    marketMaxQty: string;  // MARKET_LOT_SIZE maxQty for STOP_MARKET orders
+    marketMinQty: string;  // MARKET_LOT_SIZE minQty for STOP_MARKET orders
+  }>();
   private exchangeInfoFetched = false;
 
   constructor() {}
@@ -75,26 +82,49 @@ export class OrderProtectionService {
   }
 
   /**
-   * Fetch exchange precision info for rounding
+   * Fetch exchange precision info for rounding and quantity limits
+   * CRITICAL: Fetches BOTH LOT_SIZE (LIMIT orders) and MARKET_LOT_SIZE (STOP_MARKET orders)
+   * because they have different maxQty limits!
    */
   private async fetchExchangeInfo() {
+    console.log('🔍 fetchExchangeInfo called, exchangeInfoFetched =', this.exchangeInfoFetched);
+    // TEMP: Force refetch to debug PUMP issue
+    this.exchangeInfoFetched = false;
     if (this.exchangeInfoFetched) return;
 
+    console.log('📡 Fetching exchange info from API...');
     try {
       const response = await fetch('https://fapi.asterdex.com/fapi/v1/exchangeInfo');
+      console.log('📡 Exchange info response:', response.ok, response.status);
       if (!response.ok) return;
 
       const data = await response.json();
 
       for (const symbol of data.symbols || []) {
         const lotSizeFilter = symbol.filters?.find((f: any) => f.filterType === 'LOT_SIZE');
+        const marketLotSizeFilter = symbol.filters?.find((f: any) => f.filterType === 'MARKET_LOT_SIZE');
         const priceFilter = symbol.filters?.find((f: any) => f.filterType === 'PRICE_FILTER');
 
         if (lotSizeFilter && priceFilter) {
-          this.symbolPrecisionCache.set(symbol.symbol, {
+          const limits = {
             stepSize: lotSizeFilter.stepSize || '1',
             tickSize: priceFilter.tickSize || '0.01',
-          });
+            maxQty: lotSizeFilter.maxQty || '1000000',
+            minQty: lotSizeFilter.minQty || '0.001',
+            // MARKET_LOT_SIZE has stricter limits for MARKET/STOP_MARKET orders
+            marketMaxQty: marketLotSizeFilter?.maxQty || lotSizeFilter.maxQty || '1000000',
+            marketMinQty: marketLotSizeFilter?.minQty || lotSizeFilter.minQty || '0.001',
+          };
+          
+          // Log limits for PUMP to debug the issue
+          if (symbol.symbol === 'PUMPUSDT') {
+            console.log(`📊 Exchange info for PUMPUSDT:`);
+            console.log(`   LOT_SIZE: max=${lotSizeFilter.maxQty}, min=${lotSizeFilter.minQty}`);
+            console.log(`   MARKET_LOT_SIZE: ${marketLotSizeFilter ? `max=${marketLotSizeFilter.maxQty}, min=${marketLotSizeFilter.minQty}` : 'NOT FOUND'}`);
+            console.log(`   Using: marketMaxQty=${limits.marketMaxQty}, marketMinQty=${limits.marketMinQty}`);
+          }
+          
+          this.symbolPrecisionCache.set(symbol.symbol, limits);
         }
       }
 
@@ -105,14 +135,35 @@ export class OrderProtectionService {
   }
 
   /**
-   * Round quantity to exchange step size
+   * Round quantity to exchange step size and clamp to min/max limits
+   * CRITICAL FIX: Ensures quantities respect exchange MAX_QTY to prevent "Quantity greater than max quantity" errors
+   * @param symbol Trading pair symbol
+   * @param quantity Raw quantity value
+   * @param orderType Order type (LIMIT uses LOT_SIZE, MARKET/STOP_MARKET uses MARKET_LOT_SIZE)
    */
-  private roundQuantity(symbol: string, quantity: number): number {
+  private roundQuantity(symbol: string, quantity: number, orderType: 'LIMIT' | 'MARKET' | 'STOP_MARKET' | 'STOP' = 'LIMIT'): number {
     const precision = this.symbolPrecisionCache.get(symbol);
     if (!precision) return Math.floor(quantity * 100) / 100;
 
     const stepSize = parseFloat(precision.stepSize);
-    const rounded = Math.floor(quantity / stepSize) * stepSize;
+    
+    // CRITICAL: STOP_MARKET orders use MARKET_LOT_SIZE limits (usually more restrictive!)
+    const isMarketType = orderType === 'STOP_MARKET' || orderType === 'MARKET' || orderType === 'STOP';
+    const maxQty = parseFloat(isMarketType ? precision.marketMaxQty : precision.maxQty);
+    const minQty = parseFloat(isMarketType ? precision.marketMinQty : precision.minQty);
+    
+    // Clamp to exchange limits FIRST
+    let clampedQty = quantity;
+    if (quantity > maxQty) {
+      console.warn(`⚠️ Quantity ${quantity} exceeds ${isMarketType ? 'MARKET_' : ''}MAX_QTY ${maxQty} for ${symbol} (${orderType}), clamping to max`);
+      clampedQty = maxQty;
+    } else if (quantity < minQty) {
+      console.warn(`⚠️ Quantity ${quantity} below ${isMarketType ? 'MARKET_' : ''}MIN_QTY ${minQty} for ${symbol} (${orderType}), clamping to min`);
+      clampedQty = minQty;
+    }
+    
+    // Then round to step size
+    const rounded = Math.floor(clampedQty / stepSize) * stepSize;
     const decimals = precision.stepSize.includes('.') ? precision.stepSize.split('.')[1].length : 0;
 
     return parseFloat(rounded.toFixed(decimals));
@@ -280,20 +331,24 @@ export class OrderProtectionService {
       slSide = 'BUY';
     }
 
-    const roundedQty = this.roundQuantity(position.symbol, quantity);
+    // CRITICAL: Round quantities separately with correct order types
+    // TP uses LIMIT order type (LOT_SIZE filter)
+    // SL uses STOP_MARKET order type (MARKET_LOT_SIZE filter - usually more restrictive!)
+    const tpRoundedQty = this.roundQuantity(position.symbol, quantity, 'LIMIT');
+    const slRoundedQty = this.roundQuantity(position.symbol, quantity, 'STOP_MARKET');
 
     return [
       {
         type: 'LIMIT',
         price: tpPrice,
-        quantity: roundedQty,
+        quantity: tpRoundedQty,
         side: tpSide,
         purpose: 'take_profit'
       },
       {
         type: 'STOP_MARKET',
         price: slPrice,
-        quantity: roundedQty,
+        quantity: slRoundedQty,
         side: slSide,
         purpose: 'stop_loss'
       }
