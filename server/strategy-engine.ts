@@ -806,6 +806,21 @@ export class StrategyEngine extends EventEmitter {
     console.log(`   Liquidation Value: $${parseFloat(liquidation.value).toFixed(2)} | Time: ${liquidation.timestamp.toISOString()}`);
     console.log(`═══════════════════════════════════════════════════════════════`);
     
+    // DEFENSIVE CHECK: Verify no existing position (this function should ONLY be called for new positions)
+    // Portfolio limits should NEVER block DCA layers - only new positions
+    const existingPositionCheck = strategy.hedgeMode
+      ? await storage.getPositionBySymbolAndSide(session.id, liquidation.symbol, positionSide)
+      : await storage.getPositionBySymbol(session.id, liquidation.symbol);
+    
+    if (existingPositionCheck && existingPositionCheck.isOpen) {
+      console.error(`⚠️ LOGIC ERROR: shouldEnterPositionWithoutCooldown called for existing position ${existingPositionCheck.id}`);
+      console.error(`   This function should ONLY be called for NEW positions (layer 1)`);
+      console.error(`   Existing positions should go through shouldAddLayer() instead`);
+      console.error(`   🔓 BYPASSING portfolio limit check - this is a DCA layer, not a new position`);
+      // Don't block - let the layer logic handle this
+      return true;
+    }
+    
     // CASCADE AUTO-BLOCK CHECK: Block trades on symbols with cascade detection
     if (cascadeDetectorService.isBlocking(liquidation.symbol)) {
       console.log(`\n🚫 CASCADE AUTO-BLOCK: ${liquidation.symbol} is currently blocked by cascade detector`);
@@ -824,16 +839,18 @@ export class StrategyEngine extends EventEmitter {
     // PORTFOLIO RISK LIMITS CHECK: Block based on FILLED RISK only
     // Filled risk = actual loss exposure if all stop losses hit simultaneously
     const portfolioRisk = await this.calculatePortfolioRisk(strategy, session);
-    console.log(`\n📊 Portfolio Risk Check`);
+    console.log(`\n📊 Portfolio Risk Check (NEW POSITION ONLY)`);
     console.log(`   Open Positions: ${portfolioRisk.openPositionCount}/${strategy.maxOpenPositions || 'unlimited'}`);
     console.log(`   💰 Filled Risk: ${portfolioRisk.filledRiskPercentage.toFixed(1)}% (loss if all SLs hit)`);
     console.log(`   📊 Actual Margin: ${portfolioRisk.actualMarginUsedPercentage.toFixed(1)}% (capital allocated)`);
     console.log(`   🎯 Max Risk Allowed: ${strategy.maxPortfolioRiskPercent}%`);
     
     // Check max open positions limit (0 = unlimited)
-    // Must check if adding ONE MORE position would exceed the limit
+    // IMPORTANT: This check ONLY applies to NEW positions (layer 1), NOT DCA layers (2-5)
+    // DCA layers are controlled by maxLayers setting in shouldAddLayer()
     if (strategy.maxOpenPositions > 0 && portfolioRisk.openPositionCount + 1 > strategy.maxOpenPositions) {
-      console.log(`🚫 PORTFOLIO LIMIT: Opening new position would exceed limit (${portfolioRisk.openPositionCount + 1} > ${strategy.maxOpenPositions})`);
+      console.log(`🚫 PORTFOLIO LIMIT (NEW POSITION): Opening new position would exceed limit (${portfolioRisk.openPositionCount + 1} > ${strategy.maxOpenPositions})`);
+      console.log(`   Note: Portfolio limits do NOT apply to DCA layers (controlled by maxLayers=${strategy.maxLayers})`);
       wsBroadcaster.broadcastTradeBlock({
         blocked: true,
         reason: `Portfolio limit: ${portfolioRisk.openPositionCount + 1} > ${strategy.maxOpenPositions} positions`,
