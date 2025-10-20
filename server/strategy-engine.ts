@@ -604,6 +604,21 @@ export class StrategyEngine extends EventEmitter {
     if (!session || !session.isActive) return;
 
     console.log(`🎯 Evaluating strategy "${currentStrategy.name}" for ${liquidation.symbol}`);
+    
+    // SIMPLE 1-MINUTE FILL THROTTLE: Check if 1 minute has passed since last fill
+    // This check happens BEFORE percentile evaluation - keeps things simple and natural
+    const positionSide = liquidation.side === "long" ? "long" : "short";
+    const cooldownKey = `${session.id}-${liquidation.symbol}-${positionSide}`;
+    const lastFill = this.lastFillTime.get(cooldownKey);
+    if (lastFill) {
+      const timeSinceLastFill = Date.now() - lastFill;
+      const oneMinuteMs = 60000; // 1 minute in milliseconds
+      if (timeSinceLastFill < oneMinuteMs) {
+        const waitTime = ((oneMinuteMs - timeSinceLastFill) / 1000).toFixed(1);
+        console.log(`⏸️ FILL THROTTLE: ${liquidation.symbol} ${positionSide} - last fill was ${(timeSinceLastFill / 1000).toFixed(1)}s ago, wait ${waitTime}s more`);
+        return; // Exit early - let next liquidation retry after 1 minute
+      }
+    }
 
     // CASCADE AUTO-BLOCKING: Check if cascade detector is blocking all trades
     const aggregateStatus = cascadeDetectorService.getAggregateStatus();
@@ -639,25 +654,11 @@ export class StrategyEngine extends EventEmitter {
       ? `${session.id}-${liquidation.symbol}-${positionSide}`
       : `${session.id}-${liquidation.symbol}`;
     
-    // Cooldown key for DCA layer delay tracking
-    const cooldownKey = `${session.id}-${liquidation.symbol}-${positionSide}`;
-    
     // ATOMIC lock acquisition: Try to acquire lock, if already exists, wait and re-evaluate
     const existingLock = this.positionCreationLocks.get(lockKey);
     if (existingLock) {
       console.log(`🔄 Waiting for concurrent position processing: ${liquidation.symbol} ${currentStrategy.hedgeMode ? positionSide : ''}`);
       await existingLock; // Wait for it to finish
-      
-      // After waiting, check cooldown again (the concurrent process might have set it)
-      const lastFillAfterWait = this.lastFillTime.get(cooldownKey);
-      if (lastFillAfterWait) {
-        const timeSinceLastFill = Date.now() - lastFillAfterWait;
-        if (timeSinceLastFill < currentStrategy.dcaLayerDelayMs) {
-          const waitTime = ((currentStrategy.dcaLayerDelayMs - timeSinceLastFill) / 1000).toFixed(1);
-          console.log(`⏸️ COOLDOWN BLOCK (Post-Wait): ${liquidation.symbol} ${positionSide} - wait ${waitTime}s`);
-          return;
-        }
-      }
       
       // Check in-memory positions (might exist before DB commit)
       const inMemoryPos = this.inMemoryPositions.get(lockKey);
