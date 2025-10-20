@@ -188,15 +188,15 @@ export function calculateDCALevels(
   let effectiveSlPercent = stopLossPercent; // Default to fixed SL
   
   if (strategy.adaptiveSlEnabled) {
-    // Adaptive SL: ATR × multiplier, clamped to min/max
+    // Adaptive SL: ATR × multiplier, clamped to min/max from strategy settings
     const slAtrMultiplier = parseFloat(strategy.slAtrMultiplier?.toString() || '2.0');
-    const minSlPercent = parseFloat(strategy.minSlPercent?.toString() || '1.0');
-    const maxSlPercent = parseFloat(strategy.maxSlPercent?.toString() || '15.0');
+    const minSlPercent = parseFloat(strategy.minSlPercent?.toString() || '1.0'); // Schema default
+    const maxSlPercent = parseFloat(strategy.maxSlPercent?.toString() || '5.0'); // Schema default
     
     const rawSlPercent = atrPercent * slAtrMultiplier;
     effectiveSlPercent = Math.max(minSlPercent, Math.min(maxSlPercent, rawSlPercent));
     
-    console.log(`   🛡️ Adaptive SL: ATR=${atrPercent.toFixed(2)}% × ${slAtrMultiplier} = ${rawSlPercent.toFixed(2)}% → clamped to ${effectiveSlPercent.toFixed(2)}%`);
+    console.log(`   🛡️ Adaptive SL: ATR=${atrPercent.toFixed(2)}% × ${slAtrMultiplier} = ${rawSlPercent.toFixed(2)}% → clamped to [${minSlPercent}%, ${maxSlPercent}%] = ${effectiveSlPercent.toFixed(2)}%`);
   }
   
   const stopPrice = entryPrice * (1 + priceMultiplier * effectiveSlPercent / 100);
