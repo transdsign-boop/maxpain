@@ -1849,24 +1849,16 @@ export class StrategyEngine extends EventEmitter {
     onExchangeConfirmation?: () => void
   ): Promise<string | null> {
     try {
-      // ATOMIC COOLDOWN CHECK AND SET: Must be FIRST to prevent race conditions
-      // Check if we recently entered this symbol+side, if so skip to prevent duplicates
+      // NOTE: Cooldown already checked in evaluateStrategySignal (line 702-714)
+      // This function is only called AFTER cooldown check passes
+      // We just need to refresh the provisional cooldown that was already set
       const cooldownKey = `${session.id}-${liquidation.symbol}-${positionSide}`;
-      const lastEntry = this.lastFillTime.get(cooldownKey);
-      if (lastEntry) {
-        const timeSinceLastEntry = Date.now() - lastEntry;
-        if (timeSinceLastEntry < strategy.dcaLayerDelayMs) {
-          const waitTime = ((strategy.dcaLayerDelayMs - timeSinceLastEntry) / 1000).toFixed(1);
-          console.log(`⏸️ Entry cooldown active for ${liquidation.symbol} ${positionSide} - wait ${waitTime}s before next entry`);
-          return null;
-        }
-      }
       
-      // CRITICAL FIX: Set PROVISIONAL cooldown IMMEDIATELY after passing check
+      // CRITICAL FIX: REFRESH provisional cooldown (was already set in evaluateStrategySignal at line 719)
       // This prevents rapid-fire liquidations from all passing the cooldown check
-      // We'll refresh this when exchange confirms to ensure accurate timing
+      // We'll refresh again when exchange confirms to ensure accurate timing
       this.lastFillTime.set(cooldownKey, Date.now());
-      console.log(`🔒 PROVISIONAL entry cooldown set for ${liquidation.symbol} ${positionSide} (${strategy.dcaLayerDelayMs / 1000}s) - will refresh on exchange confirmation`);
+      console.log(`🔒 PROVISIONAL entry cooldown REFRESHED for ${liquidation.symbol} ${positionSide} (${strategy.dcaLayerDelayMs / 1000}s) - will refresh again on exchange confirmation`);
       
       // Track if exchange confirmed (for rollback logic)
       let exchangeConfirmed = false;
