@@ -882,16 +882,17 @@ export class StrategyEngine extends EventEmitter {
       }
       console.log(`   ✅ PASSED: Margin within limits`);
       
-      // Use RESERVED risk for preemptive checks on NEW positions
-      const currentReservedRisk = portfolioRisk.reservedRiskPercentage;
-      const remainingRiskPercent = maxRiskPercent - currentReservedRisk;
+      // Use FILLED risk (current positions at SL) to block new positions
+      // This ensures if all SLs hit at once, max loss <= maxRiskPercent
+      const currentFilledRisk = portfolioRisk.filledRiskPercentage;
+      const remainingRiskPercent = maxRiskPercent - currentFilledRisk;
       
       // Check if there's any remaining risk budget (with 0.05% minimum threshold)
       if (remainingRiskPercent < 0.05) {
-        console.log(`🚫 PORTFOLIO RISK LIMIT: No remaining risk budget (reserved: ${currentReservedRisk.toFixed(1)}%, max: ${maxRiskPercent}%, remaining: ${remainingRiskPercent.toFixed(2)}%)`);
+        console.log(`🚫 PORTFOLIO RISK LIMIT: No remaining risk budget (filled: ${currentFilledRisk.toFixed(1)}%, max: ${maxRiskPercent}%, remaining: ${remainingRiskPercent.toFixed(2)}%)`);
         wsBroadcaster.broadcastTradeBlock({
           blocked: true,
-          reason: `Risk limit: ${currentReservedRisk.toFixed(1)}% of ${maxRiskPercent}% used`,
+          reason: `Risk limit: ${currentFilledRisk.toFixed(1)}% of ${maxRiskPercent}% used`,
           type: 'risk_limit'
         });
         return false;
@@ -925,7 +926,7 @@ export class StrategyEngine extends EventEmitter {
       const strategyMaxRisk = parseFloat(fullStrategy.dcaMaxRiskPercent);
       const effectiveMaxRisk = Math.min(strategyMaxRisk, remainingRiskPercent);
       
-      console.log(`💰 Risk Budget: filled=${portfolioRisk.filledRiskPercentage.toFixed(1)}%, reserved=${currentReservedRisk.toFixed(1)}%, max=${maxRiskPercent}%, remaining=${remainingRiskPercent.toFixed(1)}%, effective=${effectiveMaxRisk.toFixed(1)}% (${effectiveMaxRisk < strategyMaxRisk ? 'SCALED DOWN' : 'normal'})`);
+      console.log(`💰 Risk Budget: filled=${portfolioRisk.filledRiskPercentage.toFixed(1)}%, max=${maxRiskPercent}%, remaining=${remainingRiskPercent.toFixed(1)}%, effective=${effectiveMaxRisk.toFixed(1)}% (${effectiveMaxRisk < strategyMaxRisk ? 'SCALED DOWN' : 'normal'})`);
       
       // Get symbol precision (includes exchange-specific minimum notional)
       const symbolPrecision = this.symbolPrecisionCache.get(liquidation.symbol);
@@ -964,24 +965,30 @@ export class StrategyEngine extends EventEmitter {
         minNotional,
       });
       
-      // Get total risk from DCA calculation (this is the max risk across all layers)
-      const newPositionRiskDollars = dcaResult.totalRiskDollars;
-      const newPositionRiskPercent = (newPositionRiskDollars / currentBalance) * 100;
-      // Project total reserved risk: current reserved + new position's full DCA risk
-      const projectedRiskPercentage = currentReservedRisk + newPositionRiskPercent;
+      // Calculate LAYER 1 ONLY risk (not all 5 layers) for new position
+      // Layer 1 risk = q1 × lossPerUnit (risk if just first layer hits SL)
+      const layer1Quantity = dcaResult.levels[0].quantity;
+      const layer1Price = dcaResult.levels[0].price;
+      const stopLossPrice = dcaResult.levels[0].stopLossPrice;
+      const lossPerUnit = Math.abs(layer1Price - stopLossPrice);
+      const newPositionLayer1RiskDollars = layer1Quantity * lossPerUnit;
+      const newPositionLayer1RiskPercent = (newPositionLayer1RiskDollars / currentBalance) * 100;
+      
+      // Project total filled risk: current filled + new Layer 1 risk
+      const projectedFilledRisk = currentFilledRisk + newPositionLayer1RiskPercent;
       
       // CRITICAL: Validate that calculations produced finite numbers (not NaN or Infinity)
-      if (!Number.isFinite(newPositionRiskPercent) || !Number.isFinite(projectedRiskPercentage)) {
-        throw new Error(`Invalid risk calculation: newRisk=${newPositionRiskPercent}, projected=${projectedRiskPercentage}`);
+      if (!Number.isFinite(newPositionLayer1RiskPercent) || !Number.isFinite(projectedFilledRisk)) {
+        throw new Error(`Invalid risk calculation: newLayer1Risk=${newPositionLayer1RiskPercent}, projected=${projectedFilledRisk}`);
       }
       
-      // Final safety check: ensure projected risk doesn't exceed max (account for float precision)
-      if (projectedRiskPercentage > maxRiskPercent + 0.01) { // Allow 0.01% tolerance for float precision
-        console.log(`🚫 PORTFOLIO RISK LIMIT: Projected risk still exceeds max after scaling (projected: ${projectedRiskPercentage.toFixed(1)}% > max: ${maxRiskPercent}%)`);
+      // Final safety check: ensure projected filled risk doesn't exceed max (account for float precision)
+      if (projectedFilledRisk > maxRiskPercent + 0.01) { // Allow 0.01% tolerance for float precision
+        console.log(`🚫 PORTFOLIO RISK LIMIT: Projected filled risk exceeds max (projected: ${projectedFilledRisk.toFixed(1)}% > max: ${maxRiskPercent}%)`);
         
         wsBroadcaster.broadcastTradeBlock({
           blocked: true,
-          reason: `Risk limit: Projected ${projectedRiskPercentage.toFixed(1)}% > max ${maxRiskPercent}%`,
+          reason: `Risk limit: Projected ${projectedFilledRisk.toFixed(1)}% > max ${maxRiskPercent}%`,
           type: 'risk_limit'
         });
         
@@ -992,24 +999,24 @@ export class StrategyEngine extends EventEmitter {
           side: positionSide,
           attemptType: 'entry',
           reason: 'risk_limit_exceeded',
-          errorDetails: `Projected risk ${projectedRiskPercentage.toFixed(1)}% exceeds max ${maxRiskPercent}%`,
+          errorDetails: `Projected filled risk ${projectedFilledRisk.toFixed(1)}% exceeds max ${maxRiskPercent}%`,
           liquidationValue: parseFloat(liquidation.value),
         });
         
         return false;
       }
       
-      console.log(`✅ Risk check passed: projected=${projectedRiskPercentage.toFixed(1)}% ≤ max=${maxRiskPercent}%`);
+      console.log(`✅ Risk check passed: current=${currentFilledRisk.toFixed(1)}% + Layer1=${newPositionLayer1RiskPercent.toFixed(2)}% = projected=${projectedFilledRisk.toFixed(1)}% ≤ max=${maxRiskPercent}%`);
       riskCheckPassed = true;
     } catch (error) {
       console.error('⚠️ Error calculating projected risk, using conservative fallback:', error);
       // MANDATORY fallback check - always enforce risk limit even if DCA calculation fails
       const maxRiskPercent = parseFloat(strategy.maxPortfolioRiskPercent);
-      const currentReservedRisk = portfolioRisk.reservedRiskPercentage;
-      const remainingRiskPercent = maxRiskPercent - currentReservedRisk;
+      const currentFilledRiskFallback = portfolioRisk.filledRiskPercentage;
+      const remainingRiskPercent = maxRiskPercent - currentFilledRiskFallback;
       
       if (remainingRiskPercent < 0.05) {
-        console.log(`🚫 PORTFOLIO RISK LIMIT (Fallback): No remaining risk budget (remaining: ${remainingRiskPercent.toFixed(2)}%)`);
+        console.log(`🚫 PORTFOLIO RISK LIMIT (Fallback): No remaining risk budget (filled: ${currentFilledRiskFallback.toFixed(1)}%, remaining: ${remainingRiskPercent.toFixed(2)}%)`);
         
         wsBroadcaster.broadcastTradeBlock({
           blocked: true,
@@ -1149,10 +1156,10 @@ export class StrategyEngine extends EventEmitter {
         // For legacy positions without reserved risk, we need to check global limits
         const portfolioRisk = await this.calculatePortfolioRisk(strategy, session);
         const maxRiskPercent = parseFloat(strategy.maxPortfolioRiskPercent);
-        const remainingRiskPercent = maxRiskPercent - portfolioRisk.reservedRiskPercentage;
+        const remainingRiskPercent = maxRiskPercent - portfolioRisk.filledRiskPercentage;
         
         if (remainingRiskPercent < 0.05) {
-          console.log(`🚫 PORTFOLIO RISK LIMIT (Layer/Legacy): No remaining risk budget (current: ${portfolioRisk.reservedRiskPercentage.toFixed(1)}%, max: ${maxRiskPercent}%, remaining: ${remainingRiskPercent.toFixed(2)}%)`);
+          console.log(`🚫 PORTFOLIO RISK LIMIT (Layer/Legacy): No remaining risk budget (filled: ${portfolioRisk.filledRiskPercentage.toFixed(1)}%, max: ${maxRiskPercent}%, remaining: ${remainingRiskPercent.toFixed(2)}%)`);
           return false;
         }
       }
