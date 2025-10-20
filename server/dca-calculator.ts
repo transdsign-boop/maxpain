@@ -182,12 +182,26 @@ export function calculateDCALevels(
   
   console.log(`   Weighted avg entry: $${avgEntryPrice.toFixed(4)}`);
   
-  // Step 5: Calculate stop loss price
+  // Step 5: Calculate stop loss price using adaptive SL if enabled
   // For long: Ps = P0 · (1 - S/100)
   // For short: Ps = P0 · (1 + S/100)
-  const stopPrice = entryPrice * (1 + priceMultiplier * stopLossPercent / 100);
+  let effectiveSlPercent = stopLossPercent; // Default to fixed SL
   
-  console.log(`   Stop loss: $${stopPrice.toFixed(4)} (${stopLossPercent}%)`);
+  if (strategy.adaptiveSlEnabled) {
+    // Adaptive SL: ATR × multiplier, clamped to min/max
+    const slAtrMultiplier = parseFloat(strategy.slAtrMultiplier?.toString() || '2.0');
+    const minSlPercent = parseFloat(strategy.minSlPercent?.toString() || '1.0');
+    const maxSlPercent = parseFloat(strategy.maxSlPercent?.toString() || '15.0');
+    
+    const rawSlPercent = atrPercent * slAtrMultiplier;
+    effectiveSlPercent = Math.max(minSlPercent, Math.min(maxSlPercent, rawSlPercent));
+    
+    console.log(`   🛡️ Adaptive SL: ATR=${atrPercent.toFixed(2)}% × ${slAtrMultiplier} = ${rawSlPercent.toFixed(2)}% → clamped to ${effectiveSlPercent.toFixed(2)}%`);
+  }
+  
+  const stopPrice = entryPrice * (1 + priceMultiplier * effectiveSlPercent / 100);
+  
+  console.log(`   Stop loss: $${stopPrice.toFixed(4)} (${effectiveSlPercent.toFixed(2)}%)`);
   
   // Step 6: Calculate q1 (base position size) from Start Step %
   // Layer 1 size = (Balance × Margin% × StartStep%) × Leverage / EntryPrice
