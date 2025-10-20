@@ -100,17 +100,17 @@ export async function validateOrphanPosition(
     console.log(`   📏 DCA Validation: orphan=${quantity.toFixed(6)}, expected Layer 1=${expectedLayer1Quantity.toFixed(6)}, ratio=${sizeRatio.toFixed(1)}x`);
     console.log(`   💵 Notional: orphan=$${notionalValue.toFixed(2)}, expected Layer 1=$${expectedLayer1Notional.toFixed(2)}`);
 
-    // STRICT ENFORCEMENT: Reject orphans larger than MAX_ORPHAN_MULTIPLIER × Layer 1 size
+    // ORPHAN REJECTION DISABLED: Accept all positions regardless of size
+    // This allows tracking existing positions opened before DCA system was implemented
     if (sizeRatio > MAX_ORPHAN_MULTIPLIER) {
-      const errorMsg = `Position size ${sizeRatio.toFixed(1)}x larger than DCA Layer 1 limit (expected max: ${(expectedLayer1Quantity * MAX_ORPHAN_MULTIPLIER).toFixed(6)} units)`;
-      console.error(`❌ ORPHAN REJECTED: ${errorMsg}`);
-      console.error(`   Symbol: ${symbol}, Side: ${side}, Quantity: ${quantity.toFixed(6)}`);
-      console.error(`   ⚠️  MANUAL ACTION REQUIRED: Close this position manually on the exchange to comply with DCA policy`);
-      return { valid: false, error: errorMsg };
+      console.warn(`⚠️ ORPHAN SIZE WARNING: Position is ${sizeRatio.toFixed(1)}x larger than DCA Layer 1 limit`);
+      console.warn(`   Symbol: ${symbol}, Side: ${side}, Quantity: ${quantity.toFixed(6)}`);
+      console.warn(`   This position will be tracked but does not comply with current DCA policy`);
+      // Continue tracking anyway - do NOT reject
+    } else {
+      console.log(`✅ Orphan position size within DCA limits (${sizeRatio.toFixed(2)}x Layer 1 size)`);
     }
 
-    // Orphan passes validation
-    console.log(`✅ Orphan position passes DCA validation (${sizeRatio.toFixed(2)}x Layer 1 size)`);
     return { valid: true };
 
   } catch (error: any) {
@@ -1288,6 +1288,13 @@ export async function syncOpenPositions(sessionId: string): Promise<{
     
     if (!apiKey || !secretKey) {
       return { success: false, addedCount: 0, error: 'API keys not configured' };
+    }
+
+    // Get strategy for session (needed for maxLayers when creating orphan positions)
+    const strategy = await storage.getStrategyBySession(sessionId);
+    
+    if (!strategy) {
+      return { success: false, addedCount: 0, error: `No strategy found for session ${sessionId}` };
     }
 
     // Fetch all open positions from exchange
