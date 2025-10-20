@@ -1580,12 +1580,31 @@ function PerformanceOverview() {
                     stroke={index % 2 === 0 ? 'hsl(var(--accent-border))' : 'transparent'}
                     strokeOpacity={0.3}
                     label={{
-                      value: format(new Date(group.dateTimestamp), 'MMM d'),
+                      value: format(new Date(group.dateTimestamp), 'M/d'),
                       position: 'insideTop',
                       fill: 'hsl(var(--foreground))',
                       fontSize: 12,
                       fontWeight: 600,
                       offset: 10
+                    }}
+                  />
+                ))}
+                
+                {/* Day grouping blocks - day-of-week labels below dates */}
+                {dayGroups.map((group, index) => (
+                  <ReferenceArea
+                    key={`day-week-${index}-${group.dateTimestamp}`}
+                    x1={group.startTrade}
+                    x2={group.endTrade}
+                    yAxisId="left"
+                    fill="transparent"
+                    label={{
+                      value: format(new Date(group.dateTimestamp), 'EEE'),
+                      position: 'insideTop',
+                      fill: 'hsl(var(--muted-foreground))',
+                      fontSize: 10,
+                      fontWeight: 500,
+                      offset: 28
                     }}
                   />
                 ))}
@@ -1660,8 +1679,8 @@ function PerformanceOverview() {
                   const transferTime = new Date(transfer.timestamp).getTime();
                   const amount = parseFloat(transfer.amount || '0');
                   
-                  // Only show deposits (positive amounts)
-                  if (amount <= 0) return null;
+                  // Only show deposits (positive amounts) and exclude USDF deposits
+                  if (amount <= 0 || (transfer as any).asset === 'USDF') return null;
                   
                   // Find the closest trade or create a position for the transfer
                   let tradeNumber;
