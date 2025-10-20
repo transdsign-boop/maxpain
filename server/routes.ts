@@ -65,6 +65,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Start the strategy engine
   await strategyEngine.start();
   
+  // Auto-register active strategies on server startup
+  console.log('🔄 Checking for active strategies to auto-register...');
+  const allStrategies = await storage.getStrategies();
+  const activeStrategies = allStrategies.filter(s => s.isActive);
+  
+  if (activeStrategies.length > 0) {
+    console.log(`📋 Found ${activeStrategies.length} active strategy(ies) - registering with strategy engine...`);
+    for (const strategy of activeStrategies) {
+      console.log(`   - Registering: ${strategy.name} (paused: ${strategy.paused})`);
+      await strategyEngine.registerStrategy(strategy);
+      liveDataOrchestrator.start(strategy.id);
+    }
+    console.log('✅ Active strategies auto-registered successfully');
+  } else {
+    console.log('ℹ️  No active strategies found - ready for manual activation');
+  }
+  
   // ONE-TIME FIX: Repair corrupted avgEntryPrice positions
   app.post("/api/admin/repair-positions", async (req, res) => {
     try {
