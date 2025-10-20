@@ -42,6 +42,7 @@ PERMANENT DATA PRESERVATION: ALL trading data MUST be preserved forever. The use
 **UI/UX Decisions:**
 - **Frameworks**: React 18, TypeScript, Vite.
 - **Design**: Radix UI, shadcn/ui, Tailwind CSS (financial trading-focused with lime for profit, orange for loss). Dark/light modes, responsive layout (Inter font for text, JetBrains Mono for numerical data), optimized tables/cards, mobile-first approach.
+- **Risk Visualization**: Dual-ring meter displays margin usage (inner ring, fixed lime green) and filled risk (outer ring, dynamic colors: blue → orange at 80% threshold → red when exceeding limit). Color computation uses server-backed `maxPortfolioRiskPercent` via memoized helpers to prevent desynchronization during async updates. Visual colors always match backend's risk blocking threshold.
 - **Features**: Collapsible trade details, live strategy editing with performance charts, interactive P&L charts, hedge position detection, intelligent asset/risk recommendations, consolidated Global Settings dialog, DCA settings, API management (export/import JSON settings).
 - **Market Sentiment Dashboard**: Consolidated UI with Market Sentiment, Fear & Greed Index, Social Metric, and a CSS marquee-based scrolling news ticker. News aggregation from Alpha Vantage, CryptoNews-API, and ScrapeCreators with category filtering and per-source error handling.
 - **Performance**: `React.memo` optimization on key components. Memoized metric subcomponents prevent unnecessary re-renders. CSS keyframe animations for ticker.
