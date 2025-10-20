@@ -617,7 +617,7 @@ export class OrderProtectionService {
 
       await this.fetchExchangeInfo();
 
-      const roundedQty = this.roundQuantity(symbol, quantity);
+      const roundedQty = this.roundQuantity(symbol, quantity, type);
       const roundedPrice = this.roundPrice(symbol, price);
 
       const timestamp = Date.now();
