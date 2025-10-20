@@ -497,58 +497,78 @@ export class OrderProtectionService {
 
   /**
    * Check if existing exchange orders match desired state (idempotency check)
-   * Returns true ONLY if there's EXACTLY 1 TP and 1 SL that match within tolerance
+   * Handles multiple TP/SL orders when position exceeds exchange max quantity
    * Uses price/quantity tolerance to prevent churn from minor ATR fluctuations
    */
   private ordersMatchDesired(
     existingOrders: ExchangeOrder[],
     desiredOrders: DesiredOrder[]
   ): boolean {
-    const tpOrder = desiredOrders.find(o => o.purpose === 'take_profit');
-    const slOrder = desiredOrders.find(o => o.purpose === 'stop_loss');
+    const desiredTpOrders = desiredOrders.filter(o => o.purpose === 'take_profit');
+    const desiredSlOrders = desiredOrders.filter(o => o.purpose === 'stop_loss');
 
-    const tpOrders = existingOrders.filter(o => o.type === 'LIMIT');
-    const slOrders = existingOrders.filter(o => o.type === 'STOP_MARKET');
+    const existingTpOrders = existingOrders.filter(o => o.type === 'LIMIT');
+    const existingSlOrders = existingOrders.filter(o => o.type === 'STOP_MARKET');
 
-    // Must have EXACTLY 1 TP and 1 SL (no duplicates!)
-    if (tpOrders.length !== 1 || slOrders.length !== 1) return false;
-
-    const existingTP = tpOrders[0];
-    const existingSL = slOrders[0];
+    // Must have matching counts
+    if (existingTpOrders.length !== desiredTpOrders.length || 
+        existingSlOrders.length !== desiredSlOrders.length) {
+      console.log(`📊 Order count mismatch: TP ${existingTpOrders.length} vs ${desiredTpOrders.length}, SL ${existingSlOrders.length} vs ${desiredSlOrders.length}`);
+      return false;
+    }
 
     // Use tolerance to prevent churn from minor ATR drift
-    // Price tolerance: 0.2% or 2 tick sizes, whichever is larger
     const PRICE_TOLERANCE_PERCENT = 0.002; // 0.2%
     const QTY_TOLERANCE_PERCENT = 0.001;   // 0.1%
 
-    const tpPriceDiff = Math.abs(parseFloat(existingTP.price) - tpOrder!.price);
-    const tpPriceTolerance = Math.max(
-      tpOrder!.price * PRICE_TOLERANCE_PERCENT,
-      this.getTickSize(existingTP.symbol) * 2
-    );
-    const tpPriceMatches = tpPriceDiff <= tpPriceTolerance;
-
-    const tpQtyDiff = Math.abs(parseFloat(existingTP.origQty) - tpOrder!.quantity);
-    const tpQtyTolerance = tpOrder!.quantity * QTY_TOLERANCE_PERCENT;
+    // Check total quantities match (for split orders)
+    const existingTpTotalQty = existingTpOrders.reduce((sum, o) => sum + parseFloat(o.origQty), 0);
+    const desiredTpTotalQty = desiredTpOrders.reduce((sum, o) => sum + o.quantity, 0);
+    const tpQtyDiff = Math.abs(existingTpTotalQty - desiredTpTotalQty);
+    const tpQtyTolerance = desiredTpTotalQty * QTY_TOLERANCE_PERCENT;
     const tpQtyMatches = tpQtyDiff <= tpQtyTolerance;
 
-    const slPriceDiff = Math.abs(parseFloat(existingSL.stopPrice) - slOrder!.price);
-    const slPriceTolerance = Math.max(
-      slOrder!.price * PRICE_TOLERANCE_PERCENT,
-      this.getTickSize(existingSL.symbol) * 2
-    );
-    const slPriceMatches = slPriceDiff <= slPriceTolerance;
-
-    const slQtyDiff = Math.abs(parseFloat(existingSL.origQty) - slOrder!.quantity);
-    const slQtyTolerance = slOrder!.quantity * QTY_TOLERANCE_PERCENT;
+    const existingSlTotalQty = existingSlOrders.reduce((sum, o) => sum + parseFloat(o.origQty), 0);
+    const desiredSlTotalQty = desiredSlOrders.reduce((sum, o) => sum + o.quantity, 0);
+    const slQtyDiff = Math.abs(existingSlTotalQty - desiredSlTotalQty);
+    const slQtyTolerance = desiredSlTotalQty * QTY_TOLERANCE_PERCENT;
     const slQtyMatches = slQtyDiff <= slQtyTolerance;
+
+    // Check prices match (all orders should have same price)
+    let tpPriceMatches = true;
+    if (desiredTpOrders.length > 0 && existingTpOrders.length > 0) {
+      const desiredTpPrice = desiredTpOrders[0].price;
+      const tpPriceTolerance = Math.max(
+        desiredTpPrice * PRICE_TOLERANCE_PERCENT,
+        this.getTickSize(existingTpOrders[0].symbol) * 2
+      );
+      
+      tpPriceMatches = existingTpOrders.every(o => {
+        const priceDiff = Math.abs(parseFloat(o.price) - desiredTpPrice);
+        return priceDiff <= tpPriceTolerance;
+      });
+    }
+
+    let slPriceMatches = true;
+    if (desiredSlOrders.length > 0 && existingSlOrders.length > 0) {
+      const desiredSlPrice = desiredSlOrders[0].price;
+      const slPriceTolerance = Math.max(
+        desiredSlPrice * PRICE_TOLERANCE_PERCENT,
+        this.getTickSize(existingSlOrders[0].symbol) * 2
+      );
+      
+      slPriceMatches = existingSlOrders.every(o => {
+        const priceDiff = Math.abs(parseFloat(o.stopPrice) - desiredSlPrice);
+        return priceDiff <= slPriceTolerance;
+      });
+    }
 
     const allMatch = tpPriceMatches && tpQtyMatches && slPriceMatches && slQtyMatches;
     
     if (!allMatch) {
       console.log(`📊 Order mismatch detected:`);
-      console.log(`   TP: price ${tpPriceMatches ? '✅' : '❌'} (${tpPriceDiff.toFixed(6)} vs ${tpPriceTolerance.toFixed(6)}), qty ${tpQtyMatches ? '✅' : '❌'}`);
-      console.log(`   SL: price ${slPriceMatches ? '✅' : '❌'} (${slPriceDiff.toFixed(6)} vs ${slPriceTolerance.toFixed(6)}), qty ${slQtyMatches ? '✅' : '❌'}`);
+      console.log(`   TP: price ${tpPriceMatches ? '✅' : '❌'}, qty ${tpQtyMatches ? '✅' : '❌'} (${tpQtyDiff.toFixed(2)} vs ${tpQtyTolerance.toFixed(2)})`);
+      console.log(`   SL: price ${slPriceMatches ? '✅' : '❌'}, qty ${slQtyMatches ? '✅' : '❌'} (${slQtyDiff.toFixed(2)} vs ${slQtyTolerance.toFixed(2)})`);
     }
 
     return allMatch;
@@ -782,14 +802,8 @@ export class OrderProtectionService {
         o => o.type === 'LIMIT' || o.type === 'STOP_MARKET'
       );
 
-      // FORCE CLEANUP: If there are duplicate/fragmented orders (multiple TPs or SLs), cancel ALL
-      const tpOrders = tpslOrders.filter(o => o.type === 'LIMIT');
-      const slOrders = tpslOrders.filter(o => o.type === 'STOP_MARKET');
-      
-      if (tpOrders.length > 1 || slOrders.length > 1) {
-        console.log(`⚠️ Found fragmented orders for ${position.symbol} ${position.side}: ${tpOrders.length} TPs, ${slOrders.length} SLs - forcing cleanup`);
-        // Don't skip - proceed to cancel all and recreate
-      } else if (this.ordersMatchDesired(tpslOrders, desiredOrders)) {
+      // Check if existing orders match desired state
+      if (this.ordersMatchDesired(tpslOrders, desiredOrders)) {
         // IDEMPOTENCY: Skip if orders already match desired state
         console.log(`✅ TP/SL orders already correct for ${position.symbol} ${position.side}, skipping update`);
         return { success: true };
@@ -798,104 +812,89 @@ export class OrderProtectionService {
       console.log(`🔄 Updating protective orders for ${position.symbol} ${position.side}`);
       console.log(`   Desired: TP=${desiredSignature.tp}, SL=${desiredSignature.sl}`);
 
-      // STEP 1: Place NEW TP order (before canceling old ones - safety first!)
-      const tpOrder = desiredOrders.find(o => o.purpose === 'take_profit')!;
-      const tpResult = await this.placeExchangeOrder(
-        position.symbol,
-        tpOrder.type,
-        tpOrder.side,
-        tpOrder.quantity,
-        tpOrder.price,
-        position.side.toUpperCase() as 'LONG' | 'SHORT'
-      );
+      // STEP 1: Place ALL new orders (TP and SL, possibly multiple of each)
+      const newOrderIds: string[] = [];
+      let placementFailed = false;
+      let failureError = '';
 
-      if (!tpResult.success) {
-        console.error(`❌ Failed to place new TP order: ${tpResult.error}`);
-        
-        // ISOLATED MARGIN FIX: If we get "ReduceOnly Order is rejected", it might be due to
-        // old orders with reduceOnly=true blocking new orders. Force cancel all old orders and retry.
-        if (tpResult.error && tpResult.error.includes('ReduceOnly')) {
-          console.log(`🔧 Detected ReduceOnly conflict - force canceling all existing orders and retrying...`);
+      for (const order of desiredOrders) {
+        const result = await this.placeExchangeOrder(
+          position.symbol,
+          order.type,
+          order.side,
+          order.quantity,
+          order.price,
+          position.side.toUpperCase() as 'LONG' | 'SHORT'
+        );
+
+        if (!result.success) {
+          console.error(`❌ Failed to place ${order.purpose} order: ${result.error}`);
           
-          // Cancel ALL existing TP/SL orders
-          for (const order of tpslOrders) {
-            await this.cancelExchangeOrder(position.symbol, order.orderId);
-            console.log(`   🗑️ Cancelled old ${order.type} #${order.orderId}`);
+          // ISOLATED MARGIN FIX: If we get "ReduceOnly Order is rejected", force cleanup and retry
+          if (result.error && result.error.includes('ReduceOnly')) {
+            console.log(`🔧 Detected ReduceOnly conflict - force canceling all existing orders and retrying...`);
+            
+            // Cancel ALL existing TP/SL orders
+            for (const existingOrder of tpslOrders) {
+              await this.cancelExchangeOrder(position.symbol, existingOrder.orderId);
+              console.log(`   🗑️ Cancelled old ${existingOrder.type} #${existingOrder.orderId}`);
+            }
+            
+            // Cancel any new orders we just placed
+            for (const orderId of newOrderIds) {
+              await this.cancelExchangeOrder(position.symbol, orderId);
+            }
+            newOrderIds.length = 0;
+            
+            // Retry placing ALL orders
+            for (const retryOrder of desiredOrders) {
+              const retryResult = await this.placeExchangeOrder(
+                position.symbol,
+                retryOrder.type,
+                retryOrder.side,
+                retryOrder.quantity,
+                retryOrder.price,
+                position.side.toUpperCase() as 'LONG' | 'SHORT'
+              );
+              
+              if (!retryResult.success) {
+                console.error(`❌ ${retryOrder.purpose} retry failed: ${retryResult.error}`);
+                // Cancel any successful retries
+                for (const orderId of newOrderIds) {
+                  await this.cancelExchangeOrder(position.symbol, orderId);
+                }
+                return { success: false, error: `${retryOrder.purpose} order failed after cleanup: ${retryResult.error}` };
+              }
+              
+              newOrderIds.push(retryResult.orderId!);
+              console.log(`   ✅ Placed ${retryOrder.purpose} order #${retryResult.orderId} (qty: ${retryOrder.quantity})`);
+            }
+            
+            console.log(`✅ Protective orders updated safely for ${position.symbol} ${position.side} (forced cleanup + retry)`);
+            return { success: true };
           }
           
-          // Retry TP order placement
-          const tpRetry = await this.placeExchangeOrder(
-            position.symbol,
-            tpOrder.type,
-            tpOrder.side,
-            tpOrder.quantity,
-            tpOrder.price,
-            position.side.toUpperCase() as 'LONG' | 'SHORT'
-          );
-          
-          if (!tpRetry.success) {
-            console.error(`❌ TP retry still failed: ${tpRetry.error}`);
-            return { success: false, error: `TP order failed after cleanup: ${tpRetry.error}` };
-          }
-          
-          console.log(`   ✅ Placed new TP order #${tpRetry.orderId} (after cleanup)`);
-          
-          // Continue with SL placement using retry result
-          const slOrderRetry = desiredOrders.find(o => o.purpose === 'stop_loss')!;
-          const slRetry = await this.placeExchangeOrder(
-            position.symbol,
-            slOrderRetry.type,
-            slOrderRetry.side,
-            slOrderRetry.quantity,
-            slOrderRetry.price,
-            position.side.toUpperCase() as 'LONG' | 'SHORT'
-          );
-          
-          if (!slRetry.success) {
-            console.error(`❌ SL retry failed: ${slRetry.error}`);
-            await this.cancelExchangeOrder(position.symbol, tpRetry.orderId!);
-            return { success: false, error: `SL order failed after cleanup: ${slRetry.error}` };
-          }
-          
-          console.log(`   ✅ Placed new SL order #${slRetry.orderId} (after cleanup)`);
-          console.log(`✅ Protective orders updated safely for ${position.symbol} ${position.side} (forced cleanup + retry)`);
-          
-          return { success: true };
+          placementFailed = true;
+          failureError = result.error || 'Unknown error';
+          break;
         }
-        
-        // Keep old orders in place - no rollback needed since nothing was cancelled
-        return { success: false, error: `TP order failed: ${tpResult.error}` };
+
+        newOrderIds.push(result.orderId!);
+        console.log(`   ✅ Placed ${order.purpose} order #${result.orderId} (qty: ${order.quantity})`);
       }
 
-      console.log(`   ✅ Placed new TP order #${tpResult.orderId}`);
-
-      // STEP 2: Place NEW SL order (still before canceling - maintain protection!)
-      const slOrder = desiredOrders.find(o => o.purpose === 'stop_loss')!;
-      const slResult = await this.placeExchangeOrder(
-        position.symbol,
-        slOrder.type,
-        slOrder.side,
-        slOrder.quantity,
-        slOrder.price,
-        position.side.toUpperCase() as 'LONG' | 'SHORT'
-      );
-
-      if (!slResult.success) {
-        console.error(`❌ Failed to place new SL order: ${slResult.error}`);
-        console.log(`🔄 Cancelling orphaned TP order #${tpResult.orderId}`);
-        
-        // Cancel the TP we just placed since SL failed
-        await this.cancelExchangeOrder(position.symbol, tpResult.orderId!);
-        
-        // Keep old orders in place - no need to restore since they were never cancelled
-        return { success: false, error: `SL order failed: ${slResult.error}` };
+      // If any order failed, rollback
+      if (placementFailed) {
+        console.log(`🔄 Rolling back ${newOrderIds.length} successfully placed orders...`);
+        for (const orderId of newOrderIds) {
+          await this.cancelExchangeOrder(position.symbol, orderId);
+        }
+        return { success: false, error: failureError };
       }
 
-      console.log(`   ✅ Placed new SL order #${slResult.orderId}`);
-
-      // STEP 3: NOW cancel old orders (new protective orders are already active!)
-      const newOrderIds = new Set([tpResult.orderId, slResult.orderId]);
-      const ordersToCancel = tpslOrders.filter(o => !newOrderIds.has(o.orderId));
+      // STEP 2: NOW cancel old orders (new protective orders are already active!)
+      const newOrderIdSet = new Set(newOrderIds);
+      const ordersToCancel = tpslOrders.filter(o => !newOrderIdSet.has(o.orderId));
       
       if (ordersToCancel.length > 0) {
         console.log(`   Cancelling ${ordersToCancel.length} old orders (new orders already active)...`);
