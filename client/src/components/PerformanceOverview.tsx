@@ -935,7 +935,7 @@ function PerformanceOverview() {
               {/* Dual Ring Meter */}
               <div className="relative w-36 h-36">
                 <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
-                  {/* Outer ring background (projected risk - max risk if all positions fill all 5 layers) */}
+                  {/* Outer ring background (filled risk - loss if all current positions hit SL) */}
                   <circle
                     cx="50"
                     cy="50"
@@ -945,7 +945,7 @@ function PerformanceOverview() {
                     strokeWidth="6"
                     className="opacity-60"
                   />
-                  {/* Outer ring progress (projected risk) */}
+                  {/* Outer ring progress (filled risk) */}
                   <circle
                     cx="50"
                     cy="50"
@@ -955,8 +955,8 @@ function PerformanceOverview() {
                     strokeLinecap="butt"
                     className="stroke-blue-500 dark:stroke-blue-400 transition-all duration-300"
                     strokeDasharray={`${2 * Math.PI * 42}`}
-                    strokeDashoffset={`${2 * Math.PI * 42 * (1 - Math.min(100, reservedRiskPercentage) / 100)}`}
-                    data-testid="bar-projected-risk"
+                    strokeDashoffset={`${2 * Math.PI * 42 * (1 - Math.min(100, filledRiskPercentage) / 100)}`}
+                    data-testid="bar-filled-risk"
                   />
                   
                   {/* Inner ring background (margin used) */}
@@ -998,14 +998,14 @@ function PerformanceOverview() {
                   <div className="text-sm font-mono text-muted-foreground">Margin</div>
                   <div className="text-xl font-mono font-bold">{marginUsedPercentage.toFixed(1)}%</div>
                   <div className="text-[10px] font-mono text-blue-500 dark:text-blue-400 mt-0.5">
-                    Projected: {reservedRiskPercentage.toFixed(1)}%
+                    Risk: {filledRiskPercentage.toFixed(1)}%
                   </div>
                 </div>
               </div>
               
               <div className="text-[10px] text-muted-foreground text-center mt-1">
                 <div>Used: ${marginUsed.toFixed(2)}</div>
-                <div className="text-blue-500 dark:text-blue-400">Projected: ${reservedRisk.toFixed(2)}</div>
+                <div className="text-blue-500 dark:text-blue-400">Risk: ${filledRisk.toFixed(2)}</div>
               </div>
               
               {/* Risk Limit Slider */}
