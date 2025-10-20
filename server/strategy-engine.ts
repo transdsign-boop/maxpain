@@ -69,6 +69,7 @@ export class StrategyEngine extends EventEmitter {
   private cleanupInProgress: boolean = false; // Prevent overlapping cleanup runs
   private exchangePositionMode: 'one-way' | 'dual' | null = null; // Cache exchange position mode
   private lastFillTime: Map<string, number> = new Map(); // "sessionId-symbol-side" -> timestamp of last fill
+  private fillLocks: Map<string, Promise<void>> = new Map(); // "sessionId-symbol-side" -> mutex for serializing concurrent fills
   private lastRiskWarningTime: Map<string, number> = new Map(); // "strategyId" -> timestamp of last risk warning alert
   private leverageSetForSymbols: Map<string, number> = new Map(); // symbol -> leverage value (track actual leverage configured on exchange)
   private marginModeSetForSymbols: Map<string, 'isolated' | 'cross'> = new Map(); // symbol -> margin mode (track actual margin mode configured on exchange)
@@ -3878,20 +3879,39 @@ export class StrategyEngine extends EventEmitter {
 
   // Fill a paper order and create fill record
   private async fillPaperOrder(order: Order, fillPrice: number, fillQuantity: number, tradeType: 'entry' | 'layer' | 'stop_loss' | 'take_profit' = 'entry') {
-    // Update order status
-    await storage.updateOrderStatus(order.id, 'filled', new Date());
-
-    // FIRST: Ensure position exists and get its ID
-    const position = await this.ensurePositionForFill(order, fillPrice, fillQuantity);
+    // Serialize fills for same symbol+side using async mutex
+    const positionSide = order.side === 'buy' ? 'long' : 'short';
+    const lockKey = `${order.sessionId}-${order.symbol}-${positionSide}`;
     
-    // CRITICAL: Set cooldown timestamp when order FILLS (not when placed)
-    // This ensures 2-minute spacing between actual fills, not just order placements
-    if (position && order.sessionId) {
-      const positionSide = position.side;
-      const cooldownKey = `${order.sessionId}-${order.symbol}-${positionSide}`;
-      this.lastFillTime.set(cooldownKey, Date.now());
-      console.log(`🔒 FILL COOLDOWN set for ${order.symbol} ${positionSide} - blocks new orders for 2 minutes`);
+    // Wait for any existing fill to complete
+    const existingLock = this.fillLocks.get(lockKey);
+    if (existingLock) {
+      console.log(`⏳ Waiting for previous fill to complete: ${order.symbol} ${positionSide}`);
+      await existingLock.catch(() => {}); // Ignore errors from previous fills
     }
+    
+    // Create new lock for this fill
+    let resolveLock: () => void;
+    const lockPromise = new Promise<void>((resolve) => {
+      resolveLock = resolve;
+    });
+    this.fillLocks.set(lockKey, lockPromise);
+    
+    try {
+      // Update order status
+      await storage.updateOrderStatus(order.id, 'filled', new Date());
+
+      // FIRST: Ensure position exists and get its ID
+      const position = await this.ensurePositionForFill(order, fillPrice, fillQuantity);
+      
+      // CRITICAL: Set cooldown timestamp when order FILLS (not when placed)
+      // This ensures 2-minute spacing between actual fills, not just order placements
+      // Mutex ensures this check+set is atomic across concurrent fills
+      if (position && order.sessionId) {
+        const cooldownKey = `${order.sessionId}-${order.symbol}-${position.side}`;
+        this.lastFillTime.set(cooldownKey, Date.now());
+        console.log(`🔒 FILL COOLDOWN set for ${order.symbol} ${position.side} - blocks new orders for 2 minutes`);
+      }
 
     // Create fill record with Aster DEX taker fee AND position_id
     const fillValue = fillPrice * fillQuantity;
@@ -3924,34 +3944,63 @@ export class StrategyEngine extends EventEmitter {
       console.log(`💸 Entry fee applied: $${fee.toFixed(4)} (${ASTER_TAKER_FEE_PERCENT}% of $${fillValue.toFixed(2)})`);
     }
 
-    // Broadcast trade notification to connected clients
-    this.broadcastTradeNotification({
-      symbol: order.symbol,
-      side: position.side as 'long' | 'short',
-      tradeType: order.layerNumber === 1 ? 'entry' : 'layer',
-      layerNumber: order.layerNumber,
-      price: fillPrice,
-      quantity: fillQuantity,
-      value: fillValue
-    });
+      // Broadcast trade notification to connected clients
+      this.broadcastTradeNotification({
+        symbol: order.symbol,
+        side: position.side as 'long' | 'short',
+        tradeType: order.layerNumber === 1 ? 'entry' : 'layer',
+        layerNumber: order.layerNumber,
+        price: fillPrice,
+        quantity: fillQuantity,
+        value: fillValue
+      });
+    } finally {
+      // Always release the lock, even if fill failed
+      resolveLock!();
+      // Clean up lock after short delay to allow waiting fills to proceed
+      setTimeout(() => {
+        if (this.fillLocks.get(lockKey) === lockPromise) {
+          this.fillLocks.delete(lockKey);
+        }
+      }, 100);
+    }
   }
 
   // Fill a live order using ACTUAL exchange data (price, qty, commission, timestamp)
   private async fillLiveOrder(order: Order, actualFillPrice: number, actualFillQty: number, actualCommission: number, actualTimestamp?: number) {
-    // Update order status
-    await storage.updateOrderStatus(order.id, 'filled', new Date());
-
-    // FIRST: Ensure position exists and get its ID
-    const position = await this.ensurePositionForFill(order, actualFillPrice, actualFillQty);
+    // Serialize fills for same symbol+side using async mutex
+    const positionSide = order.side === 'buy' ? 'long' : 'short';
+    const lockKey = `${order.sessionId}-${order.symbol}-${positionSide}`;
     
-    // CRITICAL: Set cooldown timestamp when order FILLS (not when placed)
-    // This ensures 2-minute spacing between actual fills, not just order placements
-    if (position && order.sessionId) {
-      const positionSide = position.side;
-      const cooldownKey = `${order.sessionId}-${order.symbol}-${positionSide}`;
-      this.lastFillTime.set(cooldownKey, Date.now());
-      console.log(`🔒 FILL COOLDOWN set for ${order.symbol} ${positionSide} - blocks new orders for 2 minutes`);
+    // Wait for any existing fill to complete
+    const existingLock = this.fillLocks.get(lockKey);
+    if (existingLock) {
+      console.log(`⏳ Waiting for previous fill to complete: ${order.symbol} ${positionSide}`);
+      await existingLock.catch(() => {}); // Ignore errors from previous fills
     }
+    
+    // Create new lock for this fill
+    let resolveLock: () => void;
+    const lockPromise = new Promise<void>((resolve) => {
+      resolveLock = resolve;
+    });
+    this.fillLocks.set(lockKey, lockPromise);
+    
+    try {
+      // Update order status
+      await storage.updateOrderStatus(order.id, 'filled', new Date());
+
+      // FIRST: Ensure position exists and get its ID
+      const position = await this.ensurePositionForFill(order, actualFillPrice, actualFillQty);
+      
+      // CRITICAL: Set cooldown timestamp when order FILLS (not when placed)
+      // This ensures 2-minute spacing between actual fills, not just order placements
+      // Mutex ensures this check+set is atomic across concurrent fills
+      if (position && order.sessionId) {
+        const cooldownKey = `${order.sessionId}-${order.symbol}-${position.side}`;
+        this.lastFillTime.set(cooldownKey, Date.now());
+        console.log(`🔒 FILL COOLDOWN set for ${order.symbol} ${position.side} - blocks new orders for 2 minutes`);
+      }
 
     // Create fill record with ACTUAL exchange data
     const fillValue = actualFillPrice * actualFillQty;
@@ -3985,23 +4034,29 @@ export class StrategyEngine extends EventEmitter {
       console.log(`💸 REAL entry fee applied: $${actualCommission.toFixed(4)} (${feePercent.toFixed(3)}% of $${fillValue.toFixed(2)}) - from exchange`);
     }
 
-    // Broadcast trade notification to connected clients
-    this.broadcastTradeNotification({
-      symbol: order.symbol,
-      side: position.side as 'long' | 'short',
-      tradeType: order.layerNumber === 1 ? 'entry' : 'layer',
-      layerNumber: order.layerNumber,
-      price: actualFillPrice,
-      quantity: actualFillQty,
-      value: fillValue
-    });
-    
-    // NOTE: Cooldown is already set in executeLayer/executeEntry when the order is PLACED
-    // Do NOT reset it here on fill, as that would allow duplicate orders to slip through
-    // The cooldown protects against rapid order PLACEMENT, not fills
-    
-    // AUTOMATICALLY update TP/SL orders for live mode (all layers)
-    await this.updateProtectiveOrders(position, order.sessionId);
+      // Broadcast trade notification to connected clients
+      this.broadcastTradeNotification({
+        symbol: order.symbol,
+        side: position.side as 'long' | 'short',
+        tradeType: order.layerNumber === 1 ? 'entry' : 'layer',
+        layerNumber: order.layerNumber,
+        price: actualFillPrice,
+        quantity: actualFillQty,
+        value: fillValue
+      });
+      
+      // AUTOMATICALLY update TP/SL orders for live mode (all layers)
+      await this.updateProtectiveOrders(position, order.sessionId);
+    } finally {
+      // Always release the lock, even if fill failed
+      resolveLock!();
+      // Clean up lock after short delay to allow waiting fills to proceed
+      setTimeout(() => {
+        if (this.fillLocks.get(lockKey) === lockPromise) {
+          this.fillLocks.delete(lockKey);
+        }
+      }, 100);
+    }
   }
 
   // Ensure position exists and return it (create or update as needed)
