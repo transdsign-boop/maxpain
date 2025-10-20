@@ -79,6 +79,7 @@ export class StrategyEngine extends EventEmitter {
   private pendingReservedRisk: Map<string, { dollars: number; percent: number }> = new Map(); // "sessionId-symbol-side" -> reserved risk for full DCA potential
   private processedLiquidations: Set<string> = new Set(); // Track processed liquidation IDs to prevent duplicates
   private inMemoryPositions: Map<string, { positionId: string; side: string; symbol: string; createdAt: number }> = new Map(); // "sessionId-symbol-side" -> in-memory position tracking (before DB commit)
+  private lastLiquidationSeen: Map<string, number> = new Map(); // "symbol-side" -> timestamp of last liquidation seen (for 60s deduplication)
   private protectiveOrderRecovery: ProtectiveOrderRecovery;
 
   constructor() {
@@ -586,6 +587,24 @@ export class StrategyEngine extends EventEmitter {
     this.processedLiquidations.add(liquidation.id);
     console.log(`🔒 ATOMIC RESERVATION: Liquidation ${liquidation.id} marked as processed to prevent concurrent duplicates`);
     
+    // LIQUIDATION DEDUPLICATION: Only process one liquidation per symbol+side per minute
+    // This prevents multiple liquidations that arrive at the same time from all being evaluated
+    const positionSide = liquidation.side === "long" ? "long" : "short";
+    const liquidationKey = `${liquidation.symbol}-${positionSide}`;
+    const lastSeenTime = this.lastLiquidationSeen.get(liquidationKey);
+    const now = Date.now();
+    const oneMinuteMs = 60000;
+    
+    if (lastSeenTime && (now - lastSeenTime) < oneMinuteMs) {
+      const timeSinceLast = ((now - lastSeenTime) / 1000).toFixed(1);
+      console.log(`⏭️ LIQUIDATION DEDUPLICATION: ${liquidation.symbol} ${positionSide} - last liquidation seen ${timeSinceLast}s ago, skipping to spread out DCA entries`);
+      return;
+    }
+    
+    // Mark this liquidation as seen NOW (before any evaluation)
+    this.lastLiquidationSeen.set(liquidationKey, now);
+    console.log(`✅ LIQUIDATION ACCEPTED: ${liquidation.symbol} ${positionSide} - first liquidation in 60s window, proceeding with evaluation`);
+    
     // Double-check strategy is still active (prevents race condition during unregister)
     if (!this.activeStrategies.has(strategy.id)) return;
     
@@ -609,7 +628,7 @@ export class StrategyEngine extends EventEmitter {
     // GLOBAL 1-MINUTE ORDER PLACEMENT THROTTLE: Check if ANY strategy has placed an order recently
     // CRITICAL FIX: Use GLOBAL cooldown key (symbol+side only, NOT per-session) to prevent duplicates
     // NOTE: Cooldown is set AFTER entry decision (not here) to avoid blocking valid entries if first strategy filters out
-    const positionSide = liquidation.side === "long" ? "long" : "short";
+    // Note: positionSide already declared above for deduplication check
     const cooldownKey = `${liquidation.symbol}-${positionSide}`; // GLOBAL key (no session ID)
     const lastOrderPlacement = this.lastFillTime.get(cooldownKey);
     if (lastOrderPlacement) {
