@@ -104,6 +104,11 @@ function PerformanceOverview() {
   const [manualSelectionMode, setManualSelectionMode] = useState(false);
   const [selectedTradeRange, setSelectedTradeRange] = useState<{ start: number | null; end: number | null }>({ start: null, end: null });
 
+  // Drag selection state
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState<number | null>(null);
+  const [dragEnd, setDragEnd] = useState<number | null>(null);
+
   // Strategy change dialog state
   const [selectedChange, setSelectedChange] = useState<any>(null);
   
@@ -246,34 +251,44 @@ function PerformanceOverview() {
     return { totalDeposited, depositCount: deposits.length, depositsList: sortedDeposits };
   }, [transfers]);
   
-  // Apply date range filter
+  // Apply date range filter and manual selection filter
   const sourceChartData = useMemo(() => {
-    if (!dateRange.start && !dateRange.end) return rawSourceData;
-    
-    // Use raw timestamps for sub-day filters (15 min, 1 hour, 2 hours, 4 hours)
-    // This preserves exact time filtering without rounding to start/end of day
-    const startTimestamp = dateRange.start ? dateRange.start.getTime() : 0;
-    const endTimestamp = dateRange.end ? dateRange.end.getTime() : Date.now();
-    
-    return rawSourceData.filter(trade => 
-      trade.timestamp >= startTimestamp && trade.timestamp <= endTimestamp
-    );
-  }, [rawSourceData, dateRange]);
+    let filtered = rawSourceData;
+
+    // Apply date range filter first
+    if (dateRange.start || dateRange.end) {
+      const startTimestamp = dateRange.start ? dateRange.start.getTime() : 0;
+      const endTimestamp = dateRange.end ? dateRange.end.getTime() : Date.now();
+
+      filtered = filtered.filter(trade =>
+        trade.timestamp >= startTimestamp && trade.timestamp <= endTimestamp
+      );
+    }
+
+    // Apply manual trade selection filter (takes precedence, shows only selected range)
+    if (selectedTradeRange.start !== null && selectedTradeRange.end !== null) {
+      filtered = filtered.filter(trade =>
+        trade.tradeNumber >= selectedTradeRange.start! && trade.tradeNumber <= selectedTradeRange.end!
+      );
+    }
+
+    return filtered;
+  }, [rawSourceData, dateRange, selectedTradeRange]);
   
   // Calculate pagination
   const totalTrades = sourceChartData.length;
   
-  // Handle pagination and zoom based on date filter
+  // Handle pagination and zoom based on filtered data
   useEffect(() => {
     const hasFilter = !!(dateRange.start || dateRange.end);
     setIsDateFiltered(hasFilter);
-    
+
     // Optimize for large datasets: cap display at 2000 trades for performance
     // For datasets > 2000, show the most recent 2000 trades
     const MAX_DISPLAY_TRADES = 2000;
     const displayCount = Math.min(sourceChartData.length, MAX_DISPLAY_TRADES);
-    
-    // Always show all trades in the range (zoom to fit), up to max limit
+
+    // Always show all trades in the filtered range (zoom to fit), up to max limit
     // Update even if sourceChartData.length is 0 to show empty chart
     setChartEndIndex(sourceChartData.length);
     setTradesPerPage(displayCount || 1); // Minimum 1 to prevent division by zero
@@ -815,22 +830,46 @@ function PerformanceOverview() {
     setDateRange({ start: null, end: null });
   };
 
-  // Handle trade bar click for manual selection
-  const handleTradeClick = (tradeNumber: number) => {
+  // Handle drag selection for manual trade range selection
+  const handleMouseDown = (data: any) => {
     if (!manualSelectionMode) return;
 
-    if (selectedTradeRange.start === null) {
-      // First click - set start point
-      setSelectedTradeRange({ start: tradeNumber, end: null });
-    } else if (selectedTradeRange.end === null) {
-      // Second click - set end point (ensure start is always smaller)
-      const start = Math.min(selectedTradeRange.start, tradeNumber);
-      const end = Math.max(selectedTradeRange.start, tradeNumber);
-      setSelectedTradeRange({ start, end });
-    } else {
-      // Already have a complete selection - start new selection
-      setSelectedTradeRange({ start: tradeNumber, end: null });
+    const tradeNumber = data?.activePayload?.[0]?.payload?.tradeNumber;
+    console.log('Mouse down on trade:', tradeNumber);
+
+    if (tradeNumber !== undefined && Number.isInteger(tradeNumber) && tradeNumber > 0) {
+      setIsDragging(true);
+      setDragStart(tradeNumber);
+      setDragEnd(tradeNumber);
+      // Clear any existing selection
+      setSelectedTradeRange({ start: null, end: null });
     }
+  };
+
+  const handleMouseMove = (data: any) => {
+    if (!manualSelectionMode || !isDragging) return;
+
+    const tradeNumber = data?.activePayload?.[0]?.payload?.tradeNumber;
+    if (tradeNumber !== undefined && Number.isInteger(tradeNumber) && tradeNumber > 0) {
+      setDragEnd(tradeNumber);
+    }
+  };
+
+  const handleMouseUp = () => {
+    if (!manualSelectionMode || !isDragging) return;
+
+    console.log('Mouse up - completing selection:', { dragStart, dragEnd });
+
+    if (dragStart !== null && dragEnd !== null) {
+      const start = Math.min(dragStart, dragEnd);
+      const end = Math.max(dragStart, dragEnd);
+      console.log('Setting selected range:', { start, end });
+      setSelectedTradeRange({ start, end });
+    }
+
+    setIsDragging(false);
+    setDragStart(null);
+    setDragEnd(null);
   };
 
   // Chart visibility toggles
@@ -915,12 +954,24 @@ function PerformanceOverview() {
 
   // Calculate percentages
   const unrealizedPnlPercent = totalBalance > 0 ? (unrealizedPnl / totalBalance) * 100 : 0;
-  
-  // Calculate true ROI based on deposited capital
-  const totalPnl = (displayPerformance.totalRealizedPnl || 0) + unrealizedPnl;
-  const trueROI = totalDeposited > 0 ? (totalPnl / totalDeposited) * 100 : 0;
-  
-  // For realized P&L percentage, use deposited capital
+
+  // Calculate ROI based on the chart interval
+  // Get the starting account balance for the interval from chartData
+  const intervalStartingBalance = useMemo(() => {
+    if (!chartData || chartData.length === 0) return totalDeposited;
+
+    // Get the account size at the first data point in the chart
+    const firstDataPoint = chartData[0];
+    return firstDataPoint.accountSize || totalDeposited;
+  }, [chartData, totalDeposited]);
+
+  // ROI = Realized P&L from interval / Starting balance of interval
+  // This shows the return on the capital you had at the start of this time period
+  const trueROI = intervalStartingBalance > 0
+    ? ((displayPerformance.totalRealizedPnl || 0) / intervalStartingBalance) * 100
+    : 0;
+
+  // For realized P&L percentage display (legacy - kept for compatibility)
   const realizedPnlPercent = totalDeposited > 0 ? ((displayPerformance.totalRealizedPnl || 0) / totalDeposited) * 100 : 0;
 
   // Check if there's an error or loading (but don't return early - that breaks hooks order)
@@ -975,8 +1026,15 @@ function PerformanceOverview() {
           {/* Available & Realized */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             <div className="space-y-3">
-              <div className="text-sm text-muted-foreground uppercase tracking-wider">Available</div>
-              <div className="text-4xl font-mono font-bold" data-testid="text-available-balance">
+              <div className="text-sm text-muted-foreground uppercase tracking-wider">Total Balance</div>
+              <div className="text-4xl font-mono font-bold" data-testid="text-wallet-balance">
+                ${walletBalance.toFixed(2)}
+              </div>
+              <div className="text-sm text-muted-foreground">
+                Wallet only
+              </div>
+              <div className="text-sm text-muted-foreground uppercase tracking-wider mt-4">Available</div>
+              <div className="text-3xl font-mono font-bold" data-testid="text-available-balance">
                 ${availableBalance.toFixed(2)}
               </div>
               <div className="text-sm text-muted-foreground">
@@ -1501,6 +1559,7 @@ function PerformanceOverview() {
                     // Exiting selection mode - clear selection
                     setSelectedTradeRange({ start: null, end: null });
                   }
+                  // Keep current date filters when entering selection mode
                 }}
                 data-testid="button-manual-selection"
               >
@@ -1564,6 +1623,20 @@ function PerformanceOverview() {
               </Badge>
             )}
 
+            {/* Selection Mode Instructions */}
+            {manualSelectionMode && !isDragging && selectedTradeRange.start === null && (
+              <Badge variant="default" className="gap-1 bg-blue-600">
+                <Target className="h-3 w-3" />
+                Click and drag on the chart to select a range
+              </Badge>
+            )}
+            {manualSelectionMode && isDragging && (
+              <Badge variant="default" className="gap-1 bg-blue-600 animate-pulse">
+                <Target className="h-3 w-3" />
+                Dragging... Release to complete selection
+              </Badge>
+            )}
+
           </div>
           
           <div className="relative h-64 md:h-80 -mx-8" style={{
@@ -1573,10 +1646,14 @@ function PerformanceOverview() {
           {!chartLoading && chartData && chartData.length > 0 ? (
             <>
               <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart 
-                  data={chartData} 
+                <ComposedChart
+                  data={chartData}
                   margin={{ top: 35, right: 0, left: 0, bottom: 30 }}
                   key={`chart-${showStrategyUpdates}-${showDeposits}`}
+                  onMouseDown={handleMouseDown}
+                  onMouseMove={handleMouseMove}
+                  onMouseUp={handleMouseUp}
+                  onMouseLeave={handleMouseUp}
                 >
                 <XAxis 
                   dataKey="tradeNumber" 
@@ -1616,7 +1693,7 @@ function PerformanceOverview() {
                       { name: 'Cumulative P&L', color: 'rgb(190, 242, 100)', active: true, toggleable: false },
                       { name: 'Account Size', color: 'rgb(59, 130, 246)', active: showAccountSize, toggleable: true },
                       { name: 'Strategy Update', color: 'hsl(var(--primary))', active: showStrategyUpdates, toggleable: true },
-                      { name: 'Deposit', color: 'rgb(34, 197, 94)', active: showDeposits, toggleable: true }
+                      { name: 'Deposits/Withdrawals', color: 'rgb(34, 197, 94)', active: showDeposits, toggleable: true }
                     ];
                     
                     return (
@@ -1628,7 +1705,7 @@ function PerformanceOverview() {
                             onClick={() => {
                               if (item.name === 'Strategy Update') {
                                 setShowStrategyUpdates(!showStrategyUpdates);
-                              } else if (item.name === 'Deposit') {
+                              } else if (item.name === 'Deposits/Withdrawals') {
                                 setShowDeposits(!showDeposits);
                               } else if (item.name === 'Account Size') {
                                 setShowAccountSize(!showAccountSize);
@@ -1657,7 +1734,28 @@ function PerformanceOverview() {
                 />
                 <ReferenceLine yAxisId="left" y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
                 <ReferenceLine yAxisId="right" y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
-                
+
+                {/* Drag selection overlay - shows while dragging */}
+                {isDragging && dragStart !== null && dragEnd !== null && (
+                  <ReferenceArea
+                    x1={Math.min(dragStart, dragEnd)}
+                    x2={Math.max(dragStart, dragEnd)}
+                    yAxisId="left"
+                    fill="rgb(59, 130, 246)"
+                    fillOpacity={0.2}
+                    stroke="rgb(59, 130, 246)"
+                    strokeWidth={2}
+                    strokeOpacity={0.8}
+                    label={{
+                      value: `Trades ${Math.min(dragStart, dragEnd)} - ${Math.max(dragStart, dragEnd)}`,
+                      position: 'insideTop',
+                      fill: 'rgb(59, 130, 246)',
+                      fontSize: 14,
+                      fontWeight: 700,
+                    }}
+                  />
+                )}
+
                 {/* Day grouping blocks - date labels at top */}
                 {dayGroups.map((group, index) => (
                   <ReferenceArea
@@ -1758,7 +1856,7 @@ function PerformanceOverview() {
                   return null;
                 })}
 
-                {/* Vertical markers for transfer events (deposits) */}
+                {/* Vertical markers for transfer events (deposits & withdrawals) */}
                 {showDeposits && transfers?.filter((transfer) => {
                   // Filter transfers by date range
                   const transferTime = new Date(transfer.timestamp).getTime();
@@ -1768,10 +1866,25 @@ function PerformanceOverview() {
                 }).map((transfer) => {
                   const transferTime = new Date(transfer.timestamp).getTime();
                   const amount = parseFloat(transfer.amount || '0');
-                  
-                  // Only show deposits (positive amounts) and exclude USDF deposits
-                  if (amount <= 0 || (transfer as any).asset === 'USDF') return null;
-                  
+
+                  // Skip zero amounts (but show both deposits and withdrawals)
+                  if (amount === 0) return null;
+
+                  // Determine if this is a deposit (positive) or withdrawal (negative)
+                  const isDeposit = amount > 0;
+                  const color = isDeposit ? 'rgb(34, 197, 94)' : 'rgb(251, 146, 60)'; // Green for deposits, orange for withdrawals
+                  const label = isDeposit ? `+$${amount.toFixed(2)}` : `-$${Math.abs(amount).toFixed(2)}`;
+
+                  // Debug logging for withdrawals
+                  if (!isDeposit) {
+                    console.log('Rendering withdrawal:', {
+                      amount,
+                      transferTime: new Date(transferTime),
+                      label,
+                      color
+                    });
+                  }
+
                   // Find the closest trade or create a position for the transfer
                   let tradeNumber;
                   if (chartData.length === 0) {
@@ -1787,18 +1900,18 @@ function PerformanceOverview() {
                       tradeNumber = chartData[chartData.length - 1].tradeNumber + 0.5;
                     }
                   }
-                  
+
                   return (
                     <ReferenceLine
                       key={transfer.id}
                       x={tradeNumber}
                       yAxisId="left"
-                      stroke="rgb(34, 197, 94)"
+                      stroke={color}
                       strokeWidth={2}
                       label={{
-                        value: `+$${amount.toFixed(2)}`,
+                        value: label,
                         position: 'center',
-                        fill: 'rgb(34, 197, 94)',
+                        fill: color,
                         fontSize: 11,
                         fontWeight: 600,
                         angle: -90,
@@ -1823,59 +1936,16 @@ function PerformanceOverview() {
                   barSize={20}
                   data-testid="chart-bar-pnl"
                   legendType="none"
-                  onClick={(data: any) => {
-                    if (!manualSelectionMode) return;
-
-                    // Recharts passes data with payload property containing the actual data point
-                    const tradeNumber = data?.payload?.tradeNumber || data?.tradeNumber;
-                    console.log('Bar clicked:', data, 'tradeNumber:', tradeNumber);
-
-                    if (tradeNumber !== undefined) {
-                      handleTradeClick(tradeNumber);
-                    }
-                  }}
-                  cursor={manualSelectionMode ? 'pointer' : 'default'}
-                  style={{ cursor: manualSelectionMode ? 'pointer' : 'default' }}
+                  cursor={manualSelectionMode ? 'crosshair' : 'default'}
                 >
                   {chartData.map((entry, index) => {
-                    const tradeNumber = entry.tradeNumber;
-                    const isSelected = selectedTradeRange.start !== null && selectedTradeRange.end !== null &&
-                      tradeNumber >= selectedTradeRange.start && tradeNumber <= selectedTradeRange.end;
-                    const isStartPoint = tradeNumber === selectedTradeRange.start;
-                    const isEndPoint = tradeNumber === selectedTradeRange.end;
-                    const isSelecting = selectedTradeRange.start !== null && selectedTradeRange.end === null;
-                    const isSelectionBoundary = isStartPoint && isSelecting;
-
-                    // Determine fill color based on P&L and selection state
-                    let fillColor = entry.pnl >= 0 ? 'rgba(190, 242, 100, 0.7)' : 'rgba(220, 38, 38, 0.7)';
-
-                    if (isSelected) {
-                      // Selected trades - enhanced brightness
-                      fillColor = entry.pnl >= 0 ? 'rgba(190, 242, 100, 1)' : 'rgba(220, 38, 38, 1)';
-                    } else if (isSelectionBoundary) {
-                      // First selection point - show with border effect
-                      fillColor = entry.pnl >= 0 ? 'rgba(190, 242, 100, 0.9)' : 'rgba(220, 38, 38, 0.9)';
-                    } else if (manualSelectionMode && (selectedTradeRange.start !== null || selectedTradeRange.end !== null)) {
-                      // In selection mode but this bar is not selected - dim it
-                      fillColor = entry.pnl >= 0 ? 'rgba(190, 242, 100, 0.3)' : 'rgba(220, 38, 38, 0.3)';
-                    }
+                    // Base color on P&L
+                    const fillColor = entry.pnl >= 0 ? 'rgba(190, 242, 100, 0.7)' : 'rgba(220, 38, 38, 0.7)';
 
                     return (
                       <Cell
                         key={`cell-${index}`}
                         fill={fillColor}
-                        stroke={isSelectionBoundary || isStartPoint || isEndPoint ? 'rgb(59, 130, 246)' : 'none'}
-                        strokeWidth={isSelectionBoundary || isStartPoint || isEndPoint ? 2 : 0}
-                        onClick={() => {
-                          if (manualSelectionMode) {
-                            console.log('Cell clicked, tradeNumber:', tradeNumber);
-                            handleTradeClick(tradeNumber);
-                          }
-                        }}
-                        style={{
-                          cursor: manualSelectionMode ? 'pointer' : 'default',
-                          pointerEvents: 'all'
-                        }}
                       />
                     );
                   })}

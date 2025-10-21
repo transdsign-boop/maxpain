@@ -1,0 +1,1 @@
+IMPORTANT: Always refresh the app automatically after making code changes to the frontend. The user expects to see changes immediately without manual refresh.

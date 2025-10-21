@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useWebSocketData } from "./useWebSocketData";
 import { useEffect, useMemo } from "react";
 import { queryClient } from "@/lib/queryClient";
@@ -159,6 +159,33 @@ export function useStrategyData() {
     },
     staleTime: 5 * 60 * 1000, // Refresh every 5 minutes
   });
+
+  // Auto-sync transfers from exchange every hour
+  const syncTransfersMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch('/api/sync/transfers', { method: 'POST' });
+      if (!response.ok) throw new Error('Failed to sync transfers');
+      return response.json();
+    },
+    onSuccess: () => {
+      // Refetch transfers after successful sync
+      transfersQuery.refetch();
+    },
+  });
+
+  // Set up automatic syncing every hour (3,600,000 ms)
+  useEffect(() => {
+    // Sync immediately on mount
+    syncTransfersMutation.mutate();
+
+    // Then sync every hour
+    const interval = setInterval(() => {
+      syncTransfersMutation.mutate();
+    }, 3600000); // 1 hour
+
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty deps - only run once on mount
 
   // Fetch commissions for fee calculation (fetched from exchange API, not database)
   // Starting from October 1st, 2025 (timestamp: 1759276800000)
