@@ -754,9 +754,8 @@ export class StrategyEngine extends EventEmitter {
         if (actualPosition && actualPosition.isOpen && actualPosition.side === positionSide) {
           const shouldLayer = await this.shouldAddLayer(currentStrategy, actualPosition, liquidation);
           if (shouldLayer) {
-            // Set GLOBAL cooldown BEFORE placing order
-            this.lastFillTime.set(cooldownKey, Date.now());
-            console.log(`🔒 GLOBAL RESERVATION (LAYER): ${liquidation.symbol} ${positionSide} - cooldown set`);
+            // Cooldown will be set when order FILLS (in fillLiveOrder/fillPaperOrder)
+            console.log(`🔓 Layer check passed - proceeding to executeLayer (cooldown set on fill)`);
             await this.executeLayer(currentStrategy, session, actualPosition, liquidation, positionSide);
           }
           return;
@@ -772,9 +771,8 @@ export class StrategyEngine extends EventEmitter {
         if (existingPosition.side === positionSide) {
           const shouldLayer = await this.shouldAddLayer(currentStrategy, existingPosition, liquidation);
           if (shouldLayer) {
-            // Set GLOBAL cooldown BEFORE placing order
-            this.lastFillTime.set(cooldownKey, Date.now());
-            console.log(`🔒 GLOBAL RESERVATION (LAYER): ${liquidation.symbol} ${positionSide} - cooldown set`);
+            // Cooldown will be set when order FILLS (in fillLiveOrder/fillPaperOrder)
+            console.log(`🔓 Layer check passed - proceeding to executeLayer (cooldown set on fill)`);
             await this.executeLayer(currentStrategy, session, existingPosition, liquidation, positionSide);
           }
         } else {
@@ -788,16 +786,14 @@ export class StrategyEngine extends EventEmitter {
         console.log(`🔍 DEBUG: shouldEnterPositionWithoutCooldown returned: ${shouldEnter} for ${liquidation.symbol} ${positionSide}`);
         
         if (shouldEnter) {
-          // LAYER 1 (INITIAL ENTRY): Set GLOBAL cooldown BEFORE placing order
-          // This creates a "reservation" that prevents duplicate orders from ANY strategy
-          this.lastFillTime.set(cooldownKey, Date.now());
-          console.log(`🔒 GLOBAL RESERVATION (ENTRY): ${liquidation.symbol} ${positionSide} - cooldown set`);
-          
+          // LAYER 1 (INITIAL ENTRY): Cooldown will be set when order FILLS (in fillLiveOrder/fillPaperOrder)
+          console.log(`🔓 Entry check passed - proceeding to executeEntry (cooldown set on fill)`);
+
           console.log(`✅ DEBUG: Proceeding with entry for ${liquidation.symbol} ${positionSide}`);
           const positionId = await this.executeEntry(currentStrategy, session, liquidation, positionSide, () => {
-            console.log(`✅ Fill confirmed for ${liquidation.symbol} ${positionSide} - cooldown already active`);
+            console.log(`✅ Fill confirmed for ${liquidation.symbol} ${positionSide}`);
           });
-          
+
           if (positionId) {
             this.inMemoryPositions.set(lockKey, {
               positionId,
@@ -807,10 +803,10 @@ export class StrategyEngine extends EventEmitter {
             });
             console.log(`📝 Tracked position ${positionId} in-memory for ${lockKey}`);
           } else {
-            // Entry failed - clear the cooldown AND remove from processed set to allow retry
-            this.lastFillTime.delete(cooldownKey);
+            // Entry failed - remove from processed set to allow retry
+            // NOTE: Do NOT clear cooldown - keep it active to prevent rapid retries
             this.processedLiquidations.delete(liquidation.id);
-            console.log(`🔓 Entry failed - cleared cooldown and liquidation ID for ${liquidation.symbol} ${positionSide} to allow retry`);
+            console.log(`🔓 Entry failed - cleared liquidation ID for ${liquidation.symbol} ${positionSide} to allow retry (cooldown remains active)`);
           }
         } else {
           // Liquidation didn't qualify (below percentile threshold or risk limits exceeded)
@@ -4054,9 +4050,12 @@ export class StrategyEngine extends EventEmitter {
 
       // FIRST: Ensure position exists and get its ID
       const position = await this.ensurePositionForFill(order, fillPrice, fillQuantity);
-      
-      // Note: Order placement timestamp is set in executeEntry/executeLayer
-      // We don't update it here on fill since the throttle is based on placement time
+
+      // CRITICAL: Set cooldown timestamp NOW (after position ensured, protected by mutex)
+      // This ensures ONE fill per symbol+side per 60 seconds, preventing duplicate orders
+      const cooldownKey = `${order.symbol}-${positionSide}`;
+      this.lastFillTime.set(cooldownKey, Date.now());
+      console.log(`🔒 COOLDOWN SET (PAPER): ${order.symbol} ${positionSide} - filled at ${new Date().toISOString()}`);
 
     // Create fill record with Aster DEX taker fee AND position_id
     const fillValue = fillPrice * fillQuantity;
@@ -4137,9 +4136,12 @@ export class StrategyEngine extends EventEmitter {
 
       // FIRST: Ensure position exists and get its ID
       const position = await this.ensurePositionForFill(order, actualFillPrice, actualFillQty);
-      
-      // Note: Order placement timestamp is set in executeEntry/executeLayer
-      // We don't update it here on fill since the throttle is based on placement time
+
+      // CRITICAL: Set cooldown timestamp NOW (after position ensured, protected by mutex)
+      // This ensures ONE fill per symbol+side per 60 seconds, preventing duplicate orders
+      const cooldownKey = `${order.symbol}-${positionSide}`;
+      this.lastFillTime.set(cooldownKey, Date.now());
+      console.log(`🔒 COOLDOWN SET (LIVE): ${order.symbol} ${positionSide} - filled at ${new Date().toISOString()}`);
 
     // Create fill record with ACTUAL exchange data
     const fillValue = actualFillPrice * actualFillQty;

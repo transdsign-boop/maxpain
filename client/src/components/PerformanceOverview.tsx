@@ -99,7 +99,11 @@ function PerformanceOverview() {
   const [chartEndIndex, setChartEndIndex] = useState<number | null>(null);
   const [tradesPerPage, setTradesPerPage] = useState<number>(50);
   const [isDateFiltered, setIsDateFiltered] = useState(false);
-  
+
+  // Manual trade selection state
+  const [manualSelectionMode, setManualSelectionMode] = useState(false);
+  const [selectedTradeRange, setSelectedTradeRange] = useState<{ start: number | null; end: number | null }>({ start: null, end: null });
+
   // Strategy change dialog state
   const [selectedChange, setSelectedChange] = useState<any>(null);
   
@@ -598,13 +602,27 @@ function PerformanceOverview() {
     const totalFundingFees = fundingFees?.total || 0;
 
     // Use realized P&L events from exchange as source of truth for trade counts
-    // Filter by date range if active
+    // Filter by date range or manual selection if active
     let filteredPnlEvents = realizedPnlEvents || [];
-    if (dateRange.start || dateRange.end) {
+
+    // Manual selection takes precedence over date range
+    if (selectedTradeRange.start !== null && selectedTradeRange.end !== null) {
+      // Filter by trade numbers (manual selection)
+      const selectedTrades = sourceChartData.filter(trade =>
+        trade.tradeNumber >= selectedTradeRange.start! && trade.tradeNumber <= selectedTradeRange.end!
+      );
+
+      // Get timestamps from selected trades
+      const selectedTimestamps = new Set(selectedTrades.map(t => t.timestamp));
+      filteredPnlEvents = filteredPnlEvents.filter(event =>
+        selectedTimestamps.has(event.time)
+      );
+    } else if (dateRange.start || dateRange.end) {
+      // Filter by date range
       const startTimestamp = dateRange.start ? dateRange.start.getTime() : 0;
       const endTimestamp = dateRange.end ? dateRange.end.getTime() : Date.now();
-      
-      filteredPnlEvents = filteredPnlEvents.filter(event => 
+
+      filteredPnlEvents = filteredPnlEvents.filter(event =>
         event.time >= startTimestamp && event.time <= endTimestamp
       );
     }
@@ -651,11 +669,24 @@ function PerformanceOverview() {
     let avgTradeTimeMs = 0;
     if (closedPositions && closedPositions.length > 0) {
       let filteredClosedPositions = closedPositions;
-      
-      if (dateRange.start || dateRange.end) {
+
+      if (selectedTradeRange.start !== null && selectedTradeRange.end !== null) {
+        // Filter by manual selection
+        const selectedTrades = sourceChartData.filter(trade =>
+          trade.tradeNumber >= selectedTradeRange.start! && trade.tradeNumber <= selectedTradeRange.end!
+        );
+        const selectedTimestamps = new Set(selectedTrades.map(t => t.timestamp));
+
+        filteredClosedPositions = closedPositions.filter(pos => {
+          if (!pos.closedAt) return false;
+          const closeTime = new Date(pos.closedAt).getTime();
+          return selectedTimestamps.has(closeTime);
+        });
+      } else if (dateRange.start || dateRange.end) {
+        // Filter by date range
         const startTimestamp = dateRange.start ? dateRange.start.getTime() : 0;
         const endTimestamp = dateRange.end ? dateRange.end.getTime() : Date.now();
-        
+
         filteredClosedPositions = closedPositions.filter(pos => {
           if (!pos.closedAt) return false;
           const closeTime = new Date(pos.closedAt).getTime();
@@ -695,7 +726,7 @@ function PerformanceOverview() {
       maxDrawdown: maxDrawdown,
       maxDrawdownPercent: maxDrawdownPercent,
     };
-  }, [performance, dateRange, realizedPnlEvents, commissions, fundingFees, sourceChartData, closedPositions]);
+  }, [performance, dateRange, selectedTradeRange, realizedPnlEvents, commissions, fundingFees, sourceChartData, closedPositions]);
   const displayLoading = isLoading || chartLoading || liveAccountLoading;
   const showLoadingUI = displayLoading || !performance;
 
@@ -784,6 +815,24 @@ function PerformanceOverview() {
     setDateRange({ start: null, end: null });
   };
 
+  // Handle trade bar click for manual selection
+  const handleTradeClick = (tradeNumber: number) => {
+    if (!manualSelectionMode) return;
+
+    if (selectedTradeRange.start === null) {
+      // First click - set start point
+      setSelectedTradeRange({ start: tradeNumber, end: null });
+    } else if (selectedTradeRange.end === null) {
+      // Second click - set end point (ensure start is always smaller)
+      const start = Math.min(selectedTradeRange.start, tradeNumber);
+      const end = Math.max(selectedTradeRange.start, tradeNumber);
+      setSelectedTradeRange({ start, end });
+    } else {
+      // Already have a complete selection - start new selection
+      setSelectedTradeRange({ start: tradeNumber, end: null });
+    }
+  };
+
   // Chart visibility toggles
   // Load chart settings from localStorage
   const [showStrategyUpdates, setShowStrategyUpdates] = useState(() => {
@@ -798,7 +847,7 @@ function PerformanceOverview() {
     const saved = localStorage.getItem('chart-settings');
     return saved ? JSON.parse(saved).showAccountSize ?? true : true;
   });
-  
+
   // Save chart settings to localStorage whenever they change
   useEffect(() => {
     const settings = {
@@ -1441,7 +1490,24 @@ function PerformanceOverview() {
                   </PopoverContent>
                 </Popover>
               )}
-              
+
+              {/* Manual Trade Selection Button */}
+              <Button
+                variant={manualSelectionMode ? "default" : "outline"}
+                size="sm"
+                onClick={() => {
+                  setManualSelectionMode(!manualSelectionMode);
+                  if (manualSelectionMode) {
+                    // Exiting selection mode - clear selection
+                    setSelectedTradeRange({ start: null, end: null });
+                  }
+                }}
+                data-testid="button-manual-selection"
+              >
+                <Target className="h-4 w-4 mr-2" />
+                {manualSelectionMode ? 'Cancel Selection' : 'Select Trades'}
+              </Button>
+
               {/* Active Deposit Filter Indicator */}
               {selectedDeposit && (
                 <Badge variant="secondary" className="gap-1" data-testid="badge-active-deposit-filter">
@@ -1472,6 +1538,19 @@ function PerformanceOverview() {
                     className="h-3 w-3 ml-1 cursor-pointer hover:text-destructive" 
                     onClick={() => setDateRange({ start: null, end: null })}
                     data-testid="button-clear-date-filter"
+                  />
+                </Badge>
+              )}
+
+              {/* Active Manual Selection Indicator */}
+              {selectedTradeRange.start !== null && selectedTradeRange.end !== null && (
+                <Badge variant="secondary" className="gap-1" data-testid="badge-active-manual-selection">
+                  <Target className="h-3 w-3" />
+                  Trades {selectedTradeRange.start} - {selectedTradeRange.end}
+                  <X
+                    className="h-3 w-3 ml-1 cursor-pointer hover:text-destructive"
+                    onClick={() => setSelectedTradeRange({ start: null, end: null })}
+                    data-testid="button-clear-manual-selection"
                   />
                 </Badge>
               )}
@@ -1738,19 +1817,68 @@ function PerformanceOverview() {
                     <stop offset="100%" stopColor="rgb(220, 38, 38)" stopOpacity={0.3}/>
                   </linearGradient>
                 </defs>
-                <Bar 
+                <Bar
                   yAxisId="left"
-                  dataKey="pnl" 
+                  dataKey="pnl"
                   barSize={20}
                   data-testid="chart-bar-pnl"
                   legendType="none"
+                  onClick={(data: any) => {
+                    if (!manualSelectionMode) return;
+
+                    // Recharts passes data with payload property containing the actual data point
+                    const tradeNumber = data?.payload?.tradeNumber || data?.tradeNumber;
+                    console.log('Bar clicked:', data, 'tradeNumber:', tradeNumber);
+
+                    if (tradeNumber !== undefined) {
+                      handleTradeClick(tradeNumber);
+                    }
+                  }}
+                  cursor={manualSelectionMode ? 'pointer' : 'default'}
+                  style={{ cursor: manualSelectionMode ? 'pointer' : 'default' }}
                 >
-                  {chartData.map((entry, index) => (
-                    <Cell 
-                      key={`cell-${index}`} 
-                      fill={entry.pnl >= 0 ? 'rgba(190, 242, 100, 0.7)' : 'rgba(220, 38, 38, 0.7)'} 
-                    />
-                  ))}
+                  {chartData.map((entry, index) => {
+                    const tradeNumber = entry.tradeNumber;
+                    const isSelected = selectedTradeRange.start !== null && selectedTradeRange.end !== null &&
+                      tradeNumber >= selectedTradeRange.start && tradeNumber <= selectedTradeRange.end;
+                    const isStartPoint = tradeNumber === selectedTradeRange.start;
+                    const isEndPoint = tradeNumber === selectedTradeRange.end;
+                    const isSelecting = selectedTradeRange.start !== null && selectedTradeRange.end === null;
+                    const isSelectionBoundary = isStartPoint && isSelecting;
+
+                    // Determine fill color based on P&L and selection state
+                    let fillColor = entry.pnl >= 0 ? 'rgba(190, 242, 100, 0.7)' : 'rgba(220, 38, 38, 0.7)';
+
+                    if (isSelected) {
+                      // Selected trades - enhanced brightness
+                      fillColor = entry.pnl >= 0 ? 'rgba(190, 242, 100, 1)' : 'rgba(220, 38, 38, 1)';
+                    } else if (isSelectionBoundary) {
+                      // First selection point - show with border effect
+                      fillColor = entry.pnl >= 0 ? 'rgba(190, 242, 100, 0.9)' : 'rgba(220, 38, 38, 0.9)';
+                    } else if (manualSelectionMode && (selectedTradeRange.start !== null || selectedTradeRange.end !== null)) {
+                      // In selection mode but this bar is not selected - dim it
+                      fillColor = entry.pnl >= 0 ? 'rgba(190, 242, 100, 0.3)' : 'rgba(220, 38, 38, 0.3)';
+                    }
+
+                    return (
+                      <Cell
+                        key={`cell-${index}`}
+                        fill={fillColor}
+                        stroke={isSelectionBoundary || isStartPoint || isEndPoint ? 'rgb(59, 130, 246)' : 'none'}
+                        strokeWidth={isSelectionBoundary || isStartPoint || isEndPoint ? 2 : 0}
+                        onClick={() => {
+                          if (manualSelectionMode) {
+                            console.log('Cell clicked, tradeNumber:', tradeNumber);
+                            handleTradeClick(tradeNumber);
+                          }
+                        }}
+                        style={{
+                          cursor: manualSelectionMode ? 'pointer' : 'default',
+                          pointerEvents: 'all'
+                        }}
+                      />
+                    );
+                  })}
                 </Bar>
                 {/* Positive P&L line (above zero) */}
                 <Line
