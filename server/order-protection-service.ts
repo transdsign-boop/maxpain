@@ -88,8 +88,6 @@ export class OrderProtectionService {
    */
   private async fetchExchangeInfo() {
     console.log('🔍 fetchExchangeInfo called, exchangeInfoFetched =', this.exchangeInfoFetched);
-    // TEMP: Force refetch to debug PUMP issue
-    this.exchangeInfoFetched = false;
     if (this.exchangeInfoFetched) return;
 
     console.log('📡 Fetching exchange info from API...');
