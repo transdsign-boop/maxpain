@@ -2804,6 +2804,23 @@ export class StrategyEngine extends EventEmitter {
       
       console.log(`🔢 Rounded values: quantity=${roundedQuantity}, price=${roundedPrice}`);
       
+      // CRITICAL: Validate minimum quantity requirements after rounding
+      if (roundedQuantity <= 0) {
+        console.error(`❌ Rounded quantity (${roundedQuantity}) is <= 0 for ${symbol}`);
+        console.error(`   Raw quantity: ${quantity}, stepSize: ${precisionInfo?.stepSize || 'unknown'}`);
+        return { success: false, error: `Quantity ${quantity} below minimum step size for ${symbol}` };
+      }
+      
+      // CRITICAL: Validate MIN_NOTIONAL requirement (minimum order value)
+      if (precisionInfo?.minNotional) {
+        const orderNotional = roundedQuantity * roundedPrice;
+        if (orderNotional < precisionInfo.minNotional) {
+          console.error(`❌ Order notional (${orderNotional.toFixed(2)}) below MIN_NOTIONAL (${precisionInfo.minNotional}) for ${symbol}`);
+          console.error(`   Quantity: ${roundedQuantity}, Price: ${roundedPrice}`);
+          return { success: false, error: `Order value $${orderNotional.toFixed(2)} below minimum $${precisionInfo.minNotional} for ${symbol}` };
+        }
+      }
+      
       // Prepare order parameters for Aster DEX API (Binance-style)
       const timestamp = Date.now();
       const orderParams: Record<string, string | number> = {
