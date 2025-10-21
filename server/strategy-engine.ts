@@ -1221,13 +1221,14 @@ export class StrategyEngine extends EventEmitter {
     position: Position, 
     liquidation: Liquidation
   ): Promise<boolean> {
-    // Check if we haven't exceeded max layers (including pending orders)
-    const pendingLayers = this.pendingLayerOrders.get(position.id);
-    const pendingCount = pendingLayers ? pendingLayers.size : 0;
-    const totalLayers = position.layersFilled + pendingCount;
+    // Check if we haven't exceeded max layers
+    // CRITICAL: Use layersPlaced (not layersFilled) to prevent exceeding maxLayers
+    // layersPlaced increments IMMEDIATELY when order is placed (line 2386)
+    // layersFilled only updates AFTER fill confirmation (slower, can lag behind)
+    const layersPlaced = position.layersPlaced || position.layersFilled || 0;
     
-    if (totalLayers >= strategy.maxLayers) {
-      console.log(`🚫 Max layers reached: ${position.layersFilled} filled + ${pendingCount} pending = ${totalLayers}/${strategy.maxLayers}`);
+    if (layersPlaced >= strategy.maxLayers) {
+      console.log(`🚫 Max layers reached: ${layersPlaced} layers placed >= ${strategy.maxLayers} max`);
       
       // Log error to database for audit trail
       await this.logTradeEntryError({
@@ -1236,7 +1237,7 @@ export class StrategyEngine extends EventEmitter {
         side: position.side,
         attemptType: 'layer',
         reason: 'max_layers_reached',
-        errorDetails: `Position already has ${totalLayers}/${strategy.maxLayers} layers (${position.layersFilled} filled + ${pendingCount} pending)`,
+        errorDetails: `Position already has ${layersPlaced} layers placed >= ${strategy.maxLayers} max (layersFilled: ${position.layersFilled || 0})`,
         liquidationValue: parseFloat(liquidation.value),
       });
       
