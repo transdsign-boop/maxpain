@@ -587,15 +587,15 @@ export class StrategyEngine extends EventEmitter {
     this.processedLiquidations.add(liquidation.id);
     console.log(`🔒 ATOMIC RESERVATION: Liquidation ${liquidation.id} marked as processed to prevent concurrent duplicates`);
     
-    // LIQUIDATION DEDUPLICATION: Only process one liquidation per symbol+side per minute
+    // LIQUIDATION DEDUPLICATION: Only process one liquidation per symbol+side every 20 seconds
     // This prevents multiple liquidations that arrive at the same time from all being evaluated
     const positionSide = liquidation.side === "long" ? "long" : "short";
     const liquidationKey = `${liquidation.symbol}-${positionSide}`;
     const lastSeenTime = this.lastLiquidationSeen.get(liquidationKey);
     const now = Date.now();
-    const oneMinuteMs = 60000;
+    const cooldownMs = 20000; // 20 seconds (reduced from 60s to allow faster re-entry)
     
-    if (lastSeenTime && (now - lastSeenTime) < oneMinuteMs) {
+    if (lastSeenTime && (now - lastSeenTime) < cooldownMs) {
       const timeSinceLast = ((now - lastSeenTime) / 1000).toFixed(1);
       console.log(`⏭️ LIQUIDATION DEDUPLICATION: ${liquidation.symbol} ${positionSide} - last liquidation seen ${timeSinceLast}s ago, skipping to spread out DCA entries`);
       return;
@@ -603,7 +603,7 @@ export class StrategyEngine extends EventEmitter {
     
     // Mark this liquidation as seen NOW (before any evaluation)
     this.lastLiquidationSeen.set(liquidationKey, now);
-    console.log(`✅ LIQUIDATION ACCEPTED: ${liquidation.symbol} ${positionSide} - first liquidation in 60s window, proceeding with evaluation`);
+    console.log(`✅ LIQUIDATION ACCEPTED: ${liquidation.symbol} ${positionSide} - first liquidation in 20s window, proceeding with evaluation`);
     
     // Double-check strategy is still active (prevents race condition during unregister)
     if (!this.activeStrategies.has(strategy.id)) return;
@@ -625,7 +625,7 @@ export class StrategyEngine extends EventEmitter {
 
     console.log(`🎯 Evaluating strategy "${currentStrategy.name}" for ${liquidation.symbol}`);
     
-    // GLOBAL 1-MINUTE ORDER PLACEMENT THROTTLE: Check if ANY strategy has placed an order recently
+    // GLOBAL 20-SECOND ORDER PLACEMENT THROTTLE: Check if ANY strategy has placed an order recently
     // CRITICAL FIX: Use GLOBAL cooldown key (symbol+side only, NOT per-session) to prevent duplicates
     // NOTE: Cooldown is set AFTER entry decision (not here) to avoid blocking valid entries if first strategy filters out
     // Note: positionSide already declared above for deduplication check
@@ -633,9 +633,9 @@ export class StrategyEngine extends EventEmitter {
     const lastOrderPlacement = this.lastFillTime.get(cooldownKey);
     if (lastOrderPlacement) {
       const timeSinceLastOrder = Date.now() - lastOrderPlacement;
-      const oneMinuteMs = 60000; // 1 minute in milliseconds
-      if (timeSinceLastOrder < oneMinuteMs) {
-        const waitTime = ((oneMinuteMs - timeSinceLastOrder) / 1000).toFixed(1);
+      const orderCooldownMs = 20000; // 20 seconds (reduced from 60s to allow faster re-entry)
+      if (timeSinceLastOrder < orderCooldownMs) {
+        const waitTime = ((orderCooldownMs - timeSinceLastOrder) / 1000).toFixed(1);
         console.log(`⏸️ GLOBAL ORDER THROTTLE: ${liquidation.symbol} ${positionSide} - last order placed ${(timeSinceLastOrder / 1000).toFixed(1)}s ago by ANY strategy, wait ${waitTime}s more`);
         
         // Log error to database for audit trail
@@ -645,7 +645,7 @@ export class StrategyEngine extends EventEmitter {
           side: positionSide,
           attemptType: 'entry',
           reason: 'global_order_placement_cooldown',
-          errorDetails: `Last order placed ${(timeSinceLastOrder / 1000).toFixed(1)}s ago by any strategy, wait ${waitTime}s more (1-minute global throttle)`,
+          errorDetails: `Last order placed ${(timeSinceLastOrder / 1000).toFixed(1)}s ago by any strategy, wait ${waitTime}s more (20-second global throttle)`,
           liquidationValue: parseFloat(liquidation.value),
         });
         
