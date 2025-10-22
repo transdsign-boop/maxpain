@@ -412,15 +412,6 @@ export class StrategyEngine extends EventEmitter {
                 return;
               }
 
-              // CAPTURE ALL FILLS: Check if this fill was from a bot order or manual trade
-              // Bot orders use clientOrderId starting with 'bot-' or 'layer-', manual trades don't
-              const isBotOrder = order.clientOrderId &&
-                (order.clientOrderId.startsWith('bot-') ||
-                 order.clientOrderId.startsWith('layer-') ||
-                 order.clientOrderId.startsWith('orphan-') ||
-                 order.clientOrderId.startsWith('exit-') ||
-                 order.clientOrderId.startsWith('sync-'));
-
               // Find the specific position that just filled
               const positionSide = order.positionSide === 'LONG' ? 'long' : 'short';
               const position = await storage.getPositionBySymbolAndSide(
@@ -428,46 +419,6 @@ export class StrategyEngine extends EventEmitter {
                 order.symbol,
                 positionSide
               );
-
-              // If this is NOT a bot order and we have a position, save it as a manual fill
-              if (!isBotOrder && position) {
-                console.log(`📝 Manual trade detected: ${order.symbol} ${order.side} qty=${order.lastFilledQuantity} @ ${order.lastFilledPrice}`);
-
-                try {
-                  // Check if this fill already exists (using exchange tradeId)
-                  const existingFills = await storage.getFillsByOrder(`manual-${order.tradeId}`);
-
-                  if (existingFills.length === 0) {
-                    // Save manual fill to database
-                    const fillQty = parseFloat(order.lastFilledQuantity || '0');
-                    const fillPrice = parseFloat(order.lastFilledPrice || order.averagePrice || '0');
-                    const fillValue = fillQty * fillPrice;
-                    const commission = parseFloat(order.commission || '0');
-
-                    await storage.applyFill({
-                      orderId: `manual-${order.tradeId}`, // Use tradeId to prevent duplicates
-                      sessionId: session.id,
-                      positionId: position.id,
-                      symbol: order.symbol,
-                      side: order.side.toLowerCase() as 'buy' | 'sell',
-                      quantity: fillQty.toString(),
-                      price: fillPrice.toString(),
-                      value: fillValue.toString(),
-                      fee: commission.toString(),
-                      layerNumber: position.layersFilled || 1,
-                      source: 'manual', // Tag as manual trade
-                      filledAt: new Date(order.orderTradeTime || Date.now()),
-                    });
-
-                    console.log(`✅ Manual fill saved: ${order.symbol} ${order.side} ${fillQty} @ ${fillPrice} (fee: ${commission})`);
-                  }
-                } catch (fillError: any) {
-                  // Ignore unique constraint violations (duplicate detection)
-                  if (fillError?.code !== '23505') {
-                    console.error('❌ Failed to save manual fill:', fillError);
-                  }
-                }
-              }
 
               if (position && position.isOpen) {
                 // CRITICAL FIX: Only increment layersFilled for DCA ENTRY fills
@@ -4149,7 +4100,6 @@ export class StrategyEngine extends EventEmitter {
       value: fillValue.toString(),
       fee: fee.toString(),
       layerNumber: order.layerNumber,
-      source: 'bot', // Bot-initiated paper trade
     });
 
     // Deduct entry fee from session balance
@@ -4235,7 +4185,6 @@ export class StrategyEngine extends EventEmitter {
       value: fillValue.toString(),
       fee: actualCommission.toString(), // ✅ ACTUAL commission from exchange
       layerNumber: order.layerNumber,
-      source: 'bot', // Bot-initiated live trade
       filledAt: actualTimestamp ? new Date(actualTimestamp) : undefined, // ✅ Use exchange timestamp
     });
 
@@ -4641,7 +4590,6 @@ export class StrategyEngine extends EventEmitter {
         value: actualExitValue.toString(), // ✅ Use actual value
         fee: actualExitFee.toString(), // ✅ Use actual fee
         layerNumber: 0, // Exit trades don't have layers
-        source: 'bot', // Bot-initiated exit (TP/SL)
         filledAt: actualExitTimestamp ? new Date(actualExitTimestamp) : undefined, // ✅ Use exchange timestamp
       });
 

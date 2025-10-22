@@ -111,13 +111,23 @@ export function useStrategyData() {
 
   // Fetch performance overview ONCE (no polling - WebSocket provides updates)
   const performanceQuery = useQuery<any>({
-    queryKey: ['/api/performance/overview'],
+    queryKey: ['/api/performance/overview', 'v2'], // v2 forces cache invalidation
+    queryFn: async () => {
+      const response = await fetch('/api/performance/overview');
+      if (!response.ok) throw new Error('Failed to fetch performance overview');
+      return response.json();
+    },
     staleTime: Infinity, // Never refetch - WebSocket provides updates
   });
 
   // Fetch chart data ONCE (no polling - WebSocket provides updates)
   const chartDataQuery = useQuery<any[]>({
-    queryKey: ['/api/performance/chart'],
+    queryKey: ['/api/performance/chart', 'v2'], // v2 forces cache invalidation
+    queryFn: async () => {
+      const response = await fetch('/api/performance/chart');
+      if (!response.ok) throw new Error('Failed to fetch chart data');
+      return response.json();
+    },
     staleTime: Infinity, // Never refetch - WebSocket provides updates
   });
 

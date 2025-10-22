@@ -26,6 +26,7 @@ interface Fill {
   layerNumber: number;
   filledAt: Date;
   fee?: string;
+  source?: 'bot' | 'manual' | 'sync'; // Source of the fill
 }
 
 interface Position {
@@ -235,10 +236,35 @@ function AllTradesView({ formatCurrency, formatPercentage, getPnlColor }: AllTra
   );
 }
 
+// Helper function to render fill source badge
+function FillSourceBadge({ source }: { source?: 'bot' | 'manual' | 'sync' }) {
+  if (!source || source === 'bot') return null; // Don't show badge for bot trades (default)
+
+  const badgeStyles: Record<'manual' | 'sync', string> = {
+    manual: 'bg-orange-500/20 text-orange-300 border-orange-500/30',
+    sync: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
+  };
+
+  const badgeLabels: Record<'manual' | 'sync', string> = {
+    manual: 'Manual',
+    sync: 'Synced',
+  };
+
+  return (
+    <Badge
+      variant="outline"
+      className={`text-[10px] h-4 px-1 ${badgeStyles[source]}`}
+    >
+      {badgeLabels[source]}
+    </Badge>
+  );
+}
+
 // Completed trade card with expandable layer details
 function CompletedTradeCard({ position, formatCurrency, formatPercentage, getPnlColor, isHedge }: CompletedTradeCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-  
+  const [fillSourceFilter, setFillSourceFilter] = useState<'all' | 'bot' | 'manual' | 'sync'>('all');
+
   const { data: fills } = useQuery<Fill[]>({
     queryKey: ['/api/positions', position.id, 'fills'],
     enabled: isExpanded,
@@ -249,10 +275,16 @@ function CompletedTradeCard({ position, formatCurrency, formatPercentage, getPnl
   const realizedPnlPercent = parseFloat(position.unrealizedPnl); // This is the percentage
   const realizedPnlDollar = parseFloat(position.realizedPnl || '0'); // This is ALREADY in dollars!
   const avgEntry = parseFloat(position.avgEntryPrice);
-  
+
+  // Filter fills by source
+  const filteredFills = fills?.filter(f => {
+    if (fillSourceFilter === 'all') return true;
+    return f.source === fillSourceFilter || (!f.source && fillSourceFilter === 'bot'); // Treat missing source as 'bot'
+  }) || [];
+
   // Separate entry and exit fills/fees
-  const entryFills = fills?.filter(f => f.layerNumber > 0) || [];
-  const exitFills = fills?.filter(f => f.layerNumber === 0) || [];
+  const entryFills = filteredFills.filter(f => f.layerNumber > 0);
+  const exitFills = filteredFills.filter(f => f.layerNumber === 0);
   const entryFees = entryFills.reduce((sum, f) => sum + parseFloat(f.fee || '0'), 0);
   const exitFees = exitFills.reduce((sum, f) => sum + parseFloat(f.fee || '0'), 0);
   const totalFees = entryFees + exitFees;
@@ -330,7 +362,24 @@ function CompletedTradeCard({ position, formatCurrency, formatPercentage, getPnl
 
         <CollapsibleContent>
           <div className="border-t px-4 py-3">
-            <p className="text-xs font-medium text-muted-foreground mb-2">Layer Details</p>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-medium text-muted-foreground">Layer Details</p>
+              {fills && fills.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-muted-foreground">Filter:</label>
+                  <select
+                    value={fillSourceFilter}
+                    onChange={(e) => setFillSourceFilter(e.target.value as 'all' | 'bot' | 'manual' | 'sync')}
+                    className="text-xs bg-background border border-input rounded px-2 py-1 cursor-pointer"
+                  >
+                    <option value="all">All Fills</option>
+                    <option value="bot">Bot Only</option>
+                    <option value="manual">Manual Only</option>
+                    <option value="sync">Synced Only</option>
+                  </select>
+                </div>
+              )}
+            </div>
             {fills && fills.length > 0 ? (
               <div className="space-y-2">
                 {entryFills.length > 0 && (
@@ -342,6 +391,7 @@ function CompletedTradeCard({ position, formatCurrency, formatPercentage, getPnl
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
                               <Badge variant="outline" className="text-xs h-5">L{fill.layerNumber}</Badge>
+                              <FillSourceBadge source={fill.source} />
                               <span className="text-foreground">
                                 {parseFloat(fill.quantity).toFixed(4)} @ {formatCurrency(parseFloat(fill.price))}
                               </span>
@@ -367,6 +417,7 @@ function CompletedTradeCard({ position, formatCurrency, formatPercentage, getPnl
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
                               <Badge variant="outline" className="text-xs h-5">Exit</Badge>
+                              <FillSourceBadge source={fill.source} />
                               <span className="text-foreground">
                                 {parseFloat(fill.quantity).toFixed(4)} @ {formatCurrency(parseFloat(fill.price))}
                               </span>
@@ -427,16 +478,23 @@ function RealizedPnlEventCard({ event, formatCurrency, getPnlColor }: RealizedPn
 function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, formatPercentage, getPnlColor, isHedge, actualTpPrice, actualSlPrice }: PositionCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isFlashing, setIsFlashing] = useState(false);
+  const [fillSourceFilter, setFillSourceFilter] = useState<'all' | 'bot' | 'manual' | 'sync'>('all');
   const prevLayersRef = useRef(position.layersFilled);
-  
+
   const { data: fills } = useQuery<Fill[]>({
     queryKey: ['/api/positions', position.id, 'fills'],
     enabled: isExpanded,
   });
-  
+
+  // Filter fills by source
+  const filteredFills = fills?.filter(f => {
+    if (fillSourceFilter === 'all') return true;
+    return f.source === fillSourceFilter || (!f.source && fillSourceFilter === 'bot'); // Treat missing source as 'bot'
+  }) || [];
+
   // Calculate actual layers from entry fills (layerNumber > 0)
-  const entryFills = fills?.filter(f => f.layerNumber > 0) || [];
-  const exitFills = fills?.filter(f => f.layerNumber === 0) || [];
+  const entryFills = filteredFills.filter(f => f.layerNumber > 0);
+  const exitFills = filteredFills.filter(f => f.layerNumber === 0);
   const actualLayersFilled = fills && entryFills.length > 0 ? entryFills.length : position.layersFilled;
   
   // Flash effect when layers increase
@@ -877,7 +935,24 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
 
         <CollapsibleContent>
           <div className="border-t px-3 py-2 relative z-10 bg-background/30">
-            <p className="text-xs font-medium text-muted-foreground mb-2">Layer Details</p>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-medium text-muted-foreground">Layer Details</p>
+              {fills && fills.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-muted-foreground">Filter:</label>
+                  <select
+                    value={fillSourceFilter}
+                    onChange={(e) => setFillSourceFilter(e.target.value as 'all' | 'bot' | 'manual' | 'sync')}
+                    className="text-xs bg-background border border-input rounded px-2 py-1 cursor-pointer"
+                  >
+                    <option value="all">All Fills</option>
+                    <option value="bot">Bot Only</option>
+                    <option value="manual">Manual Only</option>
+                    <option value="sync">Synced Only</option>
+                  </select>
+                </div>
+              )}
+            </div>
             {fills && fills.length > 0 ? (
               <div className="space-y-2">
                 {entryFills.length > 0 && (
@@ -888,6 +963,7 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
                         <div key={fill.id} className="flex items-center justify-between text-xs py-1 px-2 rounded bg-muted/30">
                           <div className="flex items-center gap-2 flex-1">
                             <Badge variant="outline" className="text-xs h-5">L{fill.layerNumber}</Badge>
+                            <FillSourceBadge source={fill.source} />
                             <span className="text-foreground">
                               {parseFloat(fill.quantity).toFixed(4)} @ {formatCurrency(parseFloat(fill.price))}
                             </span>
@@ -913,6 +989,7 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
                         <div key={fill.id} className="flex items-center justify-between text-xs py-1 px-2 rounded bg-muted/30">
                           <div className="flex items-center gap-2 flex-1">
                             <Badge variant="outline" className="text-xs h-5">Exit</Badge>
+                            <FillSourceBadge source={fill.source} />
                             <span className="text-foreground">
                               {parseFloat(fill.quantity).toFixed(4)} @ {formatCurrency(parseFloat(fill.price))}
                             </span>
