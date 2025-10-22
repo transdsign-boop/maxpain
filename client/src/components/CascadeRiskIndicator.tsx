@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { AlertTriangle, TrendingDown, Activity } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -27,6 +28,7 @@ interface CascadeStatus {
 
 export default function CascadeRiskIndicator() {
   const [statuses, setStatuses] = useState<CascadeStatus[]>([]);
+  const [globalThreshold, setGlobalThreshold] = useState<number>(20);
   const { toast } = useToast();
 
   // Aggregate metrics across all assets for overall market view
@@ -114,6 +116,20 @@ export default function CascadeRiskIndicator() {
 
   const status = getAggregatedStatus();
 
+  // Fetch cascade settings on mount
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const response = await apiRequest('GET', '/api/cascade/settings');
+        const data = await response.json() as { autoEnabled: boolean; globalBlockThresholdPercent: number };
+        setGlobalThreshold(data.globalBlockThresholdPercent);
+      } catch (error) {
+        console.error('Error fetching cascade settings:', error);
+      }
+    };
+    fetchSettings();
+  }, []);
+
   useEffect(() => {
     const ws = new WebSocket(
       `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`
@@ -157,11 +173,11 @@ export default function CascadeRiskIndicator() {
   const handleAutoToggle = async (checked: boolean) => {
     try {
       await apiRequest('POST', '/api/cascade/auto', { autoEnabled: checked });
-      
+
       toast({
         title: checked ? "Auto-gating enabled" : "Auto-gating disabled",
-        description: checked 
-          ? "New entries will be blocked when cascade risk is high" 
+        description: checked
+          ? "New entries will be blocked when cascade risk is high"
           : "New entries allowed regardless of cascade risk",
       });
     } catch (error) {
@@ -169,6 +185,28 @@ export default function CascadeRiskIndicator() {
       toast({
         title: "Error",
         description: "Failed to update auto-gating mode",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleThresholdChange = async (value: string) => {
+    const numValue = parseInt(value);
+    if (isNaN(numValue) || numValue < 0 || numValue > 100) return;
+
+    setGlobalThreshold(numValue);
+
+    try {
+      await apiRequest('POST', '/api/cascade/threshold', { thresholdPercent: numValue });
+      toast({
+        title: "Threshold updated",
+        description: `Global block triggers at ${numValue}% of symbols cascading`,
+      });
+    } catch (error) {
+      console.error('Error setting threshold:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update threshold",
         variant: "destructive",
       });
     }
@@ -184,13 +222,30 @@ export default function CascadeRiskIndicator() {
     }
   };
 
+  const getBlockedSymbols = (): string[] => {
+    return statuses.filter(s => s.autoBlock).map(s => s.symbol);
+  };
+
   const getStatusBadge = () => {
     if (status.autoBlock) {
+      // Determine if it's global block or per-symbol block
+      const criticalCount = statuses.filter(s => s.autoBlock).length;
+      const cascadePercent = statuses.length > 0 ? (criticalCount / statuses.length) * 100 : 0;
+      const isGlobalBlock = cascadePercent >= globalThreshold;
+      const blockedSymbols = getBlockedSymbols();
+
       return (
-        <Badge variant="destructive" className="gap-1" data-testid="badge-auto-blocking">
-          <AlertTriangle className="h-3 w-3" />
-          Auto Blocking
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge variant="destructive" className="gap-1" data-testid="badge-auto-blocking">
+            <AlertTriangle className="h-3 w-3" />
+            {isGlobalBlock ? 'Global Block' : 'Per-Symbol Block'}
+          </Badge>
+          {!isGlobalBlock && blockedSymbols.length > 0 && (
+            <span className="text-xs text-red-500 font-mono" title={`Blocked: ${blockedSymbols.join(', ')}`}>
+              ({blockedSymbols.slice(0, 3).join(', ')}{blockedSymbols.length > 3 ? ` +${blockedSymbols.length - 3}` : ''})
+            </span>
+          )}
+        </div>
       );
     }
     if (status.autoEnabled) {
@@ -299,7 +354,7 @@ export default function CascadeRiskIndicator() {
             {/* Row 2: Cascade Detector Label, Status & Toggle */}
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs text-muted-foreground">Cascade Detector</span>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 {getStatusBadge()}
                 <Switch
                   id="auto-detect"
@@ -308,6 +363,16 @@ export default function CascadeRiskIndicator() {
                   data-testid="switch-auto-detect"
                   className="scale-75"
                 />
+                <Input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={globalThreshold}
+                  onChange={(e) => handleThresholdChange(e.target.value)}
+                  className="w-12 h-6 text-xs px-1"
+                  title="Global block threshold %"
+                />
+                <span className="text-xs text-muted-foreground">%</span>
               </div>
             </div>
 
@@ -351,6 +416,35 @@ export default function CascadeRiskIndicator() {
               </div>
             </div>
           </div>
+
+          {/* Blocked Symbols Section - Mobile */}
+          {(() => {
+            const blockedSymbols = getBlockedSymbols();
+            const criticalCount = statuses.filter(s => s.autoBlock).length;
+            const cascadePercent = statuses.length > 0 ? (criticalCount / statuses.length) * 100 : 0;
+            const isGlobalBlock = cascadePercent >= globalThreshold;
+
+            if (blockedSymbols.length > 0 && !isGlobalBlock) {
+              return (
+                <div className="mt-2 pt-2 border-t border-red-500/20 bg-red-500/5 -mx-2 px-2 py-1.5 rounded-b">
+                  <div className="flex items-start gap-1.5">
+                    <AlertTriangle className="h-3 w-3 text-red-500 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <span className="text-xs font-medium text-red-500 block mb-1">Blocked:</span>
+                      <div className="flex flex-wrap gap-1">
+                        {blockedSymbols.map(symbol => (
+                          <Badge key={symbol} variant="outline" className="text-xs font-mono bg-red-500/10 text-red-500 border-red-500/30 h-5 px-1.5">
+                            {symbol}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+            return null;
+          })()}
         </div>
 
         {/* Desktop Layout: Single row */}
@@ -397,7 +491,7 @@ export default function CascadeRiskIndicator() {
           <span className="text-sm text-muted-foreground ml-4">Cascade Detector</span>
 
           {/* Status & Toggle */}
-          <div className="flex items-center gap-2 ml-auto">
+          <div className="flex items-center gap-3 ml-auto">
             {getStatusBadge()}
             <Switch
               id="auto-detect"
@@ -405,6 +499,18 @@ export default function CascadeRiskIndicator() {
               onCheckedChange={handleAutoToggle}
               data-testid="switch-auto-detect"
             />
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                min="0"
+                max="100"
+                value={globalThreshold}
+                onChange={(e) => handleThresholdChange(e.target.value)}
+                className="w-16 h-9 text-sm"
+                title="Global block threshold %"
+              />
+              <span className="text-sm text-muted-foreground">% threshold</span>
+            </div>
           </div>
         </div>
 
@@ -451,6 +557,34 @@ export default function CascadeRiskIndicator() {
             {getContextMessage()}
           </span>
         </div>
+
+        {/* Blocked Symbols Section - Desktop */}
+        {(() => {
+          const blockedSymbols = getBlockedSymbols();
+          const criticalCount = statuses.filter(s => s.autoBlock).length;
+          const cascadePercent = statuses.length > 0 ? (criticalCount / statuses.length) * 100 : 0;
+          const isGlobalBlock = cascadePercent >= globalThreshold;
+
+          if (blockedSymbols.length > 0 && !isGlobalBlock) {
+            return (
+              <div className="hidden md:flex items-center gap-3 mt-3 pt-3 border-t border-red-500/20 bg-red-500/5 -mx-3 px-3 py-2 rounded-b-lg">
+                <AlertTriangle className="h-4 w-4 text-red-500 flex-shrink-0" />
+                <span className="text-sm font-medium text-red-500">Blocked Symbols:</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {blockedSymbols.map(symbol => (
+                    <Badge key={symbol} variant="outline" className="text-xs font-mono bg-red-500/10 text-red-500 border-red-500/30">
+                      {symbol}
+                    </Badge>
+                  ))}
+                </div>
+                <span className="text-xs text-muted-foreground ml-auto">
+                  {blockedSymbols.length} of {statuses.length} symbols blocked
+                </span>
+              </div>
+            );
+          }
+          return null;
+        })()}
       </CardContent>
     </Card>
   );

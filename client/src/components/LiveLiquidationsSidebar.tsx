@@ -52,29 +52,33 @@ function LiveLiquidationsSidebar({
     return Array.from(new Set(recentLiquidations.map(liq => liq.symbol)));
   }, [recentLiquidations]);
 
-  // Fetch complete historical data for all unique symbols shown in sidebar
-  const { data: symbolHistories, isLoading: historiesLoading } = useQuery<Record<string, Liquidation[]>>({
-    queryKey: [`/api/liquidations/by-symbol?symbols=${uniqueSymbols.join(',')}&limit=10000`],
-    enabled: uniqueSymbols.length > 0,
-    refetchInterval: 30000, // Refresh every 30 seconds
-    select: (data: any) => {
-      // Normalize timestamps and group by symbol
-      const normalized = data.map((liq: any) => ({
-        ...liq,
-        timestamp: typeof liq.timestamp === 'string' ? new Date(liq.timestamp) : liq.timestamp
-      }));
-      
-      // Group by symbol
+  // Fetch complete historical data PER SYMBOL (matches strategy engine approach exactly)
+  // Each symbol gets its own query with limit=10000, ensuring percentile calculations are identical
+  const { data: symbolHistories } = useQuery<Record<string, Liquidation[]>>({
+    queryKey: ['liquidations-by-symbol-individual', uniqueSymbols.join(',')],
+    queryFn: async () => {
+      // Query each symbol separately (matching strategy engine: storage.getLiquidationsBySymbol([symbol], 10000))
+      const results = await Promise.all(
+        uniqueSymbols.map(async (symbol) => {
+          const response = await fetch(`/api/liquidations/by-symbol?symbols=${symbol}&limit=10000`);
+          const data = await response.json();
+          return { symbol, data };
+        })
+      );
+
+      // Group results by symbol
       const grouped: Record<string, Liquidation[]> = {};
-      normalized.forEach((liq: Liquidation) => {
-        if (!grouped[liq.symbol]) {
-          grouped[liq.symbol] = [];
-        }
-        grouped[liq.symbol].push(liq);
+      results.forEach(({ symbol, data }) => {
+        grouped[symbol] = data.map((liq: any) => ({
+          ...liq,
+          timestamp: typeof liq.timestamp === 'string' ? new Date(liq.timestamp) : liq.timestamp
+        }));
       });
-      
+
       return grouped;
-    }
+    },
+    enabled: uniqueSymbols.length > 0,
+    refetchInterval: 5000, // Refresh every 5 seconds to stay in sync with strategy engine
   });
 
   const formatValue = (value: number) => {
@@ -84,6 +88,7 @@ function LiveLiquidationsSidebar({
   };
 
   // Cache sorted asset values to avoid recomputing on every render
+  // This matches the strategy engine's approach: sort all historical values for percentile calculation
   const sortedAssetValues = useMemo(() => {
     const cache: Record<string, number[]> = {};
     if (symbolHistories) {
@@ -96,13 +101,15 @@ function LiveLiquidationsSidebar({
   }, [symbolHistories]);
 
   // Calculate asset-specific percentile based on complete history for that symbol
+  // This uses the EXACT same algorithm as strategy-engine.ts lines 1162-1176
   const calculateAssetPercentile = (symbol: string, value: number) => {
     const assetValues = sortedAssetValues[symbol];
     if (!assetValues || assetValues.length === 0) {
       return 0;
     }
-    
-    // Binary search for efficient O(log n) lookup
+
+    // Binary search to find how many liquidations are strictly below current value
+    // Matches strategy engine: allHistoricalValues[mid] <= currentLiquidationValue
     let left = 0, right = assetValues.length;
     while (left < right) {
       const mid = Math.floor((left + right) / 2);
@@ -112,6 +119,9 @@ function LiveLiquidationsSidebar({
         right = mid;
       }
     }
+
+    // Calculate percentile: (count of values <= current) / (total count) * 100
+    // Matches strategy engine: Math.round((belowCount / allHistoricalValues.length) * 100)
     return Math.round((left / assetValues.length) * 100);
   };
 
@@ -260,7 +270,7 @@ function LiveLiquidationsSidebar({
                       </div>
                       <div className="flex items-center gap-2">
                         <div className={`font-bold text-sm ${
-                          parseFloat(liquidation.value) > 10000 ? 'text-red-600' : 
+                          parseFloat(liquidation.value) > 10000 ? 'text-red-600' :
                           parseFloat(liquidation.value) > 1000 ? 'text-yellow-600' : 'text-foreground'
                         }`}>
                           {formatValue(parseFloat(liquidation.value))}
@@ -269,7 +279,7 @@ function LiveLiquidationsSidebar({
                           const percentile = calculateAssetPercentile(liquidation.symbol, parseFloat(liquidation.value));
                           const label = getPercentileLabel(percentile);
                           return (
-                            <Badge 
+                            <Badge
                               className={`text-xs px-1.5 py-0.5 ${label.color}`}
                               data-testid={`badge-percentile-${liquidation.id}`}
                             >
@@ -394,10 +404,10 @@ function LiveLiquidationsSidebar({
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
                           <span className="font-bold text-sm">{liquidation.symbol}</span>
-                          <Badge 
+                          <Badge
                             className={`text-xs px-2 py-0.5 font-medium ${
-                              liquidation.side === 'long' 
-                                ? 'bg-lime-500 text-white' 
+                              liquidation.side === 'long'
+                                ? 'bg-lime-500 text-white'
                                 : 'bg-red-600 text-white'
                             }`}
                           >

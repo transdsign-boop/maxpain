@@ -16,7 +16,8 @@ export interface DCAConfig {
   currentBalance: number;
   leverage: number;
   atrPercent: number; // Current volatility as percentage
-  minNotional?: number; // Minimum order value required by exchange (price × quantity)
+  minNotional?: number; // Minimum order value required by exchange (price × quantity) in USD
+  minQty?: number; // Minimum order quantity required by exchange in base asset (e.g., 0.001 BTC)
 }
 
 export interface DCAResult {
@@ -221,19 +222,24 @@ export function calculateDCALevels(
   
   console.log(`   📊 Position risk: $${totalPositionRisk.toFixed(2)} (${riskPercent.toFixed(2)}% of account)`);
   
-  // CRITICAL: Ensure Layer 1 meets exchange minimum notional
+  // CRITICAL: Ensure Layer 1 meets exchange minimum requirements
   // If q1 needs to be scaled up, we must reduce growth factor to maintain risk cap
   const MIN_NOTIONAL = config.minNotional ?? 5.0; // Fallback should never be used
+  const MIN_QTY = config.minQty ?? 0; // Minimum quantity (e.g., 0.001 BTC)
   const layer1Notional = q1 * entryPrice;
-  
-  console.log(`   🔍 MIN_NOTIONAL check: received=${config.minNotional}, using=${MIN_NOTIONAL}, layer1Notional=${layer1Notional.toFixed(2)}`);
-  
+
+  console.log(`   🔍 Exchange minimums: minNotional=$${MIN_NOTIONAL}, minQty=${MIN_QTY}, layer1Qty=${q1.toFixed(6)}, layer1Notional=$${layer1Notional.toFixed(2)}`);
+
   let effectiveG = g; // Start with configured growth factor
   let growthFactorAdjusted = false;
-  
-  if (layer1Notional < MIN_NOTIONAL) {
+
+  // Check both minNotional ($5) AND minQty (0.001 BTC) requirements
+  const notionalRequiredQty = MIN_NOTIONAL / entryPrice;
+  const requiredQty = Math.max(MIN_QTY, notionalRequiredQty);
+
+  if (q1 < requiredQty) {
     const oldQ1 = q1;
-    q1 = MIN_NOTIONAL / entryPrice; // Scale up to meet minimum
+    q1 = requiredQty; // Scale up to meet minimum (respects both minQty and minNotional)
     
     // Now solve for new growth factor that maintains the same total risk
     // Original: totalRisk = q1_old * totalWeight_old * lossPerUnit = maxRiskDollars
@@ -273,8 +279,12 @@ export function calculateDCALevels(
     effectiveG = newG;
     growthFactorAdjusted = true;
     
-    console.log(`   ⚠️ Layer 1 notional $${layer1Notional.toFixed(2)} < $${MIN_NOTIONAL} minimum (exchange requirement)`);
-    console.log(`   📈 Adjusted q1: ${oldQ1.toFixed(6)} → ${q1.toFixed(6)} units to meet minimum`);
+    const reason = MIN_QTY > notionalRequiredQty
+      ? `minQty=${MIN_QTY} (${(q1 * entryPrice).toFixed(2)} USD notional)`
+      : `minNotional=$${MIN_NOTIONAL}`;
+    console.log(`   ⚠️ Layer 1 too small: ${oldQ1.toFixed(6)} units ($${(oldQ1 * entryPrice).toFixed(2)})`);
+    console.log(`   📈 Scaled up to meet ${reason}`);
+    console.log(`   📈 New q1: ${q1.toFixed(6)} units ($${(q1 * entryPrice).toFixed(2)} notional)`);
     console.log(`   📉 Reduced growth factor: ${g.toFixed(3)}x → ${effectiveG.toFixed(3)}x to maintain position safety`);
     console.log(`   ✅ Total weight adjusted: ${totalWeight.toFixed(2)} → ${targetTotalWeight.toFixed(2)}`);
     
@@ -618,6 +628,8 @@ export async function calculateNextLayer(
     currentBalance,
     leverage,
     atrPercent,
+    minNotional: 5.0, // Fallback value
+    minQty: 0, // Fallback value (no minimum quantity enforcement for old positions)
   });
   
   // Get the next level's price, quantity, and TP/SL
@@ -665,9 +677,10 @@ export async function recalculateReservedRiskForSession(
         secretKey
       );
       
-      // Get symbol-specific minNotional (fallback to 5.0 if not available)
+      // Get symbol-specific minNotional and minQty (fallback values if not available)
       const minNotional = getSymbolMinNotional?.(position.symbol) ?? 5.0;
-      
+      const minQty = 0; // Not available from getSymbolMinNotional callback, use 0 as fallback
+
       // Calculate full DCA potential with current strategy settings
       const dcaResult = calculateDCALevels(strategy, {
         entryPrice: parseFloat(position.avgEntryPrice),
@@ -676,6 +689,7 @@ export async function recalculateReservedRiskForSession(
         leverage: parseFloat(strategy.leverage),
         atrPercent,
         minNotional,
+        minQty,
       });
       
       const reservedRiskDollars = dcaResult.totalRiskDollars;

@@ -45,9 +45,12 @@ class CascadeDetectorService {
   private clients: Set<WebSocket> | null = null;
   private isProcessing: boolean = false;
   private tickInterval: NodeJS.Timeout | null = null;
-  
+
   private liqAccumulator: number = 0;
   private lastLiqReset: number = Date.now();
+
+  // Global cascade block threshold (percentage of symbols that must be cascading)
+  private globalBlockThresholdPercent: number = 20; // Default: 20% of symbols
 
   // ⚠️ ULTRA-MINIMAL POLLING CONFIG - DO NOT CHANGE WITHOUT USER PERMISSION ⚠️
   private config: CascadeConfig = {
@@ -414,6 +417,25 @@ class CascadeDetectorService {
     return first ? first.getAutoEnabled() : true;
   }
 
+  /**
+   * Set the global cascade block threshold percentage
+   * @param percent - Percentage of symbols (0-100) that must be cascading to trigger global block
+   */
+  public setGlobalBlockThreshold(percent: number): void {
+    if (percent < 0 || percent > 100) {
+      throw new Error('Threshold must be between 0 and 100');
+    }
+    this.globalBlockThresholdPercent = percent;
+    console.log(`🎚️  Global cascade block threshold set to ${percent}%`);
+  }
+
+  /**
+   * Get the current global cascade block threshold percentage
+   */
+  public getGlobalBlockThreshold(): number {
+    return this.globalBlockThresholdPercent;
+  }
+
   public async syncSymbols(): Promise<void> {
     try {
       // Get active strategy from database
@@ -563,18 +585,18 @@ class CascadeDetectorService {
     let reason: string | undefined;
     
     // CASCADE AUTO-BLOCKING: Based on cascade detector signals (orange/red lights)
-    // When 50%+ of monitored symbols show cascade activity, sit out
+    // Block when threshold% of monitored symbols show cascade activity
     // Reversal quality is informational only - NOT used for gating
-    
+
     if (autoEnabled && statuses.length > 0) {
       // Calculate what percentage of symbols are showing cascade activity
       const cascadePercentage = (criticalSymbols.length / statuses.length) * 100;
-      
-      // Block when 50% or more symbols show cascade activity (orange/red light)
+
+      // Block when threshold or more symbols show cascade activity (orange/red light)
       // This indicates widespread cascade risk across the market
-      if (cascadePercentage >= 50) {
+      if (cascadePercentage >= this.globalBlockThresholdPercent) {
         blockAll = true;
-        reason = `Widespread cascade activity: ${criticalSymbols.length}/${statuses.length} symbols (${cascadePercentage.toFixed(0)}%) - ${criticalSymbols.join(', ')}`;
+        reason = `Global cascade block (${cascadePercentage.toFixed(0)}% ≥ ${this.globalBlockThresholdPercent}%): ${criticalSymbols.length}/${statuses.length} symbols - ${criticalSymbols.join(', ')}`;
       }
     }
     
