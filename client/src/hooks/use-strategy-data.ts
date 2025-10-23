@@ -137,12 +137,14 @@ export function useStrategyData() {
     staleTime: Infinity, // Never refetch - WebSocket provides updates
   });
 
-  // Fetch closed positions (refresh every 30 seconds to stay in sync with P&L events)
+  // Fetch closed positions (refresh every 2 minutes - reduces load)
   const closedPositionsQuery = useQuery<any[]>({
     queryKey: ['/api/strategies', activeStrategy?.id, 'positions', 'closed'],
     enabled: !!activeStrategy?.id,
-    staleTime: 30 * 1000, // Refresh every 30 seconds (same as P&L events)
-    refetchInterval: 30 * 1000, // Auto-refetch every 30 seconds
+    staleTime: 2 * 60 * 1000, // Refresh every 2 minutes
+    refetchInterval: 2 * 60 * 1000, // Auto-refetch every 2 minutes
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
   });
 
   // Fetch realized P&L events from exchange (actual closed trades - source of truth)
@@ -154,8 +156,10 @@ export function useStrategyData() {
       if (!response.ok) return { events: [], total: 0, count: 0 };
       return response.json();
     },
-    staleTime: 30 * 1000, // Refresh every 30 seconds for recent trades
-    refetchInterval: 30 * 1000, // Auto-refetch every 30 seconds
+    staleTime: 5 * 60 * 1000, // Refresh every 5 minutes (exchange API - avoid rate limits!)
+    refetchInterval: 5 * 60 * 1000, // Auto-refetch every 5 minutes
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
   });
 
   // Fetch transfers for chart markers (fetched from exchange API)
@@ -206,7 +210,10 @@ export function useStrategyData() {
       if (!response.ok) return { records: [], total: 0 };
       return response.json();
     },
-    staleTime: 5 * 60 * 1000, // Refresh every 5 minutes
+    staleTime: 10 * 60 * 1000, // Refresh every 10 minutes (exchange API - avoid rate limits!)
+    refetchInterval: 10 * 60 * 1000, // Auto-refetch every 10 minutes
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
   });
 
   // Fetch funding fees for fee calculation (fetched from exchange API, not database)
@@ -217,7 +224,10 @@ export function useStrategyData() {
       if (!response.ok) return { records: [], total: 0 };
       return response.json();
     },
-    staleTime: 5 * 60 * 1000, // Refresh every 5 minutes
+    staleTime: 10 * 60 * 1000, // Refresh every 10 minutes (exchange API - avoid rate limits!)
+    refetchInterval: 10 * 60 * 1000, // Auto-refetch every 10 minutes
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
   });
 
   const snapshot = liveSnapshotQuery.data;

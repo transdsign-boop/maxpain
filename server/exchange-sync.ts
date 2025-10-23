@@ -668,15 +668,18 @@ export async function syncTransfers(userId: string): Promise<{
   try {
     const apiKey = process.env.ASTER_API_KEY;
     const secretKey = process.env.ASTER_SECRET_KEY;
-    
+
     if (!apiKey || !secretKey) {
       return { success: false, addedCount: 0, error: 'API keys not configured' };
     }
-    
-    // Fetch TRANSFER income from API (all historical data)
+
+    // Fetch TRANSFER income from API with explicit date range to get ALL historical data
+    // Start from Oct 1, 2025 to ensure we get all transfers
+    const startTime = 1759276800000; // Oct 1, 2025 00:00:00 UTC
+    const endTime = Date.now();
     const timestamp = Date.now();
-    const queryParams = `incomeType=TRANSFER&timestamp=${timestamp}`;
-    
+    const queryParams = `incomeType=TRANSFER&startTime=${startTime}&endTime=${endTime}&timestamp=${timestamp}`;
+
     const signature = createHmac('sha256', secretKey)
       .update(queryParams)
       .digest('hex');
@@ -697,8 +700,8 @@ export async function syncTransfers(userId: string): Promise<{
     }
 
     const transferData = await response.json();
-    console.log(`📊 Fetched ${transferData.length} transfer events from exchange`);
-    
+    console.log(`📊 Fetched ${transferData.length} transfer events from exchange (from Oct 1, 2025 onwards)`);
+
     // Batch insert transfers using onConflictDoNothing for idempotency
     const insertedTransfers = await db.insert(transfers)
       .values(transferData.map((transfer: any) => ({
@@ -710,11 +713,11 @@ export async function syncTransfers(userId: string): Promise<{
       })))
       .onConflictDoNothing()
       .returning({ id: transfers.id });
-    
+
     const addedCount = insertedTransfers.length;
-    
-    console.log(`✅ Synced ${addedCount} new transfers to database`);
-    
+
+    console.log(`✅ Synced ${addedCount} new transfers to database (total from exchange: ${transferData.length})`);
+
     return { success: true, addedCount };
   } catch (error) {
     console.error('❌ Error syncing transfers:', error);

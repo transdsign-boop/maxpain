@@ -2,6 +2,15 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Quick Reference
+
+**Other Documentation Files:**
+- `MPI_LIQUIDATION_HUNTER_DOCUMENTATION.md` - Complete trading strategy guide, risk management, and user-facing documentation
+- `README-DOCKER.md` - Docker deployment instructions for cloud providers and VPS
+- `RATE_LIMITER_README.md` - Rate limiting implementation details for Aster DEX API
+- `replit.md` - Replit-specific configuration and system architecture notes
+- `design_guidelines.md` - UI/UX design specifications and color schemes
+
 ## Project Overview
 
 MPI™ Liquidation Hunter Bot - A sophisticated algorithmic trading system for cryptocurrency futures markets on Aster DEX. The bot detects and counter-trades liquidation events using advanced DCA (Dollar Cost Averaging), cascade risk analysis, and institutional-grade risk management.
@@ -33,6 +42,19 @@ npm start
 # Database schema push (DO NOT USE - see Database section)
 npm run db:push
 ```
+
+**Development Server Details:**
+- `npm run dev` uses `tsx` to run `server/index.ts` with hot reload
+- Vite dev server runs concurrently for client-side hot module replacement
+- Server runs on port 5000 (configurable via `PORT` environment variable)
+- Client is served by Vite dev server in development mode
+- In production, Vite builds static client assets served by Express
+
+**Replit-Specific:**
+- `.replit` file configures the run button to execute `npm run dev`
+- Port 5000 is automatically exposed as port 80 externally
+- Hidden files/folders: `.config`, `.git`, `node_modules`, `dist`
+- See `replit.md` for detailed Replit configuration notes
 
 ### Running Single Tests
 
@@ -67,27 +89,31 @@ This project does not have a test suite configured. All testing is done manually
 ├── client/              # React frontend application
 │   └── src/
 │       ├── components/  # Reusable UI components (shadcn/ui + custom)
-│       ├── hooks/       # Custom React hooks
+│       ├── hooks/       # Custom React hooks (use-strategy-data, useWebSocketData, etc.)
 │       ├── lib/         # Utilities (queryClient, utils)
-│       └── pages/       # Route pages (Dashboard, Documentation)
+│       └── pages/       # Route pages (Dashboard, Documentation, Landing)
 ├── server/              # Node.js backend services
 │   ├── exchanges/       # Exchange adapters (aster-stream.ts, registry.ts)
 │   ├── scripts/         # Maintenance/analysis scripts
-│   ├── routes.ts        # API endpoint definitions
-│   ├── strategy-engine.ts        # Core trading logic coordinator
+│   ├── routes.ts        # API endpoint definitions (279KB - contains all REST endpoints)
+│   ├── strategy-engine.ts        # Core trading logic coordinator (221KB - main engine)
 │   ├── dca-calculator.ts         # DCA mathematical computations
+│   ├── dca-sql.ts                # Raw SQL queries for DCA params (bypasses ORM caching)
 │   ├── cascade-detector-service.ts # Liquidation cascade analysis
+│   ├── cascade-detector.ts       # Legacy cascade detector
 │   ├── order-protection-service.ts # TP/SL order management
 │   ├── live-data-orchestrator.ts   # WebSocket stream manager
 │   ├── user-data-stream.ts         # User account/order updates
-│   ├── exchange-sync.ts            # Trade history synchronization
-│   ├── storage.ts                  # Database access layer
+│   ├── exchange-sync.ts            # Trade history synchronization (49KB)
 │   ├── exchange-utils.ts           # Aster DEX API utilities
+│   ├── rate-limiter.ts             # Request throttling and caching
+│   ├── storage.ts                  # Database access layer
 │   ├── telegram-service.ts         # Trade notifications
 │   └── index.ts                    # Express server entry point
 ├── shared/              # Shared TypeScript definitions
 │   └── schema.ts        # Drizzle ORM schema + Zod validators
-└── migrations/          # Manual SQL migration scripts
+├── migrations/          # Manual SQL migration scripts
+└── .replit              # Replit configuration (dev environment)
 ```
 
 ### Core Trading System Components
@@ -133,6 +159,14 @@ This project does not have a test suite configured. All testing is done manually
 - Fetches realized P&L from `/fapi/v1/userTrades`
 - Reconciles positions with exchange state
 
+**Rate Limiter** (`rate-limiter.ts`):
+- Prevents HTTP 418 errors from Aster DEX API
+- Request throttling: Max 5 requests/second (200ms delay)
+- Response caching with 30-second TTL
+- Automatic exponential backoff on rate limit detection
+- Queue-based request management
+- See `RATE_LIMITER_README.md` for detailed usage
+
 ### Data Flow
 
 1. **Liquidation Detection**: WebSocket → Cascade Detector → Strategy Engine
@@ -166,6 +200,28 @@ This project does not have a test suite configured. All testing is done manually
 - **Position reconciliation** on session start (syncs with exchange)
 
 ## Common Development Patterns
+
+### Frontend Architecture
+
+**Key React Hooks:**
+- `use-strategy-data.ts`: Main hook for strategy state, positions, and performance metrics (uses TanStack Query)
+- `useWebSocketData.ts`: WebSocket connection for real-time liquidation and cascade data
+- `use-toast.ts`: Toast notification system
+- `use-mobile.tsx`: Responsive design breakpoint detection
+- `useAuth.ts`: Authentication state management
+
+**Frontend Data Flow:**
+1. Dashboard component (`Dashboard.tsx`) orchestrates main UI
+2. `use-strategy-data` hook fetches strategy config, positions, and P&L via REST API
+3. `useWebSocketData` hook subscribes to real-time liquidations and cascade risk
+4. Components use TanStack Query for caching and automatic refetching
+5. Toast notifications for user feedback
+
+**State Management Philosophy:**
+- Server state: TanStack Query (automatic caching, refetching)
+- Real-time data: WebSocket hooks with local state
+- UI state: React useState/useReducer
+- No Redux or global state management needed
 
 ### Adding a New API Endpoint
 
@@ -291,8 +347,9 @@ Optional:
 
 **Aster DEX API**:
 - Base URL: `https://api.aster.exchange`
-- Authentication: HMAC-SHA256 signature
-- Rate limiting: Handled via queue-based system in `exchange-utils.ts`
+- Authentication: HMAC-SHA256 signature (see `exchange-utils.ts`)
+- Rate limiting: Handled by `rate-limiter.ts` (5 req/sec, 30s caching, auto-backoff)
+- **CRITICAL**: Never bypass the rate limiter - it prevents HTTP 418 errors and IP bans
 
 **WebSocket Streams**:
 - Liquidation feed: `wss://stream.aster.exchange/liquidations`
@@ -355,6 +412,12 @@ curl http://localhost:5000/api/positions/SESSION_ID
 2. **DCA layers not filling**: Verify 2-minute cooldown elapsed, liquidation ≥60th percentile, filled risk not exceeded
 3. **TP/SL orders missing**: Check protective order reconciliation logs (runs every 2 minutes), verify exchange allows reduce-only orders
 4. **Database sync errors**: Verify NEON_DATABASE_URL includes `?sslmode=require`, check Neon dashboard for connection issues
+5. **HTTP 418 errors (Rate Limited)**:
+   - Rate limiter should prevent these automatically
+   - Check logs for `⚠️ Rate limit detected - entering backoff period`
+   - If recurring, increase `minDelay` in `rate-limiter.ts` from 200ms to 300ms+
+   - Verify only one instance of the bot is running
+   - See `RATE_LIMITER_README.md` for monitoring and configuration
 
 ## Deployment
 

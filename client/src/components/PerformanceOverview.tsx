@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Calendar } from "@/components/ui/calendar";
-import { TrendingUp, TrendingDown, Target, Award, Activity, LineChart, DollarSign, Percent, Calendar as CalendarIcon, X, Wallet, Settings } from "lucide-react";
+import { TrendingUp, TrendingDown, Target, Award, Activity, LineChart, DollarSign, Percent, Calendar as CalendarIcon, X, Wallet, Settings, Clock, ChevronDown, ChevronUp } from "lucide-react";
 import { ComposedChart, Line, Area, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, ReferenceArea, ReferenceDot, Label } from "recharts";
 import { format, subDays, subMinutes, subHours, startOfDay, endOfDay } from "date-fns";
 import { useStrategyData } from "@/hooks/use-strategy-data";
@@ -94,7 +94,10 @@ function PerformanceOverview() {
   const [dateFilterOpen, setDateFilterOpen] = useState(false);
   const [depositFilterOpen, setDepositFilterOpen] = useState(false);
   const [selectedDepositId, setSelectedDepositId] = useState<string | null>(null);
-  
+
+  // ROI interval selection state
+  const [roiIntervalsExpanded, setRoiIntervalsExpanded] = useState(false);
+
   // Pagination and zoom state for chart
   const [chartEndIndex, setChartEndIndex] = useState<number | null>(null);
   const [tradesPerPage, setTradesPerPage] = useState<number>(50);
@@ -141,114 +144,94 @@ function PerformanceOverview() {
     queryKey: ['/api/commissions', dateRange.start?.getTime(), dateRange.end?.getTime()],
     queryFn: async () => {
       const params = new URLSearchParams();
-      
+
       if (dateRange.start) {
         params.append('startTime', dateRange.start.getTime().toString());
       }
-      
+
       if (dateRange.end) {
         params.append('endTime', dateRange.end.getTime().toString());
       }
-      
+
       const url = `/api/commissions?${params.toString()}`;
       const response = await fetch(url);
       if (!response.ok) throw new Error('Failed to fetch commissions');
       return response.json();
     },
-    staleTime: 30 * 1000, // 30 seconds
+    staleTime: 10 * 60 * 1000, // 10 minutes (exchange API - avoid rate limits!)
+    refetchInterval: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
   });
 
   const fundingFeesQuery = useQuery<{ records: any[]; total: number }>({
     queryKey: ['/api/funding-fees', dateRange.start?.getTime(), dateRange.end?.getTime()],
     queryFn: async () => {
       const params = new URLSearchParams();
-      
+
       if (dateRange.start) {
         params.append('startTime', dateRange.start.getTime().toString());
       }
-      
+
       if (dateRange.end) {
         params.append('endTime', dateRange.end.getTime().toString());
       }
-      
+
       const url = `/api/funding-fees?${params.toString()}`;
       const response = await fetch(url);
       if (!response.ok) throw new Error('Failed to fetch funding fees');
       return response.json();
     },
-    staleTime: 30 * 1000, // 30 seconds
+    staleTime: 10 * 60 * 1000, // 10 minutes (exchange API - avoid rate limits!)
+    refetchInterval: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
   });
 
   const commissions = commissionsQuery.data;
   const fundingFees = fundingFeesQuery.data;
 
 
-  // Convert realized P&L events to chart data format
+  // Use consolidated position data from database (rawChartData comes from /api/performance/chart)
+  // Each trade represents a complete position with all DCA layers combined into one P&L value
   const rawSourceData = useMemo(() => {
-    if (!realizedPnlEvents || realizedPnlEvents.length === 0) return [];
-    
-    // Create array of closed positions with timestamps for matching
-    const closedPosArray = closedPositions?.filter(pos => pos.closedAt).map(pos => ({
-      ...pos,
-      closeTime: new Date(pos.closedAt).getTime()
-    })) || [];
-    
-    let cumulativePnl = 0;
-    let matchCount = 0;
-    
-    const chartData = realizedPnlEvents.map((event, index) => {
-      const pnl = parseFloat(event.income || '0');
-      cumulativePnl += pnl;
-      
-      // Try to match P&L event with closed position to get actual side
-      // Match by symbol and timestamp (within 5 minute window to accommodate exchange delays)
-      // Exchange P&L events can arrive minutes after we mark position closed
-      let actualSide = 'unknown';
-      const eventTime = event.time;
-      
-      // Search for matching position by symbol and close time window
-      const matchedPos = closedPosArray.find(pos => {
-        if (pos.symbol !== event.symbol) return false;
-        const timeDiff = Math.abs(pos.closeTime - eventTime);
-        return timeDiff <= 300000; // Within 5 minutes (300 seconds)
-      });
-      
-      if (matchedPos) {
-        actualSide = matchedPos.side;
-        matchCount++;
-      }
-      
-      return {
-        tradeNumber: index + 1,
-        timestamp: event.time,
-        symbol: event.symbol,
-        side: actualSide,
-        pnl: pnl,
-        cumulativePnl: cumulativePnl,
-        entryPrice: 0, // Not available from P&L events
-        quantity: 0, // Not available from P&L events
-      };
-    });
-    
-    return chartData;
-  }, [realizedPnlEvents, closedPositions]);
+    if (!rawChartData || rawChartData.length === 0) return [];
+
+    // rawChartData contains consolidated positions with cumulative P&L calculations
+    // Each position may have had multiple fills (DCA layers) but shows as one trade
+    return rawChartData.map((trade: any, index: number) => ({
+      tradeNumber: trade.tradeNumber || index + 1,
+      timestamp: trade.timestamp,
+      symbol: trade.symbol,
+      side: trade.side,
+      pnl: trade.pnl,
+      cumulativePnl: trade.cumulativePnl,
+      entryPrice: trade.entryPrice || 0,
+      quantity: trade.quantity || 0,
+      commission: trade.commission || 0,
+      layersFilled: trade.layersFilled || 1, // Number of DCA layers in this position
+    }));
+  }, [rawChartData]);
   
-  // Calculate total deposited capital EARLY (needed for chart data calculation)
+  // Calculate total deposited capital and transfer list EARLY (needed for chart data calculation)
   const { totalDeposited, depositCount, depositsList } = useMemo(() => {
     if (!transfers || transfers.length === 0) return { totalDeposited: 0, depositCount: 0, depositsList: [] };
-    
-    // Filter to only include deposits (positive amounts) and exclude marked transfers
-    const deposits = transfers.filter(t => 
+
+    // Calculate total deposits (positive amounts only, excluding marked transfers)
+    const deposits = transfers.filter(t =>
       parseFloat(t.amount || '0') > 0 && !(t as any).excluded
     );
     const totalDeposited = deposits.reduce((sum, transfer) => sum + parseFloat(transfer.amount || '0'), 0);
-    
-    // Sort deposits by timestamp (newest first for easy selection)
-    const sortedDeposits = [...deposits].sort((a, b) => 
+
+    // For the transfer filter, include ALL transfers (deposits AND withdrawals), excluding marked ones
+    const allTransfers = transfers.filter(t => !(t as any).excluded);
+
+    // Sort transfers by timestamp (newest first for easy selection)
+    const sortedTransfers = [...allTransfers].sort((a, b) =>
       new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );
-    
-    return { totalDeposited, depositCount: deposits.length, depositsList: sortedDeposits };
+
+    return { totalDeposited, depositCount: deposits.length, depositsList: sortedTransfers };
   }, [transfers]);
   
   // Apply date range filter and manual selection filter
@@ -616,9 +599,13 @@ function PerformanceOverview() {
     const totalCommissions = commissions?.total || 0;
     const totalFundingFees = fundingFees?.total || 0;
 
-    // Use realized P&L events from exchange as source of truth for trade counts
+    // Use filtered events from rawSourceData (already excludes synthetic fills)
     // Filter by date range or manual selection if active
-    let filteredPnlEvents = realizedPnlEvents || [];
+    let filteredPnlEvents = rawSourceData.map(trade => ({
+      symbol: trade.symbol,
+      time: trade.timestamp,
+      income: trade.pnl.toString(),
+    }));
 
     // Manual selection takes precedence over date range
     if (selectedTradeRange.start !== null && selectedTradeRange.end !== null) {
@@ -974,6 +961,132 @@ function PerformanceOverview() {
   // For realized P&L percentage display (legacy - kept for compatibility)
   const realizedPnlPercent = totalDeposited > 0 ? ((displayPerformance.totalRealizedPnl || 0) / totalDeposited) * 100 : 0;
 
+  // Calculate ROI by intervals between deposits, filtered by chart date range
+  const roiIntervals = useMemo(() => {
+    if (!transfers || transfers.length === 0) {
+      return {
+        intervals: [],
+        totalPnl: 0,
+        periodStart: new Date(),
+        periodEnd: new Date(),
+      };
+    }
+
+    // Determine the period based on chart filters
+    const now = new Date();
+    const periodStart = dateRange.start || new Date(Math.min(
+      ...transfers.map(t => new Date(t.timestamp).getTime())
+    ));
+    const periodEnd = dateRange.end || now;
+
+    const periodStartTime = periodStart.getTime();
+    const periodEndTime = periodEnd.getTime();
+
+    // Sort transfers chronologically
+    const sortedTransfers = [...transfers]
+      .filter(t => !(t as any).excluded)
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+    // Build intervals between transfers
+    const intervals: Array<{
+      intervalNumber: number;
+      startDate: Date;
+      endDate: Date;
+      startCapital: number;
+      endCapital: number;
+      transferAmount: number;
+      transferType: 'deposit' | 'withdrawal';
+      pnl: number;
+      roi: number;
+      daysInInterval: number;
+    }> = [];
+
+    let cumulativeCapital = 0;
+    let intervalNumber = 0;
+
+    // For each transfer, create an interval from that transfer to the next
+    for (let i = 0; i < sortedTransfers.length; i++) {
+      const currentTransfer = sortedTransfers[i];
+      const transferAmount = parseFloat(currentTransfer.amount || '0');
+      const transferTime = new Date(currentTransfer.timestamp).getTime();
+
+      // Determine interval boundaries
+      const intervalStart = new Date(currentTransfer.timestamp);
+      const intervalEnd = i < sortedTransfers.length - 1
+        ? new Date(sortedTransfers[i + 1].timestamp)
+        : now; // Last interval goes to now
+
+      const intervalStartTime = intervalStart.getTime();
+      const intervalEndTime = intervalEnd.getTime();
+
+      // Only include intervals that overlap with the filtered period
+      if (intervalEndTime >= periodStartTime && intervalStartTime <= periodEndTime) {
+        // Adjust interval boundaries to fit within filtered period
+        const adjustedStart = Math.max(intervalStartTime, periodStartTime);
+        const adjustedEnd = Math.min(intervalEndTime, periodEndTime);
+
+        const startCapital = cumulativeCapital;
+        cumulativeCapital += transferAmount;
+        const endCapital = cumulativeCapital;
+
+        const daysInInterval = (adjustedEnd - adjustedStart) / (24 * 60 * 60 * 1000);
+
+        // Calculate P&L during this interval (within filtered period)
+        const pnl = realizedPnlEvents
+          ? realizedPnlEvents
+              .filter(e => e.time >= adjustedStart && e.time < adjustedEnd)
+              .reduce((sum, e) => sum + parseFloat(e.income || '0'), 0)
+          : 0;
+
+        // Calculate ROI based on capital BEFORE this transfer
+        // If startCapital is 0 (first interval), use the transfer amount as base
+        const capitalBase = startCapital > 0 ? startCapital : Math.abs(transferAmount);
+        const roi = capitalBase > 0 ? (pnl / capitalBase) * 100 : 0;
+
+        intervalNumber++;
+        intervals.push({
+          intervalNumber,
+          startDate: new Date(adjustedStart),
+          endDate: new Date(adjustedEnd),
+          startCapital,
+          endCapital,
+          transferAmount,
+          transferType: transferAmount >= 0 ? 'deposit' : 'withdrawal',
+          pnl,
+          roi,
+          daysInInterval,
+        });
+      } else if (transferTime < periodStartTime) {
+        // Transfer before period - just accumulate capital
+        cumulativeCapital += transferAmount;
+      }
+    }
+
+    // Calculate total P&L across all intervals
+    const totalPnl = intervals.reduce((sum, interval) => sum + interval.pnl, 0);
+
+    // Calculate overall ROI based on total deposits/withdrawals (net capital deployed)
+    // Sum all deposits and withdrawals to get total capital invested
+    const totalDeposited = sortedTransfers
+      .filter(t => {
+        const transferTime = new Date(t.timestamp).getTime();
+        return transferTime <= periodEndTime && parseFloat(t.amount || '0') > 0;
+      })
+      .reduce((sum, t) => sum + parseFloat(t.amount || '0'), 0);
+
+    const overallROI = totalDeposited > 0
+      ? (totalPnl / totalDeposited) * 100
+      : 0;
+
+    return {
+      intervals,
+      totalPnl,
+      overallROI,
+      periodStart,
+      periodEnd,
+    };
+  }, [transfers, realizedPnlEvents, dateRange]);
+
   // Check if there's an error or loading (but don't return early - that breaks hooks order)
   const hasError = performanceError || chartDataError;
 
@@ -1047,11 +1160,8 @@ function PerformanceOverview() {
               <div className={`text-4xl font-mono font-bold ${displayPerformance.totalRealizedPnl >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`} data-testid="text-realized-pnl">
                 {formatCurrency(displayPerformance.totalRealizedPnl)}
               </div>
-              <div className="flex items-center gap-2 text-sm">
-                <Percent className="h-3 w-3 text-muted-foreground" />
-                <span className={`font-mono font-semibold ${trueROI >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`} data-testid="text-roi">
-                  ROI: {trueROI >= 0 ? '+' : ''}{trueROI.toFixed(2)}%
-                </span>
+              <div className="text-sm text-muted-foreground">
+                See ROI breakdown below
               </div>
             </div>
           </div>
@@ -1213,6 +1323,137 @@ function PerformanceOverview() {
             </div>
           </div>
         </div>
+
+        {/* ROI by Deposit Intervals - Synced with Chart Filters */}
+        {roiIntervals.intervals.length > 0 && (
+          <div className="border rounded-lg p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Clock className="h-4 w-4 text-muted-foreground" />
+                <div className="text-sm text-muted-foreground uppercase tracking-wider">ROI by Deposit Interval</div>
+                <Badge variant="outline" className="ml-2">
+                  {roiIntervals.intervals.length} intervals
+                </Badge>
+                {(dateRange.start || dateRange.end) && (
+                  <Badge variant="default" className="ml-1">
+                    Filtered
+                  </Badge>
+                )}
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setRoiIntervalsExpanded(!roiIntervalsExpanded)}
+                className="gap-1"
+              >
+                {roiIntervalsExpanded ? (
+                  <>
+                    <ChevronUp className="h-4 w-4" />
+                    Hide
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="h-4 w-4" />
+                    Show All
+                  </>
+                )}
+              </Button>
+            </div>
+
+            {/* Summary */}
+            {!roiIntervalsExpanded && (
+              <div className="text-center py-4 space-y-3">
+                <div>
+                  <div className={`text-5xl font-mono font-bold mb-1 ${(roiIntervals.overallROI ?? 0) >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`}>
+                    {(roiIntervals.overallROI ?? 0) >= 0 ? '+' : ''}{(roiIntervals.overallROI ?? 0).toFixed(2)}%
+                  </div>
+                  <div className="text-sm text-muted-foreground uppercase tracking-wide">
+                    Overall ROI
+                  </div>
+                </div>
+                <div>
+                  <div className={`text-3xl font-mono font-bold ${roiIntervals.totalPnl >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`}>
+                    {roiIntervals.totalPnl >= 0 ? '+' : ''}${roiIntervals.totalPnl.toFixed(2)}
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    Total P&L
+                  </div>
+                </div>
+                <div className="text-xs text-muted-foreground border-t pt-3 mt-3">
+                  Click "Show All" to see ROI breakdown for each deposit interval
+                </div>
+              </div>
+            )}
+
+            {/* Intervals Table */}
+            {roiIntervalsExpanded && (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="border-b">
+                    <tr className="text-xs text-muted-foreground uppercase">
+                      <th className="text-left py-2 px-3">#</th>
+                      <th className="text-left py-2 px-3">Period</th>
+                      <th className="text-right py-2 px-3">Days</th>
+                      <th className="text-right py-2 px-3">Start Capital</th>
+                      <th className="text-right py-2 px-3">Transfer</th>
+                      <th className="text-right py-2 px-3">End Capital</th>
+                      <th className="text-right py-2 px-3">P&L</th>
+                      <th className="text-right py-2 px-3">ROI</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {roiIntervals.intervals.map((interval, idx) => (
+                      <tr key={idx} className="border-b last:border-0 hover:bg-muted/50">
+                        <td className="py-3 px-3 font-mono font-semibold">
+                          {interval.intervalNumber}
+                        </td>
+                        <td className="py-3 px-3 text-xs">
+                          <div>{format(interval.startDate, 'MMM d, yyyy')}</div>
+                          <div className="text-muted-foreground">to {format(interval.endDate, 'MMM d, yyyy')}</div>
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono">
+                          {interval.daysInInterval.toFixed(0)}
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono">
+                          ${interval.startCapital.toFixed(2)}
+                        </td>
+                        <td className={`py-3 px-3 text-right font-mono font-semibold ${interval.transferType === 'deposit' ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`}>
+                          {interval.transferAmount >= 0 ? '+' : ''}${interval.transferAmount.toFixed(2)}
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono">
+                          ${interval.endCapital.toFixed(2)}
+                        </td>
+                        <td className={`py-3 px-3 text-right font-mono font-semibold ${interval.pnl >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`}>
+                          {interval.pnl >= 0 ? '+' : ''}${interval.pnl.toFixed(2)}
+                        </td>
+                        <td className={`py-3 px-3 text-right font-mono font-bold ${interval.roi >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`}>
+                          {interval.roi >= 0 ? '+' : ''}{interval.roi.toFixed(2)}%
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="border-t-2 font-semibold">
+                    <tr>
+                      <td className="py-3 px-3" colSpan={6}>
+                        Total
+                      </td>
+                      <td className={`py-3 px-3 text-right font-mono font-bold ${roiIntervals.totalPnl >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`}>
+                        {roiIntervals.totalPnl >= 0 ? '+' : ''}${roiIntervals.totalPnl.toFixed(2)}
+                      </td>
+                      <td className="py-3 px-3"></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+
+            {(dateRange.start || dateRange.end) && (
+              <div className="text-xs text-muted-foreground text-center border-t pt-3">
+                ✓ Showing intervals within filtered period: {format(roiIntervals.periodStart, 'MMM d, yyyy')} - {format(roiIntervals.periodEnd, 'MMM d, yyyy')}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Performance Chart */}
         <div className="space-y-3">
@@ -1507,22 +1748,25 @@ function PerformanceOverview() {
                 </PopoverContent>
               </Popover>
 
-              {/* Deposit Event Filter */}
+              {/* Transfer Event Filter */}
               {depositsList.length > 0 && (
                 <Popover open={depositFilterOpen} onOpenChange={setDepositFilterOpen}>
                   <PopoverTrigger asChild>
                     <Button variant="outline" size="sm" data-testid="button-deposit-filter">
                       <Wallet className="h-4 w-4 mr-2" />
-                      From Deposit
+                      From Transfer
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-80 p-3" align="start">
                     <div className="space-y-2">
-                      <label className="text-sm font-medium block">Select Deposit Event</label>
+                      <label className="text-sm font-medium block">Select Transfer Event</label>
                       <div className="max-h-60 overflow-y-auto space-y-1">
                         {depositsList.map((deposit) => {
                           const amount = parseFloat(deposit.amount || '0');
                           const depositDate = new Date(deposit.timestamp);
+                          const isDeposit = amount > 0;
+                          const displayAmount = isDeposit ? `+$${amount.toFixed(2)}` : `-$${Math.abs(amount).toFixed(2)}`;
+                          const amountColor = isDeposit ? 'text-[rgb(34,197,94)]' : 'text-[rgb(251,146,60)]';
                           return (
                             <Button
                               key={deposit.id}
@@ -1536,8 +1780,8 @@ function PerformanceOverview() {
                                 <span className="text-xs text-muted-foreground">
                                   {format(depositDate, 'MMM d, yyyy HH:mm')}
                                 </span>
-                                <span className="font-mono font-semibold text-[rgb(34,197,94)]">
-                                  +${amount.toFixed(2)}
+                                <span className={`font-mono font-semibold ${amountColor}`}>
+                                  {displayAmount}
                                 </span>
                               </div>
                             </Button>
@@ -1567,20 +1811,20 @@ function PerformanceOverview() {
                 {manualSelectionMode ? 'Cancel Selection' : 'Select Trades'}
               </Button>
 
-              {/* Active Deposit Filter Indicator */}
+              {/* Active Transfer Filter Indicator */}
               {selectedDeposit && (
                 <Badge variant="secondary" className="gap-1" data-testid="badge-active-deposit-filter">
                   <Wallet className="h-3 w-3" />
-                  From ${parseFloat(selectedDeposit.amount || '0').toFixed(0)} deposit
-                  <X 
-                    className="h-3 w-3 ml-1 cursor-pointer hover:text-destructive" 
+                  From {parseFloat(selectedDeposit.amount || '0') > 0 ? '+' : ''}{parseFloat(selectedDeposit.amount || '0') < 0 ? '-' : ''}${Math.abs(parseFloat(selectedDeposit.amount || '0')).toFixed(0)} transfer
+                  <X
+                    className="h-3 w-3 ml-1 cursor-pointer hover:text-destructive"
                     onClick={clearDepositFilter}
                     data-testid="button-clear-deposit-filter"
                   />
                 </Badge>
               )}
 
-              {/* Active Date Filter Indicator (only show if not from deposit) */}
+              {/* Active Date Filter Indicator (only show if not from transfer) */}
               {(dateRange.start || dateRange.end) && !selectedDeposit && (
                 <Badge variant="secondary" className="gap-1" data-testid="badge-active-filter">
                   <CalendarIcon className="h-3 w-3" />
@@ -1693,7 +1937,7 @@ function PerformanceOverview() {
                       { name: 'Cumulative P&L', color: 'rgb(190, 242, 100)', active: true, toggleable: false },
                       { name: 'Account Size', color: 'rgb(59, 130, 246)', active: showAccountSize, toggleable: true },
                       { name: 'Strategy Update', color: 'hsl(var(--primary))', active: showStrategyUpdates, toggleable: true },
-                      { name: 'Deposits/Withdrawals', color: 'rgb(34, 197, 94)', active: showDeposits, toggleable: true }
+                      { name: 'Transfers', color: 'rgb(34, 197, 94)', active: showDeposits, toggleable: true }
                     ];
                     
                     return (
@@ -1705,7 +1949,7 @@ function PerformanceOverview() {
                             onClick={() => {
                               if (item.name === 'Strategy Update') {
                                 setShowStrategyUpdates(!showStrategyUpdates);
-                              } else if (item.name === 'Deposits/Withdrawals') {
+                              } else if (item.name === 'Transfers') {
                                 setShowDeposits(!showDeposits);
                               } else if (item.name === 'Account Size') {
                                 setShowAccountSize(!showAccountSize);

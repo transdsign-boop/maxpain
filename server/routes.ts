@@ -2078,14 +2078,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/transfers/:id", async (req, res) => {
     try {
       const { id } = req.params;
-      
+
       // Delete from database
       await db.delete(transfers).where(eq(transfers.id, id));
-      
+
       console.log(`✅ Deleted transfer: ${id}`);
       res.json({ success: true, id });
     } catch (error: any) {
       console.error('❌ Error deleting transfer:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Clear all exclusions from transfers
+  app.post("/api/transfers/clear-exclusions", async (req, res) => {
+    try {
+      const result = await db.update(transfers)
+        .set({ excluded: false })
+        .where(eq(transfers.excluded, true))
+        .returning({ id: transfers.id, transactionId: transfers.transactionId, amount: transfers.amount });
+
+      console.log(`✅ Cleared exclusions from ${result.length} transfer(s)`);
+      res.json({ success: true, count: result.length, transfers: result });
+    } catch (error: any) {
+      console.error('❌ Error clearing exclusions:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Manually add a transfer (for transfers not available via API)
+  app.post("/api/transfers/manual", async (req, res) => {
+    try {
+      const { amount, asset, timestamp, transactionId, description } = req.body;
+
+      if (!amount || !asset || !timestamp) {
+        return res.status(400).json({ error: 'Missing required fields: amount, asset, timestamp' });
+      }
+
+      const transfer = await db.insert(transfers)
+        .values({
+          userId: DEFAULT_USER_ID,
+          amount: amount.toString(),
+          asset: asset,
+          timestamp: new Date(timestamp),
+          transactionId: transactionId || null,
+          excluded: false,
+        })
+        .returning();
+
+      console.log(`✅ Manually added transfer: ${asset} $${amount} at ${new Date(timestamp).toISOString()}`);
+      res.json({ success: true, transfer: transfer[0] });
+    } catch (error: any) {
+      console.error('❌ Error adding manual transfer:', error);
       res.status(500).json({ error: error.message });
     }
   });
@@ -3249,9 +3293,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       try {
         const { fetchRealizedPnl } = await import('./exchange-sync');
         console.log('📊 fetchRealizedPnl imported successfully');
-        
+
         const pnlResult = await fetchRealizedPnl({});
-        
+
         console.log('📊 fetchRealizedPnl result:', JSON.stringify(pnlResult));
         if (pnlResult.success) {
           totalRealizedPnl = pnlResult.total;
@@ -3269,7 +3313,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // If no active session, return with real exchange P&L (not zeros!)
       if (!activeSession) {
         const responseData = {
-          totalTrades: 0,
+          totalTrades: 0, // No positions in database without session
           openTrades: 0,
           closedTrades: 0,
           winningTrades: 0,
@@ -3288,7 +3332,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           fundingCost: 0,
           averageTradeTimeMs: 0,
           maxDrawdown: 0,
-          maxDrawdownPercent: 0
+          maxDrawdownPercent: 0,
         };
         console.log("📊 Performance Overview (no session):", JSON.stringify(responseData));
         return res.json(responseData);
@@ -3349,7 +3393,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (!allPositions || allPositions.length === 0) {
         return res.json({
-          totalTrades: 0,
+          totalTrades: 0, // No positions in database
           openTrades: 0,
           closedTrades: 0,
           winningTrades: 0,
@@ -3368,7 +3412,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           fundingCost: 0,
           averageTradeTimeMs: 0,
           maxDrawdown: 0,
-          maxDrawdownPercent: 0
+          maxDrawdownPercent: 0,
         });
       }
 
@@ -3491,9 +3535,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const maxDrawdownPercent = baseCapital > 0 ? (maxDrawdown / baseCapital) * 100 : 0;
 
       res.json({
-        totalTrades: allPositions.length, // Total trades includes both open and closed positions
+        totalTrades: closedPositions.length + livePositions.length, // Consolidated: DB positions + currently open positions
         openTrades: livePositions.length, // Use live positions from exchange, not database
-        closedTrades: closedPositions.length,
+        closedTrades: closedPositions.length, // Use consolidated position count (each position = all DCA layers combined)
         winningTrades: winningTrades.length,
         losingTrades: losingTrades.length,
         winRate,
@@ -3510,7 +3554,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         fundingCost: totalFundingCost,
         averageTradeTimeMs,
         maxDrawdown,
-        maxDrawdownPercent
+        maxDrawdownPercent,
       });
     } catch (error) {
       console.error('Error fetching performance overview:', error);
@@ -3520,86 +3564,88 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/performance/chart", async (req, res) => {
     try {
-      // Get active strategy and session
-      const strategies = await storage.getStrategiesByUser(DEFAULT_USER_ID);
-      const activeStrategy = strategies.find((s: any) => s.isActive === true);
-      
-      if (!activeStrategy) {
+      // Fetch realized P&L events directly from exchange (source of truth)
+      const { fetchRealizedPnlEvents, fetchCommissions } = await import('./exchange-sync');
+      const startTime = 1759276800000; // From Oct 1, 2025 (corrected timestamp)
+
+      const pnlResult = await fetchRealizedPnlEvents({ startTime });
+
+      if (!pnlResult.success || !pnlResult.events || pnlResult.events.length === 0) {
         return res.json([]);
       }
 
-      // Get ONLY ACTIVE sessions for this strategy (excludes archived)
-      const allSessions = await storage.getSessionsByStrategy(activeStrategy.id);
-      const activeSessions = allSessions.filter(s => s.isActive === true);
-      
-      if (activeSessions.length === 0) {
-        return res.json([]);
-      }
+      // Fetch commissions for reference
+      const commissionsResult = await fetchCommissions({ startTime });
+      const commissionsByTradeId = new Map();
 
-      // Get all positions and fills from ACTIVE sessions only
-      const allPositions: any[] = [];
-      const sessionFills: any[] = [];
-      
-      for (const session of activeSessions) {
-        const sessionPositions = await storage.getPositionsBySession(session.id);
-        const fills = await storage.getFillsBySession(session.id);
-        allPositions.push(...sessionPositions);
-        sessionFills.push(...fills);
-      }
-      
-      // Filter for closed positions only, excluding positions with ONLY synthetic fills
-      let closedPositions = allPositions
-        .filter(p => p.isOpen === false && p.closedAt)
-        .filter(p => {
-          const positionFills = sessionFills.filter(f => f.positionId === p.id);
-          // Exclude positions that ONLY have synthetic fills (should be none after cleanup)
-          const hasOnlySyntheticFills = positionFills.length > 0 && 
-            positionFills.every(f => f.orderId.startsWith('sync-pnl-'));
-          return !hasOnlySyntheticFills; // Return positions with real fills or no fills
+      if (commissionsResult.success && commissionsResult.records) {
+        commissionsResult.records.forEach((comm: any) => {
+          const existing = commissionsByTradeId.get(comm.tradeId) || 0;
+          commissionsByTradeId.set(comm.tradeId, existing + Math.abs(parseFloat(comm.income || '0')));
         });
-      
-      closedPositions = closedPositions.sort((a, b) => new Date(a.closedAt!).getTime() - new Date(b.closedAt!).getTime());
-
-      if (closedPositions.length === 0) {
-        return res.json([]);
       }
-      
+
+      // Sort by timestamp (oldest first)
+      const sortedEvents = pnlResult.events.sort((a: any, b: any) => a.time - b.time);
+
+      // GROUP EVENTS INTO POSITIONS
+      // Events with same symbol within 10 seconds = same position (multiple DCA layers closing)
+      const consolidatedPositions: any[] = [];
+      let currentPosition: any = null;
+
+      for (const event of sortedEvents) {
+        const pnl = parseFloat(event.income || '0');
+        const commission = commissionsByTradeId.get(event.tradeId) || 0;
+
+        // Check if this event belongs to the current position being built
+        const shouldMerge = currentPosition &&
+          currentPosition.symbol === event.symbol &&
+          Math.abs(event.time - currentPosition.timestamp) <= 10000; // Within 10 seconds
+
+        if (shouldMerge) {
+          // Merge this layer into the current position
+          currentPosition.pnl += pnl;
+          currentPosition.commission += commission;
+          currentPosition.layerCount += 1;
+          // Update timestamp to latest layer
+          currentPosition.timestamp = Math.max(currentPosition.timestamp, event.time);
+        } else {
+          // Start a new position
+          if (currentPosition) {
+            consolidatedPositions.push(currentPosition);
+          }
+          currentPosition = {
+            symbol: event.symbol,
+            timestamp: event.time,
+            pnl: pnl,
+            commission: commission,
+            layerCount: 1,
+            tradeId: event.tradeId,
+          };
+        }
+      }
+
+      // Don't forget the last position
+      if (currentPosition) {
+        consolidatedPositions.push(currentPosition);
+      }
+
+      // Build chart data from consolidated positions
       let cumulativePnl = 0;
-      const chartData = closedPositions.map((position, index) => {
-        // CRITICAL: realizedPnl is ALREADY in DOLLARS (not percentage!)
-        const grossPnlDollar = parseFloat(position.realizedPnl || '0');
-        
-        // Calculate fees for this position
-        const positionOpenTime = new Date(position.openedAt).getTime();
-        const positionCloseTime = position.closedAt ? new Date(position.closedAt).getTime() : Date.now();
-        
-        const exitFill = sessionFills.find(fill => fill.orderId === `exit-${position.id}`);
-        const entryFills = sessionFills.filter(fill => {
-          if (fill.symbol !== position.symbol) return false;
-          if (fill.orderId.startsWith('exit-')) return false;
-          const fillTime = new Date(fill.filledAt).getTime();
-          const correctSide = (position.side === 'long' && fill.side === 'buy') || 
-                             (position.side === 'short' && fill.side === 'sell');
-          return correctSide && fillTime >= positionOpenTime && fillTime <= positionCloseTime;
-        });
-        
-        const totalFees = [...entryFills, ...(exitFill ? [exitFill] : [])].reduce((sum, fill) => {
-          return sum + parseFloat(fill.fee || '0');
-        }, 0);
-        
-        // Net P&L = Gross P&L - Fees
-        const netPnlDollar = grossPnlDollar - totalFees;
-        cumulativePnl += netPnlDollar;
-        
+      const chartData = consolidatedPositions.map((position, index) => {
+        cumulativePnl += position.pnl;
+
         return {
           tradeNumber: index + 1,
-          timestamp: new Date(position.closedAt!).getTime(),
+          timestamp: position.timestamp,
           symbol: position.symbol,
-          side: position.side,
-          pnl: netPnlDollar,
+          side: position.pnl >= 0 ? 'long' : 'short', // Infer from P&L direction
+          pnl: position.pnl, // Total P&L for all layers combined
           cumulativePnl: cumulativePnl,
-          entryPrice: parseFloat(position.avgEntryPrice),
-          quantity: parseFloat(position.totalQuantity),
+          entryPrice: 0, // Not available from P&L events
+          quantity: 0, // Not available from P&L events
+          commission: position.commission, // Total commissions for all layers
+          layersFilled: position.layerCount, // Number of DCA layers in this position
         };
       });
 
@@ -4383,6 +4429,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error fetching cascade status:', error);
       res.status(500).json({ error: "Failed to fetch cascade status" });
+    }
+  });
+
+  app.get("/api/cascade/settings", async (req, res) => {
+    try {
+      res.json({
+        autoEnabled: cascadeDetectorService.getAutoEnabled(),
+        globalBlockThresholdPercent: cascadeDetectorService.getGlobalBlockThreshold()
+      });
+    } catch (error) {
+      console.error('Error fetching cascade settings:', error);
+      res.status(500).json({ error: "Failed to fetch cascade settings" });
     }
   });
 
