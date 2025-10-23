@@ -51,7 +51,9 @@
       "Bash(xargs:*)",
       "Bash(if lsof -ti:5000)",
       "Bash(then echo \"❌ Port 5000 still in use\")",
-      "Bash(else echo \"✅ Port 5000 is free - you can start the dev server now\")"
+      "Bash(else echo \"✅ Port 5000 is free - you can start the dev server now\")",
+      "Bash(tsx:*)",
+      "Bash(awk:*)"
     ],
     "deny": [],
     "ask": []
