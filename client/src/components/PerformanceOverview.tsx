@@ -923,7 +923,7 @@ function PerformanceOverview() {
   const unrealizedPnl = liveAccount ? (parseFloat(liveAccount.totalUnrealizedProfit) || 0) : 0;
   const walletBalance = liveAccount ? (parseFloat(liveAccount.totalWalletBalance || '0') || 0) : 0;
   const totalBalance = walletBalance + unrealizedPnl; // Wallet balance adjusted for unrealized P&L
-  
+
   // Calculate margin in use from open positions
   const positions = livePositions ? livePositions.filter(p => parseFloat(p.positionAmt) !== 0) : [];
   const leverage = activeStrategy?.leverage || 10;
@@ -935,9 +935,12 @@ function PerformanceOverview() {
     return sum + margin;
   }, 0);
   const totalExposure = marginInUse * leverage;
-  
-  // ✅ Calculate available balance as total balance minus margin in use
-  const availableBalance = totalBalance - marginInUse;
+
+  // ✅ Use exchange's available balance calculation (accounts for maintenance margin, unrealized losses, etc.)
+  // Exchange calculates: availableBalance = marginBalance - initialMargin - maintenanceMargin buffer
+  const availableBalance = liveAccount?.availableBalance
+    ? parseFloat(liveAccount.availableBalance)
+    : totalBalance - marginInUse; // Fallback to simple calculation if exchange data not available
 
   // Calculate percentages
   const unrealizedPnlPercent = totalBalance > 0 ? (unrealizedPnl / totalBalance) * 100 : 0;
@@ -1136,33 +1139,21 @@ function PerformanceOverview() {
             </div>
           </div>
 
-          {/* Available & Realized */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-            <div className="space-y-3">
-              <div className="text-sm text-muted-foreground uppercase tracking-wider">Total Balance</div>
-              <div className="text-4xl font-mono font-bold" data-testid="text-wallet-balance">
-                ${walletBalance.toFixed(2)}
-              </div>
-              <div className="text-sm text-muted-foreground">
-                Wallet only
-              </div>
-              <div className="text-sm text-muted-foreground uppercase tracking-wider mt-4">Available</div>
-              <div className="text-3xl font-mono font-bold" data-testid="text-available-balance">
-                ${availableBalance.toFixed(2)}
-              </div>
-              <div className="text-sm text-muted-foreground">
-                For trading
-              </div>
+          {/* Available Balance */}
+          <div className="space-y-3">
+            <div className="text-sm text-muted-foreground uppercase tracking-wider">Total Balance</div>
+            <div className="text-4xl font-mono font-bold" data-testid="text-wallet-balance">
+              ${walletBalance.toFixed(2)}
             </div>
-
-            <div className="space-y-3">
-              <div className="text-sm text-muted-foreground uppercase tracking-wider">Realized P&L</div>
-              <div className={`text-4xl font-mono font-bold ${displayPerformance.totalRealizedPnl >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`} data-testid="text-realized-pnl">
-                {formatCurrency(displayPerformance.totalRealizedPnl)}
-              </div>
-              <div className="text-sm text-muted-foreground">
-                See ROI breakdown below
-              </div>
+            <div className="text-sm text-muted-foreground">
+              Wallet only
+            </div>
+            <div className="text-sm text-muted-foreground uppercase tracking-wider mt-4">Available</div>
+            <div className="text-3xl font-mono font-bold" data-testid="text-available-balance">
+              ${availableBalance.toFixed(2)}
+            </div>
+            <div className="text-sm text-muted-foreground">
+              For trading
             </div>
           </div>
 

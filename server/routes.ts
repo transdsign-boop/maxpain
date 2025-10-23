@@ -4158,6 +4158,158 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get VWAP status for all symbols tracked by strategy
+  app.get("/api/strategies/:id/vwap/status", async (req, res) => {
+    try {
+      const strategyId = req.params.id;
+
+      // Verify strategy exists
+      const strategy = await storage.getStrategy(strategyId);
+      if (!strategy) {
+        return res.status(404).json({ error: "Strategy not found" });
+      }
+
+      // Import vwapFilterManager
+      const { vwapFilterManager } = await import('./vwap-direction-filter');
+
+      // Get VWAP status for all symbols in the strategy
+      const symbolStatuses = strategy.selectedAssets.map(symbol => {
+        const filter = vwapFilterManager.getFilter(symbol, {
+          enabled: strategy.vwapFilterEnabled,
+          timeframeMinutes: strategy.vwapTimeframeMinutes,
+          bufferPercentage: parseFloat(strategy.vwapBufferPercentage),
+          enableBuffer: strategy.vwapEnableBuffer,
+        });
+
+        const status = filter.getStatus();
+        const stats = filter.getStatistics();
+
+        return {
+          symbol,
+          direction: status.direction,
+          currentVWAP: status.currentVWAP,
+          currentPrice: status.currentPrice,
+          upperBuffer: status.upperBuffer,
+          lowerBuffer: status.lowerBuffer,
+          inBufferZone: status.inBufferZone,
+          previousDirection: status.previousDirection,
+          distanceFromVWAP: status.distanceFromVWAP,
+          nextResetTime: status.nextResetTime,
+          timeUntilReset: status.timeUntilReset,
+          statistics: {
+            directionChanges: stats.directionChanges,
+            signalsBlocked: stats.signalsBlocked,
+            timeInBufferMs: stats.timeInBufferMs,
+            sessionStartTime: stats.sessionStartTime,
+            dataPoints: stats.dataPoints,
+          }
+        };
+      });
+
+      res.status(200).json({
+        strategyId,
+        enabled: strategy.vwapFilterEnabled,
+        timeframeMinutes: strategy.vwapTimeframeMinutes,
+        bufferPercentage: parseFloat(strategy.vwapBufferPercentage),
+        enableBuffer: strategy.vwapEnableBuffer,
+        symbols: symbolStatuses
+      });
+    } catch (error) {
+      console.error('Error getting VWAP status:', error);
+      res.status(500).json({ error: "Failed to get VWAP status" });
+    }
+  });
+
+  // Update VWAP configuration
+  app.patch("/api/strategies/:id/vwap/config", async (req, res) => {
+    try {
+      const strategyId = req.params.id;
+      console.log(`🔄 VWAP config update request for strategy ${strategyId}:`, JSON.stringify(req.body, null, 2));
+
+      // Verify strategy exists
+      const strategy = await storage.getStrategy(strategyId);
+      if (!strategy) {
+        return res.status(404).json({ error: "Strategy not found" });
+      }
+
+      // Validate VWAP configuration
+      const vwapConfigSchema = z.object({
+        vwapFilterEnabled: z.boolean().optional(),
+        vwapTimeframeMinutes: z.number().int().positive().optional(),
+        vwapBufferPercentage: z.number().min(0.0001).max(0.002).optional(), // 0.01% to 0.2%
+        vwapEnableBuffer: z.boolean().optional(),
+      });
+
+      const validated = vwapConfigSchema.parse(req.body);
+      console.log(`✅ VWAP config validated:`, JSON.stringify(validated, null, 2));
+
+      // Update strategy in database
+      const updates: Record<string, any> = {};
+      if (validated.vwapFilterEnabled !== undefined) {
+        updates.vwapFilterEnabled = validated.vwapFilterEnabled;
+      }
+      if (validated.vwapTimeframeMinutes !== undefined) {
+        updates.vwapTimeframeMinutes = validated.vwapTimeframeMinutes;
+      }
+      if (validated.vwapBufferPercentage !== undefined) {
+        updates.vwapBufferPercentage = validated.vwapBufferPercentage.toString();
+      }
+      if (validated.vwapEnableBuffer !== undefined) {
+        updates.vwapEnableBuffer = validated.vwapEnableBuffer;
+      }
+
+      await storage.updateStrategy(strategyId, updates);
+
+      // Get updated strategy
+      const updatedStrategy = await storage.getStrategy(strategyId);
+      if (!updatedStrategy) {
+        return res.status(404).json({ error: "Strategy not found after update" });
+      }
+
+      // Update VWAP filters for all symbols if strategy is active
+      if (updatedStrategy.isActive) {
+        const { vwapFilterManager } = await import('./vwap-direction-filter');
+        const { vwapPriceFeed } = await import('./vwap-price-feed');
+
+        // Update configuration for all tracked symbols
+        for (const symbol of updatedStrategy.selectedAssets) {
+          const filter = vwapFilterManager.getFilter(symbol);
+          filter.updateConfig({
+            enabled: updatedStrategy.vwapFilterEnabled,
+            timeframeMinutes: updatedStrategy.vwapTimeframeMinutes,
+            bufferPercentage: parseFloat(updatedStrategy.vwapBufferPercentage),
+            enableBuffer: updatedStrategy.vwapEnableBuffer,
+          });
+        }
+
+        // Start or stop price feed based on whether VWAP is enabled
+        if (updatedStrategy.vwapFilterEnabled && updatedStrategy.selectedAssets.length > 0) {
+          vwapPriceFeed.start(updatedStrategy.selectedAssets);
+          console.log(`📊 VWAP Price Feed started for ${updatedStrategy.selectedAssets.length} symbols`);
+        } else {
+          vwapPriceFeed.stop();
+          console.log('📊 VWAP Price Feed stopped (filter disabled)');
+        }
+      }
+
+      console.log(`✅ VWAP configuration updated for strategy ${strategyId}`);
+      res.status(200).json({
+        vwapFilterEnabled: updatedStrategy.vwapFilterEnabled,
+        vwapTimeframeMinutes: updatedStrategy.vwapTimeframeMinutes,
+        vwapBufferPercentage: parseFloat(updatedStrategy.vwapBufferPercentage),
+        vwapEnableBuffer: updatedStrategy.vwapEnableBuffer,
+      });
+    } catch (error) {
+      console.error('❌ Error updating VWAP configuration:', error);
+      if (error instanceof z.ZodError) {
+        console.error('❌ Zod validation error:', JSON.stringify(error.errors, null, 2));
+        return res.status(400).json({ error: "Invalid VWAP parameters", details: error.errors });
+      }
+      console.error('❌ Unknown error:', error instanceof Error ? error.message : String(error));
+      res.status(500).json({ error: "Failed to update VWAP configuration" });
+    }
+  });
+
   // Start strategy route (activate strategy for trading)
   app.post("/api/strategies/:id/start", async (req, res) => {
     try {
@@ -6546,76 +6698,121 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get all trades with database details when available
+  // CONSOLIDATES multiple P&L events within 10 seconds (same as chart data)
   app.get('/api/all-trades', async (req, res) => {
     try {
       const { getTradeHistory } = await import('./trade-history-service');
-      
+
       // Fetch ALL P&L events from exchange (Oct 1 onwards for full history)
       // Uses cached service to prevent rate limiting
       const startTime = 1759276800000; // Oct 1, 2025
       const result = await getTradeHistory({ startTime, endTime: Date.now() });
-      
+
       if (!result.success) {
         return res.status(500).json({ error: result.error || 'Failed to fetch trades' });
       }
-      
+
+      // Sort events by timestamp (oldest first) for consolidation
+      const sortedEvents = result.events.sort((a: any, b: any) => a.time - b.time);
+
+      // GROUP EVENTS INTO CONSOLIDATED POSITIONS
+      // Events with same symbol within 10 seconds = same position (multiple DCA layers closing)
+      // This matches the chart data consolidation logic
+      const consolidatedPositions: any[] = [];
+      let currentPosition: any = null;
+
+      for (const event of sortedEvents) {
+        const pnl = parseFloat(event.income || '0');
+
+        // Check if this event belongs to the current position being built
+        const shouldMerge = currentPosition &&
+          currentPosition.symbol === event.symbol &&
+          Math.abs(event.time - currentPosition.timestamp) <= 10000; // Within 10 seconds
+
+        if (shouldMerge) {
+          // Merge this layer into the current position
+          currentPosition.pnl += pnl;
+          currentPosition.layerCount += 1;
+          // Update timestamp to latest layer
+          currentPosition.timestamp = Math.max(currentPosition.timestamp, event.time);
+          currentPosition.tradeIds.push(event.tradeId);
+        } else {
+          // Start a new position
+          if (currentPosition) {
+            consolidatedPositions.push(currentPosition);
+          }
+          currentPosition = {
+            symbol: event.symbol,
+            timestamp: event.time,
+            pnl: pnl,
+            layerCount: 1,
+            tradeIds: [event.tradeId],
+          };
+        }
+      }
+
+      // Don't forget the last position
+      if (currentPosition) {
+        consolidatedPositions.push(currentPosition);
+      }
+
       // Get all closed positions from database
       const dbPositions = await db
         .select()
         .from(positions)
         .where(eq(positions.isOpen, false))
         .orderBy(desc(positions.closedAt));
-      
-      // Match exchange P&L events with database positions using multiple strategies
-      const trades = result.events.map((event, index) => {
-        const eventDate = new Date(event.time);
-        const eventPnL = parseFloat(event.income || '0');
-        
+
+      // Match consolidated positions with database positions
+      const trades = consolidatedPositions.map((position, index) => {
+        const eventDate = new Date(position.timestamp);
+        const eventPnL = position.pnl;
+
         // Strategy 1: Exact match by symbol + close time + P&L (if P&L stored)
         let matchedPosition = dbPositions.find(p => {
-          if (!p.closedAt || p.symbol !== event.symbol) return false;
+          if (!p.closedAt || p.symbol !== position.symbol) return false;
           if (p.realizedPnl === null) return false; // Skip if P&L not stored
-          
+
           const positionDate = new Date(p.closedAt);
           const timeDiff = Math.abs(eventDate.getTime() - positionDate.getTime());
           const pnlDiff = Math.abs(eventPnL - parseFloat(p.realizedPnl));
-          
+
           // Match if within 10 minutes and P&L difference < $0.01
           return timeDiff < 600000 && pnlDiff < 0.01;
         });
-        
+
         // Strategy 2: Match by symbol + close time (wider window, ignoring P&L)
         if (!matchedPosition) {
           matchedPosition = dbPositions.find(p => {
-            if (!p.closedAt || p.symbol !== event.symbol) return false;
-            
+            if (!p.closedAt || p.symbol !== position.symbol) return false;
+
             const positionDate = new Date(p.closedAt);
             const timeDiff = Math.abs(eventDate.getTime() - positionDate.getTime());
-            
+
             // Match if within 1 hour
             return timeDiff < 3600000;
           });
         }
-        
+
         // Strategy 3: Match by symbol + P&L (if both exist), ignoring time
         if (!matchedPosition) {
           matchedPosition = dbPositions.find(p => {
-            if (p.symbol !== event.symbol) return false;
+            if (p.symbol !== position.symbol) return false;
             if (p.realizedPnl === null) return false;
-            
+
             const pnlDiff = Math.abs(eventPnL - parseFloat(p.realizedPnl));
-            
+
             // Match if P&L difference < $0.01
             return pnlDiff < 0.01;
           });
         }
-        
+
         // Strategy 4: Last resort - just match by symbol and find closest time
         if (!matchedPosition) {
-          const symbolMatches = dbPositions.filter(p => 
-            p.symbol === event.symbol && p.closedAt
+          const symbolMatches = dbPositions.filter(p =>
+            p.symbol === position.symbol && p.closedAt
           );
-          
+
           if (symbolMatches.length > 0) {
             // Find the one with closest close time
             matchedPosition = symbolMatches.reduce((closest, p) => {
@@ -6625,7 +6822,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               const cDiff = Math.abs(eventDate.getTime() - cDate.getTime());
               return pDiff < cDiff ? p : closest;
             });
-            
+
             // Only use if within 24 hours
             const timeDiff = Math.abs(eventDate.getTime() - new Date(matchedPosition.closedAt!).getTime());
             if (timeDiff > 86400000) {
@@ -6633,15 +6830,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
           }
         }
-        
+
         return {
           tradeNumber: index + 1,
-          timestamp: event.time,
+          timestamp: position.timestamp,
           date: eventDate.toISOString(),
-          symbol: event.symbol,
+          symbol: position.symbol,
           pnl: eventPnL,
-          asset: event.asset,
-          tradeId: event.tradeId,
+          tradeId: position.tradeIds[0], // First trade ID from consolidated layers
           // Database details (if available)
           hasDetails: !!matchedPosition,
           positionId: matchedPosition?.id,
@@ -6649,13 +6845,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           quantity: matchedPosition?.totalQuantity,
           entryPrice: matchedPosition?.avgEntryPrice,
           openedAt: matchedPosition?.openedAt,
-          layersFilled: matchedPosition?.layersFilled,
+          layersFilled: matchedPosition?.layersFilled || position.layerCount, // Use DB layers if available, else consolidated count
         };
       });
-      
+
       // Sort trades by timestamp (newest first)
       trades.sort((a, b) => b.timestamp - a.timestamp);
-      
+
       res.json({
         success: true,
         trades,

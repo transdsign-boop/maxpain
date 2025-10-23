@@ -20,6 +20,7 @@ import { syncCompletedTrades } from './exchange-sync';
 import { ProtectiveOrderRecovery } from './protective-order-recovery';
 import { wsBroadcaster } from './websocket-broadcaster';
 import { telegramService } from './telegram-service';
+import { vwapFilterManager } from './vwap-direction-filter';
 
 // Aster DEX fee schedule
 const ASTER_MAKER_FEE_PERCENT = 0.01;  // 0.01% for limit orders (adds liquidity) 
@@ -381,7 +382,32 @@ export class StrategyEngine extends EventEmitter {
     
     // Sync cascade detector with strategy's selected assets
     await cascadeDetectorService.syncSymbols();
-    
+
+    // Initialize VWAP filters and start price feed if VWAP filter is enabled
+    if (strategy.vwapFilterEnabled && strategy.selectedAssets.length > 0) {
+      const { vwapFilterManager } = await import('./vwap-direction-filter');
+      const { vwapPriceFeed } = await import('./vwap-price-feed');
+
+      // Pre-initialize filters with strategy configuration for all symbols
+      const vwapConfig = {
+        enabled: strategy.vwapFilterEnabled,
+        timeframeMinutes: strategy.vwapTimeframeMinutes,
+        bufferPercentage: parseFloat(strategy.vwapBufferPercentage),
+        enableBuffer: strategy.vwapEnableBuffer,
+      };
+
+      for (const symbol of strategy.selectedAssets) {
+        // This will create the filter with the right config if it doesn't exist
+        vwapFilterManager.getFilter(symbol, vwapConfig);
+      }
+
+      console.log(`📊 Initialized ${strategy.selectedAssets.length} VWAP filters with strategy config`);
+
+      // Now start the price feed - it will update the pre-configured filters
+      vwapPriceFeed.start(strategy.selectedAssets);
+      console.log(`📊 VWAP Price Feed started for ${strategy.selectedAssets.length} symbols`);
+    }
+
     // Start WebSocket user data stream for real-time account/position updates
     // IMPORTANT: Only run in deployed environment to avoid listen key conflicts
     // Aster DEX only allows ONE active user data stream per API key
@@ -577,7 +603,16 @@ export class StrategyEngine extends EventEmitter {
       this.pollingInterval = undefined;
       console.log('✅ Polling stopped');
     }
-    
+
+    // Stop VWAP price feed
+    try {
+      const { vwapPriceFeed } = await import('./vwap-price-feed');
+      vwapPriceFeed.stop();
+      console.log('✅ VWAP Price Feed stopped');
+    } catch (error) {
+      console.error('⚠️ Error stopping VWAP price feed:', error);
+    }
+
     // CRITICAL: Capture session BEFORE removing from maps
     const session = this.activeSessions.get(strategyId);
     
@@ -715,7 +750,7 @@ export class StrategyEngine extends EventEmitter {
         reason: aggregateStatus.reason || 'Cascade auto-blocking active',
         type: 'cascade_auto_block'
       });
-      
+
       // Log error to database for audit trail
       await this.logTradeEntryError({
         strategy: currentStrategy,
@@ -726,8 +761,66 @@ export class StrategyEngine extends EventEmitter {
         errorDetails: aggregateStatus.reason || 'Cascade auto-blocking active (system-wide)',
         liquidationValue: parseFloat(liquidation.value),
       });
-      
+
       return;
+    }
+
+    // VWAP DIRECTION FILTER: Check if trade direction is allowed based on VWAP
+    if (currentStrategy.vwapFilterEnabled) {
+      // Get or create VWAP filter for this symbol
+      const vwapFilter = vwapFilterManager.getFilter(liquidation.symbol, {
+        enabled: currentStrategy.vwapFilterEnabled,
+        timeframeMinutes: currentStrategy.vwapTimeframeMinutes,
+        bufferPercentage: parseFloat(currentStrategy.vwapBufferPercentage),
+        enableBuffer: currentStrategy.vwapEnableBuffer,
+      });
+
+      // Update VWAP with current price data from liquidation
+      const price = parseFloat(liquidation.price);
+      const liquidationValue = parseFloat(liquidation.value);
+      const volume = liquidationValue / price; // Estimate volume from USD value
+
+      vwapFilter.updatePrice({
+        timestamp: Date.now(),
+        high: price,
+        low: price,
+        close: price,
+        volume: volume,
+      });
+
+      // Check if this trade direction is allowed
+      const isLong = positionSide === 'long';
+      const directionAllowed = isLong ? vwapFilter.canTakeLong() : vwapFilter.canTakeShort();
+
+      if (!directionAllowed) {
+        const vwapStatus = vwapFilter.getStatus();
+        const blockReason = `VWAP filter blocks ${positionSide.toUpperCase()} trades (Direction: ${vwapStatus.direction}, Price: $${price.toFixed(2)}, VWAP: $${vwapStatus.currentVWAP.toFixed(2)})`;
+        console.log(`🚫 VWAP DIRECTION BLOCK: ${blockReason}`);
+
+        // Broadcast block status to frontend
+        wsBroadcaster.broadcastTradeBlock({
+          blocked: true,
+          reason: blockReason,
+          type: 'vwap_direction_block'
+        });
+
+        // Log error to database for audit trail
+        await this.logTradeEntryError({
+          strategy: currentStrategy,
+          symbol: liquidation.symbol,
+          side: positionSide,
+          attemptType: 'entry',
+          reason: 'vwap_direction_filter',
+          errorDetails: blockReason,
+          liquidationValue: parseFloat(liquidation.value),
+        });
+
+        return; // Exit early - VWAP filter blocks this trade
+      }
+
+      // VWAP filter allows this trade direction
+      const vwapStatus = vwapFilter.getStatus();
+      console.log(`✅ VWAP DIRECTION ALLOWED: ${positionSide.toUpperCase()} (Direction: ${vwapStatus.direction}, Price: $${price.toFixed(2)}, VWAP: $${vwapStatus.currentVWAP.toFixed(2)}, Distance: ${vwapStatus.distanceFromVWAP.toFixed(2)}%)`);
     }
 
     // Use configurable lookback window from strategy settings (convert hours to seconds)
@@ -1561,23 +1654,26 @@ export class StrategyEngine extends EventEmitter {
       }
 
       const data = await response.json();
-      // CRITICAL FIX: Sum ALL asset wallet balances (USDF + USDT + any others)
-      // This matches what calculatePortfolioRisk() does for margin balance calculation
-      // User requirement: "current balance" = total wallet balance across all assets
-      let totalWalletBalance = 0;
+      // Sum ALL asset margin balances (wallet + unrealized PnL) across all assets
+      // This gives us the TOTAL EQUITY which is what margin percentage should be based on
+      // User requirement: margin % = margin used / total balance (not just wallet)
+      let totalMarginBalance = 0;
       if (data.assets && Array.isArray(data.assets)) {
         for (const asset of data.assets) {
-          const walletBalance = parseFloat(asset.crossWalletBalance || asset.walletBalance || '0');
-          totalWalletBalance += walletBalance;
-          console.log(`   💵 ${asset.asset || 'Unknown'}: $${walletBalance.toFixed(2)}`);
+          // marginBalance = walletBalance + unrealizedProfit (total equity for this asset)
+          const marginBalance = parseFloat(asset.marginBalance || asset.crossWalletBalance || asset.walletBalance || '0');
+          totalMarginBalance += marginBalance;
+          const walletOnly = parseFloat(asset.crossWalletBalance || asset.walletBalance || '0');
+          const unrealizedPnl = marginBalance - walletOnly;
+          console.log(`   💵 ${asset.asset || 'Unknown'}: Wallet=$${walletOnly.toFixed(2)}, Unrealized=${unrealizedPnl >= 0 ? '+' : ''}$${unrealizedPnl.toFixed(2)}, Total=$${marginBalance.toFixed(2)}`);
         }
       }
-      // Fallback to totalWalletBalance if assets array is empty
-      if (totalWalletBalance === 0) {
-        totalWalletBalance = parseFloat(data.totalWalletBalance || '0');
+      // Fallback to totalMarginBalance if assets array is empty
+      if (totalMarginBalance === 0) {
+        totalMarginBalance = parseFloat(data.totalMarginBalance || data.totalWalletBalance || '0');
       }
-      console.log(`💰 Exchange total wallet balance (ALL assets): $${totalWalletBalance.toFixed(2)}`);
-      return totalWalletBalance;
+      console.log(`💰 Exchange total balance (wallet + unrealized PnL): $${totalMarginBalance.toFixed(2)}`);
+      return totalMarginBalance;
     } catch (error) {
       console.error('❌ Error fetching exchange balance:', error);
       return null;
@@ -1837,7 +1933,7 @@ export class StrategyEngine extends EventEmitter {
         };
       }
       
-      console.log(`   Balance: $${currentBalance.toFixed(2)}, SL%: ${strategy.stopLossPercent}%`);
+      console.log(`   Total Balance (wallet + unrealized): $${currentBalance.toFixed(2)}, SL%: ${strategy.stopLossPercent}%`);
       
       // Calculate stop loss percentage from strategy
       const stopLossPercent = parseFloat(strategy.stopLossPercent);
@@ -1947,12 +2043,11 @@ export class StrategyEngine extends EventEmitter {
         const accountInfo = await this.fetchAccountInfo(strategy);
         if (accountInfo) {
           actualMarginUsed = parseFloat(accountInfo.totalInitialMargin || '0');
-          
-          // CRITICAL FIX: Use currentBalance (same denominator as filled/reserved risk)
-          // This ensures all risk percentages use the same base: total wallet balance across ALL assets
-          // Previous bug: used marginBalance calculation here but currentBalance elsewhere
+
+          // Use actual current total balance (wallet + unrealized PnL, fetched from exchange at line 1820)
+          // This is the same balance used for all other risk calculations
           actualMarginUsedPercentage = currentBalance > 0 ? (actualMarginUsed / currentBalance) * 100 : 0;
-          console.log(`   📊 Actual Margin Used: $${actualMarginUsed.toFixed(2)} = ${actualMarginUsedPercentage.toFixed(1)}% of wallet balance ($${currentBalance.toFixed(2)})`);
+          console.log(`   📊 Actual Margin Used: $${actualMarginUsed.toFixed(2)} = ${actualMarginUsedPercentage.toFixed(1)}% of total balance ($${currentBalance.toFixed(2)})`);
           
           // SYSTEM INTEGRITY CHECK: Detect inverted risk hierarchy
           // Expected: actualMarginUsed ≤ filledRisk ≤ reservedRisk ≤ maxRisk

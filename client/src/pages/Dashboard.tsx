@@ -9,6 +9,7 @@ import TradingStrategyDialog from "@/components/TradingStrategyDialog";
 import TradeErrorsDialog from "@/components/TradeErrorsDialog";
 import { StrategyStatus } from "@/components/StrategyStatus";
 import CascadeRiskIndicator from "@/components/CascadeRiskIndicator";
+import VWAPStatusDisplay from "@/components/VWAPStatusDisplay";
 import ThemeToggle from "@/components/ThemeToggle";
 import AsterLogo from "@/components/AsterLogo";
 import { Button } from "@/components/ui/button";
@@ -701,10 +702,13 @@ export default function Dashboard() {
       >
         {/* Cascade Risk Indicator */}
         <CascadeRiskIndicator />
-        
+
         {/* Market Sentiment Dashboard */}
         <MarketSentiment />
-        
+
+        {/* VWAP Direction Filter Status */}
+        {activeStrategy && <VWAPStatusDisplay strategyId={activeStrategy.id} />}
+
         {/* Performance Overview */}
         <PerformanceOverview />
         

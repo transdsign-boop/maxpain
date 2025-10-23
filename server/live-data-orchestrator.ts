@@ -56,6 +56,7 @@ class LiveDataOrchestrator {
   private exchangeStreams: Map<string, IExchangeStream> = new Map();
   private cachedUsdtBalance: Map<string, number> = new Map(); // Cache USDT balance per strategy
   private cachedUsdfBalance: Map<string, number> = new Map(); // Cache USDF balance per strategy
+  private cachedAvailableBalance: Map<string, number> = new Map(); // Cache exchange's calculated available balance
 
   constructor() {
     console.log('🎯 Live Data Orchestrator initialized - 100% WebSocket mode (NO POLLING)');
@@ -83,7 +84,13 @@ class LiveDataOrchestrator {
       
       if (response.ok) {
         const data = await response.json();
-        
+
+        // Cache exchange's calculated available balance (top-level field)
+        const exchangeAvailable = parseFloat(data.availableBalance || '0');
+        for (const strategyId of this.cache.keys()) {
+          this.cachedAvailableBalance.set(strategyId, exchangeAvailable);
+        }
+
         // Cache USDF balance
         const usdfAsset = data.assets?.find((a: any) => a.asset === 'USDF');
         if (usdfAsset) {
@@ -92,7 +99,7 @@ class LiveDataOrchestrator {
             this.cachedUsdfBalance.set(strategyId, usdfBalance);
           }
         }
-        
+
         // Cache USDT balance
         const usdtAsset = data.assets?.find((a: any) => a.asset === 'USDT');
         if (usdtAsset) {
@@ -127,7 +134,12 @@ class LiveDataOrchestrator {
       
       if (response.ok) {
         const data = await response.json();
-        
+
+        // Cache exchange's calculated available balance
+        const exchangeAvailable = parseFloat(data.availableBalance || '0');
+        this.cachedAvailableBalance.set(strategyId, exchangeAvailable);
+        console.log(`💰 Cached exchange available balance: $${exchangeAvailable.toFixed(2)}`);
+
         // Cache USDF balance
         const usdfAsset = data.assets?.find((a: any) => a.asset === 'USDF');
         if (usdfAsset) {
@@ -135,7 +147,7 @@ class LiveDataOrchestrator {
           this.cachedUsdfBalance.set(strategyId, usdfBalance);
           console.log(`💵 Cached USDF balance for strategy: $${usdfBalance.toFixed(2)}`);
         }
-        
+
         // Cache USDT balance
         const usdtAsset = data.assets?.find((a: any) => a.asset === 'USDT');
         if (usdtAsset) {
@@ -378,14 +390,34 @@ class LiveDataOrchestrator {
       const usdtUnrealized = parseFloat(usdtBalance?.unrealizedProfit || '0');
       const totalUnrealizedProfit = (usdfUnrealized + usdtUnrealized).toString();
       
-      // Use USDF values as primary, fallback to USDT
+      // Sum margin balances from both assets (wallet + unrealized PnL)
+      const usdfMargin = parseFloat(usdfBalance?.marginBalance || '0');
+      const usdtMargin = parseFloat(usdtBalance?.marginBalance || '0');
+      const totalMarginBalance = (usdfMargin + usdtMargin || totalWallet).toString();
+
+      // Use USDF values as primary for other fields, fallback to USDT
       const primaryBalance = usdfBalance || usdtBalance;
-      const totalMarginBalance = primaryBalance?.marginBalance || totalWallet.toString();
-      
+
       // Calculate margin from current positions (exchange doesn't provide reliable totalInitialMargin)
       const openPositions = snapshot.positions.filter((pos: any) => parseFloat(pos.positionAmt || '0') !== 0);
       const marginUsed = this.calculateMarginUsed(openPositions);
-      const actualAvailable = totalWallet - marginUsed;
+
+      // Get exchange's available balance - prefer WebSocket data, then cache, then fallback
+      let actualAvailable = totalWallet - marginUsed; // Fallback calculation
+
+      // First priority: Use available balance from WebSocket if provided
+      const usdfAvailable = parseFloat(usdfBalance?.availableBalance || '0');
+      const usdtAvailable = parseFloat(usdtBalance?.availableBalance || '0');
+      const websocketAvailable = usdfAvailable + usdtAvailable;
+
+      if (websocketAvailable > 0) {
+        // WebSocket provides per-asset available balance - use it directly
+        actualAvailable = websocketAvailable;
+      } else if (this.cachedAvailableBalance.has(strategyId)) {
+        // Second priority: Use cached value from REST API
+        actualAvailable = this.cachedAvailableBalance.get(strategyId) || actualAvailable;
+      }
+      // Otherwise use fallback calculation
       
       // Build assets array with both USDF and USDT
       const assets = [];
