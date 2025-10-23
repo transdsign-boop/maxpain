@@ -53,7 +53,18 @@
       "Bash(then echo \"❌ Port 5000 still in use\")",
       "Bash(else echo \"✅ Port 5000 is free - you can start the dev server now\")",
       "Bash(tsx:*)",
-      "Bash(awk:*)"
+      "Bash(awk:*)",
+      "Bash(ss:*)",
+      "Bash(netstat:*)",
+      "Bash(npm run dev:*)",
+      "Bash(then echo \"✅ Server is ready\")",
+      "Bash(else echo \"⏳ Waiting for server... ($i/10)\")",
+      "Bash(kill:*)",
+      "Bash(do if timeout 5 curl -s -f http://localhost:5000/api/strategies)",
+      "Bash(then echo \"✅ Server is online and responding\")",
+      "Bash(else echo \"⏳ Waiting for server... ($i/15)\")",
+      "Bash(timeout 30 npx tsc:*)",
+      "Bash(tee:*)"
     ],
     "deny": [],
     "ask": []

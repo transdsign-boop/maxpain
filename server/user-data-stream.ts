@@ -269,6 +269,7 @@ class UserDataStreamManager {
 
       // Balance updates
       if (accountData.B) {
+        console.log('🔍 Raw WebSocket balance data:', JSON.stringify(accountData.B, null, 2));
         const balances = accountData.B.map((b: any) => ({
           asset: b.a,
           walletBalance: b.wb,
@@ -277,8 +278,10 @@ class UserDataStreamManager {
           unrealizedProfit: b.up || '0',
           marginBalance: b.mb || '0',
           initialMargin: b.im || '0',
+          availableBalance: b.ab || '0', // Exchange's available balance (accounts for maintenance margin)
           balanceChange: b.bc || '0',
         }));
+        console.log('📝 Parsed balances:', balances.map((b: any) => `${b.asset}: wallet=${b.walletBalance}, margin=${b.marginBalance}, available=${b.availableBalance}`).join(', '));
         
         // Update orchestrator cache from WebSocket
         if (activeStrategy) {

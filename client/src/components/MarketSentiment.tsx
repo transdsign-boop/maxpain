@@ -1,16 +1,19 @@
 import { useState, memo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { 
-  TrendingUp, 
-  TrendingDown, 
-  Activity, 
+import {
+  TrendingUp,
+  TrendingDown,
+  Activity,
   Newspaper,
   TrendingUpIcon,
   AlertTriangle,
   Minus,
-  ExternalLink
+  ExternalLink,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
@@ -93,10 +96,11 @@ const getFearGreedLabel = (value: number | null) => {
 };
 
 // Market Sentiment Metric Component
-const MarketMetric = memo(({ data, isLoading, error }: { 
-  data?: MarketSentimentData; 
-  isLoading: boolean; 
-  error: Error | null 
+const MarketMetric = memo(({ data, isLoading, error, showDetails }: {
+  data?: MarketSentimentData;
+  isLoading: boolean;
+  error: Error | null;
+  showDetails: boolean;
 }) => {
   if (isLoading) {
     return (
@@ -120,8 +124,8 @@ const MarketMetric = memo(({ data, isLoading, error }: {
       {/* Sentiment Indicator */}
       <div className="text-center">
         <div className={`text-2xl font-mono font-bold ${
-          data.sentiment === 'bullish' 
-            ? 'text-[rgb(190,242,100)]' 
+          data.sentiment === 'bullish'
+            ? 'text-[rgb(190,242,100)]'
             : data.sentiment === 'bearish'
             ? 'text-[rgb(251,146,60)]'
             : 'text-muted-foreground'
@@ -138,48 +142,53 @@ const MarketMetric = memo(({ data, isLoading, error }: {
         </div>
       </div>
 
-      {/* Order Book */}
-      <div className="space-y-0.5 pt-1.5 border-t">
-        <div className="text-xs font-medium text-muted-foreground">Order Book</div>
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-muted-foreground">Bid</span>
-          <span className="font-mono text-[rgb(190,242,100)]" data-testid="value-bid-depth">
-            {formatCurrency(parseFloat(data.orderBook.bidDepth))}
-          </span>
-        </div>
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-muted-foreground">Ask</span>
-          <span className="font-mono text-[rgb(251,146,60)]" data-testid="value-ask-depth">
-            {formatCurrency(parseFloat(data.orderBook.askDepth))}
-          </span>
-        </div>
-      </div>
+      {showDetails && (
+        <>
+          {/* Order Book */}
+          <div className="space-y-0.5 pt-1.5 border-t">
+            <div className="text-xs font-medium text-muted-foreground">Order Book</div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">Bid</span>
+              <span className="font-mono text-[rgb(190,242,100)]" data-testid="value-bid-depth">
+                {formatCurrency(parseFloat(data.orderBook.bidDepth))}
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">Ask</span>
+              <span className="font-mono text-[rgb(251,146,60)]" data-testid="value-ask-depth">
+                {formatCurrency(parseFloat(data.orderBook.askDepth))}
+              </span>
+            </div>
+          </div>
 
-      {/* Liquidations */}
-      <div className="space-y-0.5 pt-1.5 border-t">
-        <div className="text-xs font-medium text-muted-foreground">Liquidations (1h)</div>
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-[rgb(251,146,60)]">Long</span>
-          <span className="font-mono" data-testid="value-liq-long">
-            {formatCurrency(parseFloat(data.liquidations.longValue))}
-          </span>
-        </div>
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-[rgb(190,242,100)]">Short</span>
-          <span className="font-mono" data-testid="value-liq-short">
-            {formatCurrency(parseFloat(data.liquidations.shortValue))}
-          </span>
-        </div>
-      </div>
+          {/* Liquidations */}
+          <div className="space-y-0.5 pt-1.5 border-t">
+            <div className="text-xs font-medium text-muted-foreground">Liquidations (1h)</div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-[rgb(251,146,60)]">Long</span>
+              <span className="font-mono" data-testid="value-liq-long">
+                {formatCurrency(parseFloat(data.liquidations.longValue))}
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-[rgb(190,242,100)]">Short</span>
+              <span className="font-mono" data-testid="value-liq-short">
+                {formatCurrency(parseFloat(data.liquidations.shortValue))}
+              </span>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 });
 
 // Fear & Greed Metric Component
-const FearGreedMetric = memo(({ data, isLoading, error }: { 
-  data?: { data: FearGreedData[] }; 
-  isLoading: boolean; 
-  error: Error | null 
+const FearGreedMetric = memo(({ data, isLoading, error, showDetails }: {
+  data?: { data: FearGreedData[] };
+  isLoading: boolean;
+  error: Error | null;
+  showDetails: boolean;
 }) => {
   const fearGreedData = data?.data?.[0];
   const fearGreedValue = fearGreedData ? parseInt(fearGreedData.value) : null;
@@ -195,7 +204,7 @@ const FearGreedMetric = memo(({ data, isLoading, error }: {
   return (
     <div className="space-y-2">
       <div className="text-center">
-        <div 
+        <div
           className={`text-3xl font-mono font-bold ${getFearGreedColor(fearGreedValue)}`}
           data-testid="value-fear-greed"
         >
@@ -206,39 +215,44 @@ const FearGreedMetric = memo(({ data, isLoading, error }: {
         </div>
       </div>
 
-      {/* Gauge Bar */}
-      <div className="space-y-0.5">
-        <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-          <div 
-            className="h-full transition-all duration-500 rounded-full"
-            style={{
-              width: `${fearGreedValue || 0}%`,
-              background: fearGreedValue && fearGreedValue < 50 
-                ? 'rgb(251, 146, 60)' 
-                : 'rgb(190, 242, 100)'
-            }}
-          />
-        </div>
-        <div className="flex justify-between text-xs text-muted-foreground">
-          <span>Fear</span>
-          <span>Greed</span>
-        </div>
-      </div>
+      {showDetails && (
+        <>
+          {/* Gauge Bar */}
+          <div className="space-y-0.5">
+            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+              <div
+                className="h-full transition-all duration-500 rounded-full"
+                style={{
+                  width: `${fearGreedValue || 0}%`,
+                  background: fearGreedValue && fearGreedValue < 50
+                    ? 'rgb(251, 146, 60)'
+                    : 'rgb(190, 242, 100)'
+                }}
+              />
+            </div>
+            <div className="flex justify-between text-xs text-muted-foreground">
+              <span>Fear</span>
+              <span>Greed</span>
+            </div>
+          </div>
 
-      {fearGreedData && (
-        <div className="text-xs text-muted-foreground text-center pt-1.5 border-t">
-          {format(new Date(parseInt(fearGreedData.timestamp) * 1000), 'MMM d, h:mm a')}
-        </div>
+          {fearGreedData && (
+            <div className="text-xs text-muted-foreground text-center pt-1.5 border-t">
+              {format(new Date(parseInt(fearGreedData.timestamp) * 1000), 'MMM d, h:mm a')}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
 });
 
 // Social Sentiment Metric Component
-const SocialMetric = memo(({ data, isLoading, error }: { 
-  data?: any; 
-  isLoading: boolean; 
-  error: Error | null 
+const SocialMetric = memo(({ data, isLoading, error, showDetails }: {
+  data?: any;
+  isLoading: boolean;
+  error: Error | null;
+  showDetails: boolean;
 }) => {
   if (isLoading) {
     return (
@@ -260,10 +274,10 @@ const SocialMetric = memo(({ data, isLoading, error }: {
   return (
     <div className="space-y-2">
       <div className="text-center">
-        <div 
+        <div
           className={`text-3xl font-mono font-bold ${
-            (data?.score || 0) > 60 
-              ? 'text-[rgb(190,242,100)]' 
+            (data?.score || 0) > 60
+              ? 'text-[rgb(190,242,100)]'
               : (data?.score || 0) < 40
               ? 'text-[rgb(251,146,60)]'
               : 'text-muted-foreground'
@@ -273,32 +287,36 @@ const SocialMetric = memo(({ data, isLoading, error }: {
           {data?.score || '--'}
         </div>
         <div className="text-xs font-medium mt-0.5" data-testid="text-social-label">
-          {(data?.score || 0) > 60 
-            ? 'Positive' 
+          {(data?.score || 0) > 60
+            ? 'Positive'
             : (data?.score || 0) < 40
             ? 'Negative'
             : 'Neutral'}
         </div>
       </div>
 
-      {/* Trending Topics */}
-      <div className="space-y-0.5 pt-1.5 border-t">
-        <div className="text-xs font-medium text-muted-foreground">
-          Trending
-        </div>
-        <div className="flex flex-wrap gap-1">
-          {data?.trending?.slice(0, 3).map((topic: string, i: number) => (
-            <Badge 
-              key={i} 
-              variant="outline" 
-              className="text-xs"
-              data-testid={`badge-trending-${i}`}
-            >
-              #{topic}
-            </Badge>
-          ))}
-        </div>
-      </div>
+      {showDetails && (
+        <>
+          {/* Trending Topics */}
+          <div className="space-y-0.5 pt-1.5 border-t">
+            <div className="text-xs font-medium text-muted-foreground">
+              Trending
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {data?.trending?.slice(0, 3).map((topic: string, i: number) => (
+                <Badge
+                  key={i}
+                  variant="outline"
+                  className="text-xs"
+                  data-testid={`badge-trending-${i}`}
+                >
+                  #{topic}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 });
@@ -421,6 +439,7 @@ const NewsTicker = memo(({ articles, category, onCategoryChange }: {
 
 export default function MarketSentiment() {
   const [newsCategory, setNewsCategory] = useState<'all' | 'economic' | 'crypto' | 'political'>('all');
+  const [showDetails, setShowDetails] = useState(false);
 
   // Fetch Fear & Greed Index
   const fearGreedQuery = useQuery<{ data: FearGreedData[] }>({
@@ -469,9 +488,29 @@ export default function MarketSentiment() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-foreground">Market Sentiment</h2>
-        <Badge variant="outline" className="text-xs" data-testid="badge-live-data">
-          Live Data
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className="text-xs" data-testid="badge-live-data">
+            Live Data
+          </Badge>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowDetails(!showDetails)}
+            className="gap-1"
+          >
+            {showDetails ? (
+              <>
+                <ChevronUp className="h-4 w-4" />
+                Hide Details
+              </>
+            ) : (
+              <>
+                <ChevronDown className="h-4 w-4" />
+                Show Details
+              </>
+            )}
+          </Button>
+        </div>
       </div>
 
       {/* Consolidated Card */}
@@ -484,10 +523,11 @@ export default function MarketSentiment() {
                 <Activity className="h-3.5 w-3.5" />
                 Market Sentiment
               </CardTitle>
-              <MarketMetric 
-                data={marketSentimentQuery.data} 
+              <MarketMetric
+                data={marketSentimentQuery.data}
                 isLoading={marketSentimentQuery.isLoading}
                 error={marketSentimentQuery.error}
+                showDetails={showDetails}
               />
             </div>
 
@@ -497,10 +537,11 @@ export default function MarketSentiment() {
                 <TrendingUpIcon className="h-3.5 w-3.5" />
                 Fear & Greed
               </CardTitle>
-              <FearGreedMetric 
-                data={fearGreedQuery.data} 
+              <FearGreedMetric
+                data={fearGreedQuery.data}
                 isLoading={fearGreedQuery.isLoading}
                 error={fearGreedQuery.error}
+                showDetails={showDetails}
               />
             </div>
 
@@ -510,10 +551,11 @@ export default function MarketSentiment() {
                 <Activity className="h-3.5 w-3.5" />
                 Social Sentiment
               </CardTitle>
-              <SocialMetric 
-                data={socialSentimentQuery.data} 
+              <SocialMetric
+                data={socialSentimentQuery.data}
                 isLoading={socialSentimentQuery.isLoading}
                 error={socialSentimentQuery.error}
+                showDetails={showDetails}
               />
             </div>
           </div>

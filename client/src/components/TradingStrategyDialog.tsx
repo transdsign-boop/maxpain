@@ -49,6 +49,10 @@ interface Strategy {
   updatedAt: string;
   adaptiveTpEnabled?: boolean;
   adaptiveSlEnabled?: boolean;
+  vwapFilterEnabled?: boolean;
+  vwapTimeframeMinutes?: number;
+  vwapBufferPercentage?: string;
+  vwapEnableBuffer?: boolean;
 }
 
 // Form validation schema
@@ -109,6 +113,14 @@ interface DCASettings {
   slAtrMultiplier: string;
   minSlPercent: string;
   maxSlPercent: string;
+}
+
+// VWAP Settings Types
+interface VWAPSettings {
+  vwapFilterEnabled: boolean;
+  vwapTimeframeMinutes: number;
+  vwapBufferPercentage: number;
+  vwapEnableBuffer: boolean;
 }
 
 // DCA Preview Response Type
@@ -727,6 +739,275 @@ function DCASettingsSection({ strategyId, isStrategyRunning, saveTrigger }: { st
             >
               {updateDCAMutation.isPending ? "Updating..." : "Update DCA Settings"}
             </Button>
+          </div>
+        </CollapsibleContent>
+      </div>
+    </Collapsible>
+  );
+}
+
+function VWAPSettingsSection({ strategyId, isStrategyRunning }: { strategyId: string; isStrategyRunning: boolean }) {
+  const { toast } = useToast();
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  // Fetch current strategy to get VWAP settings
+  const { data: strategy } = useQuery<Strategy>({
+    queryKey: [`/api/strategies`],
+    select: (data: any) => {
+      const strategies = Array.isArray(data) ? data : [data];
+      return strategies.find((s: Strategy) => s.id === strategyId);
+    },
+    enabled: !!strategyId,
+  });
+
+  // Update VWAP settings mutation
+  const updateVWAPMutation = useMutation({
+    mutationFn: async (data: Partial<VWAPSettings>) => {
+      const response = await apiRequest('PATCH', `/api/strategies/${strategyId}/vwap/config`, data);
+      return await response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "VWAP Settings Updated",
+        description: "Your VWAP direction filter has been configured successfully.",
+      });
+      queryClient.invalidateQueries({ queryKey: [`/api/strategies`] });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to update VWAP settings. Please try again.",
+        variant: "destructive",
+      });
+    }
+  });
+
+  const [formValues, setFormValues] = useState<Partial<VWAPSettings>>({
+    vwapFilterEnabled: false,
+    vwapTimeframeMinutes: 240,
+    vwapBufferPercentage: 0.0005,
+    vwapEnableBuffer: true,
+  });
+
+  // Initialize form when strategy loads
+  useEffect(() => {
+    if (strategy) {
+      setFormValues({
+        vwapFilterEnabled: strategy.vwapFilterEnabled ?? false,
+        vwapTimeframeMinutes: strategy.vwapTimeframeMinutes ?? 240,
+        vwapBufferPercentage: strategy.vwapBufferPercentage ? parseFloat(strategy.vwapBufferPercentage) : 0.0005,
+        vwapEnableBuffer: strategy.vwapEnableBuffer ?? true,
+      });
+    }
+  }, [strategy]);
+
+  const handleInputChange = (field: keyof VWAPSettings, value: string | boolean | number) => {
+    setFormValues(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleSubmit = () => {
+    updateVWAPMutation.mutate(formValues);
+  };
+
+  const handlePresetClick = (preset: 'tight' | 'normal' | 'wide') => {
+    const presets = {
+      tight: { bufferPercentage: 0.0001, timeframeMinutes: 60 },   // 0.01%, 1h
+      normal: { bufferPercentage: 0.0005, timeframeMinutes: 240 }, // 0.05%, 4h
+      wide: { bufferPercentage: 0.002, timeframeMinutes: 480 },    // 0.2%, 8h
+    };
+
+    setFormValues(prev => ({
+      ...prev,
+      vwapBufferPercentage: presets[preset].bufferPercentage,
+      vwapTimeframeMinutes: presets[preset].timeframeMinutes,
+    }));
+  };
+
+  return (
+    <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
+      <div className="space-y-4">
+        <CollapsibleTrigger className="w-full" data-testid="button-toggle-vwap">
+          <div className="flex items-center justify-between cursor-pointer hover-elevate p-3 rounded-md">
+            <Label className="text-base font-medium flex items-center gap-2 cursor-pointer">
+              <TrendingUp className="h-4 w-4" />
+              VWAP Direction Filter
+              <ChevronDown className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+            </Label>
+            {formValues.vwapFilterEnabled && (
+              <Badge variant="default" className="text-xs">
+                Enabled
+              </Badge>
+            )}
+          </div>
+        </CollapsibleTrigger>
+
+        <CollapsibleContent>
+          <div className="space-y-4">
+            <div className="text-sm text-muted-foreground bg-muted/30 p-3 rounded-md">
+              Only trade when price aligns with VWAP direction: longs below VWAP, shorts above VWAP. Buffer zones prevent flip-flopping near VWAP.
+            </div>
+
+            {/* Enable/Disable Switch */}
+            <div className="flex items-center justify-between p-3 border rounded-md">
+              <div className="space-y-0.5">
+                <Label htmlFor="vwapFilterEnabled" className="text-base">
+                  Enable VWAP Filter
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  Filter trades based on price position relative to VWAP (can be toggled while running)
+                </p>
+              </div>
+              <Switch
+                id="vwapFilterEnabled"
+                checked={formValues.vwapFilterEnabled ?? false}
+                onCheckedChange={(checked) => {
+                  handleInputChange('vwapFilterEnabled', checked);
+                  // Auto-save when toggling enable/disable
+                  updateVWAPMutation.mutate({ ...formValues, vwapFilterEnabled: checked });
+                }}
+              />
+            </div>
+
+            {/* Preset Buttons */}
+            <div className="space-y-2">
+              <Label>Quick Presets</Label>
+              <div className="grid grid-cols-3 gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePresetClick('tight')}
+                  className="text-xs"
+                >
+                  <Lightbulb className="h-3 w-3 mr-1" />
+                  Tight
+                  <span className="ml-1 text-muted-foreground">(1h, 0.01%)</span>
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePresetClick('normal')}
+                  className="text-xs"
+                >
+                  <Target className="h-3 w-3 mr-1" />
+                  Normal
+                  <span className="ml-1 text-muted-foreground">(4h, 0.05%)</span>
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePresetClick('wide')}
+                  className="text-xs"
+                >
+                  <Layers className="h-3 w-3 mr-1" />
+                  Wide
+                  <span className="ml-1 text-muted-foreground">(8h, 0.2%)</span>
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Timeframe Selection */}
+              <div className="space-y-2">
+                <Label htmlFor="vwapTimeframeMinutes">
+                  VWAP Timeframe
+                </Label>
+                <Select
+                  value={formValues.vwapTimeframeMinutes?.toString() ?? '240'}
+                  onValueChange={(value) => handleInputChange('vwapTimeframeMinutes', parseInt(value))}
+                >
+                  <SelectTrigger id="vwapTimeframeMinutes">
+                    <SelectValue placeholder="Select timeframe" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="60">1 Hour</SelectItem>
+                    <SelectItem value="120">2 Hours</SelectItem>
+                    <SelectItem value="180">3 Hours</SelectItem>
+                    <SelectItem value="240">4 Hours</SelectItem>
+                    <SelectItem value="360">6 Hours</SelectItem>
+                    <SelectItem value="480">8 Hours</SelectItem>
+                    <SelectItem value="1440">24 Hours</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  VWAP resets every {formValues.vwapTimeframeMinutes ? `${formValues.vwapTimeframeMinutes / 60}h` : '4h'}
+                </p>
+              </div>
+
+              {/* Buffer Percentage */}
+              <div className="space-y-2">
+                <Label htmlFor="vwapBufferPercentage">
+                  Buffer Size: {((formValues.vwapBufferPercentage ?? 0.0005) * 100).toFixed(2)}%
+                </Label>
+                <Slider
+                  id="vwapBufferPercentage"
+                  min={0.0001}
+                  max={0.002}
+                  step={0.0001}
+                  value={[formValues.vwapBufferPercentage ?? 0.0005]}
+                  onValueChange={(value) => handleInputChange('vwapBufferPercentage', value[0])}
+                  className="w-full"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Range: 0.01% (tight) to 0.2% (wide)
+                </p>
+              </div>
+            </div>
+
+            {/* Enable Buffer Zone Switch */}
+            <div className="flex items-center justify-between p-3 border rounded-md">
+              <div className="space-y-0.5">
+                <Label htmlFor="vwapEnableBuffer" className="text-sm">
+                  Enable Buffer Zone
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Maintain previous direction when price is near VWAP (prevents whipsaw)
+                </p>
+              </div>
+              <Switch
+                id="vwapEnableBuffer"
+                checked={formValues.vwapEnableBuffer ?? true}
+                onCheckedChange={(checked) => handleInputChange('vwapEnableBuffer', checked)}
+              />
+            </div>
+
+            {/* Info Box */}
+            <div className="text-xs bg-blue-500/10 border border-blue-500/20 p-3 rounded-md space-y-2">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
+                <div className="space-y-1">
+                  <p className="font-medium text-blue-500">How VWAP Direction Filter Works:</p>
+                  <p className="text-muted-foreground">
+                    • <strong>Price below VWAP</strong> → LONG_ONLY (blocks short trades)
+                  </p>
+                  <p className="text-muted-foreground">
+                    • <strong>Price above VWAP</strong> → SHORT_ONLY (blocks long trades)
+                  </p>
+                  <p className="text-muted-foreground">
+                    • <strong>Price in buffer zone</strong> → Maintains previous direction
+                  </p>
+                  <p className="text-muted-foreground mt-2">
+                    Buffer zones prevent rapid direction changes when price hovers near VWAP, reducing false signals.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Save Button */}
+            <Button
+              type="button"
+              onClick={handleSubmit}
+              disabled={updateVWAPMutation.isPending}
+              className="w-full"
+            >
+              {updateVWAPMutation.isPending ? "Updating..." : "Update VWAP Configuration"}
+            </Button>
+
+            <p className="text-xs text-muted-foreground text-center">
+              Changes take effect immediately, even while the strategy is running
+            </p>
           </div>
         </CollapsibleContent>
       </div>
@@ -2225,10 +2506,20 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
 
               {/* DCA Settings (Advanced) */}
               {activeStrategy && (
-                <DCASettingsSection 
-                  strategyId={activeStrategy.id} 
+                <DCASettingsSection
+                  strategyId={activeStrategy.id}
                   isStrategyRunning={isStrategyRunning}
                   saveTrigger={dcaSaveTrigger}
+                />
+              )}
+
+              <Separator />
+
+              {/* VWAP Direction Filter */}
+              {activeStrategy && (
+                <VWAPSettingsSection
+                  strategyId={activeStrategy.id}
+                  isStrategyRunning={isStrategyRunning}
                 />
               )}
 

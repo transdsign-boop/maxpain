@@ -126,6 +126,11 @@ export const strategies = pgTable("strategies", {
   // Manual Financial Adjustments (for correcting exchange API limitations)
   manualCommissionAdjustment: decimal("manual_commission_adjustment", { precision: 18, scale: 8 }).notNull().default("0.0"), // Manual commission adjustment (e.g., missing historical data from exchange API)
   manualFundingAdjustment: decimal("manual_funding_adjustment", { precision: 18, scale: 8 }).notNull().default("0.0"), // Manual funding fee adjustment (e.g., correcting API vs UI discrepancies)
+  // VWAP Direction Filter Configuration
+  vwapFilterEnabled: boolean("vwap_filter_enabled").notNull().default(false), // Enable VWAP direction filtering
+  vwapTimeframeMinutes: integer("vwap_timeframe_minutes").notNull().default(240), // VWAP calculation timeframe (60, 120, 180, 240, 360, 480, 1440 minutes)
+  vwapBufferPercentage: decimal("vwap_buffer_percentage", { precision: 6, scale: 4 }).notNull().default("0.0005"), // Buffer zone size (0.0001 = 0.01%, 0.002 = 0.2%)
+  vwapEnableBuffer: boolean("vwap_enable_buffer").notNull().default(true), // Enable buffer zone to prevent flip-flopping
 });
 
 // Trading Sessions

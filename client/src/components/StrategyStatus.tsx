@@ -260,6 +260,153 @@ function FillSourceBadge({ source }: { source?: 'bot' | 'manual' | 'sync' }) {
   );
 }
 
+// Expandable completed trade from chart data (with optional position details)
+interface ExpandableCompletedTradeProps {
+  trade: any; // Chart data point
+  position?: any; // Matched database position (optional)
+  formatCurrency: (value: number) => string;
+  formatPercentage: (value: number) => string;
+  getPnlColor: (pnl: number) => string;
+}
+
+function ExpandableCompletedTrade({ trade, position, formatCurrency, formatPercentage, getPnlColor }: ExpandableCompletedTradeProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  const { data: fills } = useQuery<Fill[]>({
+    queryKey: ['/api/positions', position?.id, 'fills'],
+    enabled: isExpanded && !!position?.id,
+  });
+
+  const hasLayers = trade.layersFilled > 1;
+  const canExpand = position && hasLayers;
+
+  return (
+    <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
+      <div className="rounded-lg border bg-card hover-elevate">
+        <div className="p-3">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              {canExpand && (
+                <CollapsibleTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-6 w-6">
+                    {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </Button>
+                </CollapsibleTrigger>
+              )}
+              <span className="font-semibold">{trade.symbol}</span>
+              <Badge className={trade.pnl >= 0 ? 'bg-lime-500/15 text-lime-300 border-lime-400/30' : 'bg-red-600/15 text-red-400 border-red-500/30'}>
+                {trade.side?.toUpperCase() || (trade.pnl >= 0 ? 'LONG' : 'SHORT')}
+              </Badge>
+              {hasLayers && (
+                <Badge variant="outline" className="text-xs">
+                  {trade.layersFilled} layers
+                </Badge>
+              )}
+            </div>
+            <div className={`text-lg font-mono font-bold ${getPnlColor(trade.pnl)}`}>
+              {trade.pnl >= 0 ? '+' : ''}${trade.pnl.toFixed(2)}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Date:</span>
+              <span className="font-mono">{format(new Date(trade.timestamp), 'MMM dd, HH:mm')}</span>
+            </div>
+
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Trade #:</span>
+              <span className="font-mono">{trade.tradeNumber}</span>
+            </div>
+
+            {trade.commission !== undefined && trade.commission > 0 && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Fees:</span>
+                <span className="font-mono text-red-400">-${trade.commission.toFixed(2)}</span>
+              </div>
+            )}
+
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Cumulative:</span>
+              <span className={`font-mono ${getPnlColor(trade.cumulativePnl)}`}>
+                ${trade.cumulativePnl.toFixed(2)}
+              </span>
+            </div>
+
+            {position && (
+              <>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Qty:</span>
+                  <span className="font-mono">{parseFloat(position.totalQuantity).toFixed(4)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Avg Entry:</span>
+                  <span className="font-mono">{formatCurrency(parseFloat(position.avgEntryPrice))}</span>
+                </div>
+              </>
+            )}
+          </div>
+
+          {!canExpand && !position && (
+            <div className="mt-2 text-xs text-muted-foreground italic text-center">
+              Position details not available in database
+            </div>
+          )}
+
+          <CollapsibleContent>
+            {fills && fills.length > 0 && (
+              <div className="mt-3 pt-3 border-t space-y-2">
+                <div className="text-xs font-semibold text-muted-foreground mb-2">DCA Layers</div>
+                {fills
+                  .filter(f => f.layerNumber > 0)
+                  .sort((a, b) => a.layerNumber - b.layerNumber)
+                  .map((fill) => (
+                    <div key={fill.id} className="flex items-center justify-between text-xs p-2 rounded bg-muted/30">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">
+                          Layer {fill.layerNumber}
+                        </Badge>
+                        <span className="font-mono">{parseFloat(fill.quantity).toFixed(4)}</span>
+                        <span className="text-muted-foreground">@</span>
+                        <span className="font-mono">{formatCurrency(parseFloat(fill.price))}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <span>Fee: {formatCurrency(parseFloat(fill.fee || '0'))}</span>
+                        <span className="text-xs">{format(new Date(fill.filledAt), 'HH:mm:ss')}</span>
+                      </div>
+                    </div>
+                  ))}
+
+                {fills.filter(f => f.layerNumber === 0).length > 0 && (
+                  <>
+                    <div className="text-xs font-semibold text-muted-foreground mt-3 mb-2">Exit</div>
+                    {fills
+                      .filter(f => f.layerNumber === 0)
+                      .map((fill) => (
+                        <div key={fill.id} className="flex items-center justify-between text-xs p-2 rounded bg-muted/30">
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-xs">Exit</Badge>
+                            <span className="font-mono">{parseFloat(fill.quantity).toFixed(4)}</span>
+                            <span className="text-muted-foreground">@</span>
+                            <span className="font-mono">{formatCurrency(parseFloat(fill.price))}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-muted-foreground">
+                            <span>Fee: {formatCurrency(parseFloat(fill.fee || '0'))}</span>
+                            <span className="text-xs">{format(new Date(fill.filledAt), 'HH:mm:ss')}</span>
+                          </div>
+                        </div>
+                      ))}
+                  </>
+                )}
+              </div>
+            )}
+          </CollapsibleContent>
+        </div>
+      </div>
+    </Collapsible>
+  );
+}
+
 // Completed trade card with expandable layer details
 function CompletedTradeCard({ position, formatCurrency, formatPercentage, getPnlColor, isHedge }: CompletedTradeCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -1037,6 +1184,7 @@ export const StrategyStatus = memo(function StrategyStatus() {
     realizedPnlLoading,
     strategyChanges,
     assetPerformance,
+    chartData, // Chart data with consolidated positions (same as performance chart)
   } = useStrategyData();
 
   // Fetch fills for each live position to get layer counts
@@ -1457,9 +1605,9 @@ export const StrategyStatus = memo(function StrategyStatus() {
             </TabsTrigger>
             <TabsTrigger value="completed" data-testid="tab-completed-positions">
               Completed Trades
-              {closedPositions && closedPositions.length > 0 && (
+              {chartData && chartData.length > 0 && (
                 <Badge variant="secondary" className="ml-2 text-xs">
-                  {closedPositions.length}
+                  {chartData.length}
                 </Badge>
               )}
             </TabsTrigger>
@@ -1502,11 +1650,38 @@ export const StrategyStatus = memo(function StrategyStatus() {
           </TabsContent>
 
           <TabsContent value="completed" className="mt-3 md:mt-4">
-            <AllTradesView 
-              formatCurrency={formatCurrency} 
-              formatPercentage={formatPercentage}
-              getPnlColor={getPnlColor}
-            />
+            {chartData && chartData.length > 0 ? (
+              <div className="space-y-2 max-h-96 overflow-y-auto overflow-x-hidden pr-2 custom-scrollbar">
+                {chartData.slice().reverse().map((trade: any) => {
+                  // Try to find matching database position for layer details
+                  const matchedPosition = closedPositions?.find(p => {
+                    if (!p.closedAt || p.symbol !== trade.symbol) return false;
+                    const positionDate = new Date(p.closedAt);
+                    const tradeDate = new Date(trade.timestamp);
+                    const timeDiff = Math.abs(tradeDate.getTime() - positionDate.getTime());
+                    // Match if within 5 minutes (wider window for multi-layer positions)
+                    return timeDiff < 300000;
+                  });
+
+                  return (
+                    <ExpandableCompletedTrade
+                      key={`${trade.symbol}-${trade.timestamp}`}
+                      trade={trade}
+                      position={matchedPosition}
+                      formatCurrency={formatCurrency}
+                      formatPercentage={formatPercentage}
+                      getPnlColor={getPnlColor}
+                    />
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <CheckCircle2 className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                <p className="text-muted-foreground">No completed trades</p>
+                <p className="text-sm text-muted-foreground">Closed positions will appear here</p>
+              </div>
+            )}
           </TabsContent>
         </Tabs>
       </CardContent>
