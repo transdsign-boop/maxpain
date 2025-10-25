@@ -89,7 +89,9 @@
       "Bash(npm run build:*)",
       "Bash(timeout 5 node:*)",
       "Bash(env)",
-      "Read(//dev/pts/**)"
+      "Read(//dev/pts/**)",
+      "Bash(if timeout 2 curl -s http://localhost:5000/api/strategies)",
+      "Bash(else echo \"⏳ Waiting for server ($i/10)...\")"
     ],
     "deny": [],
     "ask": []
