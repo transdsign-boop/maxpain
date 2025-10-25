@@ -4893,38 +4893,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Strategy not found" });
       }
 
-      // Import vwapFilterManager and rateLimiter
+      // Import vwapFilterManager
       const { vwapFilterManager } = await import('./vwap-direction-filter');
-      const { rateLimiter } = await import('./rate-limiter');
-
-      // Try to fetch 24h ticker data for all symbols (includes volume)
-      // If rate limited, we'll just return 0 for all volumes
-      const volumeMap = new Map();
-      try {
-        const tickerData = await rateLimiter.enqueue(
-          'vwap-status-24h-ticker',
-          async () => {
-            const response = await fetch('https://fapi.asterdex.com/fapi/v1/ticker/24hr');
-            if (!response.ok) {
-              throw new Error(`Failed to fetch 24h ticker: ${response.status}`);
-            }
-            return response.json();
-          }
-        );
-
-        // Create a map of symbol -> volume for quick lookup
-        // Use quoteVolume (USDT volume) instead of volume (base asset volume) for dollar amounts
-        if (Array.isArray(tickerData)) {
-          tickerData.forEach((ticker: any) => {
-            if (ticker.symbol && ticker.quoteVolume) {
-              volumeMap.set(ticker.symbol, parseFloat(ticker.quoteVolume));
-            }
-          });
-        }
-      } catch (volumeError) {
-        // Rate limited or other error fetching volume data - continue without volumes
-        console.log('Could not fetch 24h ticker data for VWAP status (likely rate limited):', volumeError instanceof Error ? volumeError.message : String(volumeError));
-      }
 
       // Get VWAP status for all symbols in the strategy
       const symbolStatuses = strategy.selectedAssets.map(symbol => {
@@ -4950,7 +4920,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           distanceFromVWAP: status.distanceFromVWAP,
           nextResetTime: status.nextResetTime,
           timeUntilReset: status.timeUntilReset,
-          volume24h: volumeMap.get(symbol) || 0,
           statistics: {
             directionChanges: stats.directionChanges,
             signalsBlocked: stats.signalsBlocked,
@@ -4971,8 +4940,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       console.error('Error getting VWAP status:', error);
-      console.error('Error stack:', error instanceof Error ? error.stack : 'No stack');
-      res.status(500).json({ error: "Failed to get VWAP status", details: error instanceof Error ? error.message : String(error) });
+      res.status(500).json({ error: "Failed to get VWAP status" });
     }
   });
 
@@ -7720,24 +7688,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/telegram/daily-report", async (req, res) => {
     try {
       const { strategyId } = req.body;
-
+      
       if (!strategyId) {
         return res.status(400).json({ error: 'strategyId is required' });
       }
-
-      // Get active session for this strategy
-      const sessions = await storage.getSessionsByStrategy(strategyId);
-      const activeSession = sessions.find((s: any) => s.isActive === true);
-
-      if (!activeSession) {
-        return res.status(404).json({ error: 'No active trading session found' });
-      }
-
-      const currentBalance = parseFloat(activeSession.currentBalance || '0');
-      const totalPnl = parseFloat(activeSession.totalPnl || '0');
-
+      
       const { telegramService } = await import('./telegram-service');
-      await telegramService.sendOpenPositionsSummary(activeSession.id, currentBalance, totalPnl);
+      await telegramService.sendDailyReport(strategyId);
       
       res.json({ success: true, message: 'Daily report sent successfully' });
     } catch (error: any) {
@@ -7753,12 +7710,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!strategyId) {
         return res.status(400).json({ error: 'strategyId is required' });
       }
-
-      // Hourly reports disabled per user request
-      // const { telegramScheduler } = await import('./telegram-scheduler');
-      // telegramScheduler.start(strategyId);
-
-      res.json({ success: false, message: 'Hourly report scheduler disabled per user request' });
+      
+      const { telegramScheduler } = await import('./telegram-scheduler');
+      telegramScheduler.start(strategyId);
+      
+      res.json({ success: true, message: 'Daily report scheduler started' });
     } catch (error: any) {
       console.error('❌ Error starting scheduler:', error);
       res.status(500).json({ error: error.message });

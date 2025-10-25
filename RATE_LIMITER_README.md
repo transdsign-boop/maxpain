@@ -6,13 +6,13 @@ This rate limiter prevents HTTP 418 ("Too Many Requests") errors from Aster DEX 
 ## Features
 
 ### 1. **Request Throttling**
-- Maximum ~2.86 requests per second (350ms delay between requests - optimized to prevent 418 errors)
+- Maximum 5 requests per second (200ms delay between requests)
 - Automatic queuing of concurrent requests
 - Sequential processing to avoid bursts
 
 ### 2. **Response Caching**
-- Caches successful API responses for 60 seconds (increased from 30s for better efficiency)
-- Reduces redundant API calls by ~70-80%
+- Caches successful API responses for 30 seconds
+- Reduces redundant API calls
 - Automatic cache invalidation after TTL
 
 ### 3. **Exponential Backoff**
@@ -52,40 +52,24 @@ The rate limiter is automatically applied to:
 
 1. **`fetchActualFills()`** - Fetches fill data for specific orders
    - Cached per `symbol-orderId` combination
-   - 60-second cache TTL
+   - 30-second cache TTL
 
 2. **`fetchPositionPnL()`** - Fetches realized P&L for positions
    - No caching (data changes frequently)
    - Throttled to prevent burst requests
 
-3. **Cascade Detector** - Price and open interest polling
-   - Batch price fetch: Cached with key `cascade-all-prices` (60s TTL)
-   - Per-symbol OI: Cached with key `cascade-oi-{symbol}` (60s TTL)
-   - Significantly reduces API calls during cascade detection
-
-4. **Live Data Orchestrator** - Balance refresh polling
-   - Balance refresh: Cached with key `live-balance-refresh` (60s TTL)
-   - Balance init: No caching (needs fresh data on startup)
-   - Prevents duplicate balance fetches every 60 seconds
-
-5. **VWAP Price Feed** - Historical kline fetching
-   - Cached per symbol during initialization
-   - 60-second cache TTL
-
 ## Benefits
 
-### Before Optimization:
+### Before Rate Limiter:
 - ❌ Burst requests could trigger 418 errors
 - ❌ No request queue = unpredictable behavior
 - ❌ Redundant API calls wasted rate limit quota
-- ❌ Unprotected polling calls bypassed rate limiter
 - ❌ IP bans lasted until timeout
 
-### After Optimization (v2.0):
-- ✅ Maximum ~2.86 requests/second (safer margin to prevent 418 errors)
+### After Rate Limiter:
+- ✅ Maximum 5 requests/second prevents 418 errors
 - ✅ Request queue ensures sequential processing
-- ✅ Response caching (60s TTL) reduces API call volume by ~70-80%
-- ✅ ALL polling endpoints wrapped with rate limiter
+- ✅ Response caching reduces API call volume by ~70%
 - ✅ Automatic backoff recovers from rate limits gracefully
 
 ## Monitoring
@@ -109,12 +93,10 @@ rateLimiter.clearCache();
 Adjust rate limiting parameters in `server/rate-limiter.ts`:
 
 ```typescript
-private minDelay = 350; // 350ms = ~2.86 requests/second (optimized for stability)
-private cacheTTL = 60000; // 60 seconds cache (increased for efficiency)
+private minDelay = 200; // 200ms = 5 requests/second
+private cacheTTL = 30000; // 30 seconds cache
 private backoffUntil = 0; // 60 second backoff on 418
 ```
-
-**⚠️ IMPORTANT**: Do NOT reduce `minDelay` below 350ms without thorough testing. Values below 300ms may trigger 418 rate limit errors.
 
 ## Logs
 
@@ -136,11 +118,9 @@ Watch for these log messages:
 ## Troubleshooting
 
 **Still getting 418 errors?**
-- Current `minDelay` is 350ms (~2.86 req/s) - this should prevent most 418 errors
-- If still occurring, increase to 500ms (~2 req/s) for maximum safety
-- Check if multiple instances are running (kills rate limit budget)
+- Increase `minDelay` from 200ms to 300ms or 500ms
+- Check if multiple instances are running
 - Verify WebSocket is being used for live data (not polling)
-- Check logs for `⚠️ Rate limit detected - entering backoff period`
 
 **Stale cached data?**
 - Reduce `cacheTTL` from 30s to 10s for faster updates

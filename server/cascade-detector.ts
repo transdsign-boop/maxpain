@@ -325,23 +325,22 @@ export class CascadeDetector {
 
     // Send Telegram alert for high-quality setups (excellent or good RQ with high LQ and green light)
     // Green light = low cascade risk, best trading conditions
-    // Cascade detector alerts disabled per user request
-    // if ((rq_bucket === 'excellent' || rq_bucket === 'good') && LQ >= 7 && this.currentLight === 'green') {
-    //   try {
-    //     import('./telegram-service').then(({ telegramService }) => {
-    //       const reason = `${rq_bucket === 'excellent' ? 'Excellent' : 'Good'} reversal quality with strong liquidation quality (LQ=${LQ.toFixed(1)}). Low cascade risk (green light).`;
-    //       telegramService.sendCascadeDetectorAlert(
-    //         this.symbol,
-    //         Math.round(score * 10), // Scale 0-6 to 0-60 for display
-    //         reversal_quality,
-    //         LQ,
-    //         reason
-    //       ).catch(err => console.error('Failed to send cascade alert:', err));
-    //     }).catch(err => console.error('Failed to import telegram service:', err));
-    //   } catch (err) {
-    //     console.error('Error sending cascade alert:', err);
-    //   }
-    // }
+    if ((rq_bucket === 'excellent' || rq_bucket === 'good') && LQ >= 7 && this.currentLight === 'green') {
+      try {
+        import('./telegram-service').then(({ telegramService }) => {
+          const reason = `${rq_bucket === 'excellent' ? 'Excellent' : 'Good'} reversal quality with strong liquidation quality (LQ=${LQ.toFixed(1)}). Low cascade risk (green light).`;
+          telegramService.sendCascadeDetectorAlert(
+            this.symbol,
+            Math.round(score * 10), // Scale 0-6 to 0-60 for display
+            reversal_quality,
+            LQ,
+            reason
+          ).catch(err => console.error('Failed to send cascade alert:', err));
+        }).catch(err => console.error('Failed to import telegram service:', err));
+      } catch (err) {
+        console.error('Error sending cascade alert:', err);
+      }
+    }
 
     return {
       symbol: this.symbol,

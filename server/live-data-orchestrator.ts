@@ -10,7 +10,6 @@ import {
 } from './exchanges/types';
 import WebSocket from 'ws';
 import { vwapFilterManager } from './vwap-direction-filter';
-import { rateLimiter } from './rate-limiter';
 
 interface LiveSnapshot {
   account: {
@@ -80,31 +79,20 @@ class LiveDataOrchestrator {
       const { createHmac } = await import('crypto');
       const apiKey = process.env.ASTER_DEX_API_KEY;
       const secretKey = process.env.ASTER_DEX_SECRET_KEY;
-
+      
       if (!apiKey || !secretKey) return;
 
       const timestamp = Date.now();
       const params = `timestamp=${timestamp}`;
       const signature = createHmac('sha256', secretKey).update(params).digest('hex');
-
-      // Use rate limiter with caching (60s TTL)
-      const data = await rateLimiter.enqueue(
-        'live-balance-refresh', // Cache key
-        async () => {
-          const response = await fetch(
-            `https://fapi.asterdex.com/fapi/v2/account?${params}&signature=${signature}`,
-            { headers: { 'X-MBX-APIKEY': apiKey } }
-          );
-
-          if (!response.ok) {
-            throw new Error(`Balance fetch failed: ${response.status}`);
-          }
-
-          return response.json();
-        }
+      
+      const response = await fetch(
+        `https://fapi.asterdex.com/fapi/v2/account?${params}&signature=${signature}`,
+        { headers: { 'X-MBX-APIKEY': apiKey } }
       );
-
-      if (data) {
+      
+      if (response.ok) {
+        const data = await response.json();
 
         // Cache exchange's calculated available balance (top-level field)
         const exchangeAvailable = parseFloat(data.availableBalance || '0');
@@ -141,31 +129,20 @@ class LiveDataOrchestrator {
       const { createHmac } = await import('crypto');
       const apiKey = process.env.ASTER_DEX_API_KEY;
       const secretKey = process.env.ASTER_DEX_SECRET_KEY;
-
+      
       if (!apiKey || !secretKey) return;
 
       const timestamp = Date.now();
       const params = `timestamp=${timestamp}`;
       const signature = createHmac('sha256', secretKey).update(params).digest('hex');
-
-      // Use rate limiter (no caching for initialization - needs fresh data)
-      const data = await rateLimiter.enqueue(
-        null, // No cache for init
-        async () => {
-          const response = await fetch(
-            `https://fapi.asterdex.com/fapi/v2/account?${params}&signature=${signature}`,
-            { headers: { 'X-MBX-APIKEY': apiKey } }
-          );
-
-          if (!response.ok) {
-            throw new Error(`Balance init failed: ${response.status}`);
-          }
-
-          return response.json();
-        }
+      
+      const response = await fetch(
+        `https://fapi.asterdex.com/fapi/v2/account?${params}&signature=${signature}`,
+        { headers: { 'X-MBX-APIKEY': apiKey } }
       );
-
-      if (data) {
+      
+      if (response.ok) {
+        const data = await response.json();
 
         // Cache exchange's calculated available balance
         const exchangeAvailable = parseFloat(data.availableBalance || '0');
