@@ -85,7 +85,11 @@
       "Bash(if timeout 5 curl -s -f http://localhost:5000/api/performance/chart)",
       "Bash(do sleep 3)",
       "Bash(if timeout 2 curl -s http://localhost:5000/api/performance/chart)",
-      "Bash(else echo \"⏳ Waiting for server ($i/20)...\")"
+      "Bash(else echo \"⏳ Waiting for server ($i/20)...\")",
+      "Bash(npm run build:*)",
+      "Bash(timeout 5 node:*)",
+      "Bash(env)",
+      "Read(//dev/pts/**)"
     ],
     "deny": [],
     "ask": []

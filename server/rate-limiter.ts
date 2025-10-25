@@ -22,9 +22,9 @@ class RateLimiter {
   private queue: QueuedRequest[] = [];
   private processing = false;
   private lastRequestTime = 0;
-  private minDelay = 200; // 200ms between requests = max 5 requests/second
+  private minDelay = 350; // 350ms between requests = max 2.86 requests/second (safer margin)
   private cache = new Map<string, CacheEntry>();
-  private cacheTTL = 30000; // 30 seconds
+  private cacheTTL = 60000; // 60 seconds (increased from 30s for better caching)
   private backoffUntil = 0; // Timestamp when we can resume requests
 
   /**

@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, TrendingDown, Minus, BarChart3 } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, BarChart3, ArrowUpDown } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import VWAPChartDialog from "@/components/VWAPChartDialog";
@@ -18,6 +18,7 @@ interface VWAPSymbolStatus {
   distanceFromVWAP: number;
   nextResetTime: number;
   timeUntilReset: number;
+  volume24h?: number;
   statistics: {
     directionChanges: number;
     signalsBlocked: number;
@@ -49,6 +50,22 @@ function formatTimeRemaining(ms: number): string {
     return `${hours}h ${remainingMinutes}m`;
   }
   return `${minutes}m`;
+}
+
+function formatVolume(volume: number | undefined): string {
+  if (!volume || volume === 0) {
+    return '$0';
+  }
+  if (volume >= 1000000000) {
+    return `$${(volume / 1000000000).toFixed(1)}B`;
+  }
+  if (volume >= 1000000) {
+    return `$${(volume / 1000000).toFixed(1)}M`;
+  }
+  if (volume >= 1000) {
+    return `$${(volume / 1000).toFixed(0)}K`;
+  }
+  return `$${volume.toFixed(0)}`;
 }
 
 function DirectionBadge({ direction, inBufferZone }: { direction: string; inBufferZone: boolean }) {
@@ -231,9 +248,12 @@ export default function VWAPStatusDisplay({ strategyId }: VWAPStatusDisplayProps
                 }}
                 onClick={() => setSelectedSymbolName(selectedSymbolName === symbolStatus.symbol ? null : symbolStatus.symbol)}
               >
-                <div className="flex items-center justify-center h-full">
+                <div className="flex flex-col items-center justify-center h-full">
                   <span className={`font-mono text-xs font-bold ${getTextColor()}`}>
                     {symbolStatus.symbol.replace('USDT', '')}
+                  </span>
+                  <span className="font-mono text-[10px] text-muted-foreground mt-0.5">
+                    {formatVolume(symbolStatus.volume24h)}
                   </span>
                 </div>
               </div>
@@ -310,6 +330,10 @@ export default function VWAPStatusDisplay({ strategyId }: VWAPStatusDisplayProps
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Data Points:</span>
                 <span className="font-mono font-semibold">{selectedSymbol.statistics.dataPoints}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">24h Volume:</span>
+                <span className="font-mono font-semibold">{formatVolume(selectedSymbol.volume24h)}</span>
               </div>
             </div>
             )}

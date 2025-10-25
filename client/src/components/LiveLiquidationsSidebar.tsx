@@ -254,10 +254,11 @@ function LiveLiquidationsSidebar({
                       </div>
                       <div className="flex flex-col items-end gap-0.5 min-w-[7rem]">
                         <div className="text-xs text-muted-foreground font-mono whitespace-nowrap">
-                          {new Date(liquidation.timestamp).toLocaleTimeString([], { 
-                            hour: '2-digit', 
+                          {new Date(liquidation.timestamp).toLocaleTimeString('en-US', {
+                            hour: '2-digit',
                             minute: '2-digit',
-                            second: '2-digit'
+                            second: '2-digit',
+                            timeZone: 'America/Los_Angeles'
                           })}
                         </div>
                         <ElapsedTimeDisplay timestamp={new Date(liquidation.timestamp)} />
