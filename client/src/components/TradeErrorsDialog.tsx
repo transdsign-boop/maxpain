@@ -65,13 +65,31 @@ export default function TradeErrorsDialog({ open, onOpenChange }: TradeErrorsDia
   const getReasonBadgeColor = (reason: string) => {
     switch (reason) {
       case 'aggregate_filter':
+      case 'cascade_auto_block':
+      case 'cascade_system_block':
         return 'bg-orange-500/20 text-orange-400 border-orange-500/40';
       case 'risk_limit_exceeded':
+      case 'no_remaining_risk_budget':
+      case 'portfolio_position_limit':
         return 'bg-red-500/20 text-red-400 border-red-500/40';
       case 'leverage_set_failed':
+      case 'missing_exchange_limits':
         return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/40';
       case 'order_placement_failed':
         return 'bg-purple-500/20 text-purple-400 border-purple-500/40';
+      case 'liquidation_deduplication':
+      case 'global_order_placement_cooldown':
+        return 'bg-blue-500/20 text-blue-400 border-blue-500/40';
+      case 'strategy_paused':
+      case 'no_active_session':
+        return 'bg-gray-500/20 text-gray-400 border-gray-500/40';
+      case 'no_recent_liquidations':
+      case 'no_historical_data':
+        return 'bg-amber-500/20 text-amber-400 border-amber-500/40';
+      case 'percentile_threshold_not_met':
+        return 'bg-cyan-500/20 text-cyan-400 border-cyan-500/40';
+      case 'vwap_direction_filter':
+        return 'bg-indigo-500/20 text-indigo-400 border-indigo-500/40';
       default:
         return 'bg-muted text-muted-foreground';
     }

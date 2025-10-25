@@ -388,7 +388,7 @@ class UserDataStreamManager {
   }
 
   private startKeepalive(): void {
-    // Send keepalive every 30 minutes
+    // Send keepalive every 1 minute
     this.keepaliveInterval = setInterval(async () => {
       if (!this.config) return;
 
@@ -415,7 +415,7 @@ class UserDataStreamManager {
       } catch (error) {
         console.error('❌ Error sending keepalive:', error);
       }
-    }, 30 * 60 * 1000); // 30 minutes
+    }, 60 * 1000); // 1 minute
   }
 
   private async recreateConnection(): Promise<void> {

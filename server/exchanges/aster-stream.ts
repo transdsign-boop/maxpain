@@ -65,7 +65,7 @@ export class AsterWebSocketStream implements IExchangeStream {
         (this as any).isConnected = true;
         console.log('✅ [Aster Stream] WebSocket connected');
         
-        // Setup keep-alive (ping every 30 minutes)
+        // Setup keep-alive (ping every 1 minute)
         this.setupKeepAlive();
       });
 
@@ -336,12 +336,12 @@ export class AsterWebSocketStream implements IExchangeStream {
   }
 
   private setupKeepAlive(): void {
-    // Keep alive every 30 minutes (listen key expires after 60 minutes)
+    // Keep alive every 1 minute (listen key expires after 60 minutes)
     this.keepAliveInterval = setInterval(() => {
       if (this.listenKey) {
         this.keepAliveListenKey(this.listenKey);
       }
-    }, 30 * 60 * 1000);
+    }, 60 * 1000);
   }
 
   private cleanup(): void {

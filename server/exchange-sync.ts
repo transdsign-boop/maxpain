@@ -573,11 +573,11 @@ export async function syncCompletedTrades(sessionId: string): Promise<{
     }
     
     // Fetch realized P&L events from income API - this is the SOURCE OF TRUTH
-    // Each event = exactly ONE position (1,129 events = 1,129 positions)
-    const startTime = new Date('2025-10-01T00:00:00Z').getTime();
+    // Each event = exactly ONE position
+    const startTime = 1760635140000; // Oct 16, 2025 at 17:19:00 UTC (first deposit - excludes testing period)
     const endTime = session.endedAt ? new Date(session.endedAt).getTime() : Date.now();
-    
-    console.log(`📅 Syncing P&L events from October 1st: ${new Date(startTime).toISOString()} to ${new Date(endTime).toISOString()}`);
+
+    console.log(`📅 Syncing P&L events from October 16, 2025 5:19 PM UTC: ${new Date(startTime).toISOString()} to ${new Date(endTime).toISOString()}`);
     
     const pnlResult = await fetchRealizedPnlEvents({
       startTime,
@@ -674,8 +674,8 @@ export async function syncTransfers(userId: string): Promise<{
     }
 
     // Fetch TRANSFER income from API with explicit date range to get ALL historical data
-    // Start from Oct 1, 2025 to ensure we get all transfers
-    const startTime = 1759276800000; // Oct 1, 2025 00:00:00 UTC
+    // Start from Oct 16, 2025 (first deposit - excludes testing period)
+    const startTime = 1760635140000; // Oct 16, 2025 at 17:19:00 UTC
     const endTime = Date.now();
     const timestamp = Date.now();
     const queryParams = `incomeType=TRANSFER&startTime=${startTime}&endTime=${endTime}&timestamp=${timestamp}`;
@@ -700,7 +700,7 @@ export async function syncTransfers(userId: string): Promise<{
     }
 
     const transferData = await response.json();
-    console.log(`📊 Fetched ${transferData.length} transfer events from exchange (from Oct 1, 2025 onwards)`);
+    console.log(`📊 Fetched ${transferData.length} transfer events from exchange (from Oct 10, 2025 2:13 PM UTC onwards)`);
 
     // Batch insert transfers using onConflictDoNothing for idempotency
     const insertedTransfers = await db.insert(transfers)

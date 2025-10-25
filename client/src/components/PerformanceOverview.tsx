@@ -8,9 +8,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Calendar } from "@/components/ui/calendar";
-import { TrendingUp, TrendingDown, Target, Award, Activity, LineChart, DollarSign, Percent, Calendar as CalendarIcon, X, Wallet, Settings, Clock, ChevronDown, ChevronUp } from "lucide-react";
+import { TrendingUp, TrendingDown, Target, Award, Activity, LineChart, DollarSign, Percent, Calendar as CalendarIcon, X, Wallet, Settings, ChevronDown, ChevronUp } from "lucide-react";
+import AccountLedger from "@/components/AccountLedger";
 import { ComposedChart, Line, Area, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, ReferenceArea, ReferenceDot, Label } from "recharts";
 import { format, subDays, subMinutes, subHours, startOfDay, endOfDay } from "date-fns";
+import { formatInTimeZone } from "date-fns-tz";
 import { useStrategyData } from "@/hooks/use-strategy-data";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -36,6 +38,10 @@ interface PerformanceMetrics {
   averageTradeTimeMs: number;
   maxDrawdown: number;
   maxDrawdownPercent: number;
+  sharpeRatio: number;
+  sortinoRatio: number;
+  calmarRatio: number;
+  expectancy: number;
 }
 
 interface TradeDataPoint {
@@ -94,9 +100,7 @@ function PerformanceOverview() {
   const [dateFilterOpen, setDateFilterOpen] = useState(false);
   const [depositFilterOpen, setDepositFilterOpen] = useState(false);
   const [selectedDepositId, setSelectedDepositId] = useState<string | null>(null);
-
-  // ROI interval selection state
-  const [roiIntervalsExpanded, setRoiIntervalsExpanded] = useState(false);
+  const [accountLedgerExpanded, setAccountLedgerExpanded] = useState(false);
 
   // Pagination and zoom state for chart
   const [chartEndIndex, setChartEndIndex] = useState<number | null>(null);
@@ -190,6 +194,38 @@ function PerformanceOverview() {
 
   const commissions = commissionsQuery.data;
   const fundingFees = fundingFeesQuery.data;
+
+  // Fetch ALL commissions and funding fees (unfiltered) for accurate account size calculation
+  // These queries don't respect date range filters and fetch all historical data
+  // Starting from October 16, 2025 at 17:19:00 UTC (first deposit - excludes testing period)
+  const allCommissionsQuery = useQuery<{ records: any[]; total: number }>({
+    queryKey: ['/api/commissions', 'all', 'oct16-cutoff'],
+    queryFn: async () => {
+      const response = await fetch('/api/commissions?startTime=1760635140000&_=' + Date.now());
+      if (!response.ok) return { records: [], total: 0 };
+      return response.json();
+    },
+    staleTime: 10 * 60 * 1000, // 10 minutes
+    refetchInterval: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+  });
+
+  const allFundingFeesQuery = useQuery<{ records: any[]; total: number }>({
+    queryKey: ['/api/funding-fees', 'all', 'oct16-cutoff'],
+    queryFn: async () => {
+      const response = await fetch('/api/funding-fees?startTime=1760635140000&_=' + Date.now());
+      if (!response.ok) return { records: [], total: 0 };
+      return response.json();
+    },
+    staleTime: 10 * 60 * 1000, // 10 minutes
+    refetchInterval: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+  });
+
+  const allCommissions = allCommissionsQuery.data;
+  const allFundingFees = allFundingFeesQuery.data;
 
 
   // Use consolidated position data from database (rawChartData comes from /api/performance/chart)
@@ -290,15 +326,13 @@ function PerformanceOverview() {
   const paginatedSourceData = sourceChartData.slice(startIndex, actualEndIndex);
   const canGoBack = startIndex > 0;
   const canGoForward = actualEndIndex < totalTrades;
-  
-  // Add interpolated points at zero crossings for smooth color transitions
-  const chartData = useMemo(() => {
-    if (paginatedSourceData.length === 0) return [];
-    
-    // Helper function to calculate cumulative deposits up to a given timestamp
-    const getCumulativeDepositsAtTime = (timestamp: number): number => {
+
+  // Helper function to calculate cumulative deposits up to a given timestamp
+  // Extracted outside useMemos so it can be used by both chartData and displayPerformance
+  const getCumulativeDepositsAtTime = useMemo(() => {
+    return (timestamp: number): number => {
       if (!transfers || transfers.length === 0) return 0;
-      
+
       // Sum all non-excluded deposits that occurred before or at this timestamp
       return transfers
         .filter(t => {
@@ -308,21 +342,53 @@ function PerformanceOverview() {
         })
         .reduce((sum, t) => sum + parseFloat(t.amount || '0'), 0);
     };
-    
+  }, [transfers]);
+
+  // Helper function to calculate cumulative fee income up to a given timestamp
+  // Income can be negative (costs) or positive (received)
+  // Only count COMMISSION and FUNDING_FEE transaction types
+  // Extracted outside useMemos so it can be used by both chartData and displayPerformance
+  const getCumulativeFeeIncomeAtTime = useMemo(() => {
+    return (timestamp: number): number => {
+      let cumulativeFeeIncome = 0;
+
+      // Sum all commission income up to this timestamp (negative = cost)
+      if (allCommissions?.records) {
+        cumulativeFeeIncome += allCommissions.records
+          .filter(record => record.incomeType === 'COMMISSION' && record.time <= timestamp)
+          .reduce((sum, record) => sum + parseFloat(record.income || '0'), 0);
+      }
+
+      // Sum all funding fee income up to this timestamp (negative = cost, positive = received)
+      if (allFundingFees?.records) {
+        cumulativeFeeIncome += allFundingFees.records
+          .filter(record => record.incomeType === 'FUNDING_FEE' && record.time <= timestamp)
+          .reduce((sum, record) => sum + parseFloat(record.income || '0'), 0);
+      }
+
+      return cumulativeFeeIncome;
+    };
+  }, [allCommissions, allFundingFees]);
+
+  // Add interpolated points at zero crossings for smooth color transitions
+  const chartData = useMemo(() => {
+    if (paginatedSourceData.length === 0) return [];
+
     // Rebase cumulative P&L to start at zero for the visible window
     const baseline = paginatedSourceData[0].cumulativePnl;
     const rebasedData = paginatedSourceData.map(trade => {
       // Calculate cumulative deposits at this trade's timestamp
       const depositsAtTime = getCumulativeDepositsAtTime(trade.timestamp);
-      
+
       return {
         ...trade,
         cumulativePnl: trade.cumulativePnl - baseline,
-        // Calculate account size = cumulative deposits at this time + cumulative P&L (absolute, not rebased)
+        // Calculate account size = cumulative deposits + cumulative NET P&L (fees already subtracted by backend)
+        // The backend now provides net P&L with fees already subtracted, so we don't double-count fees
         accountSize: depositsAtTime + trade.cumulativePnl,
       };
     });
-    
+
     // Add starting point at zero for cumulative P&L line
     const firstTrade = rebasedData[0];
     const depositsAtStart = getCumulativeDepositsAtTime(paginatedSourceData[0].timestamp);
@@ -332,7 +398,7 @@ function PerformanceOverview() {
       timestamp: firstTrade.timestamp - 1000,
       pnl: 0,
       cumulativePnl: 0,
-      accountSize: depositsAtStart + (paginatedSourceData[0].cumulativePnl - baseline), // Starting account size
+      accountSize: depositsAtStart + (paginatedSourceData[0].cumulativePnl - baseline), // Starting account size (fees already in net P&L)
     };
     
     const withStartPoint = [startingPoint, ...rebasedData];
@@ -374,10 +440,10 @@ function PerformanceOverview() {
           curr
         ];
       }
-      
+
       return [curr];
     });
-  }, [paginatedSourceData, transfers]);
+  }, [paginatedSourceData, getCumulativeDepositsAtTime]);
 
   // Group trades by day for visual blocks - MOVED HERE to fix React Hooks order
   const dayGroups = useMemo(() => {
@@ -593,11 +659,11 @@ function PerformanceOverview() {
       averageTradeTimeMs: 0,
       maxDrawdown: 0,
       maxDrawdownPercent: 0,
+      sharpeRatio: 0,
+      sortinoRatio: 0,
+      calmarRatio: 0,
+      expectancy: 0,
     };
-
-    // Use adjusted totals from API (includes manual adjustments for exchange API limitations)
-    const totalCommissions = commissions?.total || 0;
-    const totalFundingFees = fundingFees?.total || 0;
 
     // Use filtered events from rawSourceData (already excludes synthetic fills)
     // Filter by date range or manual selection if active
@@ -606,6 +672,10 @@ function PerformanceOverview() {
       time: trade.timestamp,
       income: trade.pnl.toString(),
     }));
+
+    // Determine the time range for filtering fees
+    let startTimestamp = 0;
+    let endTimestamp = Date.now();
 
     // Manual selection takes precedence over date range
     if (selectedTradeRange.start !== null && selectedTradeRange.end !== null) {
@@ -619,53 +689,105 @@ function PerformanceOverview() {
       filteredPnlEvents = filteredPnlEvents.filter(event =>
         selectedTimestamps.has(event.time)
       );
+
+      // For fees, use min/max of selected timestamps
+      if (selectedTrades.length > 0) {
+        startTimestamp = Math.min(...selectedTrades.map(t => t.timestamp));
+        endTimestamp = Math.max(...selectedTrades.map(t => t.timestamp));
+      }
     } else if (dateRange.start || dateRange.end) {
       // Filter by date range
-      const startTimestamp = dateRange.start ? dateRange.start.getTime() : 0;
-      const endTimestamp = dateRange.end ? dateRange.end.getTime() : Date.now();
+      startTimestamp = dateRange.start ? dateRange.start.getTime() : 0;
+      endTimestamp = dateRange.end ? dateRange.end.getTime() : Date.now();
 
       filteredPnlEvents = filteredPnlEvents.filter(event =>
         event.time >= startTimestamp && event.time <= endTimestamp
       );
     }
 
+    // Filter commission and funding fees by the same time range
+    // Use allCommissions/allFundingFees which have ALL data, then filter by time range
+    // Only count COMMISSION and FUNDING_FEE transaction types
+    const filteredCommissions = (allCommissions?.records || [])
+      .filter(record =>
+        record.incomeType === 'COMMISSION' &&
+        record.time >= startTimestamp &&
+        record.time <= endTimestamp
+      );
+
+    const filteredFundingFees = (allFundingFees?.records || [])
+      .filter(record =>
+        record.incomeType === 'FUNDING_FEE' &&
+        record.time >= startTimestamp &&
+        record.time <= endTimestamp
+      );
+
+    // Calculate filtered totals (negative = cost, positive = received)
+    const totalCommissionIncome = filteredCommissions.reduce(
+      (sum, record) => sum + parseFloat(record.income || '0'),
+      0
+    );
+    const totalFundingFeeIncome = filteredFundingFees.reduce(
+      (sum, record) => sum + parseFloat(record.income || '0'),
+      0
+    );
+
+    // Keep fees as actual income values (negative = cost paid, positive = received)
+    // This way they display correctly as negative when you paid fees
+    const totalCommissionCost = totalCommissionIncome; // Negative value = cost
+    const totalFundingFeeCost = totalFundingFeeIncome; // Negative value = cost, positive = received
+
     // Calculate metrics from realized P&L events
     const winningTrades = filteredPnlEvents.filter(e => parseFloat(e.income) > 0);
     const losingTrades = filteredPnlEvents.filter(e => parseFloat(e.income) < 0);
     const totalWins = winningTrades.reduce((sum, e) => sum + parseFloat(e.income || '0'), 0);
     const totalLosses = Math.abs(losingTrades.reduce((sum, e) => sum + parseFloat(e.income || '0'), 0));
-    const totalRealizedPnl = filteredPnlEvents.reduce((sum, e) => sum + parseFloat(e.income || '0'), 0);
+
+    // IMPORTANT: Use the final cumulative P&L from the filtered chart data
+    // The backend chart endpoint (server/routes.ts:4275) provides cumulativePnl that includes:
+    // 1. All trading P&L from realized positions
+    // 2. All commissions (subtracted)
+    // 3. All funding fees up to each timestamp (added/subtracted)
+    // 4. Scaled to match actual wallet balance (accounts for insurance fees, liquidation penalties, etc.)
+    // So we can simply use the last cumulative value instead of summing individual trades
+    const totalRealizedPnl = sourceChartData && sourceChartData.length > 0 && sourceChartData[sourceChartData.length - 1]?.cumulativePnl
+      ? sourceChartData[sourceChartData.length - 1].cumulativePnl
+      : 0;
+
+    // Keep the individual calculation for validation (should match closely if no filtering)
+    const totalRealizedPnlFromTrades = filteredPnlEvents.reduce((sum, e) => sum + parseFloat(e.income || '0'), 0);
+    const totalRealizedPnlFromTradesWithFunding = totalRealizedPnlFromTrades + totalFundingFeeIncome;
     
-    // Calculate max drawdown from filtered data (using sourceChartData which is already filtered)
-    // This calculates peak-to-trough within the selected timeframe
+    // Calculate max drawdown from filtered data using account size (deposits + P&L + fees)
+    // This calculates peak-to-trough based on true account value within the selected timeframe
     let maxDrawdown = 0;
     let maxDrawdownPercent = 0;
-    let peakValue = -Infinity;
-    let peakForPercentage = 0;
-    
+    let peakAccountSize = -Infinity;
+
     sourceChartData.forEach(trade => {
-      // Track the peak cumulative P&L in this timeframe
-      if (peakValue === -Infinity) {
-        peakValue = trade.cumulativePnl;
-        peakForPercentage = Math.max(Math.abs(trade.cumulativePnl), totalDeposited); // Use absolute peak or deposits
+      // Calculate account size for this trade (deposits + P&L + fees)
+      const depositsAtTime = getCumulativeDepositsAtTime(trade.timestamp);
+      const cumulativeFeeIncomeAtTime = getCumulativeFeeIncomeAtTime(trade.timestamp);
+      const accountSize = depositsAtTime + trade.cumulativePnl + cumulativeFeeIncomeAtTime;
+
+      // Track the peak account size in this timeframe
+      if (peakAccountSize === -Infinity) {
+        peakAccountSize = accountSize;
       }
-      
-      if (trade.cumulativePnl > peakValue) {
-        peakValue = trade.cumulativePnl;
-        peakForPercentage = Math.max(Math.abs(peakValue), totalDeposited);
+
+      if (accountSize > peakAccountSize) {
+        peakAccountSize = accountSize;
       }
-      
-      // Calculate drawdown from peak
-      const drawdown = peakValue - trade.cumulativePnl;
+
+      // Calculate drawdown from peak account size
+      const drawdown = peakAccountSize - accountSize;
       if (drawdown > maxDrawdown) {
         maxDrawdown = drawdown;
       }
     });
-    
-    // Calculate percentage based on the peak value in this timeframe
-    // If peak is positive, use it; otherwise use total deposits as baseline
-    const baseForPercentage = peakValue > 0 ? peakValue : totalDeposited;
-    maxDrawdownPercent = baseForPercentage > 0 ? (maxDrawdown / baseForPercentage) * 100 : 0;
+
+    // Calculate percentage based on the peak account size in this timeframe
+    maxDrawdownPercent = peakAccountSize > 0 ? (maxDrawdown / peakAccountSize) * 100 : 0;
     
     // Calculate average trade time from filtered closed positions
     let avgTradeTimeMs = 0;
@@ -708,6 +830,169 @@ function PerformanceOverview() {
       }
     }
     
+    // Calculate risk-adjusted return metrics for high-frequency crypto trading
+    // These metrics account for volatility and risk in trading performance
+
+    // Expectancy: Average profit/loss per trade (includes fees)
+    const expectancy = filteredPnlEvents.length > 0
+      ? totalRealizedPnl / filteredPnlEvents.length
+      : 0;
+
+    // Calmar Ratio: Annualized return / Max drawdown (higher is better)
+    // Measures return relative to worst drawdown
+    const timeRangeDays = sourceChartData.length > 1
+      ? (sourceChartData[sourceChartData.length - 1].timestamp - sourceChartData[0].timestamp) / (1000 * 60 * 60 * 24)
+      : 1;
+    const annualizedReturn = timeRangeDays > 0
+      ? (totalRealizedPnl / totalDeposited) * (365 / timeRangeDays) * 100
+      : 0;
+    const calmarRatio = maxDrawdown > 0 && totalDeposited > 0
+      ? annualizedReturn / maxDrawdownPercent
+      : 0;
+
+    // Calculate daily returns from chart data (time-based, not per-trade)
+    // This is the standard method for crypto (24/7 markets) and institutional reporting
+    const dailyReturns: number[] = [];
+    const tradesByDate = new Map<string, any[]>();
+
+    // Group trades by date
+    sourceChartData.forEach(trade => {
+      const date = new Date(trade.timestamp).toISOString().split('T')[0];
+      if (!tradesByDate.has(date)) {
+        tradesByDate.set(date, []);
+      }
+      tradesByDate.get(date)!.push(trade);
+    });
+
+    // Calculate daily P&L changes (end of day cumulative P&L - previous day)
+    const dates = Array.from(tradesByDate.keys()).sort();
+    if (dates.length > 1) {
+      let prevCumulativePnl = 0;
+      dates.forEach(date => {
+        const tradesOnDay = tradesByDate.get(date)!;
+        const lastTradeOfDay = tradesOnDay[tradesOnDay.length - 1];
+        const dailyChange = lastTradeOfDay.cumulativePnl - prevCumulativePnl;
+        dailyReturns.push(dailyChange);
+        prevCumulativePnl = lastTradeOfDay.cumulativePnl;
+      });
+    }
+
+    // Period-Adjusted Sharpe Ratio: Adapts to viewing time range
+    // Formula: (Avg Daily Return / Daily Std Dev) × √(days in period)
+    // Scales to the actual viewing period instead of always annualizing to 365 days
+    let sharpeRatio = 0;
+    if (dailyReturns.length > 1) {
+      const avgDailyReturn = dailyReturns.reduce((sum, r) => sum + r, 0) / dailyReturns.length;
+      const dailyVariance = dailyReturns.reduce((sum, r) => sum + Math.pow(r - avgDailyReturn, 2), 0) / dailyReturns.length;
+      const dailyStdDev = Math.sqrt(dailyVariance);
+
+      // Scale to viewing period (adapts to selected time range)
+      const periodAdjustmentFactor = Math.sqrt(Math.max(timeRangeDays, 1));
+      sharpeRatio = dailyStdDev > 0 ? (avgDailyReturn / dailyStdDev) * periodAdjustmentFactor : 0;
+    }
+
+    // Period-Adjusted Sortino Ratio: Like Sharpe but only considers downside deviation
+    // Adapts to viewing time range (uses same period adjustment as Sharpe)
+    let sortinoRatio = 0;
+    if (dailyReturns.length > 1) {
+      const avgDailyReturn = dailyReturns.reduce((sum, r) => sum + r, 0) / dailyReturns.length;
+      const downsideReturns = dailyReturns.filter(r => r < 0);
+
+      if (downsideReturns.length > 0) {
+        const downsideVariance = downsideReturns.reduce((sum, r) => sum + Math.pow(r, 2), 0) / downsideReturns.length;
+        const downsideStdDev = Math.sqrt(downsideVariance);
+
+        // Scale to viewing period (adapts to selected time range)
+        const periodAdjustmentFactor = Math.sqrt(Math.max(timeRangeDays, 1));
+        sortinoRatio = downsideStdDev > 0 ? (avgDailyReturn / downsideStdDev) * periodAdjustmentFactor : 0;
+      } else {
+        sortinoRatio = avgDailyReturn > 0 ? 999 : 0; // No downside = excellent
+      }
+    }
+
+    // ===== VALIDATION LOGGING: Show all calculations with actual data =====
+    console.log('📊 PERFORMANCE METRICS VALIDATION');
+    console.log('='.repeat(80));
+    console.log('\n🔢 INPUT DATA:');
+    console.log(`  Total Positions: ${sourceChartData.length} (DCA layers grouped)`);
+    console.log(`  Trading Days: ${dailyReturns.length}`);
+    console.log(`  Winning Trades: ${winningTrades.length}`);
+    console.log(`  Losing Trades: ${losingTrades.length}`);
+    console.log(`  Total Realized P&L (after all fees): $${totalRealizedPnl.toFixed(2)}`);
+    console.log(`  Total Commission Income: $${totalCommissionIncome.toFixed(2)} (included in chart cumulative P&L)`);
+    console.log(`  Total Funding Fee Income: $${totalFundingFeeIncome.toFixed(2)} (included in chart cumulative P&L)`);
+    console.log(`  Total Wins: $${totalWins.toFixed(2)}`);
+    console.log(`  Total Losses: $${totalLosses.toFixed(2)}`);
+    console.log(`  Total Deposited: $${totalDeposited.toFixed(2)}`);
+    console.log(`  Time Range Days: ${timeRangeDays.toFixed(2)}`);
+    console.log(`  Peak Account Size: $${peakAccountSize.toFixed(2)}`);
+
+    console.log('\n📈 EXPECTANCY CALCULATION:');
+    console.log(`  Formula: Total Realized P&L / Number of Trades`);
+    console.log(`  Calculation: ${totalRealizedPnl.toFixed(2)} / ${filteredPnlEvents.length}`);
+    console.log(`  Result: $${expectancy.toFixed(2)} per trade`);
+
+    console.log('\n📉 MAX DRAWDOWN CALCULATION:');
+    console.log(`  Formula: Peak Account Size - Lowest Account Size`);
+    console.log(`  Peak Account Size: $${peakAccountSize.toFixed(2)}`);
+    console.log(`  Max Drawdown: $${maxDrawdown.toFixed(2)}`);
+    console.log(`  Max Drawdown %: ${maxDrawdownPercent.toFixed(2)}%`);
+    console.log(`  Calculation: (${maxDrawdown.toFixed(2)} / ${peakAccountSize.toFixed(2)}) × 100 = ${maxDrawdownPercent.toFixed(2)}%`);
+
+    console.log('\n📊 CALMAR RATIO CALCULATION:');
+    console.log(`  Formula: Annualized Return / Max Drawdown %`);
+    console.log(`  Step 1 - Annualized Return:`);
+    console.log(`    (Total P&L / Total Deposited) × (365 / Days)`);
+    console.log(`    (${totalRealizedPnl.toFixed(2)} / ${totalDeposited.toFixed(2)}) × (365 / ${timeRangeDays.toFixed(2)})`);
+    console.log(`    ${(totalRealizedPnl / totalDeposited).toFixed(4)} × ${(365 / timeRangeDays).toFixed(2)}`);
+    console.log(`    = ${annualizedReturn.toFixed(2)}%`);
+    console.log(`  Step 2 - Calmar Ratio:`);
+    console.log(`    ${annualizedReturn.toFixed(2)} / ${maxDrawdownPercent.toFixed(2)} = ${calmarRatio.toFixed(2)}`);
+
+    if (dailyReturns.length > 1) {
+      const avgDailyReturn = dailyReturns.reduce((sum, r) => sum + r, 0) / dailyReturns.length;
+      const dailyVariance = dailyReturns.reduce((sum, r) => sum + Math.pow(r - avgDailyReturn, 2), 0) / dailyReturns.length;
+      const dailyStdDev = Math.sqrt(dailyVariance);
+      const periodAdjustmentFactor = Math.sqrt(Math.max(timeRangeDays, 1));
+
+      console.log('\n📊 PERIOD-ADJUSTED SHARPE RATIO (Adapts to Viewing Range):');
+      console.log(`  Formula: (Avg Daily Return / Daily Std Dev) × √(days in period)`);
+      console.log(`  Data Source: ${dailyReturns.length} trading days over ${timeRangeDays.toFixed(1)} calendar days`);
+      console.log(`  Viewing Period: ${timeRangeDays.toFixed(1)} days`);
+      console.log(`  Step 1 - Average Daily Return:`);
+      console.log(`    = $${avgDailyReturn.toFixed(2)}`);
+      console.log(`  Step 2 - Daily Standard Deviation:`);
+      console.log(`    = $${dailyStdDev.toFixed(2)}`);
+      console.log(`  Step 3 - Per-Day Sharpe Ratio:`);
+      console.log(`    ${avgDailyReturn.toFixed(2)} / ${dailyStdDev.toFixed(2)} = ${(avgDailyReturn / dailyStdDev).toFixed(4)}`);
+      console.log(`  Step 4 - Scale to Viewing Period (√${timeRangeDays.toFixed(1)}):`);
+      console.log(`    ${(avgDailyReturn / dailyStdDev).toFixed(4)} × ${periodAdjustmentFactor.toFixed(2)} = ${sharpeRatio.toFixed(2)}`);
+      console.log(`  ✅ Interpretation: >1.0 Good, >2.0 Excellent, >3.0 Outstanding`);
+
+      const downsideReturns = dailyReturns.filter(r => r < 0);
+      console.log('\n📊 PERIOD-ADJUSTED SORTINO RATIO (Adapts to Viewing Range):');
+      console.log(`  Formula: (Avg Daily Return / Downside Daily Std Dev) × √(days in period)`);
+      console.log(`  Losing Days: ${downsideReturns.length} of ${dailyReturns.length} (${(downsideReturns.length / dailyReturns.length * 100).toFixed(1)}%)`);
+      if (downsideReturns.length > 0) {
+        const downsideVariance = downsideReturns.reduce((sum, r) => sum + Math.pow(r, 2), 0) / downsideReturns.length;
+        const downsideStdDev = Math.sqrt(downsideVariance);
+        console.log(`  Downside Standard Deviation: $${downsideStdDev.toFixed(2)}`);
+        console.log(`  Per-Day Sortino: ${(avgDailyReturn / downsideStdDev).toFixed(4)}`);
+        console.log(`  Period-Adjusted Sortino Ratio:`);
+        console.log(`    ${(avgDailyReturn / downsideStdDev).toFixed(4)} × ${periodAdjustmentFactor.toFixed(2)} = ${sortinoRatio.toFixed(2)}`);
+        console.log(`  ✅ Sortino < Sharpe = More upside volatility (good for crypto!)`);
+      } else {
+        console.log(`  No losing days - Sortino Ratio set to 999 (perfect)`);
+      }
+    }
+
+    console.log('\n' + '='.repeat(80));
+    console.log('✅ METHODOLOGY: Time-based calculation for crypto 24/7 markets');
+    console.log('  • Daily returns (not per-trade) for institutional standard');
+    console.log('  • √365 annualization factor (not √252 for traditional markets)');
+    console.log('  • Chart data with DCA layers properly grouped');
+    console.log('  • All calculations use your actual trading data\n');
+
     return {
       ...basePerformance,
       totalTrades: filteredPnlEvents.length,
@@ -715,20 +1000,24 @@ function PerformanceOverview() {
       winningTrades: winningTrades.length,
       losingTrades: losingTrades.length,
       winRate: filteredPnlEvents.length > 0 ? (winningTrades.length / filteredPnlEvents.length) * 100 : 0,
-      totalRealizedPnl: totalRealizedPnl,
+      totalRealizedPnl: totalRealizedPnl, // Now includes fees subtracted
       totalPnl: totalRealizedPnl,
       averageWin: winningTrades.length > 0 ? totalWins / winningTrades.length : 0,
       averageLoss: losingTrades.length > 0 ? totalLosses / losingTrades.length : 0,
       bestTrade: filteredPnlEvents.length > 0 ? Math.max(...filteredPnlEvents.map(e => parseFloat(e.income || '0'))) : 0,
       worstTrade: filteredPnlEvents.length > 0 ? Math.min(...filteredPnlEvents.map(e => parseFloat(e.income || '0'))) : 0,
       profitFactor: totalLosses > 0 ? totalWins / totalLosses : (totalWins > 0 ? 999 : 0),
-      totalFees: totalCommissions,
-      fundingCost: totalFundingFees,
+      totalFees: totalCommissionCost, // Filtered by date range
+      fundingCost: totalFundingFeeCost, // Filtered by date range
       averageTradeTimeMs: avgTradeTimeMs,
       maxDrawdown: maxDrawdown,
       maxDrawdownPercent: maxDrawdownPercent,
+      sharpeRatio,
+      sortinoRatio,
+      calmarRatio,
+      expectancy,
     };
-  }, [performance, dateRange, selectedTradeRange, realizedPnlEvents, commissions, fundingFees, sourceChartData, closedPositions]);
+  }, [performance, dateRange, selectedTradeRange, realizedPnlEvents, allCommissions, allFundingFees, sourceChartData, closedPositions, rawSourceData, getCumulativeDepositsAtTime, getCumulativeFeeIncomeAtTime]);
   const displayLoading = isLoading || chartLoading || liveAccountLoading;
   const showLoadingUI = displayLoading || !performance;
 
@@ -900,11 +1189,16 @@ function PerformanceOverview() {
       return (
         <div className="bg-background border border-border rounded-md p-3 shadow-lg">
           <p className="text-sm font-semibold mb-1">Trade #{data.tradeNumber}</p>
-          <p className="text-xs text-muted-foreground mb-2">{format(new Date(data.timestamp), "MMM d, h:mm a")}</p>
+          <p className="text-xs text-muted-foreground mb-2">{formatInTimeZone(new Date(data.timestamp), "UTC", "MMM d, h:mm a")} UTC</p>
           <p className="text-xs mb-1"><span className="font-medium">{data.symbol}</span> {data.side}</p>
           <p className={`text-sm font-mono font-semibold ${data.pnl >= 0 ? 'text-lime-500' : 'text-red-600'}`}>
-            P&L: {data.pnl >= 0 ? '+' : ''}${Math.abs(data.pnl).toFixed(2)}
+            Net P&L: {data.pnl >= 0 ? '+' : ''}${Math.abs(data.pnl).toFixed(2)}
           </p>
+          {data.commission !== undefined && data.commission > 0 && (
+            <p className="text-xs font-mono text-orange-500">
+              Commission: -${data.commission.toFixed(2)}
+            </p>
+          )}
           <p className={`text-sm font-mono font-semibold ${data.cumulativePnl >= 0 ? 'text-lime-500' : 'text-red-600'}`}>
             Cumulative: {data.cumulativePnl >= 0 ? '+' : ''}${Math.abs(data.cumulativePnl).toFixed(2)}
           </p>
@@ -964,132 +1258,6 @@ function PerformanceOverview() {
   // For realized P&L percentage display (legacy - kept for compatibility)
   const realizedPnlPercent = totalDeposited > 0 ? ((displayPerformance.totalRealizedPnl || 0) / totalDeposited) * 100 : 0;
 
-  // Calculate ROI by intervals between deposits, filtered by chart date range
-  const roiIntervals = useMemo(() => {
-    if (!transfers || transfers.length === 0) {
-      return {
-        intervals: [],
-        totalPnl: 0,
-        periodStart: new Date(),
-        periodEnd: new Date(),
-      };
-    }
-
-    // Determine the period based on chart filters
-    const now = new Date();
-    const periodStart = dateRange.start || new Date(Math.min(
-      ...transfers.map(t => new Date(t.timestamp).getTime())
-    ));
-    const periodEnd = dateRange.end || now;
-
-    const periodStartTime = periodStart.getTime();
-    const periodEndTime = periodEnd.getTime();
-
-    // Sort transfers chronologically
-    const sortedTransfers = [...transfers]
-      .filter(t => !(t as any).excluded)
-      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-
-    // Build intervals between transfers
-    const intervals: Array<{
-      intervalNumber: number;
-      startDate: Date;
-      endDate: Date;
-      startCapital: number;
-      endCapital: number;
-      transferAmount: number;
-      transferType: 'deposit' | 'withdrawal';
-      pnl: number;
-      roi: number;
-      daysInInterval: number;
-    }> = [];
-
-    let cumulativeCapital = 0;
-    let intervalNumber = 0;
-
-    // For each transfer, create an interval from that transfer to the next
-    for (let i = 0; i < sortedTransfers.length; i++) {
-      const currentTransfer = sortedTransfers[i];
-      const transferAmount = parseFloat(currentTransfer.amount || '0');
-      const transferTime = new Date(currentTransfer.timestamp).getTime();
-
-      // Determine interval boundaries
-      const intervalStart = new Date(currentTransfer.timestamp);
-      const intervalEnd = i < sortedTransfers.length - 1
-        ? new Date(sortedTransfers[i + 1].timestamp)
-        : now; // Last interval goes to now
-
-      const intervalStartTime = intervalStart.getTime();
-      const intervalEndTime = intervalEnd.getTime();
-
-      // Only include intervals that overlap with the filtered period
-      if (intervalEndTime >= periodStartTime && intervalStartTime <= periodEndTime) {
-        // Adjust interval boundaries to fit within filtered period
-        const adjustedStart = Math.max(intervalStartTime, periodStartTime);
-        const adjustedEnd = Math.min(intervalEndTime, periodEndTime);
-
-        const startCapital = cumulativeCapital;
-        cumulativeCapital += transferAmount;
-        const endCapital = cumulativeCapital;
-
-        const daysInInterval = (adjustedEnd - adjustedStart) / (24 * 60 * 60 * 1000);
-
-        // Calculate P&L during this interval (within filtered period)
-        const pnl = realizedPnlEvents
-          ? realizedPnlEvents
-              .filter(e => e.time >= adjustedStart && e.time < adjustedEnd)
-              .reduce((sum, e) => sum + parseFloat(e.income || '0'), 0)
-          : 0;
-
-        // Calculate ROI based on capital BEFORE this transfer
-        // If startCapital is 0 (first interval), use the transfer amount as base
-        const capitalBase = startCapital > 0 ? startCapital : Math.abs(transferAmount);
-        const roi = capitalBase > 0 ? (pnl / capitalBase) * 100 : 0;
-
-        intervalNumber++;
-        intervals.push({
-          intervalNumber,
-          startDate: new Date(adjustedStart),
-          endDate: new Date(adjustedEnd),
-          startCapital,
-          endCapital,
-          transferAmount,
-          transferType: transferAmount >= 0 ? 'deposit' : 'withdrawal',
-          pnl,
-          roi,
-          daysInInterval,
-        });
-      } else if (transferTime < periodStartTime) {
-        // Transfer before period - just accumulate capital
-        cumulativeCapital += transferAmount;
-      }
-    }
-
-    // Calculate total P&L across all intervals
-    const totalPnl = intervals.reduce((sum, interval) => sum + interval.pnl, 0);
-
-    // Calculate overall ROI based on total deposits/withdrawals (net capital deployed)
-    // Sum all deposits and withdrawals to get total capital invested
-    const totalDeposited = sortedTransfers
-      .filter(t => {
-        const transferTime = new Date(t.timestamp).getTime();
-        return transferTime <= periodEndTime && parseFloat(t.amount || '0') > 0;
-      })
-      .reduce((sum, t) => sum + parseFloat(t.amount || '0'), 0);
-
-    const overallROI = totalDeposited > 0
-      ? (totalPnl / totalDeposited) * 100
-      : 0;
-
-    return {
-      intervals,
-      totalPnl,
-      overallROI,
-      periodStart,
-      periodEnd,
-    };
-  }, [transfers, realizedPnlEvents, dateRange]);
-
   // Check if there's an error or loading (but don't return early - that breaks hooks order)
   const hasError = performanceError || chartDataError;
 
@@ -1139,8 +1307,23 @@ function PerformanceOverview() {
             </div>
           </div>
 
-          {/* Available Balance */}
+          {/* Available Balance + Interval P&L */}
           <div className="space-y-3">
+            {/* Interval P&L - Shows P&L for currently viewed chart interval */}
+            <div className="mb-4 pb-4 border-b">
+              <div className="text-sm text-muted-foreground uppercase tracking-wider">Interval P&L</div>
+              <div className={`text-3xl font-mono font-bold mt-2 ${displayPerformance.totalRealizedPnl >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`}>
+                {displayPerformance.totalRealizedPnl >= 0 ? '+' : ''}${displayPerformance.totalRealizedPnl.toFixed(2)}
+              </div>
+              <div className="text-sm text-muted-foreground mt-1">
+                {dateRange.start || dateRange.end
+                  ? 'Filtered period'
+                  : selectedTradeRange.start !== null
+                    ? 'Manual selection'
+                    : 'All time'}
+              </div>
+            </div>
+
             <div className="text-sm text-muted-foreground uppercase tracking-wider">Total Balance</div>
             <div className="text-4xl font-mono font-bold" data-testid="text-wallet-balance">
               ${walletBalance.toFixed(2)}
@@ -1248,6 +1431,51 @@ function PerformanceOverview() {
           </div>
         </div>
 
+        {/* Risk-Adjusted Return Metrics */}
+        <div className="bg-muted/30 rounded-lg p-4 border">
+          <div className="text-sm text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
+            <TrendingUp className="h-4 w-4" />
+            Risk-Adjusted Returns
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {/* Sharpe Ratio */}
+            <div className="space-y-1.5">
+              <div className="text-xs text-muted-foreground">Sharpe Ratio</div>
+              <div className={`text-2xl font-mono font-bold ${displayPerformance.sharpeRatio >= 3 ? 'text-[rgb(190,242,100)]' : displayPerformance.sharpeRatio >= 1 ? 'text-muted-foreground' : 'text-[rgb(251,146,60)]'}`}>
+                {displayPerformance.sharpeRatio.toFixed(2)}
+              </div>
+              <div className="text-[10px] text-muted-foreground">Period-Adjusted</div>
+            </div>
+
+            {/* Sortino Ratio */}
+            <div className="space-y-1.5">
+              <div className="text-xs text-muted-foreground">Sortino Ratio</div>
+              <div className={`text-2xl font-mono font-bold ${displayPerformance.sortinoRatio >= 3 ? 'text-[rgb(190,242,100)]' : displayPerformance.sortinoRatio >= 1 ? 'text-muted-foreground' : 'text-[rgb(251,146,60)]'}`}>
+                {displayPerformance.sortinoRatio > 99 ? '99+' : displayPerformance.sortinoRatio.toFixed(2)}
+              </div>
+              <div className="text-[10px] text-muted-foreground">Period-Adjusted</div>
+            </div>
+
+            {/* Calmar Ratio */}
+            <div className="space-y-1.5">
+              <div className="text-xs text-muted-foreground">Calmar Ratio</div>
+              <div className={`text-2xl font-mono font-bold ${displayPerformance.calmarRatio >= 3 ? 'text-[rgb(190,242,100)]' : displayPerformance.calmarRatio >= 0 ? 'text-muted-foreground' : 'text-[rgb(251,146,60)]'}`}>
+                {displayPerformance.calmarRatio.toFixed(2)}
+              </div>
+              <div className="text-[10px] text-muted-foreground">Return / Drawdown</div>
+            </div>
+
+            {/* Expectancy */}
+            <div className="space-y-1.5">
+              <div className="text-xs text-muted-foreground">Expectancy</div>
+              <div className={`text-2xl font-mono font-bold ${displayPerformance.expectancy >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`}>
+                {formatCurrency(displayPerformance.expectancy)}
+              </div>
+              <div className="text-[10px] text-muted-foreground">Avg $ Per Trade</div>
+            </div>
+          </div>
+        </div>
+
         {/* Trading Statistics Grid - Positioned closer to balance metrics */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 -mt-2">
           {/* Win Rate */}
@@ -1295,8 +1523,8 @@ function PerformanceOverview() {
           {/* Fees Paid */}
           <div className="space-y-1.5">
             <div className="text-xs text-muted-foreground uppercase tracking-wide">Trading Fees</div>
-            <div className="text-2xl font-mono font-bold" data-testid="text-fees-paid">
-              ${(displayPerformance.totalFees || 0).toFixed(2)}
+            <div className={`text-2xl font-mono font-bold ${(displayPerformance.totalFees || 0) < 0 ? 'text-[rgb(251,146,60)]' : 'text-[rgb(190,242,100)]'}`} data-testid="text-fees-paid">
+              {(displayPerformance.totalFees || 0) >= 0 ? '+' : ''}${(displayPerformance.totalFees || 0).toFixed(2)}
             </div>
             <div className="text-xs text-muted-foreground">
               Commission
@@ -1306,8 +1534,8 @@ function PerformanceOverview() {
           {/* Funding Cost */}
           <div className="space-y-1.5">
             <div className="text-xs text-muted-foreground uppercase tracking-wide">Funding Cost</div>
-            <div className="text-2xl font-mono font-bold" data-testid="text-funding-cost">
-              ${(displayPerformance.fundingCost || 0).toFixed(2)}
+            <div className={`text-2xl font-mono font-bold ${(displayPerformance.fundingCost || 0) < 0 ? 'text-[rgb(251,146,60)]' : 'text-[rgb(190,242,100)]'}`} data-testid="text-funding-cost">
+              {(displayPerformance.fundingCost || 0) >= 0 ? '+' : ''}${(displayPerformance.fundingCost || 0).toFixed(2)}
             </div>
             <div className="text-xs text-muted-foreground">
               Total funding
@@ -1315,136 +1543,25 @@ function PerformanceOverview() {
           </div>
         </div>
 
-        {/* ROI by Deposit Intervals - Synced with Chart Filters */}
-        {roiIntervals.intervals.length > 0 && (
-          <div className="border rounded-lg p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Clock className="h-4 w-4 text-muted-foreground" />
-                <div className="text-sm text-muted-foreground uppercase tracking-wider">ROI by Deposit Interval</div>
-                <Badge variant="outline" className="ml-2">
-                  {roiIntervals.intervals.length} intervals
-                </Badge>
-                {(dateRange.start || dateRange.end) && (
-                  <Badge variant="default" className="ml-1">
-                    Filtered
-                  </Badge>
-                )}
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setRoiIntervalsExpanded(!roiIntervalsExpanded)}
-                className="gap-1"
-              >
-                {roiIntervalsExpanded ? (
-                  <>
-                    <ChevronUp className="h-4 w-4" />
-                    Hide
-                  </>
-                ) : (
-                  <>
-                    <ChevronDown className="h-4 w-4" />
-                    Show All
-                  </>
-                )}
-              </Button>
+        {/* Account Ledger - Capital Tracking with Manual Entry */}
+        <div className="space-y-3">
+          <Button
+            variant="ghost"
+            className="w-full justify-between px-4 py-3 h-auto border-2 border-white rounded-lg"
+            onClick={() => setAccountLedgerExpanded(!accountLedgerExpanded)}
+          >
+            <div className="flex items-center gap-2">
+              <Wallet className="h-5 w-5" />
+              <span className="font-semibold">Account Ledger</span>
             </div>
-
-            {/* Summary */}
-            {!roiIntervalsExpanded && (
-              <div className="text-center py-4 space-y-3">
-                <div>
-                  <div className={`text-5xl font-mono font-bold mb-1 ${(roiIntervals.overallROI ?? 0) >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`}>
-                    {(roiIntervals.overallROI ?? 0) >= 0 ? '+' : ''}{(roiIntervals.overallROI ?? 0).toFixed(2)}%
-                  </div>
-                  <div className="text-sm text-muted-foreground uppercase tracking-wide">
-                    Overall ROI
-                  </div>
-                </div>
-                <div>
-                  <div className={`text-3xl font-mono font-bold ${roiIntervals.totalPnl >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`}>
-                    {roiIntervals.totalPnl >= 0 ? '+' : ''}${roiIntervals.totalPnl.toFixed(2)}
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    Total P&L
-                  </div>
-                </div>
-                <div className="text-xs text-muted-foreground border-t pt-3 mt-3">
-                  Click "Show All" to see ROI breakdown for each deposit interval
-                </div>
-              </div>
+            {accountLedgerExpanded ? (
+              <ChevronUp className="h-4 w-4" />
+            ) : (
+              <ChevronDown className="h-4 w-4" />
             )}
-
-            {/* Intervals Table */}
-            {roiIntervalsExpanded && (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="border-b">
-                    <tr className="text-xs text-muted-foreground uppercase">
-                      <th className="text-left py-2 px-3">#</th>
-                      <th className="text-left py-2 px-3">Period</th>
-                      <th className="text-right py-2 px-3">Days</th>
-                      <th className="text-right py-2 px-3">Start Capital</th>
-                      <th className="text-right py-2 px-3">Transfer</th>
-                      <th className="text-right py-2 px-3">End Capital</th>
-                      <th className="text-right py-2 px-3">P&L</th>
-                      <th className="text-right py-2 px-3">ROI</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {roiIntervals.intervals.map((interval, idx) => (
-                      <tr key={idx} className="border-b last:border-0 hover:bg-muted/50">
-                        <td className="py-3 px-3 font-mono font-semibold">
-                          {interval.intervalNumber}
-                        </td>
-                        <td className="py-3 px-3 text-xs">
-                          <div>{format(interval.startDate, 'MMM d, yyyy')}</div>
-                          <div className="text-muted-foreground">to {format(interval.endDate, 'MMM d, yyyy')}</div>
-                        </td>
-                        <td className="py-3 px-3 text-right font-mono">
-                          {interval.daysInInterval.toFixed(0)}
-                        </td>
-                        <td className="py-3 px-3 text-right font-mono">
-                          ${interval.startCapital.toFixed(2)}
-                        </td>
-                        <td className={`py-3 px-3 text-right font-mono font-semibold ${interval.transferType === 'deposit' ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`}>
-                          {interval.transferAmount >= 0 ? '+' : ''}${interval.transferAmount.toFixed(2)}
-                        </td>
-                        <td className="py-3 px-3 text-right font-mono">
-                          ${interval.endCapital.toFixed(2)}
-                        </td>
-                        <td className={`py-3 px-3 text-right font-mono font-semibold ${interval.pnl >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`}>
-                          {interval.pnl >= 0 ? '+' : ''}${interval.pnl.toFixed(2)}
-                        </td>
-                        <td className={`py-3 px-3 text-right font-mono font-bold ${interval.roi >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`}>
-                          {interval.roi >= 0 ? '+' : ''}{interval.roi.toFixed(2)}%
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot className="border-t-2 font-semibold">
-                    <tr>
-                      <td className="py-3 px-3" colSpan={6}>
-                        Total
-                      </td>
-                      <td className={`py-3 px-3 text-right font-mono font-bold ${roiIntervals.totalPnl >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`}>
-                        {roiIntervals.totalPnl >= 0 ? '+' : ''}${roiIntervals.totalPnl.toFixed(2)}
-                      </td>
-                      <td className="py-3 px-3"></td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            )}
-
-            {(dateRange.start || dateRange.end) && (
-              <div className="text-xs text-muted-foreground text-center border-t pt-3">
-                ✓ Showing intervals within filtered period: {format(roiIntervals.periodStart, 'MMM d, yyyy')} - {format(roiIntervals.periodEnd, 'MMM d, yyyy')}
-              </div>
-            )}
-          </div>
-        )}
+          </Button>
+          {accountLedgerExpanded && <AccountLedger />}
+        </div>
 
         {/* Performance Chart */}
         <div className="space-y-3">
@@ -2317,7 +2434,7 @@ function PerformanceOverview() {
             <div className="flex items-center gap-1.5">
               <TrendingDown className="h-3 w-3 text-[rgb(251,146,60)] flex-shrink-0" />
               <span className="text-xs text-muted-foreground whitespace-nowrap">Worst Trade</span>
-              <span className="text-xs font-mono font-semibold text-[rgb(251,146,60)] ml-auto">{formatCurrency(displayPerformance.worstTrade)}</span>
+              <span className="text-xs font-mono font-semibold text-[rgb(251,146,60)] ml-auto">{formatCurrency(-Math.abs(displayPerformance.worstTrade))}</span>
             </div>
             <div className="flex items-center gap-1.5">
               <Activity className="h-3 w-3 text-muted-foreground flex-shrink-0" />
@@ -2327,7 +2444,7 @@ function PerformanceOverview() {
             <div className="flex items-center gap-1.5">
               <TrendingDown className="h-3 w-3 text-[rgb(251,146,60)] flex-shrink-0" />
               <span className="text-xs text-muted-foreground whitespace-nowrap">Max Drawdown</span>
-              <span className="text-xs font-mono font-semibold text-[rgb(251,146,60)] ml-auto">{formatCurrency(displayPerformance.maxDrawdown)} ({(displayPerformance.maxDrawdownPercent ?? 0).toFixed(2)}%)</span>
+              <span className="text-xs font-mono font-semibold text-[rgb(251,146,60)] ml-auto">{formatCurrency(-displayPerformance.maxDrawdown)} ({(-(displayPerformance.maxDrawdownPercent ?? 0)).toFixed(2)}%)</span>
             </div>
             <div className="flex items-center gap-1.5">
               <TrendingUp className="h-3 w-3 text-[rgb(190,242,100)] flex-shrink-0" />
@@ -2337,7 +2454,7 @@ function PerformanceOverview() {
             <div className="flex items-center gap-1.5">
               <TrendingDown className="h-3 w-3 text-[rgb(251,146,60)] flex-shrink-0" />
               <span className="text-xs text-muted-foreground whitespace-nowrap">Avg Loss</span>
-              <span className="text-xs font-mono font-semibold text-[rgb(251,146,60)] ml-auto">{formatCurrency(displayPerformance.averageLoss)}</span>
+              <span className="text-xs font-mono font-semibold text-[rgb(251,146,60)] ml-auto">{formatCurrency(-displayPerformance.averageLoss)}</span>
             </div>
           </div>
         </div>

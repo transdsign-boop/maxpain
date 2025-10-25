@@ -30,6 +30,9 @@ MPI™ Liquidation Hunter Bot - A sophisticated algorithmic trading system for c
 # Development (runs both client and server with hot reload)
 npm run dev
 
+# Restart development server (kills port 5000 processes and restarts)
+npm run restart
+
 # Type checking (validate TypeScript without building)
 npm run check
 

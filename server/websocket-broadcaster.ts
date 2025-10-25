@@ -11,7 +11,8 @@ export type WebSocketEventType =
   | 'strategy_updated'
   | 'live_snapshot'
   | 'order_update'
-  | 'trade_block';
+  | 'trade_block'
+  | 'vwap_update';
 
 export interface WebSocketEvent {
   type: WebSocketEventType;
