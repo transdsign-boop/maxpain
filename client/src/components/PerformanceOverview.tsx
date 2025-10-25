@@ -232,11 +232,12 @@ function PerformanceOverview() {
   // Use consolidated position data from database (rawChartData comes from /api/performance/chart)
   // Each trade represents a complete position with all DCA layers combined into one P&L value
   const rawSourceData = useMemo(() => {
+    console.log('[DEBUG] rawChartData:', rawChartData ? rawChartData.length : 'null/undefined');
     if (!rawChartData || rawChartData.length === 0) return [];
 
     // rawChartData contains consolidated positions with cumulative P&L calculations
     // Each position may have had multiple fills (DCA layers) but shows as one trade
-    return rawChartData.map((trade: any, index: number) => ({
+    const mapped = rawChartData.map((trade: any, index: number) => ({
       tradeNumber: trade.tradeNumber || index + 1,
       timestamp: trade.timestamp,
       symbol: trade.symbol,
@@ -248,6 +249,8 @@ function PerformanceOverview() {
       commission: trade.commission || 0,
       layersFilled: trade.layersFilled || 1, // Number of DCA layers in this position
     }));
+    console.log('[DEBUG] rawSourceData mapped:', mapped.length, 'trades');
+    return mapped;
   }, [rawChartData]);
   
   // Calculate total deposited capital and transfer list EARLY (needed for chart data calculation)
@@ -273,6 +276,8 @@ function PerformanceOverview() {
   
   // Apply date range filter and manual selection filter
   const sourceChartData = useMemo(() => {
+    console.log('[DEBUG] sourceChartData filtering - rawSourceData:', rawSourceData.length);
+    console.log('[DEBUG] dateRange:', dateRange);
     let filtered = rawSourceData;
 
     // Apply date range filter first
@@ -280,18 +285,23 @@ function PerformanceOverview() {
       const startTimestamp = dateRange.start ? dateRange.start.getTime() : 0;
       const endTimestamp = dateRange.end ? dateRange.end.getTime() : Date.now();
 
+      console.log('[DEBUG] Applying date filter:', { startTimestamp, endTimestamp });
       filtered = filtered.filter(trade =>
         trade.timestamp >= startTimestamp && trade.timestamp <= endTimestamp
       );
+      console.log('[DEBUG] After date filter:', filtered.length);
     }
 
     // Apply manual trade selection filter (takes precedence, shows only selected range)
     if (selectedTradeRange.start !== null && selectedTradeRange.end !== null) {
+      console.log('[DEBUG] Applying manual selection filter:', selectedTradeRange);
       filtered = filtered.filter(trade =>
         trade.tradeNumber >= selectedTradeRange.start! && trade.tradeNumber <= selectedTradeRange.end!
       );
+      console.log('[DEBUG] After manual selection filter:', filtered.length);
     }
 
+    console.log('[DEBUG] Final sourceChartData:', filtered.length);
     return filtered;
   }, [rawSourceData, dateRange, selectedTradeRange]);
   
@@ -2013,12 +2023,15 @@ function PerformanceOverview() {
             )}
 
           </div>
-          
+
           <div className="relative h-64 md:h-80 -mx-8" style={{
             maskImage: 'linear-gradient(to right, transparent, black 5%, black 95%, transparent)',
             WebkitMaskImage: 'linear-gradient(to right, transparent, black 5%, black 95%, transparent)'
           }}>
-          {!chartLoading && chartData && chartData.length > 0 ? (
+          {(() => {
+            console.log('[DEBUG] Chart render decision:', { chartLoading, chartDataLength: chartData?.length, chartDataExists: !!chartData });
+            return !chartLoading && chartData && chartData.length > 0;
+          })() ? (
             <>
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart
