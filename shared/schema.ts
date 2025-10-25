@@ -487,3 +487,37 @@ export const insertTradeEntryErrorSchema = createInsertSchema(tradeEntryErrors).
 
 export type InsertTradeEntryError = z.infer<typeof insertTradeEntryErrorSchema>;
 export type TradeEntryError = typeof tradeEntryErrors.$inferSelect;
+
+// Account Ledger - tracks all capital movements (deposits, withdrawals, manual entries)
+export const accountLedger = pgTable("account_ledger", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(), // Which user's account
+  type: text("type").notNull(), // "deposit", "withdrawal", "manual_add", "manual_subtract"
+  amount: decimal("amount", { precision: 18, scale: 2 }).notNull(),
+  asset: text("asset").notNull().default("USDT"), // USDT, USDF, etc.
+  timestamp: timestamp("timestamp").notNull(), // When the transaction occurred
+
+  // Manual entry fields (nullable for exchange transfers)
+  investor: text("investor"), // Who the money belongs to
+  reason: text("reason"), // Reason for manual add/subtract
+  notes: text("notes"), // Additional notes
+
+  // Exchange transfer fields (nullable for manual entries)
+  tranId: text("tran_id"), // Exchange transaction ID
+
+  createdAt: timestamp("created_at").notNull().defaultNow(), // When the record was created
+  updatedAt: timestamp("updated_at").notNull().defaultNow(), // Last update timestamp
+}, (table) => [
+  index("idx_ledger_user_timestamp").on(table.userId, table.timestamp),
+  index("idx_ledger_investor").on(table.investor),
+  index("idx_ledger_type").on(table.type),
+]);
+
+export const insertAccountLedgerSchema = createInsertSchema(accountLedger).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertAccountLedger = z.infer<typeof insertAccountLedgerSchema>;
+export type AccountLedger = typeof accountLedger.$inferSelect;

@@ -11,6 +11,7 @@ import { TrendingUp, TrendingDown, DollarSign, Target, Layers, X, ChevronDown, C
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
+import { formatInTimeZone } from "date-fns-tz";
 import { soundNotifications } from "@/lib/soundNotifications";
 import { useStrategyData } from "@/hooks/use-strategy-data";
 
@@ -138,7 +139,12 @@ function AllTradesView({ formatCurrency, formatPercentage, getPnlColor }: AllTra
     withDetails: number;
     withoutDetails: number;
   }>({
-    queryKey: ['/api/all-trades'],
+    queryKey: ['/api/all-trades', 'oct10-cutoff'],
+    queryFn: async () => {
+      const response = await fetch('/api/all-trades?_=' + Date.now());
+      if (!response.ok) throw new Error('Failed to fetch trades');
+      return response.json();
+    },
     staleTime: 0, // Always fetch fresh data
   });
 
@@ -199,7 +205,7 @@ function AllTradesView({ formatCurrency, formatPercentage, getPnlColor }: AllTra
             <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Date:</span>
-                <span className="font-mono">{format(new Date(trade.timestamp), 'MMM dd, HH:mm')}</span>
+                <span className="font-mono">{formatInTimeZone(new Date(trade.timestamp), 'UTC', 'MMM dd, HH:mm')} UTC</span>
               </div>
               
               {trade.hasDetails && trade.quantity && (
@@ -311,7 +317,7 @@ function ExpandableCompletedTrade({ trade, position, formatCurrency, formatPerce
           <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Date:</span>
-              <span className="font-mono">{format(new Date(trade.timestamp), 'MMM dd, HH:mm')}</span>
+              <span className="font-mono">{formatInTimeZone(new Date(trade.timestamp), 'UTC', 'MMM dd, HH:mm')} UTC</span>
             </div>
 
             <div className="flex justify-between">
@@ -1479,7 +1485,7 @@ export const StrategyStatus = memo(function StrategyStatus() {
     );
   }
 
-  // Handle 404 as "no active session" rather than error
+  // Handle 404 as "strategy not active" rather than error
   // Check multiple ways the error status might be stored
   const getErrorStatus = (err: any) => {
     // Direct status properties
@@ -1546,7 +1552,7 @@ export const StrategyStatus = memo(function StrategyStatus() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-muted-foreground">No active trading session. Start a strategy to begin tracking positions and P&L.</p>
+          <p className="text-muted-foreground">Strategy is not active. Enable your strategy to begin trading and tracking P&L.</p>
         </CardContent>
       </Card>
     );

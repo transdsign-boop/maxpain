@@ -9,9 +9,9 @@ import { strategyEngine } from "./strategy-engine";
 import { cascadeDetectorService } from "./cascade-detector-service";
 import { wsBroadcaster } from "./websocket-broadcaster";
 import { liveDataOrchestrator } from "./live-data-orchestrator";
-import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySchema, updateStrategySchema, type Position, type Fill, type Liquidation, type InsertFill, positions, strategies, transfers, fills, tradeSessions } from "@shared/schema";
+import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySchema, updateStrategySchema, type Position, type Fill, type Liquidation, type InsertFill, positions, strategies, transfers, fills, tradeSessions, accountLedger } from "@shared/schema";
 import { db } from "./db";
-import { desc, eq, sql } from "drizzle-orm";
+import { desc, eq, sql, gte, lte } from "drizzle-orm";
 import { fetchRealizedPnlEvents, fetchAllAccountTrades } from "./exchange-sync";
 import { fetchPositionPnL } from "./exchange-utils";
 
@@ -3109,14 +3109,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const apiKey = process.env.ASTER_API_KEY;
       const secretKey = process.env.ASTER_SECRET_KEY;
-      
+
       if (!apiKey || !secretKey) {
         return res.json({ error: 'API keys not configured' });
       }
-      
+
       const timestamp = Date.now();
       const queryParams = `timestamp=${timestamp}`;
-      
+
       const signature = crypto
         .createHmac('sha256', secretKey)
         .update(queryParams)
@@ -3135,7 +3135,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const allIncome = await response.json();
-      
+
       // Group by income type and sum
       const summary: Record<string, { count: number; total: number }> = {};
       allIncome.forEach((item: any) => {
@@ -3146,7 +3146,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         summary[type].count++;
         summary[type].total += parseFloat(item.income || '0');
       });
-      
+
       return res.json({
         totalRecords: allIncome.length,
         summary,
@@ -3154,6 +3154,584 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       return res.json({ error: String(error) });
+    }
+  });
+
+  // Get deposits and withdrawals (TRANSFER income type)
+  app.get('/api/account/deposits-withdrawals', async (req, res) => {
+    try {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+
+      if (!apiKey || !secretKey) {
+        return res.status(500).json({ error: 'API keys not configured' });
+      }
+
+      console.log('📥 Fetching deposits and withdrawals from exchange...');
+
+      const allTransfers: any[] = [];
+      let hasMoreData = true;
+      let startTime = 0; // Fetch all-time data
+
+      // Pagination loop (max 1000 records per request)
+      while (hasMoreData) {
+        const timestamp = Date.now();
+        const params = new URLSearchParams({
+          incomeType: 'TRANSFER', // Get transfer transactions (includes deposits/withdrawals)
+          startTime: startTime.toString(),
+          limit: '1000',
+          timestamp: timestamp.toString(),
+        });
+
+        const signature = crypto
+          .createHmac('sha256', secretKey)
+          .update(params.toString())
+          .digest('hex');
+        params.append('signature', signature);
+
+        const response = await fetch(
+          `https://fapi.asterdex.com/fapi/v1/income?${params}`,
+          { headers: { 'X-MBX-APIKEY': apiKey } }
+        );
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          return res.status(500).json({ error: `Exchange API error: ${errorText}` });
+        }
+
+        const batch = await response.json();
+
+        if (batch.length === 0) {
+          hasMoreData = false;
+        } else {
+          allTransfers.push(...batch);
+
+          // If we got exactly 1000, there might be more data
+          if (batch.length < 1000) {
+            hasMoreData = false;
+          } else {
+            // Use last record's time as next startTime
+            const lastRecord = batch[batch.length - 1];
+            startTime = lastRecord.time + 1;
+          }
+        }
+      }
+
+      console.log(`✅ Fetched ${allTransfers.length} transfer records from exchange`);
+
+      // Separate deposits and withdrawals
+      const deposits = allTransfers.filter(t => parseFloat(t.income) > 0);
+      const withdrawals = allTransfers.filter(t => parseFloat(t.income) < 0);
+
+      const totalDeposits = deposits.reduce((sum, t) => sum + parseFloat(t.income), 0);
+      const totalWithdrawals = withdrawals.reduce((sum, t) => sum + parseFloat(t.income), 0);
+
+      return res.json({
+        summary: {
+          totalDeposits: totalDeposits.toFixed(2),
+          totalWithdrawals: Math.abs(totalWithdrawals).toFixed(2),
+          netTransfer: (totalDeposits + totalWithdrawals).toFixed(2),
+          depositCount: deposits.length,
+          withdrawalCount: withdrawals.length,
+        },
+        deposits: deposits.map(d => ({
+          amount: parseFloat(d.income).toFixed(2),
+          asset: d.asset,
+          time: new Date(d.time).toISOString(),
+          tranId: d.tranId,
+        })),
+        withdrawals: withdrawals.map(w => ({
+          amount: Math.abs(parseFloat(w.income)).toFixed(2),
+          asset: w.asset,
+          time: new Date(w.time).toISOString(),
+          tranId: w.tranId,
+        })),
+      });
+    } catch (error) {
+      console.error('Error fetching deposits/withdrawals:', error);
+      return res.status(500).json({ error: String(error) });
+    }
+  });
+
+  // Account Ledger Endpoints
+
+  // Get all ledger entries
+  app.get('/api/account/ledger', async (req, res) => {
+    try {
+      const { investor, startDate, endDate, type } = req.query;
+
+      let query = db.select().from(accountLedger).where(eq(accountLedger.userId, DEFAULT_USER_ID));
+
+      if (investor) {
+        query = query.where(eq(accountLedger.investor, investor as string));
+      }
+
+      if (startDate) {
+        query = query.where(gte(accountLedger.timestamp, new Date(startDate as string)));
+      }
+
+      if (endDate) {
+        query = query.where(lte(accountLedger.timestamp, new Date(endDate as string)));
+      }
+
+      if (type) {
+        query = query.where(eq(accountLedger.type, type as string));
+      }
+
+      const entries = await query.orderBy(desc(accountLedger.timestamp));
+
+      res.json(entries);
+    } catch (error) {
+      console.error('Error fetching ledger:', error);
+      res.status(500).json({ error: 'Failed to fetch ledger' });
+    }
+  });
+
+  // Fetch pending exchange transfers (not yet in ledger) - USDT and USDF only
+  app.get('/api/account/ledger/pending-transfers', async (req, res) => {
+    try {
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+
+      if (!apiKey || !secretKey) {
+        return res.status(500).json({ error: 'API keys not configured' });
+      }
+
+      console.log('📥 Fetching ALL exchange transactions from October 16, 2025 5:19 PM UTC...');
+
+      // Start from October 16, 2025 at 17:19 UTC (first deposit - excludes testing period)
+      const oct10Timestamp = 1760635140000;
+
+      const allTransfers: any[] = [];
+      let hasMoreData = true;
+      let startTime = oct10Timestamp;
+
+      while (hasMoreData) {
+        const timestamp = Date.now();
+        const params = new URLSearchParams({
+          // Remove incomeType filter to get ALL transaction types
+          startTime: startTime.toString(),
+          limit: '1000',
+          timestamp: timestamp.toString(),
+        });
+
+        const signature = crypto.createHmac('sha256', secretKey).update(params.toString()).digest('hex');
+        params.append('signature', signature);
+
+        const response = await fetch(`https://fapi.asterdex.com/fapi/v1/income?${params}`, {
+          headers: { 'X-MBX-APIKEY': apiKey },
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          return res.status(500).json({ error: `Exchange API error: ${errorText}` });
+        }
+
+        const batch = await response.json();
+
+        if (batch.length === 0) {
+          hasMoreData = false;
+        } else {
+          allTransfers.push(...batch);
+          if (batch.length < 1000) {
+            hasMoreData = false;
+          } else {
+            const lastRecord = batch[batch.length - 1];
+            startTime = lastRecord.time + 1;
+          }
+        }
+      }
+
+      // First, let's see all transfer types across ALL assets
+      const allTransferTypes = allTransfers.filter(t =>
+        t.incomeType && t.incomeType.includes('TRANSFER')
+      );
+
+      console.log(`🔍 Found ${allTransferTypes.length} total TRANSFER transactions across ALL assets`);
+      console.log(`   Assets: ${[...new Set(allTransferTypes.map(t => t.asset))].join(', ')}`);
+      console.log(`   Income Types: ${[...new Set(allTransferTypes.map(t => t.incomeType))].join(', ')}`);
+
+      // Show ALL TRANSFER types across ALL assets (not just USDT/USDF)
+      const filteredTransfers = allTransfers.filter(t =>
+        parseFloat(t.income || '0') !== 0 &&
+        t.incomeType && t.incomeType.includes('TRANSFER')
+      );
+
+      console.log(`✅ Fetched ${filteredTransfers.length} TRANSFER transactions from exchange (all assets)`);
+
+      // Get all existing tranIds from ledger
+      const existingEntries = await db.select({
+        tranId: accountLedger.tranId
+      }).from(accountLedger)
+        .where(sql`${accountLedger.tranId} IS NOT NULL`);
+
+      const existingTranIds = new Set(existingEntries.map(e => e.tranId));
+
+      // Filter out transfers already in ledger
+      const pendingTransfers = filteredTransfers
+        .filter(t => !existingTranIds.has(String(t.tranId)))
+        .map(t => ({
+          tranId: String(t.tranId),
+          asset: t.asset,
+          income: t.income,
+          amount: Math.abs(parseFloat(t.income)),
+          type: parseFloat(t.income) > 0 ? 'deposit' : 'withdrawal',
+          time: t.time,
+          timestamp: new Date(t.time).toISOString(),
+          incomeType: t.incomeType, // Include transaction type
+        }))
+        .sort((a, b) => b.time - a.time); // Most recent first
+
+      console.log(`✅ Found ${pendingTransfers.length} pending transfers not in ledger`);
+
+      res.json({
+        transfers: pendingTransfers,
+        total: pendingTransfers.length,
+      });
+    } catch (error) {
+      console.error('Error fetching pending transfers:', error);
+      res.status(500).json({ error: 'Failed to fetch pending transfers' });
+    }
+  });
+
+  // Add specific transfer to ledger with optional details
+  app.post('/api/account/ledger/from-transfer', async (req, res) => {
+    try {
+      const { tranId, asset, amount, type, timestamp, investor, reason, notes } = req.body;
+
+      if (!tranId || !asset || !amount || !type || !timestamp) {
+        return res.status(400).json({ error: 'Missing required fields' });
+      }
+
+      // Check if already exists
+      const existing = await db.select().from(accountLedger)
+        .where(eq(accountLedger.tranId, String(tranId)))
+        .limit(1);
+
+      if (existing.length > 0) {
+        return res.status(409).json({ error: 'Transfer already in ledger' });
+      }
+
+      // Insert into ledger with optional details
+      const [entry] = await db.insert(accountLedger).values({
+        userId: DEFAULT_USER_ID,
+        type,
+        amount: amount.toString(),
+        asset,
+        timestamp: new Date(timestamp),
+        tranId: String(tranId),
+        investor: investor || null,
+        reason: reason || null,
+        notes: notes || null,
+      }).returning();
+
+      console.log(`✅ Added transfer ${tranId} to ledger with details`);
+
+      res.json(entry);
+    } catch (error) {
+      console.error('Error adding transfer to ledger:', error);
+      res.status(500).json({ error: 'Failed to add transfer to ledger' });
+    }
+  });
+
+  // Add manual ledger entry
+  app.post('/api/account/ledger/manual', async (req, res) => {
+    try {
+      const { type, amount, asset, timestamp, investor, reason, notes } = req.body;
+
+      if (!type || !amount || !timestamp) {
+        return res.status(400).json({ error: 'Missing required fields' });
+      }
+
+      if (!['manual_add', 'manual_subtract'].includes(type)) {
+        return res.status(400).json({ error: 'Invalid type. Must be manual_add or manual_subtract' });
+      }
+
+      const entry = await db.insert(accountLedger).values({
+        userId: DEFAULT_USER_ID,
+        type,
+        amount: amount.toString(),
+        asset: asset || 'USDT',
+        timestamp: new Date(timestamp),
+        investor,
+        reason,
+        notes,
+      }).returning();
+
+      res.json(entry[0]);
+    } catch (error) {
+      console.error('Error adding manual entry:', error);
+      res.status(500).json({ error: 'Failed to add manual entry' });
+    }
+  });
+
+  // Update ledger entry (manual or transfer)
+  app.put('/api/account/ledger/:id', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { investor, reason, notes } = req.body;
+
+      // Only allow updating investor, reason, and notes
+      const entry = await db.update(accountLedger)
+        .set({
+          investor,
+          reason,
+          notes,
+          updatedAt: new Date(),
+        })
+        .where(eq(accountLedger.id, id))
+        .returning();
+
+      if (entry.length === 0) {
+        return res.status(404).json({ error: 'Entry not found' });
+      }
+
+      res.json(entry[0]);
+    } catch (error) {
+      console.error('Error updating entry:', error);
+      res.status(500).json({ error: 'Failed to update entry' });
+    }
+  });
+
+  // Legacy endpoint for backward compatibility
+  app.put('/api/account/ledger/manual/:id', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { type, amount, asset, timestamp, investor, reason, notes } = req.body;
+
+      const entry = await db.update(accountLedger)
+        .set({
+          type,
+          amount: amount?.toString(),
+          asset,
+          timestamp: timestamp ? new Date(timestamp) : undefined,
+          investor,
+          reason,
+          notes,
+          updatedAt: new Date(),
+        })
+        .where(eq(accountLedger.id, id))
+        .returning();
+
+      if (entry.length === 0) {
+        return res.status(404).json({ error: 'Entry not found' });
+      }
+
+      res.json(entry[0]);
+    } catch (error) {
+      console.error('Error updating manual entry:', error);
+      res.status(500).json({ error: 'Failed to update manual entry' });
+    }
+  });
+
+  // Delete any ledger entry
+  app.delete('/api/account/ledger/:id', async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const deleted = await db.delete(accountLedger)
+        .where(eq(accountLedger.id, id))
+        .returning();
+
+      if (deleted.length === 0) {
+        return res.status(404).json({ error: 'Entry not found' });
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error deleting entry:', error);
+      res.status(500).json({ error: 'Failed to delete entry' });
+    }
+  });
+
+  // Legacy endpoint for backward compatibility
+  app.delete('/api/account/ledger/manual/:id', async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const deleted = await db.delete(accountLedger)
+        .where(eq(accountLedger.id, id))
+        .returning();
+
+      if (deleted.length === 0) {
+        return res.status(404).json({ error: 'Entry not found' });
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error deleting manual entry:', error);
+      res.status(500).json({ error: 'Failed to delete manual entry' });
+    }
+  });
+
+  // Calculate PNL/ROI based on ledger entries
+  app.get('/api/account/ledger/pnl', async (req, res) => {
+    try {
+      const { investor, startDate, endDate } = req.query;
+
+      // Get ledger entries
+      let ledgerQuery = db.select().from(accountLedger).where(eq(accountLedger.userId, DEFAULT_USER_ID));
+
+      if (investor) {
+        ledgerQuery = ledgerQuery.where(eq(accountLedger.investor, investor as string));
+      }
+
+      if (startDate) {
+        ledgerQuery = ledgerQuery.where(gte(accountLedger.timestamp, new Date(startDate as string)));
+      }
+
+      if (endDate) {
+        ledgerQuery = ledgerQuery.where(lte(accountLedger.timestamp, new Date(endDate as string)));
+      }
+
+      const ledgerEntries = await ledgerQuery;
+
+      // Calculate total capital
+      const totalCapital = ledgerEntries.reduce((sum, entry) => {
+        const amount = parseFloat(entry.amount);
+        if (entry.type === 'deposit' || entry.type === 'manual_add') {
+          return sum + amount;
+        } else if (entry.type === 'withdrawal' || entry.type === 'manual_subtract') {
+          return sum - amount;
+        }
+        return sum;
+      }, 0);
+
+      // Get current account balance from exchange
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+
+      if (!apiKey || !secretKey) {
+        return res.status(500).json({ error: 'API keys not configured' });
+      }
+
+      const timestamp = Date.now();
+      const params = new URLSearchParams({ timestamp: timestamp.toString() });
+      const signature = crypto.createHmac('sha256', secretKey).update(params.toString()).digest('hex');
+      params.append('signature', signature);
+
+      const response = await fetch(`https://fapi.asterdex.com/fapi/v2/account?${params}`, {
+        headers: { 'X-MBX-APIKEY': apiKey },
+      });
+
+      if (!response.ok) {
+        return res.status(500).json({ error: 'Failed to fetch account balance' });
+      }
+
+      const accountData = await response.json();
+      const currentBalance = parseFloat(accountData.totalWalletBalance || '0') + parseFloat(accountData.totalUnrealizedProfit || '0');
+
+      // Calculate PNL and ROI
+      const pnl = currentBalance - totalCapital;
+      const roi = totalCapital > 0 ? (pnl / totalCapital) * 100 : 0;
+
+      res.json({
+        totalCapital: totalCapital.toFixed(2),
+        currentBalance: currentBalance.toFixed(2),
+        pnl: pnl.toFixed(2),
+        roiPercent: roi.toFixed(2),
+        ledgerEntries: ledgerEntries.length,
+      });
+    } catch (error) {
+      console.error('Error calculating PNL:', error);
+      res.status(500).json({ error: 'Failed to calculate PNL' });
+    }
+  });
+
+  // Get investor returns breakdown
+  app.get('/api/account/ledger/investors-returns', async (req, res) => {
+    try {
+      // Get all ledger entries
+      const ledgerEntries = await db.select().from(accountLedger).where(eq(accountLedger.userId, DEFAULT_USER_ID));
+
+      // Get unique investors (including null/undefined for unassigned)
+      const investorsSet = new Set<string>();
+      ledgerEntries.forEach(entry => {
+        investorsSet.add(entry.investor || 'Unassigned');
+      });
+
+      const investors = Array.from(investorsSet);
+
+      // Get current account balance
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+
+      if (!apiKey || !secretKey) {
+        return res.status(500).json({ error: 'API keys not configured' });
+      }
+
+      const timestamp = Date.now();
+      const params = new URLSearchParams({ timestamp: timestamp.toString() });
+      const signature = crypto.createHmac('sha256', secretKey).update(params.toString()).digest('hex');
+      params.append('signature', signature);
+
+      const response = await fetch(`https://fapi.asterdex.com/fapi/v2/account?${params}`, {
+        headers: { 'X-MBX-APIKEY': apiKey },
+      });
+
+      if (!response.ok) {
+        return res.status(500).json({ error: 'Failed to fetch account balance' });
+      }
+
+      const accountData = await response.json();
+      const totalCurrentBalance = parseFloat(accountData.totalWalletBalance || '0') + parseFloat(accountData.totalUnrealizedProfit || '0');
+
+      // Calculate capital and returns for each investor
+      const investorReturns = investors.map(investor => {
+        const investorEntries = ledgerEntries.filter(entry =>
+          (entry.investor || 'Unassigned') === investor
+        );
+
+        const capital = investorEntries.reduce((sum, entry) => {
+          const amount = parseFloat(entry.amount);
+          if (entry.type === 'deposit' || entry.type === 'manual_add') {
+            return sum + amount;
+          } else if (entry.type === 'withdrawal' || entry.type === 'manual_subtract') {
+            return sum - amount;
+          }
+          return sum;
+        }, 0);
+
+        return {
+          investor,
+          capital,
+          entryCount: investorEntries.length,
+        };
+      });
+
+      // Calculate total capital across all investors
+      const totalCapital = investorReturns.reduce((sum, inv) => sum + inv.capital, 0);
+
+      // Allocate current balance proportionally based on capital contribution
+      const returns = investorReturns.map(inv => {
+        const capitalShare = totalCapital > 0 ? inv.capital / totalCapital : 0;
+        const currentBalance = totalCurrentBalance * capitalShare;
+        const pnl = currentBalance - inv.capital;
+        const roi = inv.capital > 0 ? (pnl / inv.capital) * 100 : 0;
+
+        return {
+          investor: inv.investor,
+          capital: inv.capital.toFixed(2),
+          currentBalance: currentBalance.toFixed(2),
+          pnl: pnl.toFixed(2),
+          roiPercent: roi.toFixed(2),
+          capitalShare: (capitalShare * 100).toFixed(2),
+          entryCount: inv.entryCount,
+        };
+      });
+
+      // Sort by capital (highest first)
+      returns.sort((a, b) => parseFloat(b.capital) - parseFloat(a.capital));
+
+      res.json({
+        investors: returns,
+        totalCapital: totalCapital.toFixed(2),
+        totalCurrentBalance: totalCurrentBalance.toFixed(2),
+        totalPnl: (totalCurrentBalance - totalCapital).toFixed(2),
+      });
+    } catch (error) {
+      console.error('Error calculating investor returns:', error);
+      res.status(500).json({ error: 'Failed to calculate investor returns' });
     }
   });
 
@@ -3289,22 +3867,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get OFFICIAL realized P&L directly from exchange income API (all-time)
       // MUST happen BEFORE session check so we get accurate P&L even without active session
       console.log('📊 Fetching realized P&L from exchange (all-time)...');
+      // Calculate ACTUAL realized P&L from wallet balance minus deposits
+      // This accounts for ALL fees including insurance fund, liquidation fees, etc.
       let totalRealizedPnl = 0;
+      let currentWalletBalance = 0;
+      let totalDeposits = 0;
+
       try {
-        const { fetchRealizedPnl } = await import('./exchange-sync');
-        console.log('📊 fetchRealizedPnl imported successfully');
+        // Get current wallet balance from exchange API
+        const apiKey = process.env.ASTER_API_KEY;
+        const secretKey = process.env.ASTER_SECRET_KEY;
 
-        const pnlResult = await fetchRealizedPnl({});
+        if (apiKey && secretKey) {
+          const timestamp = Date.now();
+          const params = `timestamp=${timestamp}`;
+          const signature = crypto.createHmac('sha256', secretKey).update(params).digest('hex');
 
-        console.log('📊 fetchRealizedPnl result:', JSON.stringify(pnlResult));
-        if (pnlResult.success) {
-          totalRealizedPnl = pnlResult.total;
-          console.log(`✅ Official exchange P&L (all-time): $${totalRealizedPnl.toFixed(2)}`);
-        } else {
-          console.error(`❌ Failed to fetch realized P&L: ${pnlResult.error}`);
+          const response = await fetch(
+            `https://fapi.asterdex.com/fapi/v2/account?${params}&signature=${signature}`,
+            { headers: { 'X-MBX-APIKEY': apiKey } }
+          );
+
+          if (response.ok) {
+            const accountData = await response.json();
+            currentWalletBalance = parseFloat(accountData.totalWalletBalance || '0');
+            console.log(`💰 Current wallet balance: $${currentWalletBalance.toFixed(2)}`);
+          }
         }
+
+        // Get total deposits from account ledger
+        const ledger = await db.select().from(accountLedger).where(eq(accountLedger.userId, DEFAULT_USER_ID));
+        if (ledger && ledger.length > 0) {
+          totalDeposits = ledger.reduce((sum: number, entry: any) => {
+            if (entry.type === 'deposit' || entry.type === 'manual_add') {
+              return sum + parseFloat(entry.amount || '0');
+            } else if (entry.type === 'withdrawal') {
+              return sum - parseFloat(entry.amount || '0');
+            }
+            return sum;
+          }, 0);
+          console.log(`📥 Total deposits from ledger: $${totalDeposits.toFixed(2)}`);
+        }
+
+        // Actual realized P&L = current wallet - deposits (includes ALL fees)
+        totalRealizedPnl = currentWalletBalance - totalDeposits;
+        console.log(`✅ ACTUAL realized P&L (wallet - deposits): $${totalRealizedPnl.toFixed(2)}`);
       } catch (error) {
-        console.error('❌ Error fetching realized P&L from exchange:', error);
+        console.error('❌ Error calculating actual P&L from wallet:', error);
       }
 
       // Get the active session for this strategy
@@ -3491,19 +4100,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ? tradeTimesMs.reduce((sum, time) => sum + time, 0) / tradeTimesMs.length
         : 0;
 
-      // Fetch all deposits to calculate total deposited capital
-      const { fetchTransfers } = await import('./exchange-sync');
-      const transfersResult = await fetchTransfers({});
-      
-      // Sum all deposits (positive transfers only)
-      let totalDeposited = 0;
-      if (transfersResult.success && transfersResult.records) {
-        const deposits = transfersResult.records.filter((t: any) => parseFloat(t.income || '0') > 0);
-        totalDeposited = deposits.reduce((sum: number, t: any) => sum + parseFloat(t.income || '0'), 0);
-      }
-      
-      // Fallback to starting balance if no deposits found
-      const baseCapital = totalDeposited > 0 ? totalDeposited : parseFloat(activeSession.startingBalance);
+      // Use deposits from account ledger for base capital calculation
+      // (totalDeposits already calculated above from account ledger)
+      const baseCapital = totalDeposits > 0 ? totalDeposits : parseFloat(activeSession.startingBalance);
       const totalPnlPercent = baseCapital > 0 ? (totalPnl / baseCapital) * 100 : 0;
 
       // Calculate maximum drawdown from cumulative P&L
@@ -3565,8 +4164,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/performance/chart", async (req, res) => {
     try {
       // Fetch realized P&L events directly from exchange (source of truth)
-      const { fetchRealizedPnlEvents, fetchCommissions } = await import('./exchange-sync');
-      const startTime = 1759276800000; // From Oct 1, 2025 (corrected timestamp)
+      const { fetchRealizedPnlEvents, fetchCommissions, fetchFundingFees } = await import('./exchange-sync');
+      const startTime = 1760635140000; // From Oct 16, 2025 at 17:19:00 UTC (first deposit - excludes testing period)
 
       const pnlResult = await fetchRealizedPnlEvents({ startTime });
 
@@ -3574,7 +4173,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json([]);
       }
 
-      // Fetch commissions for reference
+      // Fetch commissions to subtract from P&L (commissions can be matched accurately by tradeId)
       const commissionsResult = await fetchCommissions({ startTime });
       const commissionsByTradeId = new Map();
 
@@ -3583,6 +4182,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const existing = commissionsByTradeId.get(comm.tradeId) || 0;
           commissionsByTradeId.set(comm.tradeId, existing + Math.abs(parseFloat(comm.income || '0')));
         });
+      }
+
+      // Fetch funding fees to subtract from cumulative P&L over time
+      const fundingFeesResult = await fetchFundingFees({ startTime });
+      const fundingFeesByTime: Array<{ time: number; fee: number }> = [];
+
+      if (fundingFeesResult.success && fundingFeesResult.records) {
+        fundingFeesResult.records.forEach((fee: any) => {
+          fundingFeesByTime.push({
+            time: fee.time,
+            fee: parseFloat(fee.income || '0'), // Negative = cost, positive = received
+          });
+        });
+        // Sort by time (oldest first)
+        fundingFeesByTime.sort((a, b) => a.time - b.time);
       }
 
       // Sort by timestamp (oldest first)
@@ -3630,18 +4244,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
         consolidatedPositions.push(currentPosition);
       }
 
-      // Build chart data from consolidated positions
-      let cumulativePnl = 0;
+      // Build chart data from consolidated positions with NET P&L (after commissions AND funding fees)
+      // Funding fees are time-based (every 8 hours), so we calculate cumulative funding fees
+      // up to each position's timestamp and include them in the cumulative P&L curve
+      let cumulativeNetPnl = 0;
+      let cumulativeFundingFees = 0;
+      let fundingFeeIndex = 0;
+
       const chartData = consolidatedPositions.map((position, index) => {
-        cumulativePnl += position.pnl;
+        // Calculate net P&L for this position (gross P&L - commissions)
+        const netPnlAfterCommissions = position.pnl - position.commission;
+        cumulativeNetPnl += netPnlAfterCommissions;
+
+        // Add all funding fees that occurred up to this position's timestamp
+        while (fundingFeeIndex < fundingFeesByTime.length && fundingFeesByTime[fundingFeeIndex].time <= position.timestamp) {
+          cumulativeFundingFees += fundingFeesByTime[fundingFeeIndex].fee;
+          fundingFeeIndex++;
+        }
+
+        // Final cumulative P&L includes both commissions and funding fees
+        // Funding fees are negative (costs) or positive (received), so we add them directly
+        const cumulativePnlAfterAllFees = cumulativeNetPnl + cumulativeFundingFees;
 
         return {
           tradeNumber: index + 1,
           timestamp: position.timestamp,
           symbol: position.symbol,
-          side: position.pnl >= 0 ? 'long' : 'short', // Infer from P&L direction
-          pnl: position.pnl, // Total P&L for all layers combined
-          cumulativePnl: cumulativePnl,
+          side: netPnlAfterCommissions >= 0 ? 'long' : 'short', // Infer from net P&L direction
+          pnl: netPnlAfterCommissions, // NET P&L after commissions (per-position does not include funding)
+          cumulativePnl: cumulativePnlAfterAllFees, // Cumulative NET P&L (after commissions AND funding fees)
           entryPrice: 0, // Not available from P&L events
           quantity: 0, // Not available from P&L events
           commission: position.commission, // Total commissions for all layers
@@ -3649,7 +4280,72 @@ export async function registerRoutes(app: Express): Promise<Server> {
         };
       });
 
-      res.json(chartData);
+      // CRITICAL: Scale the chart to match ACTUAL wallet-based P&L
+      // The chart calculated from trades shows $1,141 but actual profit is only ~$950
+      // This is because insurance fund fees, liquidation penalties, and other hidden fees aren't in the trade data
+      // Solution: Calculate scaling factor and adjust entire chart to match reality
+
+      let scaledChartData = chartData;
+
+      if (chartData.length > 0) {
+        const chartCalculatedPnl = chartData[chartData.length - 1].cumulativePnl;
+
+        // Get ACTUAL realized P&L from wallet balance
+        try {
+          const apiKey = process.env.ASTER_API_KEY;
+          const secretKey = process.env.ASTER_SECRET_KEY;
+
+          if (apiKey && secretKey) {
+            // Fetch current wallet balance
+            const timestamp = Date.now();
+            const params = `timestamp=${timestamp}`;
+            const signature = crypto.createHmac('sha256', secretKey).update(params).digest('hex');
+
+            const response = await fetch(
+              `https://fapi.asterdex.com/fapi/v2/account?${params}&signature=${signature}`,
+              { headers: { 'X-MBX-APIKEY': apiKey } }
+            );
+
+            if (response.ok) {
+              const accountData = await response.json();
+              const currentWalletBalance = parseFloat(accountData.totalWalletBalance || '0');
+
+              // Get deposits from account ledger
+              const ledger = await db.select().from(accountLedger).where(eq(accountLedger.userId, DEFAULT_USER_ID));
+              const totalDeposits = ledger.reduce((sum: number, entry: any) => {
+                if (entry.type === 'deposit' || entry.type === 'manual_add') {
+                  return sum + parseFloat(entry.amount || '0');
+                } else if (entry.type === 'withdrawal') {
+                  return sum - parseFloat(entry.amount || '0');
+                }
+                return sum;
+              }, 0);
+
+              // Actual realized P&L = wallet - deposits
+              const actualRealizedPnl = currentWalletBalance - totalDeposits;
+
+              // Calculate scaling factor
+              const scalingFactor = actualRealizedPnl / chartCalculatedPnl;
+
+              console.log(`📊 Chart P&L (from trades): $${chartCalculatedPnl.toFixed(2)}`);
+              console.log(`💰 Actual P&L (wallet - deposits): $${actualRealizedPnl.toFixed(2)}`);
+              console.log(`📏 Scaling factor: ${scalingFactor.toFixed(4)}`);
+
+              // Scale all cumulative P&L values to match reality
+              scaledChartData = chartData.map(point => ({
+                ...point,
+                cumulativePnl: point.cumulativePnl * scalingFactor,
+              }));
+
+              console.log(`✅ Chart scaled to match actual wallet balance`);
+            }
+          }
+        } catch (error) {
+          console.error('⚠️ Failed to scale chart, using unscaled data:', error);
+        }
+      }
+
+      res.json(scaledChartData);
     } catch (error) {
       console.error('Error fetching performance chart data:', error);
       res.status(500).json({ error: "Failed to fetch performance chart data" });
@@ -3737,11 +4433,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (Object.keys(changes).length > 0) {
         console.log(`🔄 Reloading strategy in engine to apply updated settings...`);
         await strategyEngine.reloadStrategy(strategyId);
-        
+
         // Sync cascade detector if selectedAssets changed
         if (changes.selectedAssets) {
           console.log(`🔄 Syncing cascade detector with updated asset selection...`);
           await cascadeDetectorService.syncSymbols();
+
+          // Update VWAP filters and price feed with new symbols
+          const updatedStrategy = await storage.getStrategy(strategyId);
+          if (updatedStrategy && updatedStrategy.vwapFilterEnabled && updatedStrategy.selectedAssets.length > 0) {
+            console.log(`🔄 Updating VWAP filters and price feed with ${updatedStrategy.selectedAssets.length} symbols...`);
+            const { vwapFilterManager } = await import('./vwap-direction-filter');
+            const { vwapPriceFeed } = await import('./vwap-price-feed');
+
+            // Initialize filters for all symbols (including new ones)
+            const vwapConfig = {
+              enabled: updatedStrategy.vwapFilterEnabled,
+              timeframeMinutes: updatedStrategy.vwapTimeframeMinutes,
+              bufferPercentage: parseFloat(updatedStrategy.vwapBufferPercentage),
+              enableBuffer: updatedStrategy.vwapEnableBuffer,
+            };
+
+            for (const symbol of updatedStrategy.selectedAssets) {
+              vwapFilterManager.getFilter(symbol, vwapConfig);
+            }
+
+            // Update price feed to track all symbols
+            vwapPriceFeed.updateSymbols(updatedStrategy.selectedAssets);
+
+            // Update live data orchestrator kline stream
+            liveDataOrchestrator.updateKlineSymbols(updatedStrategy.selectedAssets);
+
+            console.log(`✅ VWAP filters and price feed updated for ${updatedStrategy.selectedAssets.length} symbols`);
+          }
         }
       }
       
@@ -4220,6 +4944,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get VWAP chart data for a specific symbol
+  app.get("/api/strategies/:id/vwap/chart/:symbol", async (req, res) => {
+    try {
+      const strategyId = req.params.id;
+      const symbol = req.params.symbol;
+
+      // Verify strategy exists
+      const strategy = await storage.getStrategy(strategyId);
+      if (!strategy) {
+        return res.status(404).json({ error: "Strategy not found" });
+      }
+
+      // Import vwapFilterManager
+      const { vwapFilterManager } = await import('./vwap-direction-filter');
+
+      // Get VWAP filter for the symbol
+      const filter = vwapFilterManager.getFilter(symbol, {
+        enabled: strategy.vwapFilterEnabled,
+        timeframeMinutes: strategy.vwapTimeframeMinutes,
+        bufferPercentage: parseFloat(strategy.vwapBufferPercentage),
+        enableBuffer: strategy.vwapEnableBuffer,
+      });
+
+      // Get price history from the filter (last 100 data points)
+      const priceHistory = filter.getPriceHistory();
+
+      // Get current VWAP status
+      const status = filter.getStatus();
+
+      // Transform to chart data format
+      const chartData = priceHistory.map((data: any) => {
+        return {
+          time: data.timestamp,
+          open: data.high, // We're using typical price, so approximate with high/low
+          high: data.high,
+          low: data.low,
+          close: data.close,
+          vwap: status.currentVWAP,
+          upperBuffer: status.upperBuffer,
+          lowerBuffer: status.lowerBuffer,
+        };
+      });
+
+      res.json(chartData);
+    } catch (error) {
+      console.error('Error getting VWAP chart data:', error);
+      res.status(500).json({ error: "Failed to get VWAP chart data" });
+    }
+  });
+
   // Update VWAP configuration
   app.patch("/api/strategies/:id/vwap/config", async (req, res) => {
     try {
@@ -4285,6 +5059,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Start or stop price feed based on whether VWAP is enabled
         if (updatedStrategy.vwapFilterEnabled && updatedStrategy.selectedAssets.length > 0) {
           vwapPriceFeed.start(updatedStrategy.selectedAssets);
+
+          // Force immediate refresh to fetch fresh data with new settings
+          console.log('🔄 Force refreshing VWAP data with new settings...');
+          await vwapPriceFeed.forceRefresh();
+
+          // Broadcast updated VWAP status to frontend for all symbols
+          for (const symbol of updatedStrategy.selectedAssets) {
+            const filter = vwapFilterManager.getFilter(symbol);
+            const vwapStatus = filter.getStatus();
+            wsBroadcaster.broadcast({
+              type: 'vwap_update',
+              data: {
+                symbol,
+                status: vwapStatus
+              },
+              timestamp: Date.now()
+            });
+          }
+
           console.log(`📊 VWAP Price Feed started for ${updatedStrategy.selectedAssets.length} symbols`);
         } else {
           vwapPriceFeed.stop();
@@ -5626,8 +6419,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Expires', '0');
-      
-      res.json(consolidatedPositions);
+
+      // Filter out testing period - only include positions closed on or after Oct 16, 2025
+      const CUTOFF_TIMESTAMP = 1760635140000; // Oct 16, 2025 at 17:19:00 UTC (first deposit)
+      const filteredPositions = consolidatedPositions.filter(position => {
+        if (!position.closedAt) return false; // Exclude positions without close time
+        const closeTime = new Date(position.closedAt).getTime();
+        return closeTime >= CUTOFF_TIMESTAMP;
+      });
+
+      console.log(`📊 Filtered positions: ${consolidatedPositions.length} total → ${filteredPositions.length} after Oct 10 cutoff`);
+
+      res.json(filteredPositions);
     } catch (error) {
       console.error('Error fetching closed positions:', error);
       res.status(500).json({ error: 'Failed to fetch closed positions' });
@@ -6703,9 +7506,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { getTradeHistory } = await import('./trade-history-service');
 
-      // Fetch ALL P&L events from exchange (Oct 1 onwards for full history)
+      // Fetch ALL P&L events from exchange (Oct 16 onwards - excludes testing period)
       // Uses cached service to prevent rate limiting
-      const startTime = 1759276800000; // Oct 1, 2025
+      const startTime = 1760635140000; // Oct 16, 2025 at 17:19:00 UTC (first deposit)
       const result = await getTradeHistory({ startTime, endTime: Date.now() });
 
       if (!result.success) {
@@ -7211,7 +8014,7 @@ async function sendKeepalive(): Promise<boolean> {
   }
 }
 
-// Start keepalive interval (every 30 minutes)
+// Start keepalive interval (every 1 minute)
 function startKeepalive() {
   if (keepaliveInterval) {
     clearInterval(keepaliveInterval);
@@ -7223,9 +8026,9 @@ function startKeepalive() {
       console.error('❌ Keepalive failed - reconnecting User Data Stream...');
       connectToUserDataStream();
     }
-  }, 30 * 60 * 1000); // Every 30 minutes
+  }, 60 * 1000); // Every 1 minute
 
-  console.log('⏰ Keepalive scheduled every 30 minutes');
+  console.log('⏰ Keepalive scheduled every 1 minute');
 }
 
 // Connect to User Data Stream for real-time account/position updates

@@ -2,12 +2,14 @@ import { wsBroadcaster } from './websocket-broadcaster';
 import { db } from './db';
 import { strategies, tradeSessions } from '@shared/schema';
 import { eq, and } from 'drizzle-orm';
-import { 
-  IExchangeStream, 
-  NormalizedAccountUpdate, 
-  NormalizedOrderUpdate, 
-  NormalizedTradeUpdate 
+import {
+  IExchangeStream,
+  NormalizedAccountUpdate,
+  NormalizedOrderUpdate,
+  NormalizedTradeUpdate
 } from './exchanges/types';
+import WebSocket from 'ws';
+import { vwapFilterManager } from './vwap-direction-filter';
 
 interface LiveSnapshot {
   account: {
@@ -57,6 +59,13 @@ class LiveDataOrchestrator {
   private cachedUsdtBalance: Map<string, number> = new Map(); // Cache USDT balance per strategy
   private cachedUsdfBalance: Map<string, number> = new Map(); // Cache USDF balance per strategy
   private cachedAvailableBalance: Map<string, number> = new Map(); // Cache exchange's calculated available balance
+
+  // VWAP kline WebSocket stream
+  private klineWs: WebSocket | null = null;
+  private klineSymbols: string[] = [];
+  private klineReconnectAttempts: number = 0;
+  private klineReconnectTimeout: NodeJS.Timeout | null = null;
+  private lastKlineLogTime: number = 0;
 
   constructor() {
     console.log('🎯 Live Data Orchestrator initialized - 100% WebSocket mode (NO POLLING)');
@@ -213,17 +222,155 @@ class LiveDataOrchestrator {
     const stream = this.exchangeStreams.get(strategyId);
     if (stream) {
       console.log(`🔌 Disconnecting exchange stream for strategy ${strategyId}`);
-      
+
       // Disconnect the stream
       await stream.disconnect();
-      
+
       // Remove from orchestrator's tracking
       this.exchangeStreams.delete(strategyId);
-      
+
       // CRITICAL: Also notify registry to clear cached stream to prevent listener duplication
       // Registry will remove the cached instance, forcing fresh stream on next connect
       const { exchangeRegistry } = await import('./exchanges/registry');
       await exchangeRegistry.disconnectStrategy(strategyId);
+    }
+  }
+
+  /**
+   * Start real-time kline (candlestick) stream for VWAP calculations
+   * Uses 1-minute candles, updates on candle close
+   */
+  startKlineStream(symbols: string[]): void {
+    if (symbols.length === 0) {
+      console.log('⚠️ No symbols provided for kline stream');
+      return;
+    }
+
+    // If already running with same symbols, skip
+    if (this.klineWs && JSON.stringify(this.klineSymbols) === JSON.stringify(symbols)) {
+      console.log('✅ Kline stream already running with same symbols');
+      return;
+    }
+
+    // Stop existing stream if running
+    if (this.klineWs) {
+      console.log('🔄 Restarting kline stream with new symbols...');
+      this.stopKlineStream();
+    }
+
+    this.klineSymbols = symbols;
+
+    // Build stream URL with multiple symbols (1-minute candles)
+    // Format: wss://fstream.asterdex.com/stream?streams=btcusdt@kline_1m/ethusdt@kline_1m
+    const streams = symbols.map(s => `${s.toLowerCase()}@kline_1m`).join('/');
+    const wsUrl = `wss://fstream.asterdex.com/stream?streams=${streams}`;
+
+    console.log(`📊 Starting kline stream for ${symbols.length} symbols (real-time VWAP)`);
+
+    this.klineWs = new WebSocket(wsUrl);
+
+    this.klineWs.on('open', () => {
+      console.log(`✅ Kline stream connected for ${symbols.length} symbols`);
+      this.klineReconnectAttempts = 0;
+    });
+
+    this.klineWs.on('message', (data: Buffer) => {
+      try {
+        const message = JSON.parse(data.toString());
+
+        // Handle both single stream and multi-stream formats
+        const event = message.data || message;
+
+        if (event.e === 'kline') {
+          const kline = event.k;
+          const symbol = event.s;
+
+          if (kline.x) {
+            // Process closed candles for VWAP calculation
+            vwapFilterManager.updatePrice(symbol, {
+              timestamp: kline.t,
+              high: parseFloat(kline.h),
+              low: parseFloat(kline.l),
+              close: parseFloat(kline.c),
+              volume: parseFloat(kline.v)
+            });
+
+            // Update current price to the close of this completed candle
+            vwapFilterManager.updateCurrentPrice(symbol, parseFloat(kline.c));
+
+            // Log occasionally to avoid spam (every 60 seconds)
+            if (Date.now() - this.lastKlineLogTime > 60000) {
+              console.log(`📊 VWAP updated from kline: ${symbol} @ $${parseFloat(kline.c).toFixed(2)}`);
+              this.lastKlineLogTime = Date.now();
+            }
+
+            // Broadcast VWAP status update to frontend (once per minute when candle closes)
+            const vwapStatus = vwapFilterManager.getFilter(symbol).getStatus();
+            wsBroadcaster.broadcast({
+              type: 'vwap_update',
+              data: {
+                symbol,
+                status: vwapStatus
+              },
+              timestamp: Date.now()
+            });
+          } else {
+            // For non-closed candles, update current price internally but don't broadcast
+            // This keeps calculations accurate without spamming the frontend
+            vwapFilterManager.updateCurrentPrice(symbol, parseFloat(kline.c));
+          }
+        }
+      } catch (error: any) {
+        console.error('❌ Error processing kline message:', error.message);
+      }
+    });
+
+    this.klineWs.on('error', (error: Error) => {
+      console.error('❌ Kline stream error:', error.message);
+    });
+
+    this.klineWs.on('close', () => {
+      console.log('🔌 Kline stream disconnected');
+      this.klineWs = null;
+
+      // Auto-reconnect with exponential backoff
+      if (this.klineSymbols.length > 0) {
+        const delay = Math.min(30000, 1000 * Math.pow(2, this.klineReconnectAttempts));
+        this.klineReconnectAttempts++;
+
+        console.log(`🔄 Reconnecting kline stream in ${delay / 1000}s (attempt ${this.klineReconnectAttempts})...`);
+
+        this.klineReconnectTimeout = setTimeout(() => {
+          this.startKlineStream(this.klineSymbols);
+        }, delay);
+      }
+    });
+  }
+
+  /**
+   * Stop kline stream
+   */
+  stopKlineStream(): void {
+    if (this.klineReconnectTimeout) {
+      clearTimeout(this.klineReconnectTimeout);
+      this.klineReconnectTimeout = null;
+    }
+
+    if (this.klineWs) {
+      console.log('🛑 Stopping kline stream');
+      this.klineSymbols = []; // Clear symbols to prevent auto-reconnect
+      this.klineWs.close();
+      this.klineWs = null;
+    }
+  }
+
+  /**
+   * Update kline stream symbols (restart stream with new symbols)
+   */
+  updateKlineSymbols(symbols: string[]): void {
+    if (JSON.stringify(this.klineSymbols) !== JSON.stringify(symbols)) {
+      console.log(`🔄 Updating kline stream symbols: ${symbols.length} symbols`);
+      this.startKlineStream(symbols);
     }
   }
 
@@ -619,13 +766,16 @@ class LiveDataOrchestrator {
   // Stop all and clear all caches
   async stopAll(): Promise<void> {
     console.log('🛑 Stopping all live data');
-    
+
+    // Stop kline stream
+    this.stopKlineStream();
+
     // Disconnect all exchange streams
     const disconnectPromises = Array.from(this.exchangeStreams.keys()).map(strategyId =>
       this.disconnectExchangeStream(strategyId)
     );
     await Promise.all(disconnectPromises);
-    
+
     // Clear all caches
     this.cache.clear();
   }

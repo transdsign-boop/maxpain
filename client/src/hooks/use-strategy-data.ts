@@ -122,9 +122,9 @@ export function useStrategyData() {
 
   // Fetch chart data ONCE (no polling - WebSocket provides updates)
   const chartDataQuery = useQuery<any[]>({
-    queryKey: ['/api/performance/chart', 'v2'], // v2 forces cache invalidation
+    queryKey: ['/api/performance/chart', 'v4-oct16-cutoff'], // v4 forces cache invalidation after Oct 16 cutoff
     queryFn: async () => {
-      const response = await fetch('/api/performance/chart');
+      const response = await fetch('/api/performance/chart?_=' + Date.now()); // Cache busting
       if (!response.ok) throw new Error('Failed to fetch chart data');
       return response.json();
     },
@@ -139,8 +139,13 @@ export function useStrategyData() {
 
   // Fetch closed positions (refresh every 2 minutes - reduces load)
   const closedPositionsQuery = useQuery<any[]>({
-    queryKey: ['/api/strategies', activeStrategy?.id, 'positions', 'closed'],
+    queryKey: ['/api/strategies', activeStrategy?.id, 'positions', 'closed', 'oct16-cutoff'],
     enabled: !!activeStrategy?.id,
+    queryFn: async () => {
+      const response = await fetch(`/api/strategies/${activeStrategy?.id}/positions/closed?_=` + Date.now());
+      if (!response.ok) throw new Error('Failed to fetch closed positions');
+      return response.json();
+    },
     staleTime: 2 * 60 * 1000, // Refresh every 2 minutes
     refetchInterval: 2 * 60 * 1000, // Auto-refetch every 2 minutes
     refetchOnWindowFocus: false,
@@ -148,11 +153,11 @@ export function useStrategyData() {
   });
 
   // Fetch realized P&L events from exchange (actual closed trades - source of truth)
-  // Starting from October 1st, 2025 (timestamp: 1759276800000)
+  // Starting from October 16, 2025 at 17:19:00 UTC (first deposit - excludes testing period)
   const realizedPnlEventsQuery = useQuery<{ events: any[]; total: number; count: number; dateRange?: any }>({
-    queryKey: ['/api/realized-pnl-events'],
+    queryKey: ['/api/realized-pnl-events', 'oct16-cutoff'],
     queryFn: async () => {
-      const response = await fetch('/api/realized-pnl-events?startTime=1759276800000');
+      const response = await fetch('/api/realized-pnl-events?startTime=1760635140000&_=' + Date.now());
       if (!response.ok) return { events: [], total: 0, count: 0 };
       return response.json();
     },
@@ -162,47 +167,40 @@ export function useStrategyData() {
     refetchOnMount: false,
   });
 
-  // Fetch transfers for chart markers (fetched from exchange API)
-  // Starting from October 1st, 2025 (timestamp: 1759276800000)
+  // Fetch transfers for chart markers (from account ledger)
+  // Only shows transfers that have been manually added to the ledger
   const transfersQuery = useQuery<any[]>({
-    queryKey: ['/api/transfers'],
+    queryKey: ['/api/account/ledger'],
     queryFn: async () => {
-      const response = await fetch('/api/transfers?startTime=1759276800000');
+      const response = await fetch('/api/account/ledger');
       if (!response.ok) return [];
-      return response.json();
+      const ledger = await response.json();
+
+      // Filter to only entries with tranId (transfers from exchange)
+      // and convert to transfer format for chart compatibility
+      return ledger
+        .filter((entry: any) => entry.tranId) // Only entries from transfers
+        .map((entry: any) => ({
+          id: entry.id,
+          tranId: entry.tranId,
+          asset: entry.asset,
+          amount: entry.type === 'withdrawal' ? `-${entry.amount}` : entry.amount,
+          time: new Date(entry.timestamp).getTime(),
+          timestamp: entry.timestamp,
+          incomeType: entry.type === 'withdrawal' ? 'TRANSFER_WITHDRAWAL' : 'TRANSFER_DEPOSIT',
+          investor: entry.investor,
+          reason: entry.reason,
+          notes: entry.notes,
+        }));
     },
     staleTime: 5 * 60 * 1000, // Refresh every 5 minutes
   });
 
-  // Auto-sync transfers from exchange every hour
-  const syncTransfersMutation = useMutation({
-    mutationFn: async () => {
-      const response = await fetch('/api/sync/transfers', { method: 'POST' });
-      if (!response.ok) throw new Error('Failed to sync transfers');
-      return response.json();
-    },
-    onSuccess: () => {
-      // Refetch transfers after successful sync
-      transfersQuery.refetch();
-    },
-  });
-
-  // Set up automatic syncing every hour (3,600,000 ms)
-  useEffect(() => {
-    // Sync immediately on mount
-    syncTransfersMutation.mutate();
-
-    // Then sync every hour
-    const interval = setInterval(() => {
-      syncTransfersMutation.mutate();
-    }, 3600000); // 1 hour
-
-    return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Empty deps - only run once on mount
+  // No longer need auto-sync since we're using account ledger
+  // Users manually add transfers they want to track via Account Ledger component
 
   // Fetch commissions for fee calculation (fetched from exchange API, not database)
-  // Starting from October 1st, 2025 (timestamp: 1759276800000)
+  // Starting from October 10, 2025 at 2:13 PM UTC (trade #370 - excludes testing period)
   const commissionsQuery = useQuery<{ records: any[]; total: number }>({
     queryKey: ['/api/commissions'],
     queryFn: async () => {

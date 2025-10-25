@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, TrendingDown, Minus, ArrowUpDown } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, BarChart3 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import VWAPChartDialog from "@/components/VWAPChartDialog";
 
 interface VWAPSymbolStatus {
   symbol: string;
@@ -81,13 +82,19 @@ function DirectionBadge({ direction, inBufferZone }: { direction: string; inBuff
 }
 
 export default function VWAPStatusDisplay({ strategyId }: VWAPStatusDisplayProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [selectedSymbolName, setSelectedSymbolName] = useState<string | null>(null);
+  const [chartDialogOpen, setChartDialogOpen] = useState(false);
 
   const { data: vwapStatus, isLoading } = useQuery<VWAPStatusResponse>({
     queryKey: [`/api/strategies/${strategyId}/vwap/status`],
-    refetchInterval: 5000, // Refresh every 5 seconds
+    refetchInterval: 60000, // Refresh every 1 minute
     enabled: !!strategyId,
   });
+
+  // Get the current data for the selected symbol (updates live with each query refresh)
+  const selectedSymbol = selectedSymbolName
+    ? vwapStatus?.symbols.find(s => s.symbol === selectedSymbolName) || null
+    : null;
 
   if (isLoading) {
     return (
@@ -134,12 +141,14 @@ export default function VWAPStatusDisplay({ strategyId }: VWAPStatusDisplayProps
     );
   }
 
-  const visibleSymbols = isExpanded ? vwapStatus.symbols : vwapStatus.symbols.slice(0, 3);
-  const hasMore = vwapStatus.symbols.length > 3;
+  // Count symbols by direction
+  const longCount = vwapStatus.symbols.filter(s => s.direction === 'LONG_ONLY' && !s.inBufferZone).length;
+  const shortCount = vwapStatus.symbols.filter(s => s.direction === 'SHORT_ONLY' && !s.inBufferZone).length;
+  const bufferCount = vwapStatus.symbols.filter(s => s.inBufferZone).length;
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div>
             <CardTitle className="text-sm font-medium flex items-center gap-2">
@@ -147,99 +156,177 @@ export default function VWAPStatusDisplay({ strategyId }: VWAPStatusDisplayProps
               VWAP Direction Filter
             </CardTitle>
             <CardDescription className="text-xs mt-1">
-              {vwapStatus.timeframeMinutes / 60}h timeframe • {(vwapStatus.bufferPercentage * 100).toFixed(2)}% buffer
+              {vwapStatus.timeframeMinutes / 60}h • {(vwapStatus.bufferPercentage * 100).toFixed(2)}% buffer
             </CardDescription>
           </div>
-          <Badge variant="outline" className="text-xs">
-            {vwapStatus.symbols.length} symbols
-          </Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {visibleSymbols.map((symbolStatus) => (
-          <div
-            key={symbolStatus.symbol}
-            className="p-3 border rounded-lg space-y-2 hover:bg-muted/50 transition-colors"
-          >
-            {/* Header with symbol and direction */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="font-mono font-semibold text-sm">{symbolStatus.symbol}</span>
-                <DirectionBadge
-                  direction={symbolStatus.direction}
-                  inBufferZone={symbolStatus.inBufferZone}
-                />
-              </div>
-              <div className="text-xs text-muted-foreground">
-                Reset in {formatTimeRemaining(symbolStatus.timeUntilReset)}
-              </div>
-            </div>
-
-            {/* Price and VWAP info */}
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <div>
-                <span className="text-muted-foreground">Current Price:</span>
-                <span className="ml-1 font-mono font-medium">
-                  ${symbolStatus.currentPrice.toFixed(4)}
-                </span>
-              </div>
-              <div>
-                <span className="text-muted-foreground">VWAP:</span>
-                <span className="ml-1 font-mono font-medium">
-                  ${symbolStatus.currentVWAP.toFixed(4)}
-                </span>
-              </div>
-            </div>
-
-            {/* Distance from VWAP */}
-            <div className="text-xs">
-              <span className="text-muted-foreground">Distance:</span>
-              <span
-                className={`ml-1 font-mono font-medium ${
-                  symbolStatus.distanceFromVWAP > 0 ? 'text-red-500' : 'text-green-500'
-                }`}
-              >
-                {symbolStatus.distanceFromVWAP > 0 ? '+' : ''}
-                {symbolStatus.distanceFromVWAP.toFixed(2)}%
+          <div className="flex gap-3 text-xs font-medium">
+            <span className="text-green-600">
+              {longCount} LONG
+            </span>
+            <span className="text-red-600">
+              {shortCount} SHORT
+            </span>
+            {bufferCount > 0 && (
+              <span className="text-gray-500">
+                {bufferCount} BUFFER
               </span>
-              {symbolStatus.inBufferZone && (
-                <Badge variant="outline" className="ml-2 text-[10px] h-4 px-1">
-                  In Buffer Zone
-                </Badge>
-              )}
-            </div>
-
-            {/* Buffer zones (only when buffer is enabled) */}
-            {vwapStatus.enableBuffer && (
-              <div className="grid grid-cols-2 gap-2 text-[10px] text-muted-foreground">
-                <div>
-                  Upper: ${symbolStatus.upperBuffer.toFixed(4)}
-                </div>
-                <div>
-                  Lower: ${symbolStatus.lowerBuffer.toFixed(4)}
-                </div>
-              </div>
-            )}
-
-            {/* Statistics */}
-            {symbolStatus.statistics.signalsBlocked > 0 && (
-              <div className="text-[10px] text-muted-foreground">
-                🚫 Blocked {symbolStatus.statistics.signalsBlocked} signals
-              </div>
             )}
           </div>
-        ))}
+        </div>
+      </CardHeader>
+      <CardContent>
+        {/* Ultra-compact grid layout - all symbols visible at once */}
+        <div className="grid grid-cols-9 gap-0.5">
+          {vwapStatus.symbols.map((symbolStatus) => {
+            const isSelected = selectedSymbolName === symbolStatus.symbol;
 
-        {/* Show more/less button */}
-        {hasMore && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="w-full text-xs"
-          >
-            {isExpanded ? 'Show Less' : `Show ${vwapStatus.symbols.length - 3} More`}
-          </Button>
+            // Calculate opacity based on distance from VWAP (0 = transparent, 1 = solid)
+            const getOpacity = () => {
+              // If no VWAP data yet (still loading), return low opacity
+              if (symbolStatus.currentVWAP === 0 || symbolStatus.currentPrice === 0) return 0.1;
+              if (symbolStatus.inBufferZone) return 0; // Fully transparent in buffer
+              const absDistance = Math.abs(symbolStatus.distanceFromVWAP);
+              // Handle NaN/Infinity from division errors
+              if (!isFinite(absDistance)) return 0.1;
+              // Map distance to opacity: 0-0.5% = 0.1, 0.5-1% = 0.3, 1-2% = 0.5, 2%+ = 0.8
+              if (absDistance < 0.5) return 0.15;
+              if (absDistance < 1.0) return 0.35;
+              if (absDistance < 2.0) return 0.55;
+              if (absDistance < 4.0) return 0.75;
+              return 0.9; // Very far from VWAP
+            };
+
+            const opacity = getOpacity();
+
+            // Get RGB color values based on direction
+            const getBgColor = () => {
+              if (symbolStatus.inBufferZone) return 'transparent';
+              if (symbolStatus.direction === 'LONG_ONLY') return `rgba(34, 197, 94, ${opacity})`; // green-500
+              if (symbolStatus.direction === 'SHORT_ONLY') return `rgba(239, 68, 68, ${opacity})`; // red-500
+              return `rgba(107, 114, 128, ${opacity})`; // gray-500
+            };
+
+            const getBorderColor = () => {
+              if (symbolStatus.inBufferZone) return 'rgba(156, 163, 175, 0.3)'; // gray-400/30
+              if (symbolStatus.direction === 'LONG_ONLY') return `rgba(34, 197, 94, ${Math.min(opacity + 0.2, 1)})`;
+              if (symbolStatus.direction === 'SHORT_ONLY') return `rgba(239, 68, 68, ${Math.min(opacity + 0.2, 1)})`;
+              return `rgba(107, 114, 128, ${Math.min(opacity + 0.2, 1)})`;
+            };
+
+            const getTextColor = () => {
+              if (symbolStatus.inBufferZone) return 'text-gray-500';
+              if (symbolStatus.direction === 'LONG_ONLY') return opacity > 0.5 ? 'text-white' : 'text-green-600';
+              if (symbolStatus.direction === 'SHORT_ONLY') return opacity > 0.5 ? 'text-white' : 'text-red-600';
+              return 'text-gray-600';
+            };
+
+            return (
+              <div
+                key={symbolStatus.symbol}
+                className={`border rounded p-1.5 transition-all cursor-pointer ${isSelected ? 'ring-2 ring-offset-1 ring-blue-500' : ''}`}
+                style={{
+                  backgroundColor: getBgColor(),
+                  borderColor: getBorderColor(),
+                  borderWidth: isSelected ? '2px' : '1px',
+                }}
+                onClick={() => setSelectedSymbolName(selectedSymbolName === symbolStatus.symbol ? null : symbolStatus.symbol)}
+              >
+                <div className="flex items-center justify-center h-full">
+                  <span className={`font-mono text-xs font-bold ${getTextColor()}`}>
+                    {symbolStatus.symbol.replace('USDT', '')}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Details panel when a symbol is selected */}
+        {selectedSymbol && (
+          <div className="mt-3 p-3 border rounded bg-muted/50">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <h3 className="font-mono font-bold text-sm">{selectedSymbol.symbol}</h3>
+                <DirectionBadge direction={selectedSymbol.direction} inBufferZone={selectedSymbol.inBufferZone} />
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setChartDialogOpen(true)}
+                  className="h-6 text-xs"
+                >
+                  <BarChart3 className="h-3 w-3 mr-1" />
+                  View Chart
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSelectedSymbolName(null)}
+                  className="h-6 text-xs"
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+
+            {selectedSymbol.currentVWAP === 0 || selectedSymbol.currentPrice === 0 ? (
+              <div className="text-sm text-muted-foreground text-center py-4">
+                <div className="animate-pulse h-2 w-2 bg-blue-500 rounded-full mx-auto mb-2"></div>
+                Loading VWAP data for {selectedSymbol.symbol}...
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Current Price:</span>
+                <span className="font-mono font-semibold">${selectedSymbol.currentPrice.toFixed(6)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">VWAP:</span>
+                <span className="font-mono font-semibold">${selectedSymbol.currentVWAP.toFixed(6)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Upper Buffer:</span>
+                <span className="font-mono font-semibold">${selectedSymbol.upperBuffer.toFixed(6)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Lower Buffer:</span>
+                <span className="font-mono font-semibold">${selectedSymbol.lowerBuffer.toFixed(6)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Distance:</span>
+                <span className={`font-mono font-semibold ${selectedSymbol.distanceFromVWAP > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {selectedSymbol.distanceFromVWAP > 0 ? '+' : ''}{selectedSymbol.distanceFromVWAP.toFixed(3)}%
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Reset In:</span>
+                <span className="font-mono font-semibold">{formatTimeRemaining(selectedSymbol.timeUntilReset)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Direction Changes:</span>
+                <span className="font-mono font-semibold">{selectedSymbol.statistics.directionChanges}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Data Points:</span>
+                <span className="font-mono font-semibold">{selectedSymbol.statistics.dataPoints}</span>
+              </div>
+            </div>
+            )}
+          </div>
+        )}
+
+        {/* VWAP Chart Dialog */}
+        {selectedSymbol && vwapStatus && (
+          <VWAPChartDialog
+            symbol={selectedSymbol.symbol}
+            strategyId={strategyId}
+            open={chartDialogOpen}
+            onOpenChange={setChartDialogOpen}
+            currentVWAP={selectedSymbol.currentVWAP}
+            currentPrice={selectedSymbol.currentPrice}
+            bufferPercentage={vwapStatus.bufferPercentage}
+          />
         )}
       </CardContent>
     </Card>

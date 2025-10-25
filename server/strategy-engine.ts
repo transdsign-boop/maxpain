@@ -403,9 +403,9 @@ export class StrategyEngine extends EventEmitter {
 
       console.log(`📊 Initialized ${strategy.selectedAssets.length} VWAP filters with strategy config`);
 
-      // Now start the price feed - it will update the pre-configured filters
+      // Start the REST API polling price feed - updates every 5 seconds with 30s caching
       vwapPriceFeed.start(strategy.selectedAssets);
-      console.log(`📊 VWAP Price Feed started for ${strategy.selectedAssets.length} symbols`);
+      console.log(`📊 VWAP Price Feed started (REST API polling) for ${strategy.selectedAssets.length} symbols`);
     }
 
     // Start WebSocket user data stream for real-time account/position updates
@@ -631,22 +631,25 @@ export class StrategyEngine extends EventEmitter {
 
   // Handle incoming liquidation event
   private async handleLiquidation(liquidation: Liquidation) {
-    if (!this.isRunning) return;
+    if (!this.isRunning) {
+      console.log(`⏸️ Strategy Engine not running - skipping liquidation ${liquidation.symbol}`);
+      return;
+    }
 
     console.log(`📊 Strategy Engine received liquidation: ${liquidation.symbol} ${liquidation.side} $${parseFloat(liquidation.value).toFixed(2)}`);
 
     // Update price cache
     this.priceCache.set(liquidation.symbol, parseFloat(liquidation.price));
-    
+
     // Add to liquidation history for informational logging ONLY (NOT for percentile calculations)
     // Percentile calculations ALWAYS query database via storage.getLiquidationsBySymbol()
     if (!this.liquidationHistory.has(liquidation.symbol)) {
       this.liquidationHistory.set(liquidation.symbol, []);
     }
-    
+
     const history = this.liquidationHistory.get(liquidation.symbol)!;
     history.push(liquidation);
-    
+
     // Keep only last 100 liquidations per symbol for memory efficiency
     // This cache is ONLY used for counting recent liquidations in logs, NOT for threshold decisions
     if (history.length > 100) {
@@ -680,11 +683,24 @@ export class StrategyEngine extends EventEmitter {
     const liquidationKey = `${liquidation.symbol}-${positionSide}`;
     const lastSeenTime = this.lastLiquidationSeen.get(liquidationKey);
     const now = Date.now();
-    const cooldownMs = 20000; // 20 seconds (reduced from 60s to allow faster re-entry)
-    
+    const cooldownMs = 5000; // 5 seconds (reduced from 60s to allow faster re-entry)
+
     if (lastSeenTime && (now - lastSeenTime) < cooldownMs) {
       const timeSinceLast = ((now - lastSeenTime) / 1000).toFixed(1);
+      const waitTime = ((cooldownMs - (now - lastSeenTime)) / 1000).toFixed(1);
       console.log(`⏭️ LIQUIDATION DEDUPLICATION: ${liquidation.symbol} ${positionSide} - last liquidation seen ${timeSinceLast}s ago, skipping to spread out DCA entries`);
+
+      // Log error to database for audit trail (use 'strategy' not 'currentStrategy' - it's not defined yet)
+      await this.logTradeEntryError({
+        strategy: strategy,
+        symbol: liquidation.symbol,
+        side: positionSide as 'long' | 'short',
+        attemptType: 'entry',
+        reason: 'liquidation_deduplication',
+        errorDetails: `Last liquidation for ${liquidation.symbol} ${positionSide} seen ${timeSinceLast}s ago, wait ${waitTime}s more (20-second deduplication)`,
+        liquidationValue: parseFloat(liquidation.value),
+      });
+
       return;
     }
     
@@ -693,22 +709,55 @@ export class StrategyEngine extends EventEmitter {
     console.log(`✅ LIQUIDATION ACCEPTED: ${liquidation.symbol} ${positionSide} - first liquidation in 20s window, proceeding with evaluation`);
     
     // Double-check strategy is still active (prevents race condition during unregister)
-    if (!this.activeStrategies.has(strategy.id)) return;
-    
+    if (!this.activeStrategies.has(strategy.id)) {
+      console.log(`⏭️ Strategy ${strategy.id} no longer active, skipping liquidation`);
+      return;
+    }
+
     // CRITICAL RACE CONDITION FIX: Always check pause status from CURRENT in-memory strategy
     // This prevents a bug where liquidations in-flight continue with old strategy object
     // after user pauses (old object still has paused=false)
     const currentStrategy = this.activeStrategies.get(strategy.id);
-    if (!currentStrategy) return;
-    
-    if (currentStrategy.paused) {
-      console.log(`⏸️ Strategy "${currentStrategy.name}" is paused, skipping liquidation processing`);
+    if (!currentStrategy) {
+      console.log(`⏭️ Strategy ${strategy.id} not found in active strategies, skipping liquidation`);
       return;
     }
-    
+
+    if (currentStrategy.paused) {
+      console.log(`⏸️ Strategy "${currentStrategy.name}" is paused, skipping liquidation processing`);
+
+      // Log error to database for audit trail
+      await this.logTradeEntryError({
+        strategy: currentStrategy,
+        symbol: liquidation.symbol,
+        side: positionSide as 'long' | 'short',
+        attemptType: 'entry',
+        reason: 'strategy_paused',
+        errorDetails: `Strategy "${currentStrategy.name}" is paused`,
+        liquidationValue: parseFloat(liquidation.value),
+      });
+
+      return;
+    }
+
     // Use currentStrategy for all subsequent checks to ensure we have latest values
     const session = this.activeSessions.get(currentStrategy.id);
-    if (!session || !session.isActive) return;
+    if (!session || !session.isActive) {
+      console.log(`⏭️ No active session for strategy ${currentStrategy.name}, skipping liquidation`);
+
+      // Log error to database for audit trail
+      await this.logTradeEntryError({
+        strategy: currentStrategy,
+        symbol: liquidation.symbol,
+        side: positionSide as 'long' | 'short',
+        attemptType: 'entry',
+        reason: 'no_active_session',
+        errorDetails: `No active trading session for strategy "${currentStrategy.name}"`,
+        liquidationValue: parseFloat(liquidation.value),
+      });
+
+      return;
+    }
 
     console.log(`🎯 Evaluating strategy "${currentStrategy.name}" for ${liquidation.symbol}`);
     
@@ -720,7 +769,7 @@ export class StrategyEngine extends EventEmitter {
     const lastOrderPlacement = this.lastFillTime.get(cooldownKey);
     if (lastOrderPlacement) {
       const timeSinceLastOrder = Date.now() - lastOrderPlacement;
-      const orderCooldownMs = 20000; // 20 seconds (reduced from 60s to allow faster re-entry)
+      const orderCooldownMs = 5000; // 5 seconds (reduced from 60s to allow faster re-entry)
       if (timeSinceLastOrder < orderCooldownMs) {
         const waitTime = ((orderCooldownMs - timeSinceLastOrder) / 1000).toFixed(1);
         console.log(`⏸️ GLOBAL ORDER THROTTLE: ${liquidation.symbol} ${positionSide} - last order placed ${(timeSinceLastOrder / 1000).toFixed(1)}s ago by ANY strategy, wait ${waitTime}s more`);
@@ -732,7 +781,7 @@ export class StrategyEngine extends EventEmitter {
           side: positionSide,
           attemptType: 'entry',
           reason: 'global_order_placement_cooldown',
-          errorDetails: `Last order placed ${(timeSinceLastOrder / 1000).toFixed(1)}s ago by any strategy, wait ${waitTime}s more (20-second global throttle)`,
+          errorDetails: `Last order placed ${(timeSinceLastOrder / 1000).toFixed(1)}s ago by any strategy, wait ${waitTime}s more (5-second global throttle)`,
           liquidationValue: parseFloat(liquidation.value),
         });
         
@@ -775,20 +824,9 @@ export class StrategyEngine extends EventEmitter {
         enableBuffer: currentStrategy.vwapEnableBuffer,
       });
 
-      // Update VWAP with current price data from liquidation
-      const price = parseFloat(liquidation.price);
-      const liquidationValue = parseFloat(liquidation.value);
-      const volume = liquidationValue / price; // Estimate volume from USD value
-
-      vwapFilter.updatePrice({
-        timestamp: Date.now(),
-        high: price,
-        low: price,
-        close: price,
-        volume: volume,
-      });
-
       // Check if this trade direction is allowed
+      // Note: VWAP is updated by vwap-price-feed.ts via REST API polling
+      const price = parseFloat(liquidation.price);
       const isLong = positionSide === 'long';
       const directionAllowed = isLong ? vwapFilter.canTakeLong() : vwapFilter.canTakeShort();
 
@@ -826,13 +864,28 @@ export class StrategyEngine extends EventEmitter {
     // Use configurable lookback window from strategy settings (convert hours to seconds)
     const lookbackSeconds = currentStrategy.liquidationLookbackHours * 3600;
     const recentLiquidations = this.getRecentLiquidations(
-      liquidation.symbol, 
+      liquidation.symbol,
       lookbackSeconds
     );
 
     console.log(`📈 Found ${recentLiquidations.length} liquidations in last ${currentStrategy.liquidationLookbackHours}h for ${liquidation.symbol}`);
 
-    if (recentLiquidations.length === 0) return;
+    if (recentLiquidations.length === 0) {
+      console.log(`⏭️ No recent liquidations in ${currentStrategy.liquidationLookbackHours}h lookback window for ${liquidation.symbol}`);
+
+      // Log error to database for audit trail
+      await this.logTradeEntryError({
+        strategy: currentStrategy,
+        symbol: liquidation.symbol,
+        side: positionSide as 'long' | 'short',
+        attemptType: 'entry',
+        reason: 'no_recent_liquidations',
+        errorDetails: `No liquidations found in ${currentStrategy.liquidationLookbackHours}h lookback window (in-memory cache only has ${this.liquidationHistory.get(liquidation.symbol)?.length || 0} recent)`,
+        liquidationValue: parseFloat(liquidation.value),
+      });
+
+      return;
+    }
 
     // Create lock key for this session + symbol (+ side if hedge mode enabled) to prevent duplicate positions
     // In hedge mode, we allow both long and short positions on the same symbol, so include side in lock key
@@ -2065,7 +2118,7 @@ export class StrategyEngine extends EventEmitter {
       
       // Send risk warning alert if threshold exceeded (80%)
       const RISK_THRESHOLD = 80;
-      const RISK_ALERT_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
+      const RISK_ALERT_COOLDOWN_MS = 60 * 1000; // 1 minute
       if (reservedRiskPercentage >= RISK_THRESHOLD) {
         const lastWarning = this.lastRiskWarningTime.get(strategy.id);
         const now = Date.now();
@@ -3808,8 +3861,8 @@ export class StrategyEngine extends EventEmitter {
         const lastAttempt = this.recoveryAttempts.get(cooldownKey) || 0;
         const now = Date.now();
         
-        // 2 minute cooldown between repair attempts
-        if (now - lastAttempt < 2 * 60 * 1000) {
+        // 1 minute cooldown between repair attempts
+        if (now - lastAttempt < 60 * 1000) {
           continue;
         }
         

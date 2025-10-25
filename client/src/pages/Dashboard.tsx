@@ -711,7 +711,7 @@ export default function Dashboard() {
 
         {/* Performance Overview */}
         <PerformanceOverview />
-        
+
         {/* Active Positions */}
         <StrategyStatus />
       </main>

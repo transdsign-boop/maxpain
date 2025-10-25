@@ -73,12 +73,41 @@ export class VWAPDirectionFilter {
     this.symbol = symbol;
     this.config = config;
 
-    // Initialize session start time
-    this.sessionStartTime = config.startTime ? config.startTime.getTime() : Date.now();
-    this.nextResetTime = this.sessionStartTime + (config.timeframeMinutes * 60 * 1000);
+    // Initialize session start time aligned to period boundaries
+    const now = config.startTime ? config.startTime.getTime() : Date.now();
+    this.sessionStartTime = this.getAlignedPeriodStart(now);
+    this.nextResetTime = this.getNextAlignedPeriod(now);
 
     console.log(`📊 VWAP Direction Filter initialized for ${symbol}`);
     console.log(`   Timeframe: ${config.timeframeMinutes}min, Buffer: ${(config.bufferPercentage * 100).toFixed(2)}%`);
+    console.log(`   Period Start: ${new Date(this.sessionStartTime).toISOString()}`);
+    console.log(`   Next Reset: ${new Date(this.nextResetTime).toISOString()}`);
+  }
+
+  /**
+   * Get the start time of the current aligned period
+   * For 240min (4h): aligns to 00:00, 04:00, 08:00, 12:00, 16:00, 20:00 UTC
+   */
+  private getAlignedPeriodStart(timestamp: number): number {
+    const date = new Date(timestamp);
+    const periodMs = this.config.timeframeMinutes * 60 * 1000;
+
+    // Get milliseconds since start of day (UTC)
+    const startOfDay = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+    const msSinceStartOfDay = timestamp - startOfDay.getTime();
+
+    // Find which period we're in
+    const periodIndex = Math.floor(msSinceStartOfDay / periodMs);
+
+    return startOfDay.getTime() + (periodIndex * periodMs);
+  }
+
+  /**
+   * Get the next aligned period boundary
+   */
+  private getNextAlignedPeriod(timestamp: number): number {
+    const currentPeriodStart = this.getAlignedPeriodStart(timestamp);
+    return currentPeriodStart + (this.config.timeframeMinutes * 60 * 1000);
   }
 
   /**
@@ -119,7 +148,18 @@ export class VWAPDirectionFilter {
   }
 
   /**
+   * Update only the current price (for real-time price updates without VWAP recalculation)
+   * Use this for live price updates from non-closed klines
+   */
+  updateCurrentPrice(price: number): void {
+    this.lastPrice = price;
+    // Update direction based on new price
+    this.updateDirection();
+  }
+
+  /**
    * Reset VWAP calculation at the configured interval
+   * Aligns to fixed period boundaries (e.g., 00:00, 04:00, 08:00 for 4-hour periods)
    */
   private resetVWAP(currentTime: number): void {
     console.log(`🔄 Resetting VWAP for ${this.symbol} (${this.config.timeframeMinutes}min interval)`);
@@ -129,9 +169,12 @@ export class VWAPDirectionFilter {
     this.volumeSum = 0;
     this.currentVWAP = 0;
 
-    // Update session times
-    this.sessionStartTime = currentTime;
-    this.nextResetTime = currentTime + (this.config.timeframeMinutes * 60 * 1000);
+    // Update session times aligned to period boundaries
+    this.sessionStartTime = this.getAlignedPeriodStart(currentTime);
+    this.nextResetTime = this.getNextAlignedPeriod(currentTime);
+
+    console.log(`   New Period Start: ${new Date(this.sessionStartTime).toISOString()}`);
+    console.log(`   Next Reset: ${new Date(this.nextResetTime).toISOString()}`);
 
     // Clear price history for new session
     this.priceHistory = [];
@@ -272,6 +315,13 @@ export class VWAPDirectionFilter {
   }
 
   /**
+   * Get price history for charting
+   */
+  getPriceHistory() {
+    return this.priceHistory;
+  }
+
+  /**
    * Update configuration
    */
   updateConfig(newConfig: Partial<VWAPConfig>): void {
@@ -286,6 +336,40 @@ export class VWAPDirectionFilter {
     }
 
     console.log(`⚙️ VWAP config updated for ${this.symbol}:`, this.config);
+  }
+
+  /**
+   * Recalculate VWAP from kline data (for proper VWAP calculation)
+   * This replaces the accumulation approach with direct calculation from klines
+   */
+  recalculateFromKlines(klines: any[]): void {
+    // Reset accumulation
+    this.priceVolumeSum = 0;
+    this.volumeSum = 0;
+
+    // Calculate VWAP from all klines in the period
+    // Kline format: [openTime, open, high, low, close, volume, closeTime, ...]
+    for (const kline of klines) {
+      const high = parseFloat(kline[2]);
+      const low = parseFloat(kline[3]);
+      const close = parseFloat(kline[4]);
+      const volume = parseFloat(kline[5]);
+
+      const typicalPrice = (high + low + close) / 3;
+      this.priceVolumeSum += typicalPrice * volume;
+      this.volumeSum += volume;
+
+      // Update last price with the most recent candle
+      this.lastPrice = close;
+    }
+
+    // Calculate final VWAP
+    if (this.volumeSum > 0) {
+      this.currentVWAP = this.priceVolumeSum / this.volumeSum;
+    }
+
+    // Update direction based on new VWAP
+    this.updateDirection();
   }
 
   /**
@@ -326,6 +410,16 @@ export class VWAPFilterManager {
   updatePrice(symbol: string, priceData: PriceData): void {
     const filter = this.getFilter(symbol);
     filter.updatePrice(priceData);
+  }
+
+  /**
+   * Update current price for a symbol (real-time updates without VWAP recalculation)
+   */
+  updateCurrentPrice(symbol: string, price: number): void {
+    const filter = this.filters.get(symbol);
+    if (filter) {
+      filter.updateCurrentPrice(price);
+    }
   }
 
   /**
