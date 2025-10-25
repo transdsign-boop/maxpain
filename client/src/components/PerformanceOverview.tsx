@@ -198,7 +198,7 @@ function PerformanceOverview() {
 
   // Fetch ALL commissions and funding fees (unfiltered) for accurate account size calculation
   // These queries don't respect date range filters and fetch all historical data
-  // Starting from October 16, 2025 at 17:19:00 UTC / 09:19:00 PST (first deposit - excludes testing period)
+  // Starting from October 16, 2025 at 17:19:00 UTC (first deposit - excludes testing period)
   const allCommissionsQuery = useQuery<{ records: any[]; total: number }>({
     queryKey: ['/api/commissions', 'all', 'oct16-cutoff'],
     queryFn: async () => {
@@ -232,12 +232,11 @@ function PerformanceOverview() {
   // Use consolidated position data from database (rawChartData comes from /api/performance/chart)
   // Each trade represents a complete position with all DCA layers combined into one P&L value
   const rawSourceData = useMemo(() => {
-    console.log('[DEBUG] rawChartData:', rawChartData ? rawChartData.length : 'null/undefined');
     if (!rawChartData || rawChartData.length === 0) return [];
 
     // rawChartData contains consolidated positions with cumulative P&L calculations
     // Each position may have had multiple fills (DCA layers) but shows as one trade
-    const mapped = rawChartData.map((trade: any, index: number) => ({
+    return rawChartData.map((trade: any, index: number) => ({
       tradeNumber: trade.tradeNumber || index + 1,
       timestamp: trade.timestamp,
       symbol: trade.symbol,
@@ -249,8 +248,6 @@ function PerformanceOverview() {
       commission: trade.commission || 0,
       layersFilled: trade.layersFilled || 1, // Number of DCA layers in this position
     }));
-    console.log('[DEBUG] rawSourceData mapped:', mapped.length, 'trades');
-    return mapped;
   }, [rawChartData]);
   
   // Calculate total deposited capital and transfer list EARLY (needed for chart data calculation)
@@ -276,8 +273,6 @@ function PerformanceOverview() {
   
   // Apply date range filter and manual selection filter
   const sourceChartData = useMemo(() => {
-    console.log('[DEBUG] sourceChartData filtering - rawSourceData:', rawSourceData.length);
-    console.log('[DEBUG] dateRange:', dateRange);
     let filtered = rawSourceData;
 
     // Apply date range filter first
@@ -285,23 +280,18 @@ function PerformanceOverview() {
       const startTimestamp = dateRange.start ? dateRange.start.getTime() : 0;
       const endTimestamp = dateRange.end ? dateRange.end.getTime() : Date.now();
 
-      console.log('[DEBUG] Applying date filter:', { startTimestamp, endTimestamp });
       filtered = filtered.filter(trade =>
         trade.timestamp >= startTimestamp && trade.timestamp <= endTimestamp
       );
-      console.log('[DEBUG] After date filter:', filtered.length);
     }
 
     // Apply manual trade selection filter (takes precedence, shows only selected range)
     if (selectedTradeRange.start !== null && selectedTradeRange.end !== null) {
-      console.log('[DEBUG] Applying manual selection filter:', selectedTradeRange);
       filtered = filtered.filter(trade =>
         trade.tradeNumber >= selectedTradeRange.start! && trade.tradeNumber <= selectedTradeRange.end!
       );
-      console.log('[DEBUG] After manual selection filter:', filtered.length);
     }
 
-    console.log('[DEBUG] Final sourceChartData:', filtered.length);
     return filtered;
   }, [rawSourceData, dateRange, selectedTradeRange]);
   
@@ -799,19 +789,23 @@ function PerformanceOverview() {
     const totalRealizedPnlFromTradesWithFunding = totalRealizedPnlFromTrades + totalFundingFeeIncome;
     
     // Calculate max drawdown from filtered interval data
-    // Use cumulativePnl directly (already includes fees and scaling adjustments)
+    // Use interval-relative P&L instead of all-time cumulative P&L
     let maxDrawdown = 0;
     let maxDrawdownPercent = 0;
-    let peakCumulativePnl = startCumulativePnl; // Start from P&L before interval
+    let peakIntervalPnl = 0; // Peak P&L within this interval (starts at 0)
+    let intervalPnlRunning = 0; // Running P&L within interval
 
     sourceChartData.forEach(trade => {
-      // Track the peak cumulative P&L reached
-      if (trade.cumulativePnl > peakCumulativePnl) {
-        peakCumulativePnl = trade.cumulativePnl;
+      // Add this trade's P&L to the running interval total
+      intervalPnlRunning += trade.pnl;
+
+      // Track the peak P&L reached in this interval
+      if (intervalPnlRunning > peakIntervalPnl) {
+        peakIntervalPnl = intervalPnlRunning;
       }
 
-      // Calculate drawdown from peak
-      const drawdown = peakCumulativePnl - trade.cumulativePnl;
+      // Calculate drawdown from peak within this interval
+      const drawdown = peakIntervalPnl - intervalPnlRunning;
       if (drawdown > maxDrawdown) {
         maxDrawdown = drawdown;
       }
@@ -874,10 +868,10 @@ function PerformanceOverview() {
     const timeRangeDays = sourceChartData.length > 1
       ? (sourceChartData[sourceChartData.length - 1].timestamp - sourceChartData[0].timestamp) / (1000 * 60 * 60 * 24)
       : 1;
-    const annualizedReturn = timeRangeDays > 0 && depositBase > 0
-      ? (totalRealizedPnl / depositBase) * (365 / timeRangeDays) * 100
+    const annualizedReturn = timeRangeDays > 0
+      ? (totalRealizedPnl / totalDeposited) * (365 / timeRangeDays) * 100
       : 0;
-    const calmarRatio = maxDrawdown > 0 && depositBase > 0
+    const calmarRatio = maxDrawdown > 0 && totalDeposited > 0
       ? annualizedReturn / maxDrawdownPercent
       : 0;
 
@@ -1219,7 +1213,7 @@ function PerformanceOverview() {
       return (
         <div className="bg-background border border-border rounded-md p-3 shadow-lg">
           <p className="text-sm font-semibold mb-1">Trade #{data.tradeNumber}</p>
-          <p className="text-xs text-muted-foreground mb-2">{formatInTimeZone(new Date(data.timestamp), "America/Los_Angeles", "MMM d, h:mm a")} PT</p>
+          <p className="text-xs text-muted-foreground mb-2">{formatInTimeZone(new Date(data.timestamp), "UTC", "MMM d, h:mm a")} UTC</p>
           <p className="text-xs mb-1"><span className="font-medium">{data.symbol}</span> {data.side}</p>
           <p className={`text-sm font-mono font-semibold ${data.pnl >= 0 ? 'text-lime-500' : 'text-red-600'}`}>
             Net P&L: {data.pnl >= 0 ? '+' : ''}${Math.abs(data.pnl).toFixed(2)}
@@ -2023,15 +2017,12 @@ function PerformanceOverview() {
             )}
 
           </div>
-
+          
           <div className="relative h-64 md:h-80 -mx-8" style={{
             maskImage: 'linear-gradient(to right, transparent, black 5%, black 95%, transparent)',
             WebkitMaskImage: 'linear-gradient(to right, transparent, black 5%, black 95%, transparent)'
           }}>
-          {(() => {
-            console.log('[DEBUG] Chart render decision:', { chartLoading, chartDataLength: chartData?.length, chartDataExists: !!chartData });
-            return !chartLoading && chartData && chartData.length > 0;
-          })() ? (
+          {!chartLoading && chartData && chartData.length > 0 ? (
             <>
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart

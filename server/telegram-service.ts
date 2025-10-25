@@ -3,7 +3,6 @@ import { ChartJSNodeCanvas } from 'chartjs-node-canvas';
 import { Chart, registerables } from 'chart.js';
 import type { Position, Fill } from '@shared/schema';
 import { storage } from './storage';
-import { formatToPST, formatDateTimeShortPST, toLocaleDateStringPST } from '../shared/timezone';
 
 // Register Chart.js components before creating chart renderer
 Chart.register(...registerables);
@@ -59,7 +58,7 @@ class TelegramService {
 <b>Leverage:</b> ${position.leverage}x
 
 <b>Layers Filled:</b> ${position.layersFilled} / ${position.layersPlaced}
-<b>Time:</b> ${formatDateTimeShortPST(new Date())} PT
+<b>Time:</b> ${new Date().toLocaleString()}
       `.trim();
 
       await this.bot.sendMessage(this.chatId, message, { parse_mode: 'HTML' });
@@ -70,16 +69,9 @@ class TelegramService {
   }
 
   /**
-   * Send position closed alert with balance and P&L summary
+   * Send position closed alert
    */
-  async sendPositionClosedAlert(
-    position: Position,
-    realizedPnl: number,
-    fills: Fill[],
-    oldBalance: number,
-    newBalance: number,
-    totalPnl: number
-  ): Promise<void> {
+  async sendPositionClosedAlert(position: Position, realizedPnl: number, fills: Fill[]): Promise<void> {
     if (!this.bot || !this.chatId) return;
 
     try {
@@ -89,30 +81,25 @@ class TelegramService {
       const positionValue = avgEntry * totalQty;
       const roi = positionValue > 0 ? (realizedPnl / positionValue) * 100 : 0;
       const isProfitable = realizedPnl >= 0;
-
+      
       const emoji = isProfitable ? '🟢' : '🔴';
       const pnlSign = realizedPnl >= 0 ? '+' : '';
-      const totalPnlSign = totalPnl >= 0 ? '+' : '';
-      const totalPnlEmoji = totalPnl >= 0 ? '🟢' : '🔴';
 
       const message = `
 ${emoji} <b>POSITION CLOSED</b>
 
 <b>Symbol:</b> ${position.symbol}
 <b>Side:</b> ${position.side.toUpperCase()}
-<b>Entry:</b> $${avgEntry.toFixed(6)}
-<b>Exit:</b> $${exitPrice.toFixed(6)}
+<b>Entry Price:</b> $${avgEntry.toFixed(6)}
+<b>Exit Price:</b> $${exitPrice.toFixed(6)}
 <b>Quantity:</b> ${totalQty.toLocaleString()}
 
-${emoji} <b>P&L:</b> ${pnlSign}$${realizedPnl.toFixed(2)} (${pnlSign}${roi.toFixed(2)}%)
+<b>Realized P&L:</b> ${pnlSign}$${realizedPnl.toFixed(2)} (${pnlSign}${roi.toFixed(2)}%)
+<b>Position Size:</b> $${positionValue.toFixed(2)}
+<b>Leverage:</b> ${position.leverage}x
 
-<b>💰 Balance Update:</b>
-<b>Before:</b> $${oldBalance.toFixed(2)}
-<b>After:</b> $${newBalance.toFixed(2)}
-
-${totalPnlEmoji} <b>Total P&L (All Trades):</b> ${totalPnlSign}$${totalPnl.toFixed(2)}
-
-<b>Time:</b> ${formatDateTimeShortPST(new Date())} PT
+<b>Layers Filled:</b> ${position.layersFilled}
+<b>Time:</b> ${new Date().toLocaleString()}
       `.trim();
 
       await this.bot.sendMessage(this.chatId, message, { parse_mode: 'HTML' });
@@ -139,80 +126,13 @@ ${totalPnlEmoji} <b>Total P&L (All Trades):</b> ${totalPnlSign}$${totalPnl.toFix
 <b>Quantity:</b> ${fillQty.toLocaleString()}
 <b>Layers Filled:</b> ${position.layersFilled} / ${position.layersPlaced}
 
-<b>Time:</b> ${formatDateTimeShortPST(new Date())} PT
+<b>Time:</b> ${new Date().toLocaleString()}
       `.trim();
 
       await this.bot.sendMessage(this.chatId, message, { parse_mode: 'HTML' });
       console.log(`📤 Sent Telegram alert: Layer ${layerNumber} filled for ${position.symbol}`);
     } catch (error) {
       console.error('❌ Failed to send layer filled alert:', error);
-    }
-  }
-
-  /**
-   * Send summary of all currently open positions
-   */
-  async sendOpenPositionsSummary(sessionId: string, currentBalance: number, totalPnl: number): Promise<void> {
-    if (!this.bot || !this.chatId) return;
-
-    try {
-      // Fetch all open positions for the session
-      const allPositions = await storage.getPositionsBySession(sessionId);
-      const openPositions = allPositions.filter((p: any) => p.isOpen);
-
-      if (openPositions.length === 0) {
-        const message = `
-📊 <b>OPEN POSITIONS SUMMARY</b>
-
-✅ <b>No open positions</b>
-
-<b>💰 Current Balance:</b> $${currentBalance.toFixed(2)}
-<b>📈 Total P&L:</b> ${totalPnl >= 0 ? '+' : ''}$${totalPnl.toFixed(2)}
-
-<b>Time:</b> ${formatDateTimeShortPST(new Date())} PT
-        `.trim();
-
-        await this.bot.sendMessage(this.chatId, message, { parse_mode: 'HTML' });
-        console.log('📤 Sent Telegram alert: Open positions summary (no positions)');
-        return;
-      }
-
-      // Build positions list
-      let positionsList = '';
-      let totalExposure = 0;
-
-      for (const pos of openPositions) {
-        const avgEntry = parseFloat(pos.avgEntryPrice || '0');
-        const totalQty = parseFloat(pos.totalQuantity || '0');
-        const positionValue = avgEntry * totalQty;
-        totalExposure += positionValue;
-
-        positionsList += `\n<b>${pos.symbol}</b> ${pos.side.toUpperCase()}`;
-        positionsList += `\n  Entry: $${avgEntry.toFixed(6)}`;
-        positionsList += `\n  Qty: ${totalQty.toLocaleString()}`;
-        positionsList += `\n  Value: $${positionValue.toFixed(2)}`;
-        positionsList += `\n  Layers: ${pos.layersFilled}/${pos.layersPlaced}\n`;
-      }
-
-      const totalPnlSign = totalPnl >= 0 ? '+' : '';
-      const totalPnlEmoji = totalPnl >= 0 ? '🟢' : '🔴';
-
-      const message = `
-📊 <b>OPEN POSITIONS SUMMARY</b>
-
-<b>Total Open:</b> ${openPositions.length} position${openPositions.length !== 1 ? 's' : ''}
-<b>Total Exposure:</b> $${totalExposure.toFixed(2)}
-${positionsList}
-<b>💰 Current Balance:</b> $${currentBalance.toFixed(2)}
-${totalPnlEmoji} <b>Total P&L (All Trades):</b> ${totalPnlSign}$${totalPnl.toFixed(2)}
-
-<b>Time:</b> ${formatDateTimeShortPST(new Date())} PT
-      `.trim();
-
-      await this.bot.sendMessage(this.chatId, message, { parse_mode: 'HTML' });
-      console.log(`📤 Sent Telegram alert: Open positions summary (${openPositions.length} positions)`);
-    } catch (error) {
-      console.error('❌ Failed to send open positions summary:', error);
     }
   }
 
@@ -456,7 +376,7 @@ ${totalPnlEmoji} <b>Total P&L (All Trades):</b> ${totalPnlSign}$${totalPnl.toFix
 
       const message = `
 📊 <b>PERFORMANCE REPORT</b>
-📅 ${toLocaleDateStringPST(new Date())} PT
+📅 ${new Date().toLocaleDateString()}
 
 ${pnlEmoji} <b>Realized P&L:</b> ${pnlSign}$${totalRealizedPnl.toFixed(2)}
 
@@ -521,7 +441,7 @@ ${pnlEmoji} <b>Realized P&L:</b> ${pnlSign}$${totalRealizedPnl.toFixed(2)}
 
 ${changesList}
 
-<b>Time:</b> ${formatDateTimeShortPST(new Date())} PT
+<b>Time:</b> ${new Date().toLocaleString()}
       `.trim();
 
       await this.bot.sendMessage(this.chatId, message, { parse_mode: 'HTML' });
@@ -555,7 +475,7 @@ ${emoji} <b>RISK LEVEL WARNING</b>
 
 ⚠️ <b>Action Required:</b> Consider closing positions or reducing exposure
 
-<b>Time:</b> ${formatDateTimeShortPST(new Date())} PT
+<b>Time:</b> ${new Date().toLocaleString()}
       `.trim();
 
       await this.bot.sendMessage(this.chatId, message, { parse_mode: 'HTML' });
@@ -587,52 +507,13 @@ ${scoreEmoji} <b>HIGH-QUALITY SETUP DETECTED</b>
 <b>Reason:</b>
 ${reason}
 
-<b>Time:</b> ${formatDateTimeShortPST(new Date())} PT
+<b>Time:</b> ${new Date().toLocaleString()}
       `.trim();
 
       await this.bot.sendMessage(this.chatId, message, { parse_mode: 'HTML' });
       console.log(`📤 Sent cascade detector alert for ${symbol} (score: ${score})`);
     } catch (error) {
       console.error('❌ Failed to send cascade detector alert:', error);
-    }
-  }
-
-  /**
-   * Send TP/SL hit alert
-   */
-  async sendTPSLHitAlert(position: Position, type: 'take_profit' | 'stop_loss', fillPrice: number, pnl: number, pnlPercent: number): Promise<void> {
-    if (!this.bot || !this.chatId) return;
-
-    try {
-      const emoji = type === 'take_profit' ? '🎯' : '🛑';
-      const title = type === 'take_profit' ? 'TAKE PROFIT HIT' : 'STOP LOSS HIT';
-      const pnlEmoji = pnl >= 0 ? '🟢' : '🔴';
-      const pnlSign = pnl >= 0 ? '+' : '';
-
-      const avgEntry = parseFloat(position.avgEntryPrice || '0');
-      const totalQty = parseFloat(position.totalQuantity);
-      const positionValue = avgEntry * totalQty;
-
-      const message = `
-${emoji} <b>${title}</b>
-
-<b>Symbol:</b> ${position.symbol}
-<b>Side:</b> ${position.side.toUpperCase()}
-<b>Entry Price:</b> $${avgEntry.toFixed(6)}
-<b>Exit Price:</b> $${fillPrice.toFixed(6)}
-<b>Quantity:</b> ${totalQty.toLocaleString()}
-
-${pnlEmoji} <b>P&L:</b> ${pnlSign}$${pnl.toFixed(2)} (${pnlSign}${pnlPercent.toFixed(2)}%)
-<b>Position Size:</b> $${positionValue.toFixed(2)}
-<b>Layers Filled:</b> ${position.layersFilled}
-
-<b>Time:</b> ${formatDateTimeShortPST(new Date())} PT
-      `.trim();
-
-      await this.bot.sendMessage(this.chatId, message, { parse_mode: 'HTML' });
-      console.log(`📤 Sent Telegram alert: ${title} for ${position.symbol} - P&L: $${pnl.toFixed(2)}`);
-    } catch (error) {
-      console.error('❌ Failed to send TP/SL hit alert:', error);
     }
   }
 
@@ -666,7 +547,7 @@ ${emoji} <b>${title}</b>
 <b>Message:</b> ${message}
 ${details ? `\n<b>Details:</b>\n${details}` : ''}
 
-<b>Time:</b> ${formatDateTimeShortPST(new Date())} PT
+<b>Time:</b> ${new Date().toLocaleString()}
       `.trim();
 
       await this.bot.sendMessage(this.chatId, alertMessage, { parse_mode: 'HTML' });

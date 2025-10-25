@@ -409,12 +409,13 @@ export class StrategyEngine extends EventEmitter {
     }
 
     // Start WebSocket user data stream for real-time account/position updates
-    // Uses WebSocket instead of REST API polling to avoid rate limiting
+    // IMPORTANT: Only run in deployed environment to avoid listen key conflicts
     // Aster DEX only allows ONE active user data stream per API key
     const apiKey = process.env.ASTER_API_KEY;
     const secretKey = process.env.ASTER_SECRET_KEY;
+    const isDeployed = process.env.REPLIT_DEPLOYMENT === '1';
     
-    if (apiKey && secretKey) {
+    if (apiKey && isDeployed) {
       try {
         await userDataStreamManager.start({
           apiKey,
@@ -530,11 +531,57 @@ export class StrategyEngine extends EventEmitter {
             }
           }
         });
-        console.log('✅ User data stream started for real-time updates (WebSocket mode)');
-        console.log('   📡 Using WebSocket to avoid REST API rate limiting');
+        console.log('✅ User data stream started for real-time updates (deployed mode)');
       } catch (error) {
         console.error('⚠️ Failed to start user data stream:', error);
       }
+    } else if (apiKey && secretKey && !isDeployed) {
+      // Preview mode: Use polling instead of WebSocket (5-second intervals)
+      console.log('🔄 Starting polling mode for preview (5-second intervals)');
+      console.log('   📱 Deployed version uses WebSocket for real-time updates');
+      
+      // Poll account and positions every 5 seconds
+      this.pollingInterval = setInterval(async () => {
+        try {
+          const timestamp = Date.now();
+          
+          // Fetch account data
+          const accountParams = `timestamp=${timestamp}`;
+          const accountSignature = createHmac('sha256', secretKey)
+            .update(accountParams)
+            .digest('hex');
+          
+          const accountResponse = await fetch(
+            `https://fapi.asterdex.com/fapi/v2/account?${accountParams}&signature=${accountSignature}`,
+            { headers: { 'X-MBX-APIKEY': apiKey } }
+          );
+          
+          if (accountResponse.ok) {
+            const accountData = await accountResponse.json();
+            liveDataOrchestrator.updateAccountFromWebSocket(strategy.id, accountData.assets || []);
+          }
+          
+          // Fetch position data
+          const positionParams = `timestamp=${timestamp}`;
+          const positionSignature = createHmac('sha256', secretKey)
+            .update(positionParams)
+            .digest('hex');
+          
+          const positionResponse = await fetch(
+            `https://fapi.asterdex.com/fapi/v2/positionRisk?${positionParams}&signature=${positionSignature}`,
+            { headers: { 'X-MBX-APIKEY': apiKey } }
+          );
+          
+          if (positionResponse.ok) {
+            const positionData = await positionResponse.json();
+            liveDataOrchestrator.updatePositionsFromWebSocket(strategy.id, positionData);
+          }
+        } catch (error) {
+          console.error('⚠️ Polling error:', error);
+        }
+      }, 5000); // 5 seconds
+      
+      console.log('✅ Polling started for account/position updates (preview mode)');
     }
   }
 
@@ -2078,18 +2125,17 @@ export class StrategyEngine extends EventEmitter {
         
         if (!lastWarning || (now - lastWarning) >= RISK_ALERT_COOLDOWN_MS) {
           try {
-            // Risk warning alerts disabled per user request
-            // const { telegramService } = await import('./telegram-service');
-            // await telegramService.sendRiskLevelWarning(
-            //   reservedRiskPercentage,
-            //   RISK_THRESHOLD,
-            //   totalFilledLoss,
-            //   totalReservedLoss,
-            //   currentBalance
-            // ).catch(err => console.error('Failed to send risk warning:', err));
-
+            const { telegramService } = await import('./telegram-service');
+            await telegramService.sendRiskLevelWarning(
+              reservedRiskPercentage,
+              RISK_THRESHOLD,
+              totalFilledLoss,
+              totalReservedLoss,
+              currentBalance
+            ).catch(err => console.error('Failed to send risk warning:', err));
+            
             this.lastRiskWarningTime.set(strategy.id, now);
-            console.log(`⚠️ Risk warning: ${reservedRiskPercentage.toFixed(1)}% (threshold: ${RISK_THRESHOLD}%) - Telegram alert disabled`);
+            console.log(`⚠️ Risk warning sent: ${reservedRiskPercentage.toFixed(1)}% (threshold: ${RISK_THRESHOLD}%)`);
           } catch (err) {
             console.error('Error sending risk warning alert:', err);
           }
@@ -4467,11 +4513,11 @@ export class StrategyEngine extends EventEmitter {
           console.warn(`⚠️ No first layer TP/SL data found for ${q1Key}`);
         }
         
-        // Position opened alerts disabled per user request
-        // const positionFills = [fill];
-        // telegramService.sendPositionOpenedAlert(position, positionFills).catch(err =>
-        //   console.error('Failed to send Telegram position opened alert:', err)
-        // );
+        // Send Telegram alert for new position
+        const positionFills = [fill];
+        telegramService.sendPositionOpenedAlert(position, positionFills).catch(err => 
+          console.error('Failed to send Telegram position opened alert:', err)
+        );
       } catch (positionError) {
         console.error(`❌ Failed to create position:`, positionError);
         // Don't clean up data on position creation failure - we might retry
@@ -4531,13 +4577,6 @@ export class StrategyEngine extends EventEmitter {
     }
 
     const nextLayerNumber = position.layersFilled + 1;
-
-    // DCA layer filled alerts disabled per user request
-    // if (nextLayerNumber > 1) {
-    //   telegramService.sendLayerFilledAlert(position, nextLayerNumber, fillPrice, fillQuantity).catch(err =>
-    //     console.error('Failed to send Telegram layer filled alert:', err)
-    //   );
-    // }
     
     await storage.updatePosition(position.id, {
       totalQuantity: newQuantity.toString(),
@@ -4820,27 +4859,11 @@ export class StrategyEngine extends EventEmitter {
       }
 
       console.log(`✅ Position closed: ${position.symbol} - P&L: ${realizedPnlPercent.toFixed(2)}% ($${dollarPnl.toFixed(2)}, Fee: $${actualExitFee.toFixed(4)})`);
-
-      // Send Telegram alerts for closed position and open positions summary
+      
+      // Send Telegram alert for closed position
       const closedPositionFills = exitTrades || [];
-      telegramService.sendPositionClosedAlert(
-        position,
-        dollarPnl,
-        closedPositionFills,
-        oldBalance,
-        newBalance,
-        newTotalPnl
-      ).catch(err =>
+      telegramService.sendPositionClosedAlert(position, dollarPnl, closedPositionFills).catch(err => 
         console.error('Failed to send Telegram position closed alert:', err)
-      );
-
-      // Send open positions summary after position closes
-      telegramService.sendOpenPositionsSummary(
-        position.sessionId,
-        newBalance,
-        newTotalPnl
-      ).catch(err =>
-        console.error('Failed to send Telegram open positions summary:', err)
       );
     } catch (error) {
       console.error('❌ Error closing position:', error);

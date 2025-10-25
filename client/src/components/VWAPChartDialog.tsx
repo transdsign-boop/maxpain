@@ -72,7 +72,7 @@ export default function VWAPChartDialog({
           autosize: true,
           symbol: `BINANCE:${symbol.replace('USDT', '')}/USDT.P`, // Binance Futures perpetual
           interval: '1', // 1-minute candles to match bot
-          timezone: 'America/Los_Angeles', // PST/PDT
+          timezone: 'Etc/UTC',
           theme: 'dark',
           style: '1',
           locale: 'en',

@@ -8,7 +8,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `MPI_LIQUIDATION_HUNTER_DOCUMENTATION.md` - Complete trading strategy guide, risk management, and user-facing documentation
 - `README-DOCKER.md` - Docker deployment instructions for cloud providers and VPS
 - `RATE_LIMITER_README.md` - Rate limiting implementation details for Aster DEX API
-- `TIMEZONE_PST_README.md` - Pacific Time (PST/PDT) timezone configuration and usage
 - `replit.md` - Replit-specific configuration and system architecture notes
 - `design_guidelines.md` - UI/UX design specifications and color schemes
 
@@ -202,27 +201,6 @@ This project does not have a test suite configured. All testing is done manually
 - **One active session per strategy** (live or paper mode)
 - **Sessions never deleted** (archived when "Start Fresh" or mode change)
 - **Position reconciliation** on session start (syncs with exchange)
-
-## Timezone Configuration
-
-**🕐 ALL TIMES DISPLAY IN PACIFIC TIME (PST/PDT)**
-
-- **Database**: Stores UTC timestamps (best practice)
-- **Display**: All UI shows Pacific Time (America/Los_Angeles)
-- **Logs**: Backend logs include PST timestamp prefixes
-
-**Usage:**
-```typescript
-// Frontend - import from utils
-import { formatDateTimeShortPST, toLocaleTimeStringPST } from '@/lib/utils';
-{formatDateTimeShortPST(timestamp)} // "10/25/2025 8:30 am"
-
-// Backend - use PST logger
-import logger from './logger';
-logger.log('Trade executed'); // [2025-10-25 08:30:45 PDT] Trade executed
-```
-
-See `TIMEZONE_PST_README.md` for complete timezone documentation.
 
 ## Common Development Patterns
 
