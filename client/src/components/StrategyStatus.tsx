@@ -205,7 +205,7 @@ function AllTradesView({ formatCurrency, formatPercentage, getPnlColor }: AllTra
             <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Date:</span>
-                <span className="font-mono">{formatInTimeZone(new Date(trade.timestamp), 'UTC', 'MMM dd, HH:mm')} UTC</span>
+                <span className="font-mono">{formatInTimeZone(new Date(trade.timestamp), 'America/Los_Angeles', 'MMM dd, HH:mm')} PT</span>
               </div>
               
               {trade.hasDetails && trade.quantity && (
@@ -317,7 +317,7 @@ function ExpandableCompletedTrade({ trade, position, formatCurrency, formatPerce
           <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Date:</span>
-              <span className="font-mono">{formatInTimeZone(new Date(trade.timestamp), 'UTC', 'MMM dd, HH:mm')} UTC</span>
+              <span className="font-mono">{formatInTimeZone(new Date(trade.timestamp), 'America/Los_Angeles', 'MMM dd, HH:mm')} PT</span>
             </div>
 
             <div className="flex justify-between">

@@ -96,7 +96,12 @@ export default function LiquidationRow({
       data-testid={`row-liquidation-${id}`}
     >
       <td className="p-2 font-mono text-sm" data-testid={`text-timestamp-${id}`}>
-        {timestamp.toLocaleTimeString()}
+        {timestamp.toLocaleTimeString('en-US', {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          timeZone: 'America/Los_Angeles'
+        })}
       </td>
       <td className="p-2 font-medium" data-testid={`text-symbol-${id}`}>
         {symbol}

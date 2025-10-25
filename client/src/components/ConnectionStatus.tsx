@@ -305,7 +305,9 @@ export default function ConnectionStatus({ isConnected, tradeBlockStatus }: Conn
               {latestError.message}
             </div>
             <div className="text-[10px] text-red-700 dark:text-red-300 mt-0.5">
-              {latestError.timestamp.toLocaleTimeString()}
+              {latestError.timestamp.toLocaleTimeString('en-US', {
+                timeZone: 'America/Los_Angeles'
+              })}
             </div>
           </div>
         </div>

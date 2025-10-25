@@ -198,7 +198,7 @@ function PerformanceOverview() {
 
   // Fetch ALL commissions and funding fees (unfiltered) for accurate account size calculation
   // These queries don't respect date range filters and fetch all historical data
-  // Starting from October 16, 2025 at 17:19:00 UTC (first deposit - excludes testing period)
+  // Starting from October 16, 2025 at 17:19:00 UTC / 09:19:00 PST (first deposit - excludes testing period)
   const allCommissionsQuery = useQuery<{ records: any[]; total: number }>({
     queryKey: ['/api/commissions', 'all', 'oct16-cutoff'],
     queryFn: async () => {
@@ -789,23 +789,19 @@ function PerformanceOverview() {
     const totalRealizedPnlFromTradesWithFunding = totalRealizedPnlFromTrades + totalFundingFeeIncome;
     
     // Calculate max drawdown from filtered interval data
-    // Use interval-relative P&L instead of all-time cumulative P&L
+    // Use cumulativePnl directly (already includes fees and scaling adjustments)
     let maxDrawdown = 0;
     let maxDrawdownPercent = 0;
-    let peakIntervalPnl = 0; // Peak P&L within this interval (starts at 0)
-    let intervalPnlRunning = 0; // Running P&L within interval
+    let peakCumulativePnl = startCumulativePnl; // Start from P&L before interval
 
     sourceChartData.forEach(trade => {
-      // Add this trade's P&L to the running interval total
-      intervalPnlRunning += trade.pnl;
-
-      // Track the peak P&L reached in this interval
-      if (intervalPnlRunning > peakIntervalPnl) {
-        peakIntervalPnl = intervalPnlRunning;
+      // Track the peak cumulative P&L reached
+      if (trade.cumulativePnl > peakCumulativePnl) {
+        peakCumulativePnl = trade.cumulativePnl;
       }
 
-      // Calculate drawdown from peak within this interval
-      const drawdown = peakIntervalPnl - intervalPnlRunning;
+      // Calculate drawdown from peak
+      const drawdown = peakCumulativePnl - trade.cumulativePnl;
       if (drawdown > maxDrawdown) {
         maxDrawdown = drawdown;
       }
@@ -868,10 +864,10 @@ function PerformanceOverview() {
     const timeRangeDays = sourceChartData.length > 1
       ? (sourceChartData[sourceChartData.length - 1].timestamp - sourceChartData[0].timestamp) / (1000 * 60 * 60 * 24)
       : 1;
-    const annualizedReturn = timeRangeDays > 0
-      ? (totalRealizedPnl / totalDeposited) * (365 / timeRangeDays) * 100
+    const annualizedReturn = timeRangeDays > 0 && depositBase > 0
+      ? (totalRealizedPnl / depositBase) * (365 / timeRangeDays) * 100
       : 0;
-    const calmarRatio = maxDrawdown > 0 && totalDeposited > 0
+    const calmarRatio = maxDrawdown > 0 && depositBase > 0
       ? annualizedReturn / maxDrawdownPercent
       : 0;
 
@@ -1213,7 +1209,7 @@ function PerformanceOverview() {
       return (
         <div className="bg-background border border-border rounded-md p-3 shadow-lg">
           <p className="text-sm font-semibold mb-1">Trade #{data.tradeNumber}</p>
-          <p className="text-xs text-muted-foreground mb-2">{formatInTimeZone(new Date(data.timestamp), "UTC", "MMM d, h:mm a")} UTC</p>
+          <p className="text-xs text-muted-foreground mb-2">{formatInTimeZone(new Date(data.timestamp), "America/Los_Angeles", "MMM d, h:mm a")} PT</p>
           <p className="text-xs mb-1"><span className="font-medium">{data.symbol}</span> {data.side}</p>
           <p className={`text-sm font-mono font-semibold ${data.pnl >= 0 ? 'text-lime-500' : 'text-red-600'}`}>
             Net P&L: {data.pnl >= 0 ? '+' : ''}${Math.abs(data.pnl).toFixed(2)}

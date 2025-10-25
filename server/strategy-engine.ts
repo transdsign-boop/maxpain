@@ -2125,17 +2125,18 @@ export class StrategyEngine extends EventEmitter {
         
         if (!lastWarning || (now - lastWarning) >= RISK_ALERT_COOLDOWN_MS) {
           try {
-            const { telegramService } = await import('./telegram-service');
-            await telegramService.sendRiskLevelWarning(
-              reservedRiskPercentage,
-              RISK_THRESHOLD,
-              totalFilledLoss,
-              totalReservedLoss,
-              currentBalance
-            ).catch(err => console.error('Failed to send risk warning:', err));
-            
+            // Risk warning alerts disabled per user request
+            // const { telegramService } = await import('./telegram-service');
+            // await telegramService.sendRiskLevelWarning(
+            //   reservedRiskPercentage,
+            //   RISK_THRESHOLD,
+            //   totalFilledLoss,
+            //   totalReservedLoss,
+            //   currentBalance
+            // ).catch(err => console.error('Failed to send risk warning:', err));
+
             this.lastRiskWarningTime.set(strategy.id, now);
-            console.log(`⚠️ Risk warning sent: ${reservedRiskPercentage.toFixed(1)}% (threshold: ${RISK_THRESHOLD}%)`);
+            console.log(`⚠️ Risk warning: ${reservedRiskPercentage.toFixed(1)}% (threshold: ${RISK_THRESHOLD}%) - Telegram alert disabled`);
           } catch (err) {
             console.error('Error sending risk warning alert:', err);
           }
@@ -4513,11 +4514,11 @@ export class StrategyEngine extends EventEmitter {
           console.warn(`⚠️ No first layer TP/SL data found for ${q1Key}`);
         }
         
-        // Send Telegram alert for new position
-        const positionFills = [fill];
-        telegramService.sendPositionOpenedAlert(position, positionFills).catch(err => 
-          console.error('Failed to send Telegram position opened alert:', err)
-        );
+        // Position opened alerts disabled per user request
+        // const positionFills = [fill];
+        // telegramService.sendPositionOpenedAlert(position, positionFills).catch(err =>
+        //   console.error('Failed to send Telegram position opened alert:', err)
+        // );
       } catch (positionError) {
         console.error(`❌ Failed to create position:`, positionError);
         // Don't clean up data on position creation failure - we might retry
@@ -4577,6 +4578,13 @@ export class StrategyEngine extends EventEmitter {
     }
 
     const nextLayerNumber = position.layersFilled + 1;
+
+    // DCA layer filled alerts disabled per user request
+    // if (nextLayerNumber > 1) {
+    //   telegramService.sendLayerFilledAlert(position, nextLayerNumber, fillPrice, fillQuantity).catch(err =>
+    //     console.error('Failed to send Telegram layer filled alert:', err)
+    //   );
+    // }
     
     await storage.updatePosition(position.id, {
       totalQuantity: newQuantity.toString(),
@@ -4859,11 +4867,27 @@ export class StrategyEngine extends EventEmitter {
       }
 
       console.log(`✅ Position closed: ${position.symbol} - P&L: ${realizedPnlPercent.toFixed(2)}% ($${dollarPnl.toFixed(2)}, Fee: $${actualExitFee.toFixed(4)})`);
-      
-      // Send Telegram alert for closed position
+
+      // Send Telegram alerts for closed position and open positions summary
       const closedPositionFills = exitTrades || [];
-      telegramService.sendPositionClosedAlert(position, dollarPnl, closedPositionFills).catch(err => 
+      telegramService.sendPositionClosedAlert(
+        position,
+        dollarPnl,
+        closedPositionFills,
+        oldBalance,
+        newBalance,
+        newTotalPnl
+      ).catch(err =>
         console.error('Failed to send Telegram position closed alert:', err)
+      );
+
+      // Send open positions summary after position closes
+      telegramService.sendOpenPositionsSummary(
+        position.sessionId,
+        newBalance,
+        newTotalPnl
+      ).catch(err =>
+        console.error('Failed to send Telegram open positions summary:', err)
       );
     } catch (error) {
       console.error('❌ Error closing position:', error);
