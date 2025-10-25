@@ -25,6 +25,7 @@ interface PerformanceMetrics {
   losingTrades: number;
   winRate: number;
   totalRealizedPnl: number;
+  intervalPnlPercent: number;
   totalUnrealizedPnl: number;
   totalPnl: number;
   totalPnlPercent: number;
@@ -646,6 +647,7 @@ function PerformanceOverview() {
       losingTrades: 0,
       winRate: 0,
       totalRealizedPnl: 0,
+      intervalPnlPercent: 0,
       totalUnrealizedPnl: 0,
       totalPnl: 0,
       totalPnlPercent: 0,
@@ -743,51 +745,74 @@ function PerformanceOverview() {
     const totalWins = winningTrades.reduce((sum, e) => sum + parseFloat(e.income || '0'), 0);
     const totalLosses = Math.abs(losingTrades.reduce((sum, e) => sum + parseFloat(e.income || '0'), 0));
 
-    // IMPORTANT: Use the final cumulative P&L from the filtered chart data
+    // IMPORTANT: Calculate interval P&L from the filtered chart data
     // The backend chart endpoint (server/routes.ts:4275) provides cumulativePnl that includes:
     // 1. All trading P&L from realized positions
     // 2. All commissions (subtracted)
     // 3. All funding fees up to each timestamp (added/subtracted)
     // 4. Scaled to match actual wallet balance (accounts for insurance fees, liquidation penalties, etc.)
-    // So we can simply use the last cumulative value instead of summing individual trades
-    const totalRealizedPnl = sourceChartData && sourceChartData.length > 0 && sourceChartData[sourceChartData.length - 1]?.cumulativePnl
+
+    // Calculate the cumulative P&L at the START of the interval (before first trade)
+    // and at the END of the interval (after last trade)
+    const startCumulativePnl = sourceChartData && sourceChartData.length > 0 && sourceChartData[0] &&
+      typeof sourceChartData[0].cumulativePnl === 'number' && typeof sourceChartData[0].pnl === 'number'
+      ? (sourceChartData[0].cumulativePnl - sourceChartData[0].pnl)
+      : 0;
+
+    const endCumulativePnl = sourceChartData && sourceChartData.length > 0 && sourceChartData[sourceChartData.length - 1]?.cumulativePnl
       ? sourceChartData[sourceChartData.length - 1].cumulativePnl
       : 0;
+
+    // Interval P&L = difference between end and start
+    const totalRealizedPnl = endCumulativePnl - startCumulativePnl;
+
+    // Calculate percentage based on total deposits (initial capital)
+    // This shows % return on the money you actually put in
+    // Use 3900 as fallback if totalDeposited is not loaded yet
+    const depositBase = totalDeposited > 0 ? totalDeposited : 3900;
+    const intervalPnlPercent = depositBase > 0
+      ? (totalRealizedPnl / depositBase) * 100
+      : 0;
+
+    // Debug logging
+    if (totalRealizedPnl !== 0) {
+      console.log('Interval P&L Calculation:', {
+        totalRealizedPnl,
+        totalDeposited,
+        depositBase,
+        intervalPnlPercent
+      });
+    }
 
     // Keep the individual calculation for validation (should match closely if no filtering)
     const totalRealizedPnlFromTrades = filteredPnlEvents.reduce((sum, e) => sum + parseFloat(e.income || '0'), 0);
     const totalRealizedPnlFromTradesWithFunding = totalRealizedPnlFromTrades + totalFundingFeeIncome;
     
-    // Calculate max drawdown from filtered data using account size (deposits + P&L + fees)
-    // This calculates peak-to-trough based on true account value within the selected timeframe
+    // Calculate max drawdown from filtered interval data
+    // Use interval-relative P&L instead of all-time cumulative P&L
     let maxDrawdown = 0;
     let maxDrawdownPercent = 0;
-    let peakAccountSize = -Infinity;
+    let peakIntervalPnl = 0; // Peak P&L within this interval (starts at 0)
+    let intervalPnlRunning = 0; // Running P&L within interval
 
     sourceChartData.forEach(trade => {
-      // Calculate account size for this trade (deposits + P&L + fees)
-      const depositsAtTime = getCumulativeDepositsAtTime(trade.timestamp);
-      const cumulativeFeeIncomeAtTime = getCumulativeFeeIncomeAtTime(trade.timestamp);
-      const accountSize = depositsAtTime + trade.cumulativePnl + cumulativeFeeIncomeAtTime;
+      // Add this trade's P&L to the running interval total
+      intervalPnlRunning += trade.pnl;
 
-      // Track the peak account size in this timeframe
-      if (peakAccountSize === -Infinity) {
-        peakAccountSize = accountSize;
+      // Track the peak P&L reached in this interval
+      if (intervalPnlRunning > peakIntervalPnl) {
+        peakIntervalPnl = intervalPnlRunning;
       }
 
-      if (accountSize > peakAccountSize) {
-        peakAccountSize = accountSize;
-      }
-
-      // Calculate drawdown from peak account size
-      const drawdown = peakAccountSize - accountSize;
+      // Calculate drawdown from peak within this interval
+      const drawdown = peakIntervalPnl - intervalPnlRunning;
       if (drawdown > maxDrawdown) {
         maxDrawdown = drawdown;
       }
     });
 
-    // Calculate percentage based on the peak account size in this timeframe
-    maxDrawdownPercent = peakAccountSize > 0 ? (maxDrawdown / peakAccountSize) * 100 : 0;
+    // Calculate percentage based on starting capital (deposits)
+    maxDrawdownPercent = depositBase > 0 ? (maxDrawdown / depositBase) * 100 : 0;
     
     // Calculate average trade time from filtered closed positions
     let avgTradeTimeMs = 0;
@@ -865,9 +890,10 @@ function PerformanceOverview() {
     });
 
     // Calculate daily P&L changes (end of day cumulative P&L - previous day)
+    // IMPORTANT: For filtered intervals, start from the cumulative P&L before the first trade
     const dates = Array.from(tradesByDate.keys()).sort();
     if (dates.length > 1) {
-      let prevCumulativePnl = 0;
+      let prevCumulativePnl = startCumulativePnl; // Start from P&L before the interval (not 0)
       dates.forEach(date => {
         const tradesOnDay = tradesByDate.get(date)!;
         const lastTradeOfDay = tradesOnDay[tradesOnDay.length - 1];
@@ -925,7 +951,6 @@ function PerformanceOverview() {
     console.log(`  Total Losses: $${totalLosses.toFixed(2)}`);
     console.log(`  Total Deposited: $${totalDeposited.toFixed(2)}`);
     console.log(`  Time Range Days: ${timeRangeDays.toFixed(2)}`);
-    console.log(`  Peak Account Size: $${peakAccountSize.toFixed(2)}`);
 
     console.log('\n📈 EXPECTANCY CALCULATION:');
     console.log(`  Formula: Total Realized P&L / Number of Trades`);
@@ -933,11 +958,9 @@ function PerformanceOverview() {
     console.log(`  Result: $${expectancy.toFixed(2)} per trade`);
 
     console.log('\n📉 MAX DRAWDOWN CALCULATION:');
-    console.log(`  Formula: Peak Account Size - Lowest Account Size`);
-    console.log(`  Peak Account Size: $${peakAccountSize.toFixed(2)}`);
+    console.log(`  Formula: Peak Interval P&L - Lowest Interval P&L`);
     console.log(`  Max Drawdown: $${maxDrawdown.toFixed(2)}`);
     console.log(`  Max Drawdown %: ${maxDrawdownPercent.toFixed(2)}%`);
-    console.log(`  Calculation: (${maxDrawdown.toFixed(2)} / ${peakAccountSize.toFixed(2)}) × 100 = ${maxDrawdownPercent.toFixed(2)}%`);
 
     console.log('\n📊 CALMAR RATIO CALCULATION:');
     console.log(`  Formula: Annualized Return / Max Drawdown %`);
@@ -1000,7 +1023,8 @@ function PerformanceOverview() {
       winningTrades: winningTrades.length,
       losingTrades: losingTrades.length,
       winRate: filteredPnlEvents.length > 0 ? (winningTrades.length / filteredPnlEvents.length) * 100 : 0,
-      totalRealizedPnl: totalRealizedPnl, // Now includes fees subtracted
+      totalRealizedPnl: totalRealizedPnl, // Interval P&L (scaled, includes all fees)
+      intervalPnlPercent: intervalPnlPercent, // Percentage gain for the interval
       totalPnl: totalRealizedPnl,
       averageWin: winningTrades.length > 0 ? totalWins / winningTrades.length : 0,
       averageLoss: losingTrades.length > 0 ? totalLosses / losingTrades.length : 0,
@@ -1017,7 +1041,7 @@ function PerformanceOverview() {
       calmarRatio,
       expectancy,
     };
-  }, [performance, dateRange, selectedTradeRange, realizedPnlEvents, allCommissions, allFundingFees, sourceChartData, closedPositions, rawSourceData, getCumulativeDepositsAtTime, getCumulativeFeeIncomeAtTime]);
+  }, [performance, dateRange, selectedTradeRange, realizedPnlEvents, allCommissions, allFundingFees, sourceChartData, closedPositions, rawSourceData, getCumulativeDepositsAtTime, getCumulativeFeeIncomeAtTime, totalDeposited]);
   const displayLoading = isLoading || chartLoading || liveAccountLoading;
   const showLoadingUI = displayLoading || !performance;
 
@@ -1314,6 +1338,9 @@ function PerformanceOverview() {
               <div className="text-sm text-muted-foreground uppercase tracking-wider">Interval P&L</div>
               <div className={`text-3xl font-mono font-bold mt-2 ${displayPerformance.totalRealizedPnl >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`}>
                 {displayPerformance.totalRealizedPnl >= 0 ? '+' : ''}${displayPerformance.totalRealizedPnl.toFixed(2)}
+              </div>
+              <div className={`text-lg font-mono font-bold ${displayPerformance.intervalPnlPercent >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`}>
+                {displayPerformance.intervalPnlPercent >= 0 ? '+' : ''}{displayPerformance.intervalPnlPercent.toFixed(2)}%
               </div>
               <div className="text-sm text-muted-foreground mt-1">
                 {dateRange.start || dateRange.end
