@@ -409,13 +409,12 @@ export class StrategyEngine extends EventEmitter {
     }
 
     // Start WebSocket user data stream for real-time account/position updates
-    // IMPORTANT: Only run in deployed environment to avoid listen key conflicts
+    // Uses WebSocket instead of REST API polling to avoid rate limiting
     // Aster DEX only allows ONE active user data stream per API key
     const apiKey = process.env.ASTER_API_KEY;
     const secretKey = process.env.ASTER_SECRET_KEY;
-    const isDeployed = process.env.REPLIT_DEPLOYMENT === '1';
     
-    if (apiKey && isDeployed) {
+    if (apiKey && secretKey) {
       try {
         await userDataStreamManager.start({
           apiKey,
@@ -531,57 +530,11 @@ export class StrategyEngine extends EventEmitter {
             }
           }
         });
-        console.log('✅ User data stream started for real-time updates (deployed mode)');
+        console.log('✅ User data stream started for real-time updates (WebSocket mode)');
+        console.log('   📡 Using WebSocket to avoid REST API rate limiting');
       } catch (error) {
         console.error('⚠️ Failed to start user data stream:', error);
       }
-    } else if (apiKey && secretKey && !isDeployed) {
-      // Preview mode: Use polling instead of WebSocket (5-second intervals)
-      console.log('🔄 Starting polling mode for preview (5-second intervals)');
-      console.log('   📱 Deployed version uses WebSocket for real-time updates');
-      
-      // Poll account and positions every 5 seconds
-      this.pollingInterval = setInterval(async () => {
-        try {
-          const timestamp = Date.now();
-          
-          // Fetch account data
-          const accountParams = `timestamp=${timestamp}`;
-          const accountSignature = createHmac('sha256', secretKey)
-            .update(accountParams)
-            .digest('hex');
-          
-          const accountResponse = await fetch(
-            `https://fapi.asterdex.com/fapi/v2/account?${accountParams}&signature=${accountSignature}`,
-            { headers: { 'X-MBX-APIKEY': apiKey } }
-          );
-          
-          if (accountResponse.ok) {
-            const accountData = await accountResponse.json();
-            liveDataOrchestrator.updateAccountFromWebSocket(strategy.id, accountData.assets || []);
-          }
-          
-          // Fetch position data
-          const positionParams = `timestamp=${timestamp}`;
-          const positionSignature = createHmac('sha256', secretKey)
-            .update(positionParams)
-            .digest('hex');
-          
-          const positionResponse = await fetch(
-            `https://fapi.asterdex.com/fapi/v2/positionRisk?${positionParams}&signature=${positionSignature}`,
-            { headers: { 'X-MBX-APIKEY': apiKey } }
-          );
-          
-          if (positionResponse.ok) {
-            const positionData = await positionResponse.json();
-            liveDataOrchestrator.updatePositionsFromWebSocket(strategy.id, positionData);
-          }
-        } catch (error) {
-          console.error('⚠️ Polling error:', error);
-        }
-      }, 5000); // 5 seconds
-      
-      console.log('✅ Polling started for account/position updates (preview mode)');
     }
   }
 
