@@ -621,8 +621,8 @@ function PerformanceOverview() {
     const serverRiskLimit = activeStrategy ? parseFloat(activeStrategy.maxPortfolioRiskPercent) : 15;
     const isOverLimit = filledRiskPercentage > serverRiskLimit;
     const warningThreshold = serverRiskLimit * 0.8; // 80% of max
-    
-    return isOverLimit ? 'text-red-600 dark:text-red-500' :
+
+    return isOverLimit ? 'text-destructive' :
       filledRiskPercentage >= warningThreshold ? 'text-orange-500 dark:text-orange-400' :
       'text-blue-500 dark:text-blue-400';
   }, [activeStrategy?.maxPortfolioRiskPercent, filledRiskPercentage]);
@@ -631,11 +631,39 @@ function PerformanceOverview() {
     const serverRiskLimit = activeStrategy ? parseFloat(activeStrategy.maxPortfolioRiskPercent) : 15;
     const isOverLimit = filledRiskPercentage > serverRiskLimit;
     const warningThreshold = serverRiskLimit * 0.8; // 80% of max
-    
-    return isOverLimit ? 'stroke-red-600 dark:stroke-red-500' :
+
+    return isOverLimit ? 'text-destructive' :
       filledRiskPercentage >= warningThreshold ? 'stroke-orange-500 dark:stroke-orange-400' :
       'stroke-blue-500 dark:stroke-blue-400';
   }, [activeStrategy?.maxPortfolioRiskPercent, filledRiskPercentage]);
+
+  // Margin usage color scale: lime -> blue -> orange -> red
+  const getMarginColorClass = useMemo(() => {
+    if (marginUsedPercentage >= 75) {
+      return 'stroke-destructive';
+    } else if (marginUsedPercentage >= 50) {
+      return 'stroke-orange-500 dark:stroke-orange-400';
+    } else if (marginUsedPercentage >= 25) {
+      return 'stroke-blue-500 dark:stroke-blue-400';
+    } else {
+      return 'stroke-lime-600 dark:stroke-lime-500';
+    }
+  }, [marginUsedPercentage]);
+
+  // Calculate relative risk percentage (scales meter to max risk setting)
+  const relativeRiskPercentage = useMemo(() => {
+    const maxRisk = activeStrategy ? parseFloat(activeStrategy.maxPortfolioRiskPercent) : 15;
+    return maxRisk > 0 ? (filledRiskPercentage / maxRisk) * 100 : 0;
+  }, [filledRiskPercentage, activeStrategy?.maxPortfolioRiskPercent]);
+
+  // Calculate max risk dollar value
+  const maxRiskDollars = useMemo(() => {
+    if (!liveAccount) return 0;
+    const walletBalance = parseFloat(liveAccount.totalWalletBalance || '0') || 0;
+    const unrealizedPnl = parseFloat(liveAccount.totalUnrealizedProfit || '0') || 0;
+    const totalBalance = walletBalance + unrealizedPnl;
+    return (totalBalance * localRiskLimit) / 100;
+  }, [liveAccount, localRiskLimit]);
 
   // Use unified performance data (live-only mode)
   // Recalculate metrics when date filter is active
@@ -1379,23 +1407,24 @@ function PerformanceOverview() {
                   <circle
                     cx="50"
                     cy="50"
-                    r="42"
+                    r="44"
                     fill="none"
                     stroke="rgb(100, 116, 139)"
-                    strokeWidth="6"
+                    strokeWidth="7"
                     className="opacity-60"
                   />
                   {/* Outer ring progress (filled risk) */}
                   <circle
                     cx="50"
                     cy="50"
-                    r="42"
+                    r="44"
                     fill="none"
-                    strokeWidth="6"
+                    stroke="currentColor"
+                    strokeWidth="7"
                     strokeLinecap="butt"
                     className={`transition-all duration-300 ${getRiskStrokeClass}`}
-                    strokeDasharray={`${2 * Math.PI * 42}`}
-                    strokeDashoffset={`${2 * Math.PI * 42 * (1 - Math.min(100, filledRiskPercentage) / 100)}`}
+                    strokeDasharray={`${2 * Math.PI * 44}`}
+                    strokeDashoffset={`${2 * Math.PI * 44 * (1 - Math.min(100, relativeRiskPercentage) / 100)}`}
                     data-testid="bar-filled-risk"
                   />
                   
@@ -1403,23 +1432,23 @@ function PerformanceOverview() {
                   <circle
                     cx="50"
                     cy="50"
-                    r="36"
+                    r="34"
                     fill="none"
                     stroke="rgb(100, 116, 139)"
-                    strokeWidth="8"
+                    strokeWidth="6"
                     className="opacity-60"
                   />
                   {/* Inner ring progress (margin used) */}
                   <circle
                     cx="50"
                     cy="50"
-                    r="36"
+                    r="34"
                     fill="none"
-                    strokeWidth="8"
+                    strokeWidth="6"
                     strokeLinecap="butt"
-                    className="stroke-lime-600 dark:stroke-lime-500 transition-all duration-300"
-                    strokeDasharray={`${2 * Math.PI * 36}`}
-                    strokeDashoffset={`${2 * Math.PI * 36 * (1 - Math.min(100, marginUsedPercentage) / 100)}`}
+                    className={`${getMarginColorClass} transition-all duration-300`}
+                    strokeDasharray={`${2 * Math.PI * 34}`}
+                    strokeDashoffset={`${2 * Math.PI * 34 * (1 - Math.min(100, marginUsedPercentage) / 100)}`}
                     data-testid="bar-margin-used"
                   />
                 </svg>
@@ -1428,7 +1457,7 @@ function PerformanceOverview() {
                   <div className="text-sm font-mono text-muted-foreground">Margin</div>
                   <div className="text-xl font-mono font-bold">{marginUsedPercentage.toFixed(1)}%</div>
                   <div className={`text-[10px] font-mono mt-0.5 ${getRiskColorClass}`}>
-                    Risk: {filledRiskPercentage.toFixed(1)}%
+                    {filledRiskPercentage.toFixed(1)}% of {activeStrategy?.maxPortfolioRiskPercent || '15'}%
                   </div>
                 </div>
               </div>
@@ -1454,6 +1483,9 @@ function PerformanceOverview() {
                   className="cursor-pointer"
                   data-testid="slider-max-risk"
                 />
+                <div className="text-center text-[10px] font-mono text-muted-foreground">
+                  ${maxRiskDollars.toFixed(2)}
+                </div>
               </div>
             </div>
           </div>

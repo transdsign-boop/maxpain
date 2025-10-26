@@ -14,7 +14,6 @@ import { db } from "./db";
 import { desc, eq, sql, gte, lte } from "drizzle-orm";
 import { fetchRealizedPnlEvents, fetchAllAccountTrades } from "./exchange-sync";
 import { fetchPositionPnL } from "./exchange-utils";
-import { rateLimiter } from "./rate-limiter";
 import { getConsoleLogs } from "./console-logger";
 
 // Fixed liquidation window - always 60 seconds regardless of user input
@@ -2332,95 +2331,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "No active strategy found" });
       }
       
-      // Check orchestrator cache first (populated by WebSocket)
+      // ONLY use WebSocket cache (NO API fallback to prevent rate limiting)
       const snapshot = liveDataOrchestrator.getSnapshot(activeStrategy.id);
       if (snapshot && snapshot.account) {
         return res.json(snapshot.account);
       }
 
-      const apiKey = process.env.ASTER_API_KEY;
-      const secretKey = process.env.ASTER_SECRET_KEY;
-
-      if (!apiKey || !secretKey) {
-        return res.status(400).json({ error: "Aster DEX API keys not configured. Please set ASTER_API_KEY and ASTER_SECRET_KEY in your environment variables." });
-      }
-
-      // Create signed request to get account information
-      const timestamp = Date.now();
-      const params = `timestamp=${timestamp}`;
-      const signature = crypto
-        .createHmac('sha256', secretKey)
-        .update(params)
-        .digest('hex');
-
-      const response = await fetch(
-        `https://fapi.asterdex.com/fapi/v1/account?${params}&signature=${signature}`,
-        {
-          headers: {
-            'X-MBX-APIKEY': apiKey,
-          },
-        }
-      );
-
-      if (!response.ok) {
-        let errorMessage = '';
-        try {
-          const errorText = await response.text();
-          errorMessage = errorText || response.statusText;
-        } catch {
-          errorMessage = response.statusText;
-        }
-        
-        // Special handling for rate limiting - return stale cache if available
-        if (response.status === 429) {
-          console.error('⚠️ Rate limit exceeded for Aster DEX account endpoint');
-          // Try to return stale cached data (ignore TTL)
-          const staleCache = apiCache.get('live_account');
-          if (staleCache) {
-            console.log('📦 Returning stale cached account data due to rate limit');
-            return res.json(staleCache.data);
-          }
-          return res.status(429).json({ 
-            error: `Rate limit exceeded. Please wait before trying again. ${errorMessage}` 
-          });
-        }
-        
-        // Special handling for authentication errors
-        if (response.status === 401 || response.status === 403) {
-          console.error('🔑 Authentication failed for Aster DEX:', errorMessage);
-          return res.status(response.status).json({ 
-            error: `Authentication failed. Please check your API keys are correct and have proper permissions. ${errorMessage}` 
-          });
-        }
-        
-        console.error(`❌ Failed to fetch Aster DEX account (${response.status}):`, errorMessage);
-        return res.status(response.status).json({ error: `Aster DEX API error (${response.status}): ${errorMessage}` });
-      }
-
-      const data = await response.json();
-      
-      // Extract USDF balance from assets array (most common trading asset)
-      const usdtAsset = data.assets?.find((asset: any) => asset.asset === 'USDF');
-      const usdtBalance = usdtAsset ? parseFloat(usdtAsset.walletBalance) : 0;
-      
-      // Also check for USDC as fallback
-      const usdcAsset = data.assets?.find((asset: any) => asset.asset === 'USDC');
-      const usdcBalance = usdcAsset ? parseFloat(usdcAsset.walletBalance) : 0;
-      
-      // Use USDF if available, otherwise USDC, otherwise fall back to availableBalance from top-level response
-      const balance = usdtBalance || usdcBalance || parseFloat(data.availableBalance || '0');
-      
-      // Add balance to response
-      const result = {
-        ...data,
-        usdcBalance: balance.toString(), // Keep field name for backwards compatibility
-        usdtBalance: usdtBalance.toString()
-      };
-
-      // Cache the result
-      setCache('live_account', result);
-      
-      res.json(result);
+      // WebSocket data not available yet - return friendly error
+      // Frontend will retry via refetchInterval
+      return res.status(503).json({
+        error: "Account data not yet available via WebSocket. Please wait a moment...",
+        retryAfter: 5 // Suggest retry after 5 seconds
+      });
     } catch (error) {
       console.error('Error fetching live account data:', error);
       res.status(500).json({ error: "Failed to fetch live account data" });
@@ -4903,49 +4825,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
       try {
         const apiKey = process.env.ASTER_API_KEY;
 
-        console.log(`📊 Fetching 24hr volume for ${strategy.selectedAssets.length} symbols`);
+        console.log(`📊 Fetching 24hr volume for ${strategy.selectedAssets.length} symbols (sequential with 250ms delays to avoid burst limit)`);
 
         if (!apiKey) {
           console.error('API key not configured for volume fetch');
         } else {
-          // Fetch all ticker data in parallel using rate limiter
-          const volumePromises = strategy.selectedAssets.map(async (symbol) => {
+          // Fetch ticker data SEQUENTIALLY with delays to avoid burst rate limit
+          // 24 symbols × 250ms = 6 seconds (safe for burst limits)
+          let successCount = 0;
+          let errorCount = 0;
+
+          for (const symbol of strategy.selectedAssets) {
             try {
-              const ticker = await rateLimiter.enqueue(
-                `ticker24hr-${symbol}`,
-                async () => {
-                  const response = await fetch(
-                    `https://fapi.asterdex.com/fapi/v1/ticker/24hr?symbol=${symbol}`,
-                    {
-                      headers: {
-                        'X-MBX-APIKEY': apiKey
-                      }
-                    }
-                  );
-
-                  if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}`);
+              const response = await fetch(
+                `https://fapi.asterdex.com/fapi/v1/ticker/24hr?symbol=${symbol}`,
+                {
+                  headers: {
+                    'X-MBX-APIKEY': apiKey
                   }
-
-                  return response.json();
                 }
               );
+
+              if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+              }
+
+              const ticker = await response.json();
 
               // Extract quote volume (USDT volume)
               const quoteVolume = parseFloat(ticker.quoteVolume || ticker.volume || '0');
               console.log(`  ${symbol}: $${(quoteVolume / 1e6).toFixed(2)}M`);
-              return { symbol, volume24h: quoteVolume };
+              volumeDataMap.set(symbol, { volume24h: quoteVolume });
+              successCount++;
+
+              // Add 250ms delay between requests to avoid burst rate limit
+              await new Promise(resolve => setTimeout(resolve, 250));
             } catch (error) {
               console.error(`  ❌ Error fetching 24hr ticker for ${symbol}:`, error);
-              return { symbol, volume24h: 0 };
+              volumeDataMap.set(symbol, { volume24h: 0 });
+              errorCount++;
             }
-          });
+          }
 
-          const volumeResults = await Promise.all(volumePromises);
-          volumeResults.forEach(({ symbol, volume24h }) => {
-            volumeDataMap.set(symbol, { volume24h });
-          });
-          console.log(`✅ Fetched 24hr volume for ${volumeResults.length} symbols`);
+          console.log(`✅ Fetched 24hr volume: ${successCount} succeeded, ${errorCount} failed`);
         }
       } catch (error) {
         console.error('❌ Error fetching 24hr ticker data:', error);
@@ -7556,17 +7478,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error fetching console logs:', error);
       res.status(500).json({ error: 'Failed to fetch console logs' });
-    }
-  });
-
-  // Get rate limiter cache statistics
-  app.get('/api/rate-limiter/stats', async (req, res) => {
-    try {
-      const stats = rateLimiter.getCacheStats();
-      res.json(stats);
-    } catch (error) {
-      console.error('Error fetching rate limiter stats:', error);
-      res.status(500).json({ error: 'Failed to fetch rate limiter stats' });
     }
   });
 

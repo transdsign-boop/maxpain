@@ -13,7 +13,6 @@
  */
 
 import WebSocket from 'ws';
-import { rateLimiter } from './rate-limiter';
 import { vwapFilterManager } from './vwap-direction-filter';
 import { wsBroadcaster } from './websocket-broadcaster';
 
@@ -37,11 +36,20 @@ export class VWAPPriceFeed {
   private reconnectAttempts: number = 0;
   private maxReconnectAttempts: number = 5;
 
+  // Mark price WebSocket for real-time price updates
+  private markPriceWs: WebSocket | null = null;
+  private markPriceReconnectTimeout: NodeJS.Timeout | null = null;
+  private markPriceReconnectAttempts: number = 0;
+
   // Store accumulated klines for each symbol's current period
   private periodKlines: Map<string, any[]> = new Map();
 
+  // Broadcast throttling (avoid spamming frontend)
+  private lastBroadcastTime: Map<string, number> = new Map();
+  private broadcastThrottleMs: number = 1000; // Broadcast at most once per second per symbol
+
   constructor() {
-    console.log('📊 VWAP Price Feed initialized (WebSocket kline stream mode)');
+    console.log('📊 VWAP Price Feed initialized (dual-stream: klines + mark price)');
   }
 
   /**
@@ -61,9 +69,10 @@ export class VWAPPriceFeed {
       this.periodKlines.set(symbol, []);
     }
 
-    // Fetch initial historical klines for each symbol, then start WebSocket
+    // Fetch initial historical klines for each symbol, then start WebSockets
     this.initializeHistoricalKlines().then(() => {
       this.connectWebSocket();
+      this.connectMarkPriceWebSocket();
     });
 
     this.isRunning = true;
@@ -84,14 +93,25 @@ export class VWAPPriceFeed {
       this.ws = null;
     }
 
+    if (this.markPriceWs) {
+      this.markPriceWs.close();
+      this.markPriceWs = null;
+    }
+
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = null;
     }
 
+    if (this.markPriceReconnectTimeout) {
+      clearTimeout(this.markPriceReconnectTimeout);
+      this.markPriceReconnectTimeout = null;
+    }
+
     this.isRunning = false;
     this.symbols = [];
     this.periodKlines.clear();
+    this.lastBroadcastTime.clear();
   }
 
   /**
@@ -100,7 +120,7 @@ export class VWAPPriceFeed {
    * Uses sequential fetching with rate limiter to avoid 418 errors
    */
   private async initializeHistoricalKlines(): Promise<void> {
-    console.log(`📥 Fetching historical klines for ${this.symbols.length} symbols (sequential with rate limiting)...`);
+    console.log(`📥 Fetching historical klines for ${this.symbols.length} symbols (with 250ms delays to avoid burst limit)...`);
 
     let successCount = 0;
     let errorCount = 0;
@@ -116,20 +136,15 @@ export class VWAPPriceFeed {
 
         // Fetch historical klines for the current period
         // Using 1-minute candles with limit=1000 (max allowed)
-        const klines = await rateLimiter.enqueue(
-          `vwap-init-klines-${symbol}`,
-          async () => {
-            const response = await fetch(
-              `https://fapi.asterdex.com/fapi/v1/klines?symbol=${symbol}&interval=1m&startTime=${periodStartTime}&limit=1000`
-            );
-
-            if (!response.ok) {
-              throw new Error(`Failed to fetch klines for ${symbol}: ${response.status}`);
-            }
-
-            return response.json();
-          }
+        const response = await fetch(
+          `https://fapi.asterdex.com/fapi/v1/klines?symbol=${symbol}&interval=1m&startTime=${periodStartTime}&limit=1000`
         );
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch klines for ${symbol}: ${response.status}`);
+        }
+
+        const klines = await response.json();
 
         // Store klines and calculate initial VWAP
         this.periodKlines.set(symbol, klines || []);
@@ -138,6 +153,10 @@ export class VWAPPriceFeed {
           filter.recalculateFromKlines(klines);
           successCount++;
         }
+
+        // Add 250ms delay between requests to avoid burst rate limit
+        // 24 symbols × 250ms = 6 seconds (well below burst threshold)
+        await new Promise(resolve => setTimeout(resolve, 250));
       } catch (error: any) {
         errorCount++;
         // Initialize with empty klines on error
@@ -205,6 +224,104 @@ export class VWAPPriceFeed {
   }
 
   /**
+   * Connect to mark price WebSocket for real-time price updates (~1s frequency)
+   */
+  private connectMarkPriceWebSocket(): void {
+    if (this.markPriceWs) {
+      this.markPriceWs.close();
+    }
+
+    // Build combined stream URL for mark price
+    // Format: wss://fstream.asterdex.com/stream?streams=btcusdt@markPrice/ethusdt@markPrice/...
+    const streams = this.symbols.map(s => `${s.toLowerCase()}@markPrice`).join('/');
+    const wsUrl = `wss://fstream.asterdex.com/stream?streams=${streams}`;
+
+    console.log(`🔌 Connecting to VWAP mark price streams for ${this.symbols.length} symbols...`);
+
+    this.markPriceWs = new WebSocket(wsUrl);
+
+    this.markPriceWs.on('open', () => {
+      console.log(`✅ VWAP mark price WebSocket connected (${this.symbols.length} symbols)`);
+      this.markPriceReconnectAttempts = 0;
+    });
+
+    this.markPriceWs.on('message', (data: Buffer) => {
+      try {
+        const message = JSON.parse(data.toString());
+
+        // Combined stream format: { stream: "btcusdt@markPrice", data: { ... } }
+        if (message.data) {
+          this.handleMarkPriceUpdate(message.data);
+        }
+      } catch (error: any) {
+        console.error('❌ Error parsing mark price message:', error.message);
+      }
+    });
+
+    this.markPriceWs.on('error', (error) => {
+      console.error('❌ VWAP mark price WebSocket error:', error.message);
+    });
+
+    this.markPriceWs.on('close', () => {
+      console.log('🔌 VWAP mark price WebSocket disconnected');
+
+      if (this.isRunning && this.markPriceReconnectAttempts < this.maxReconnectAttempts) {
+        this.markPriceReconnectAttempts++;
+        const delay = Math.min(1000 * Math.pow(2, this.markPriceReconnectAttempts), 30000);
+
+        console.log(`🔄 Reconnecting mark price in ${delay}ms (attempt ${this.markPriceReconnectAttempts}/${this.maxReconnectAttempts})...`);
+
+        this.markPriceReconnectTimeout = setTimeout(() => {
+          this.connectMarkPriceWebSocket();
+        }, delay);
+      }
+    });
+  }
+
+  /**
+   * Handle mark price update for real-time price tracking
+   */
+  private handleMarkPriceUpdate(markPriceData: any): void {
+    const symbol = markPriceData.s; // Symbol (e.g., "BTCUSDT")
+    const markPrice = parseFloat(markPriceData.p); // Mark price
+
+    if (!symbol || isNaN(markPrice)) {
+      return;
+    }
+
+    // Update current price in VWAP filter
+    vwapFilterManager.updateCurrentPrice(symbol, markPrice);
+
+    // Broadcast with throttling (max once per second per symbol)
+    this.broadcastVWAPStatus(symbol);
+  }
+
+  /**
+   * Broadcast VWAP status to frontend with throttling
+   */
+  private broadcastVWAPStatus(symbol: string): void {
+    const now = Date.now();
+    const lastBroadcast = this.lastBroadcastTime.get(symbol) || 0;
+
+    // Only broadcast if enough time has passed since last broadcast
+    if (now - lastBroadcast >= this.broadcastThrottleMs) {
+      const filter = vwapFilterManager.getFilter(symbol);
+      const vwapStatus = filter.getStatus();
+
+      wsBroadcaster.broadcast({
+        type: 'vwap_update',
+        data: {
+          symbol,
+          status: vwapStatus
+        },
+        timestamp: now
+      });
+
+      this.lastBroadcastTime.set(symbol, now);
+    }
+  }
+
+  /**
    * Handle incoming kline update from WebSocket
    */
   private handleKlineUpdate(klineEvent: any): void {
@@ -252,21 +369,12 @@ export class VWAPPriceFeed {
       // Update current price to the close of this completed candle
       vwapFilterManager.updateCurrentPrice(symbol, parseFloat(k.c));
 
-      // Broadcast updated VWAP status to frontend (once per minute when candle closes)
-      const vwapStatus = filter.getStatus();
-      wsBroadcaster.broadcast({
-        type: 'vwap_update',
-        data: {
-          symbol,
-          status: vwapStatus
-        },
-        timestamp: Date.now()
-      });
-    } else {
-      // For non-closed candles, update current price internally but don't broadcast
-      // This keeps calculations accurate without spamming the frontend
-      vwapFilterManager.updateCurrentPrice(symbol, parseFloat(k.c));
+      // Force immediate broadcast when candle closes (VWAP was recalculated)
+      // Reset throttle timer to ensure this broadcasts
+      this.lastBroadcastTime.delete(symbol);
+      this.broadcastVWAPStatus(symbol);
     }
+    // Note: Non-closed candles no longer need handling here - mark price stream handles real-time updates
   }
 
   /**

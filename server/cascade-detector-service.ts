@@ -146,13 +146,12 @@ class CascadeDetectorService {
     
     try {
       // Single API call gets ALL prices
-      const priceResponse = await fetch('https://fapi.asterdex.com/fapi/v1/ticker/price');
-      if (!priceResponse.ok) {
-        console.error(`❌ Price fetch failed: ${priceResponse.status}`);
-        return;
+      const response = await fetch('https://fapi.asterdex.com/fapi/v1/ticker/price');
+      if (!response.ok) {
+        throw new Error(`Price fetch failed: ${response.status}`);
       }
-      
-      const allPrices = await priceResponse.json();
+      const allPrices = await response.json();
+
       const priceMap = new Map<string, number>();
       
       for (const item of allPrices) {
@@ -212,6 +211,7 @@ class CascadeDetectorService {
     const oiPromises = toFetch.map(async ({ symbol }) => {
       try {
         const response = await fetch(`https://fapi.asterdex.com/fapi/v1/openInterest?symbol=${symbol}`);
+
         if (response.ok) {
           const data = await response.json();
           return { symbol, oi: parseFloat(data.openInterest), timestamp: now };
