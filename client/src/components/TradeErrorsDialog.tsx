@@ -16,8 +16,10 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { format } from "date-fns";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Terminal } from "lucide-react";
+import { formatPST } from "@/lib/utils";
 
 interface TradeEntryError {
   id: string;
@@ -36,6 +38,13 @@ interface TradeEntryError {
   };
 }
 
+interface ConsoleLog {
+  id: string;
+  timestamp: string;
+  level: 'log' | 'warn' | 'error';
+  message: string;
+}
+
 interface TradeErrorsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -44,11 +53,18 @@ interface TradeErrorsDialogProps {
 export default function TradeErrorsDialog({ open, onOpenChange }: TradeErrorsDialogProps) {
   const [symbolFilter, setSymbolFilter] = useState<string>("all");
   const [reasonFilter, setReasonFilter] = useState<string>("all");
+  const [logLevelFilter, setLogLevelFilter] = useState<string>("all");
 
   const { data: errors = [], isLoading } = useQuery<TradeEntryError[]>({
     queryKey: ['/api/trade-errors'],
     enabled: open,
     refetchInterval: 30000, // Refresh every 30 seconds when open
+  });
+
+  const { data: consoleLogs = [], isLoading: isLoadingLogs } = useQuery<ConsoleLog[]>({
+    queryKey: ['/api/console-logs'],
+    enabled: open,
+    refetchInterval: 10000, // Refresh every 10 seconds when open
   });
 
   // Extract unique symbols and reasons from errors
@@ -60,6 +76,11 @@ export default function TradeErrorsDialog({ open, onOpenChange }: TradeErrorsDia
     const symbolMatch = symbolFilter === "all" || error.symbol === symbolFilter;
     const reasonMatch = reasonFilter === "all" || error.reason === reasonFilter;
     return symbolMatch && reasonMatch;
+  });
+
+  // Filter console logs based on level
+  const filteredLogs = consoleLogs.filter(log => {
+    return logLevelFilter === "all" || log.level === logLevelFilter;
   });
 
   const getReasonBadgeColor = (reason: string) => {
@@ -108,12 +129,26 @@ export default function TradeErrorsDialog({ open, onOpenChange }: TradeErrorsDia
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <AlertCircle className="w-5 h-5 text-orange-400" />
-            Trade Entry Errors
+            Trade Errors & Console Logs
           </DialogTitle>
           <DialogDescription>
-            Detailed log of all failed trade entry attempts with rejection reasons
+            Monitor trade entry errors and all console warnings/errors
           </DialogDescription>
         </DialogHeader>
+
+        <Tabs defaultValue="errors" className="flex-1 flex flex-col min-h-0">
+          <TabsList className="grid w-full grid-cols-2 shrink-0">
+            <TabsTrigger value="errors">
+              <AlertCircle className="w-4 h-4 mr-2" />
+              Trade Errors ({errors.length})
+            </TabsTrigger>
+            <TabsTrigger value="console">
+              <Terminal className="w-4 h-4 mr-2" />
+              Console Logs ({consoleLogs.length})
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="errors" className="flex-1 flex flex-col min-h-0 mt-4 data-[state=active]:flex data-[state=inactive]:hidden"  data-testid="tab-trade-errors">
 
         <div className="flex gap-3 py-2 shrink-0">
           <Select value={symbolFilter} onValueChange={setSymbolFilter}>
@@ -145,7 +180,7 @@ export default function TradeErrorsDialog({ open, onOpenChange }: TradeErrorsDia
           </div>
         </div>
 
-        <ScrollArea className="flex-1 min-h-0 -mx-6 px-6">
+        <ScrollArea className="flex-1 h-full -mx-6 px-6">
           {isLoading ? (
             <div className="flex items-center justify-center py-8 text-muted-foreground">
               Loading errors...
@@ -156,7 +191,7 @@ export default function TradeErrorsDialog({ open, onOpenChange }: TradeErrorsDia
               <p>No trade entry errors found</p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-3 pb-4">
               {filteredErrors.map((error) => (
                 <div
                   key={error.id}
@@ -179,7 +214,7 @@ export default function TradeErrorsDialog({ open, onOpenChange }: TradeErrorsDia
                       </Badge>
                     </div>
                     <span className="text-xs text-muted-foreground whitespace-nowrap">
-                      {format(new Date(error.timestamp), 'MMM dd, HH:mm:ss')}
+                      {formatPST(error.timestamp, 'MMM dd, h:mm:ss a')}
                     </span>
                   </div>
 
@@ -209,6 +244,77 @@ export default function TradeErrorsDialog({ open, onOpenChange }: TradeErrorsDia
             </div>
           )}
         </ScrollArea>
+          </TabsContent>
+
+          <TabsContent value="console" className="flex-1 flex flex-col min-h-0 mt-4 data-[state=active]:flex data-[state=inactive]:hidden" data-testid="tab-console-logs">
+            <div className="flex gap-3 py-2 shrink-0">
+              <Select value={logLevelFilter} onValueChange={setLogLevelFilter}>
+                <SelectTrigger className="w-[200px]" data-testid="select-log-level-filter">
+                  <SelectValue placeholder="Filter by level" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Levels</SelectItem>
+                  <SelectItem value="log">Log</SelectItem>
+                  <SelectItem value="warn">Warning</SelectItem>
+                  <SelectItem value="error">Error</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <div className="ml-auto text-sm text-muted-foreground self-center">
+                {filteredLogs.length} log{filteredLogs.length !== 1 ? 's' : ''}
+              </div>
+            </div>
+
+            <ScrollArea className="flex-1 h-full -mx-6 px-6">
+              {isLoadingLogs ? (
+                <div className="flex items-center justify-center py-8 text-muted-foreground">
+                  Loading console logs...
+                </div>
+              ) : filteredLogs.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+                  <Terminal className="w-12 h-12 mb-2 opacity-20" />
+                  <p>No console logs found</p>
+                </div>
+              ) : (
+                <div className="space-y-2 font-mono text-xs pb-4">
+                  {filteredLogs.map((log) => (
+                    <div
+                      key={log.id}
+                      className={`p-3 rounded border ${
+                        log.level === 'error'
+                          ? 'bg-red-500/10 border-red-500/30'
+                          : log.level === 'warn'
+                          ? 'bg-yellow-500/10 border-yellow-500/30'
+                          : 'bg-muted border-border'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3 mb-1">
+                        <Badge
+                          variant="outline"
+                          className={
+                            log.level === 'error'
+                              ? 'bg-red-500/20 text-red-400 border-red-500/40'
+                              : log.level === 'warn'
+                              ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/40'
+                              : 'bg-blue-500/20 text-blue-400 border-blue-500/40'
+                          }
+                        >
+                          {log.level.toUpperCase()}
+                        </Badge>
+                        <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                          {formatPST(log.timestamp, 'MMM dd, h:mm:ss a')}
+                        </span>
+                      </div>
+                      <pre className="whitespace-pre-wrap break-words text-foreground">
+                        {log.message}
+                      </pre>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
+          </TabsContent>
+        </Tabs>
       </DialogContent>
     </Dialog>
   );

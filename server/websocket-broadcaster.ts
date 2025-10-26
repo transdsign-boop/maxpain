@@ -12,7 +12,9 @@ export type WebSocketEventType =
   | 'live_snapshot'
   | 'order_update'
   | 'trade_block'
-  | 'vwap_update';
+  | 'vwap_update'
+  | 'api_error'
+  | 'api_warning';
 
 export interface WebSocketEvent {
   type: WebSocketEventType;
@@ -111,6 +113,22 @@ export class WebSocketBroadcaster {
     this.broadcast({
       type: 'trade_block',
       data: blockInfo,
+      timestamp: Date.now(),
+    });
+  }
+
+  broadcastApiError(message: string, details?: any): void {
+    this.broadcast({
+      type: 'api_error',
+      data: { message, details },
+      timestamp: Date.now(),
+    });
+  }
+
+  broadcastApiWarning(message: string, details?: any): void {
+    this.broadcast({
+      type: 'api_warning',
+      data: { message, details },
       timestamp: Date.now(),
     });
   }

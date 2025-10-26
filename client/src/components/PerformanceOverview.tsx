@@ -16,6 +16,7 @@ import { formatInTimeZone } from "date-fns-tz";
 import { useStrategyData } from "@/hooks/use-strategy-data";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { formatPST, formatDateTimePST, formatTimePST, formatDatePST } from "@/lib/utils";
 
 interface PerformanceMetrics {
   totalTrades: number;
@@ -1213,7 +1214,7 @@ function PerformanceOverview() {
       return (
         <div className="bg-background border border-border rounded-md p-3 shadow-lg">
           <p className="text-sm font-semibold mb-1">Trade #{data.tradeNumber}</p>
-          <p className="text-xs text-muted-foreground mb-2">{formatInTimeZone(new Date(data.timestamp), "UTC", "MMM d, h:mm a")} UTC</p>
+          <p className="text-xs text-muted-foreground mb-2">{formatPST(data.timestamp, "MMM d, h:mm a")} PST</p>
           <p className="text-xs mb-1"><span className="font-medium">{data.symbol}</span> {data.side}</p>
           <p className={`text-sm font-mono font-semibold ${data.pnl >= 0 ? 'text-lime-500' : 'text-red-600'}`}>
             Net P&L: {data.pnl >= 0 ? '+' : ''}${Math.abs(data.pnl).toFixed(2)}
@@ -1913,7 +1914,7 @@ function PerformanceOverview() {
                             >
                               <div className="flex items-center justify-between w-full gap-2">
                                 <span className="text-xs text-muted-foreground">
-                                  {format(depositDate, 'MMM d, yyyy HH:mm')}
+                                  {formatPST(depositDate, 'MMM d, yyyy h:mm a')}
                                 </span>
                                 <span className={`font-mono font-semibold ${amountColor}`}>
                                   {displayAmount}
@@ -1965,12 +1966,12 @@ function PerformanceOverview() {
                   <CalendarIcon className="h-3 w-3" />
                   {dateRange.start && (() => {
                     const hasTime = dateRange.start.getHours() !== 0 || dateRange.start.getMinutes() !== 0;
-                    return format(dateRange.start, hasTime ? 'MMM d h:mm a' : 'MMM d');
+                    return formatPST(dateRange.start, hasTime ? 'MMM d h:mm a' : 'MMM d');
                   })()}
                   {dateRange.start && dateRange.end && ' - '}
                   {dateRange.end && (() => {
                     const hasTime = dateRange.end.getHours() !== 23 || dateRange.end.getMinutes() !== 59;
-                    return format(dateRange.end, hasTime ? 'MMM d h:mm a' : 'MMM d');
+                    return formatPST(dateRange.end, hasTime ? 'MMM d h:mm a' : 'MMM d');
                   })()}
                   <X 
                     className="h-3 w-3 ml-1 cursor-pointer hover:text-destructive" 
@@ -2495,7 +2496,7 @@ function PerformanceOverview() {
           <DialogHeader>
             <DialogTitle>Strategy Settings at this Point</DialogTitle>
             <DialogDescription>
-              {selectedChange && format(new Date(selectedChange.changedAt), 'MMM d, yyyy h:mm a')}
+              {selectedChange && formatPST(selectedChange.changedAt, 'MMM d, yyyy h:mm a')}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 mt-4">

@@ -5,6 +5,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { formatTimeSecondsPST } from "@/lib/utils";
 
 interface ConnectionStatusProps {
   isConnected: boolean;
@@ -145,6 +146,23 @@ export default function ConnectionStatus({ isConnected, tradeBlockStatus }: Conn
             // Clear block - explicit unblock signal
             setTradeBlock(null);
             console.log('🟢 Trade light should now be GREEN (unblocked)');
+          }
+        } else if (message.type === 'api_error' || message.type === 'api_warning') {
+          console.log(`🔴 API ${message.type === 'api_error' ? 'ERROR' : 'WARNING'} received:`, message.data);
+          // Turn API light red and show error message
+          setApiConnected(false);
+          setLatestError({
+            message: message.data.message || `API ${message.type === 'api_error' ? 'Error' : 'Warning'}`,
+            timestamp: new Date(message.timestamp)
+          });
+
+          // For warnings, auto-recover after 30 seconds
+          if (message.type === 'api_warning') {
+            setTimeout(() => {
+              setApiConnected(true);
+              setLatestError(null);
+              console.log('✅ API warning cleared - light back to green');
+            }, 30000);
           }
         }
       } catch (error) {
@@ -305,7 +323,7 @@ export default function ConnectionStatus({ isConnected, tradeBlockStatus }: Conn
               {latestError.message}
             </div>
             <div className="text-[10px] text-red-700 dark:text-red-300 mt-0.5">
-              {latestError.timestamp.toLocaleTimeString()}
+              {formatTimeSecondsPST(latestError.timestamp)} PST
             </div>
           </div>
         </div>

@@ -10,6 +10,7 @@ import TradeErrorsDialog from "@/components/TradeErrorsDialog";
 import { StrategyStatus } from "@/components/StrategyStatus";
 import CascadeRiskIndicator from "@/components/CascadeRiskIndicator";
 import VWAPStatusDisplay from "@/components/VWAPStatusDisplay";
+import TradingHotspotsAnalytics from "@/components/TradingHotspotsAnalytics";
 import ThemeToggle from "@/components/ThemeToggle";
 import AsterLogo from "@/components/AsterLogo";
 import { Button } from "@/components/ui/button";
@@ -711,6 +712,9 @@ export default function Dashboard() {
 
         {/* Performance Overview */}
         <PerformanceOverview />
+
+        {/* Trading Activity Analysis */}
+        {activeStrategy && <TradingHotspotsAnalytics strategyId={activeStrategy.id} />}
 
         {/* Active Positions */}
         <StrategyStatus />

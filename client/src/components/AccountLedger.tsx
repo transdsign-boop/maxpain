@@ -25,6 +25,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Wallet, Plus, Trash2, Edit, CalendarIcon, TrendingUp, DollarSign, PercentIcon, Download } from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { formatPST, formatDatePST, formatTimePST, formatDateTimePST } from "@/lib/utils";
 
 interface AccountLedgerEntry {
   id: string;
@@ -576,9 +577,9 @@ export default function AccountLedger() {
             {entries.map((entry) => (
               <tr key={entry.id} className="border-b last:border-0 hover:bg-muted/50">
                 <td className="py-3 px-3 text-xs">
-                  <div>{format(new Date(entry.timestamp), "MMM d, yyyy")}</div>
+                  <div>{formatDatePST(entry.timestamp)}</div>
                   <div className="text-muted-foreground">
-                    {format(new Date(entry.timestamp), "h:mm a")}
+                    {formatTimePST(entry.timestamp)}
                   </div>
                 </td>
                 <td className="py-3 px-3">
@@ -706,7 +707,7 @@ export default function AccountLedger() {
                 <PopoverTrigger asChild>
                   <Button variant="outline" className="w-full justify-start">
                     <CalendarIcon className="mr-2 h-4 w-4" />
-                    {format(formData.timestamp, "PPP p")}
+                    {formatPST(formData.timestamp, "MMMM d, yyyy h:mm a")}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0">
@@ -835,7 +836,7 @@ export default function AccountLedger() {
                     {pendingTransfers.map((transfer) => (
                       <tr key={transfer.tranId} className="border-b last:border-0 hover:bg-muted/50">
                         <td className="py-3 px-3 text-xs">
-                          {format(new Date(transfer.timestamp), "MMM d, yyyy HH:mm")}
+                          {formatPST(transfer.timestamp, "MMM d, yyyy h:mm a")}
                         </td>
                         <td className="py-3 px-3 text-xs">
                           <Badge variant="outline" className="text-xs">
@@ -932,7 +933,7 @@ export default function AccountLedger() {
                   </div>
                   <div className="text-muted-foreground">Date:</div>
                   <div className="font-mono text-xs">
-                    {format(new Date(selectedTransfer?.timestamp || editingEntry?.timestamp || new Date()), "MMM d, yyyy HH:mm")}
+                    {formatPST(selectedTransfer?.timestamp || editingEntry?.timestamp || new Date(), "MMM d, yyyy h:mm a")}
                   </div>
                 </div>
               </div>

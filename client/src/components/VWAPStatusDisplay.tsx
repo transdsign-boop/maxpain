@@ -18,6 +18,7 @@ interface VWAPSymbolStatus {
   distanceFromVWAP: number;
   nextResetTime: number;
   timeUntilReset: number;
+  volume24h: number;
   statistics: {
     directionChanges: number;
     signalsBlocked: number;
@@ -49,6 +50,15 @@ function formatTimeRemaining(ms: number): string {
     return `${hours}h ${remainingMinutes}m`;
   }
   return `${minutes}m`;
+}
+
+function formatVolume(volume: number): string {
+  if (volume >= 1_000_000) {
+    return `$${(volume / 1_000_000).toFixed(1)}M`;
+  } else if (volume >= 1_000) {
+    return `$${(volume / 1_000).toFixed(0)}K`;
+  }
+  return `$${volume.toFixed(0)}`;
 }
 
 function DirectionBadge({ direction, inBufferZone }: { direction: string; inBufferZone: boolean }) {
@@ -231,9 +241,12 @@ export default function VWAPStatusDisplay({ strategyId }: VWAPStatusDisplayProps
                 }}
                 onClick={() => setSelectedSymbolName(selectedSymbolName === symbolStatus.symbol ? null : symbolStatus.symbol)}
               >
-                <div className="flex items-center justify-center h-full">
+                <div className="flex flex-col items-center justify-center h-full">
                   <span className={`font-mono text-xs font-bold ${getTextColor()}`}>
                     {symbolStatus.symbol.replace('USDT', '')}
+                  </span>
+                  <span className={`font-mono text-[9px] mt-0.5 ${getTextColor()} opacity-70`}>
+                    {formatVolume(symbolStatus.volume24h || 0)}
                   </span>
                 </div>
               </div>
@@ -310,6 +323,10 @@ export default function VWAPStatusDisplay({ strategyId }: VWAPStatusDisplayProps
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Data Points:</span>
                 <span className="font-mono font-semibold">{selectedSymbol.statistics.dataPoints}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">24h Volume:</span>
+                <span className="font-mono font-semibold">{formatVolume(selectedSymbol.volume24h || 0)}</span>
               </div>
             </div>
             )}
