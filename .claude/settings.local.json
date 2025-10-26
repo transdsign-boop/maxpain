@@ -103,7 +103,12 @@
       "Bash(do sleep 1)",
       "Bash(do if timeout 2 curl -s http://localhost:5000/api/strategies)",
       "Bash(then echo \"⏳ Waiting ($i/10)\")",
-      "Bash(else echo \"✅ Port 5000 is free\")"
+      "Bash(else echo \"✅ Port 5000 is free\")",
+      "Bash(timeout 2 curl:*)",
+      "Bash(then echo \"⏳ Waiting ($i/15)...\")",
+      "Bash(else echo \"✅ Port 5000 is free - ready to restart\")",
+      "Bash(else echo \"⏳ Waiting for server... ($i/20)\")",
+      "WebSearch"
     ],
     "deny": [],
     "ask": []

@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useWebSocketData } from "./useWebSocketData";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { queryClient } from "@/lib/queryClient";
 
 /**
@@ -14,47 +14,66 @@ export function useStrategyData() {
   // Connect to WebSocket for real-time updates (single connection shared across app)
   const { isConnected: wsConnected } = useWebSocketData({ enabled: true });
 
-  // Fetch strategies ONCE (no polling - WebSocket provides real-time updates)
+  // Fallback polling interval when WebSocket is disconnected (60 seconds)
+  // Longer interval reduces API load when multiple clients are connected
+  const fallbackInterval = wsConnected ? false : 60000;
+
+  // Log when fallback mode activates/deactivates
+  const prevWsConnected = useRef(wsConnected);
+  useEffect(() => {
+    if (prevWsConnected.current !== wsConnected) {
+      if (wsConnected) {
+        console.log('✅ WebSocket connected - real-time updates enabled');
+      } else {
+        console.log('⚠️ WebSocket disconnected - using HTTP fallback polling (60s intervals)');
+        console.log('💡 Tip: Close other browser tabs to reduce API load and avoid rate limits');
+      }
+      prevWsConnected.current = wsConnected;
+    }
+  }, [wsConnected]);
+
+  // Fetch strategies with fallback polling when WebSocket disconnected
   const strategiesQuery = useQuery<any[]>({
     queryKey: ['/api/strategies'],
-    staleTime: Infinity, // Never refetch - WebSocket provides updates
+    staleTime: wsConnected ? Infinity : 10000,
+    refetchInterval: fallbackInterval,
   });
 
   const strategies = strategiesQuery.data;
   const activeStrategy = strategies?.find(s => s.isActive);
 
-  // Live account data - Fetch once, then rely on WebSocket updates
+  // Live account data - WebSocket first, HTTP fallback when disconnected
   const liveAccountQuery = useQuery<any>({
     queryKey: ['/api/live/account'],
     queryFn: async () => {
-      // Fallback HTTP fetch if WebSocket hasn't populated the cache yet
       const response = await fetch('/api/live/snapshot');
       if (!response.ok) return null;
       const data = await response.json();
       return data?.snapshot?.account || null;
     },
-    staleTime: Infinity,
+    staleTime: wsConnected ? Infinity : 10000,
     gcTime: Infinity,
     retry: 1,
-    refetchOnMount: false, // Only fetch on initial mount
-    refetchOnWindowFocus: false, // WebSocket handles updates
+    refetchOnMount: true, // Fetch on mount
+    refetchOnWindowFocus: false,
+    refetchInterval: fallbackInterval, // Poll when WebSocket disconnected
   });
 
-  // Live positions data - Fetch once, then rely on WebSocket updates
+  // Live positions data - WebSocket first, HTTP fallback when disconnected
   const livePositionsQuery = useQuery<any[]>({
     queryKey: ['/api/live/positions'],
     queryFn: async () => {
-      // Fallback HTTP fetch if WebSocket hasn't populated the cache yet
       const response = await fetch('/api/live/snapshot');
       if (!response.ok) return [];
       const data = await response.json();
       return data?.positions || [];
     },
-    staleTime: Infinity,
+    staleTime: wsConnected ? Infinity : 10000,
     gcTime: Infinity,
     retry: 1,
-    refetchOnMount: false, // Only fetch on initial mount
-    refetchOnWindowFocus: false, // WebSocket handles updates
+    refetchOnMount: true, // Fetch on mount
+    refetchOnWindowFocus: false,
+    refetchInterval: fallbackInterval, // Poll when WebSocket disconnected
   });
 
   // Construct snapshot from individual queries (orchestrator disabled to avoid rate limits)
@@ -72,7 +91,7 @@ export function useStrategyData() {
     error: liveAccountQuery.error || livePositionsQuery.error,
   };
 
-  // Fetch position summary ONCE (no polling - WebSocket provides updates)
+  // Fetch position summary with fallback polling when WebSocket disconnected
   const positionSummaryQuery = useQuery<any>({
     queryKey: ['/api/strategies', activeStrategy?.id, 'positions', 'summary'],
     queryFn: async () => {
@@ -81,54 +100,57 @@ export function useStrategyData() {
       return response.json();
     },
     enabled: !!activeStrategy?.id,
-    staleTime: Infinity, // Never refetch - WebSocket provides updates
+    staleTime: wsConnected ? Infinity : 10000,
+    refetchInterval: fallbackInterval,
   });
 
-  // Fetch portfolio risk metrics from WebSocket cache (updated in real-time)
+  // Fetch portfolio risk metrics with fallback polling when WebSocket disconnected
   const portfolioRiskQuery = useQuery<any>({
     queryKey: ['/api/live/positions-summary'],
     queryFn: async () => {
-      // Fallback HTTP fetch if WebSocket hasn't populated the cache yet
       const response = await fetch('/api/live/snapshot');
       if (!response.ok) return null;
       const data = await response.json();
-      // API returns snapshot directly, not wrapped
       return data?.positionsSummary || null;
     },
-    staleTime: Infinity,
+    staleTime: wsConnected ? Infinity : 10000,
     gcTime: Infinity,
     retry: 1,
-    refetchOnMount: false, // Only fetch on initial mount
-    refetchOnWindowFocus: false, // WebSocket handles updates
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
+    refetchInterval: fallbackInterval, // Poll when WebSocket disconnected
   });
 
-  // Fetch strategy changes ONCE (no polling - WebSocket provides updates)
+  // Fetch strategy changes with fallback polling when WebSocket disconnected
   const strategyChangesQuery = useQuery<any[]>({
     queryKey: ['/api/strategies', activeStrategy?.id, 'changes'],
     enabled: !!activeStrategy?.id,
-    staleTime: Infinity, // Never refetch - WebSocket provides updates
+    staleTime: wsConnected ? Infinity : 10000,
+    refetchInterval: fallbackInterval,
   });
 
-  // Fetch performance overview ONCE (no polling - WebSocket provides updates)
+  // Fetch performance overview with fallback polling when WebSocket disconnected
   const performanceQuery = useQuery<any>({
-    queryKey: ['/api/performance/overview', 'v2'], // v2 forces cache invalidation
+    queryKey: ['/api/performance/overview', 'v2'],
     queryFn: async () => {
       const response = await fetch('/api/performance/overview');
       if (!response.ok) throw new Error('Failed to fetch performance overview');
       return response.json();
     },
-    staleTime: Infinity, // Never refetch - WebSocket provides updates
+    staleTime: 2 * 60 * 1000, // 2 minutes - changes slowly
+    refetchInterval: wsConnected ? false : 2 * 60 * 1000, // Only poll every 2 min if WebSocket down
   });
 
-  // Fetch chart data ONCE (no polling - WebSocket provides updates)
+  // Fetch chart data with fallback polling when WebSocket disconnected
   const chartDataQuery = useQuery<any[]>({
-    queryKey: ['/api/performance/chart', 'v4-oct16-cutoff'], // v4 forces cache invalidation after Oct 16 cutoff
+    queryKey: ['/api/performance/chart', 'v4-oct16-cutoff'],
     queryFn: async () => {
-      const response = await fetch('/api/performance/chart?_=' + Date.now()); // Cache busting
+      const response = await fetch('/api/performance/chart?_=' + Date.now());
       if (!response.ok) throw new Error('Failed to fetch chart data');
       return response.json();
     },
-    staleTime: Infinity, // Never refetch - WebSocket provides updates
+    staleTime: 5 * 60 * 1000, // 5 minutes - historical data doesn't change often
+    refetchInterval: false, // Never auto-refresh - user can manually refresh page
   });
 
   // Fetch asset performance ONCE (no polling - WebSocket provides updates)

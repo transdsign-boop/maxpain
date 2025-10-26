@@ -31,12 +31,18 @@ export function useWebSocketData(options: UseWebSocketDataOptions = {}) {
     try {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${protocol}//${window.location.host}/ws`;
-      
+
+      console.log('🔌 Attempting WebSocket connection...');
+      console.log('   URL:', wsUrl);
+      console.log('   Protocol:', protocol);
+      console.log('   Host:', window.location.host);
+      console.log('   User Agent:', navigator.userAgent);
+
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
-        console.log('Connected to trading data WebSocket');
+        console.log('✅ Connected to trading data WebSocket');
         setIsConnected(true);
         reconnectAttemptsRef.current = 0;
       };
@@ -138,15 +144,26 @@ export function useWebSocketData(options: UseWebSocketDataOptions = {}) {
           );
           reconnectAttemptsRef.current++;
           console.log(`Reconnecting in ${delay}ms (attempt ${reconnectAttemptsRef.current}/${maxReconnectAttempts})...`);
-          
+
+          // Warn user if multiple reconnection attempts
+          if (reconnectAttemptsRef.current >= 3) {
+            console.warn('⚠️ WebSocket connection failing repeatedly. If you have multiple browser tabs or devices open, please close all but one to avoid rate limiting.');
+          }
+
           reconnectTimeoutRef.current = setTimeout(() => {
             connect();
           }, delay);
+        } else if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
+          console.error('❌ WebSocket failed after maximum reconnection attempts. Please close any other open tabs/devices and refresh this page.');
         }
       };
 
       ws.onerror = (error) => {
         console.error('Trading data WebSocket error:', error);
+        console.error('WebSocket URL:', wsUrl);
+        console.error('WebSocket readyState:', ws.readyState);
+        console.error('Protocol:', window.location.protocol);
+        console.error('Host:', window.location.host);
       };
     } catch (error) {
       console.error('Failed to create WebSocket connection:', error);
