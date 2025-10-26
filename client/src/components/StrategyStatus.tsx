@@ -14,6 +14,7 @@ import { format } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
 import { soundNotifications } from "@/lib/soundNotifications";
 import { useStrategyData } from "@/hooks/use-strategy-data";
+import { formatPST, formatDateTimePST, formatTimePST, formatTimeSecondsPST } from "@/lib/utils";
 
 interface Fill {
   id: string;
@@ -205,7 +206,7 @@ function AllTradesView({ formatCurrency, formatPercentage, getPnlColor }: AllTra
             <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Date:</span>
-                <span className="font-mono">{formatInTimeZone(new Date(trade.timestamp), 'UTC', 'MMM dd, HH:mm')} UTC</span>
+                <span className="font-mono">{formatPST(trade.timestamp, 'MMM dd, h:mm a')} PST</span>
               </div>
               
               {trade.hasDetails && trade.quantity && (
@@ -317,7 +318,7 @@ function ExpandableCompletedTrade({ trade, position, formatCurrency, formatPerce
           <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Date:</span>
-              <span className="font-mono">{formatInTimeZone(new Date(trade.timestamp), 'UTC', 'MMM dd, HH:mm')} UTC</span>
+              <span className="font-mono">{formatPST(trade.timestamp, 'MMM dd, h:mm a')} PST</span>
             </div>
 
             <div className="flex justify-between">
@@ -378,7 +379,7 @@ function ExpandableCompletedTrade({ trade, position, formatCurrency, formatPerce
                       </div>
                       <div className="flex items-center gap-2 text-muted-foreground">
                         <span>Fee: {formatCurrency(parseFloat(fill.fee || '0'))}</span>
-                        <span className="text-xs">{format(new Date(fill.filledAt), 'HH:mm:ss')}</span>
+                        <span className="text-xs">{formatTimeSecondsPST(fill.filledAt)}</span>
                       </div>
                     </div>
                   ))}
@@ -398,7 +399,7 @@ function ExpandableCompletedTrade({ trade, position, formatCurrency, formatPerce
                           </div>
                           <div className="flex items-center gap-2 text-muted-foreground">
                             <span>Fee: {formatCurrency(parseFloat(fill.fee || '0'))}</span>
-                            <span className="text-xs">{format(new Date(fill.filledAt), 'HH:mm:ss')}</span>
+                            <span className="text-xs">{formatTimeSecondsPST(fill.filledAt)}</span>
                           </div>
                         </div>
                       ))}
@@ -487,10 +488,10 @@ function CompletedTradeCard({ position, formatCurrency, formatPercentage, getPnl
               Avg Entry: <span className="text-foreground">{formatCurrency(avgEntry)}</span>
             </div>
             <div>
-              Opened: <span className="text-foreground">{format(new Date(position.openedAt), 'MMM d, h:mm a')}</span>
+              Opened: <span className="text-foreground">{formatDateTimePST(position.openedAt)}</span>
             </div>
             <div>
-              Closed: <span className="text-foreground">{position.closedAt ? format(new Date(position.closedAt), 'MMM d, h:mm a') : 'N/A'}</span>
+              Closed: <span className="text-foreground">{position.closedAt ? formatDateTimePST(position.closedAt) : 'N/A'}</span>
             </div>
             {fills && (
               <>
@@ -554,7 +555,7 @@ function CompletedTradeCard({ position, formatCurrency, formatPercentage, getPnl
                             </span>
                           </div>
                           <div className="text-xs text-muted-foreground/70">
-                            {format(new Date(fill.filledAt), 'MMM d, h:mm a')}
+                            {formatDateTimePST(fill.filledAt)}
                           </div>
                         </div>
                       ))}
@@ -580,7 +581,7 @@ function CompletedTradeCard({ position, formatCurrency, formatPercentage, getPnl
                             </span>
                           </div>
                           <div className="text-xs text-muted-foreground/70">
-                            {format(new Date(fill.filledAt), 'MMM d, h:mm a')}
+                            {formatDateTimePST(fill.filledAt)}
                           </div>
                         </div>
                       ))}
@@ -618,7 +619,7 @@ function RealizedPnlEventCard({ event, formatCurrency, getPnlColor }: RealizedPn
 
       <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground">
         <div>
-          Closed: <span className="text-foreground">{format(new Date(event.time), 'MMM d, h:mm a')}</span>
+          Closed: <span className="text-foreground">{formatDateTimePST(event.time)}</span>
         </div>
         <div>
           Trade ID: <span className="text-foreground font-mono text-xs">{event.tradeId}</span>
@@ -1123,7 +1124,7 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
                           </div>
                           <div className="flex items-center gap-2">
                             <span className="text-xs text-muted-foreground/70">
-                              {format(new Date(fill.filledAt), 'MMM d, h:mm:ss a')}
+                              {formatPST(fill.filledAt, 'MMM d, h:mm:ss a')}
                             </span>
                             <span className="text-muted-foreground text-xs">
                               Fee: {formatCurrency(parseFloat(fill.fee || '0'))}
@@ -1149,7 +1150,7 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
                           </div>
                           <div className="flex items-center gap-2">
                             <span className="text-xs text-muted-foreground/70">
-                              {format(new Date(fill.filledAt), 'MMM d, h:mm:ss a')}
+                              {formatPST(fill.filledAt, 'MMM d, h:mm:ss a')}
                             </span>
                             <span className="text-muted-foreground text-xs">
                               Fee: {formatCurrency(parseFloat(fill.fee || '0'))}

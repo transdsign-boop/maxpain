@@ -14,6 +14,8 @@ import { db } from "./db";
 import { desc, eq, sql, gte, lte } from "drizzle-orm";
 import { fetchRealizedPnlEvents, fetchAllAccountTrades } from "./exchange-sync";
 import { fetchPositionPnL } from "./exchange-utils";
+import { rateLimiter } from "./rate-limiter";
+import { getConsoleLogs } from "./console-logger";
 
 // Fixed liquidation window - always 60 seconds regardless of user input
 const LIQUIDATION_WINDOW_SECONDS = 60;
@@ -4896,6 +4898,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Import vwapFilterManager
       const { vwapFilterManager } = await import('./vwap-direction-filter');
 
+      // Get 24hr trading volume for each symbol from exchange
+      const volumeDataMap = new Map<string, { volume24h: number }>();
+      try {
+        const apiKey = process.env.ASTER_API_KEY;
+
+        console.log(`📊 Fetching 24hr volume for ${strategy.selectedAssets.length} symbols`);
+
+        if (!apiKey) {
+          console.error('API key not configured for volume fetch');
+        } else {
+          // Fetch all ticker data in parallel using rate limiter
+          const volumePromises = strategy.selectedAssets.map(async (symbol) => {
+            try {
+              const ticker = await rateLimiter.enqueue(
+                `ticker24hr-${symbol}`,
+                async () => {
+                  const response = await fetch(
+                    `https://fapi.asterdex.com/fapi/v1/ticker/24hr?symbol=${symbol}`,
+                    {
+                      headers: {
+                        'X-MBX-APIKEY': apiKey
+                      }
+                    }
+                  );
+
+                  if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                  }
+
+                  return response.json();
+                }
+              );
+
+              // Extract quote volume (USDT volume)
+              const quoteVolume = parseFloat(ticker.quoteVolume || ticker.volume || '0');
+              console.log(`  ${symbol}: $${(quoteVolume / 1e6).toFixed(2)}M`);
+              return { symbol, volume24h: quoteVolume };
+            } catch (error) {
+              console.error(`  ❌ Error fetching 24hr ticker for ${symbol}:`, error);
+              return { symbol, volume24h: 0 };
+            }
+          });
+
+          const volumeResults = await Promise.all(volumePromises);
+          volumeResults.forEach(({ symbol, volume24h }) => {
+            volumeDataMap.set(symbol, { volume24h });
+          });
+          console.log(`✅ Fetched 24hr volume for ${volumeResults.length} symbols`);
+        }
+      } catch (error) {
+        console.error('❌ Error fetching 24hr ticker data:', error);
+      }
+
       // Get VWAP status for all symbols in the strategy
       const symbolStatuses = strategy.selectedAssets.map(symbol => {
         const filter = vwapFilterManager.getFilter(symbol, {
@@ -4907,6 +4962,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         const status = filter.getStatus();
         const stats = filter.getStatistics();
+        const volumeData = volumeDataMap.get(symbol) || { volume24h: 0 };
 
         return {
           symbol,
@@ -4920,6 +4976,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           distanceFromVWAP: status.distanceFromVWAP,
           nextResetTime: status.nextResetTime,
           timeUntilReset: status.timeUntilReset,
+          volume24h: volumeData.volume24h,
           statistics: {
             directionChanges: stats.directionChanges,
             signalsBlocked: stats.signalsBlocked,
@@ -7453,6 +7510,205 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error fetching trade entry errors:', error);
       res.status(500).json({ error: 'Failed to fetch trade entry errors' });
+    }
+  });
+
+  // Get console logs (warnings, errors, etc.)
+  app.get('/api/console-logs', async (req, res) => {
+    try {
+      const { level, search, startTime, endTime, limit } = req.query;
+
+      const filters: any = {};
+
+      if (level && (level === 'log' || level === 'warn' || level === 'error')) {
+        filters.level = level as 'log' | 'warn' | 'error';
+      }
+
+      if (search) {
+        filters.search = search as string;
+      }
+
+      if (startTime) {
+        const timestamp = parseInt(startTime as string);
+        if (!isNaN(timestamp)) {
+          filters.startTime = new Date(timestamp);
+        }
+      }
+
+      if (endTime) {
+        const timestamp = parseInt(endTime as string);
+        if (!isNaN(timestamp)) {
+          filters.endTime = new Date(timestamp);
+        }
+      }
+
+      if (limit) {
+        const parsedLimit = parseInt(limit as string);
+        if (!isNaN(parsedLimit) && parsedLimit > 0) {
+          filters.limit = parsedLimit;
+        }
+      } else {
+        filters.limit = 200; // Default to last 200 logs
+      }
+
+      const logs = getConsoleLogs(filters);
+      res.json(logs);
+    } catch (error) {
+      console.error('Error fetching console logs:', error);
+      res.status(500).json({ error: 'Failed to fetch console logs' });
+    }
+  });
+
+  // Get rate limiter cache statistics
+  app.get('/api/rate-limiter/stats', async (req, res) => {
+    try {
+      const stats = rateLimiter.getCacheStats();
+      res.json(stats);
+    } catch (error) {
+      console.error('Error fetching rate limiter stats:', error);
+      res.status(500).json({ error: 'Failed to fetch rate limiter stats' });
+    }
+  });
+
+  // Get trading hotspots analysis (when does the bot trade most?)
+  app.get('/api/trading-hotspots/:strategyId', async (req, res) => {
+    try {
+      // Use SAME data source as P&L chart - fetch directly from exchange API
+      const { fetchRealizedPnlEvents } = await import('./exchange-sync');
+      const startTime = 1760635140000; // Same cutoff as P&L chart: Oct 16, 2025 at 17:19:00 UTC
+
+      const pnlResult = await fetchRealizedPnlEvents({ startTime });
+
+      if (!pnlResult.success || !pnlResult.events || pnlResult.events.length === 0) {
+        return res.json({
+          hourlyDistribution: Array.from({ length: 24 }, (_, i) => ({ hour: i, count: 0 })),
+          dailyDistribution: Array.from({ length: 7 }, (_, i) => ({ day: i, count: 0 })),
+          heatmapData: [],
+          totalTrades: 0,
+          peakHour: null,
+          peakDay: null,
+        });
+      }
+
+      // Sort by timestamp (oldest first)
+      const sortedEvents = pnlResult.events.sort((a: any, b: any) => a.time - b.time);
+
+      // GROUP EVENTS INTO POSITIONS (same logic as P&L chart)
+      // Events with same symbol within 10 seconds = same position (multiple DCA layers closing)
+      const consolidatedPositions: any[] = [];
+      let currentPosition: any = null;
+
+      for (const event of sortedEvents) {
+        const shouldStartNewPosition = !currentPosition ||
+          currentPosition.symbol !== event.symbol ||
+          event.time - currentPosition.time > 10000; // 10 seconds
+
+        if (shouldStartNewPosition) {
+          if (currentPosition) {
+            consolidatedPositions.push(currentPosition);
+          }
+          currentPosition = {
+            symbol: event.symbol,
+            time: event.time, // Use timestamp of first event in the position
+          };
+        } else {
+          // Continue grouping into current position (don't update timestamp)
+        }
+      }
+
+      // Push the last position
+      if (currentPosition) {
+        consolidatedPositions.push(currentPosition);
+      }
+
+      if (consolidatedPositions.length === 0) {
+        return res.json({
+          hourlyDistribution: Array.from({ length: 24 }, (_, i) => ({ hour: i, count: 0 })),
+          dailyDistribution: Array.from({ length: 7 }, (_, i) => ({ day: i, count: 0 })),
+          heatmapData: [],
+          totalTrades: 0,
+          peakHour: null,
+          peakDay: null,
+        });
+      }
+
+      // Analyze consolidated positions by hour and day
+      const hourCounts = new Map<number, number>();
+      const dayCounts = new Map<number, number>();
+      const heatmap = new Map<string, number>(); // "day-hour" -> count
+
+      consolidatedPositions.forEach(position => {
+        // Convert to Pacific Time (same as P&L chart display)
+        const utcDate = new Date(position.time);
+        const pacificDateStr = utcDate.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' });
+        const pacificDate = new Date(pacificDateStr);
+
+        const hour = pacificDate.getHours(); // 0-23 in Pacific Time
+        const day = pacificDate.getDay(); // 0-6 (Sunday-Saturday) in Pacific Time
+
+        // Hour distribution
+        hourCounts.set(hour, (hourCounts.get(hour) || 0) + 1);
+
+        // Day distribution
+        dayCounts.set(day, (dayCounts.get(day) || 0) + 1);
+
+        // Heatmap data (day x hour grid)
+        const key = `${day}-${hour}`;
+        heatmap.set(key, (heatmap.get(key) || 0) + 1);
+      });
+
+      // Convert to arrays for frontend
+      const hourlyDistribution = Array.from({ length: 24 }, (_, hour) => ({
+        hour,
+        count: hourCounts.get(hour) || 0,
+      }));
+
+      const dailyDistribution = Array.from({ length: 7 }, (_, day) => ({
+        day,
+        dayName: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][day],
+        count: dayCounts.get(day) || 0,
+      }));
+
+      // Heatmap: array of { day, hour, count }
+      const heatmapData = [];
+      for (let day = 0; day < 7; day++) {
+        for (let hour = 0; hour < 24; hour++) {
+          const key = `${day}-${hour}`;
+          const count = heatmap.get(key) || 0;
+          if (count > 0) {
+            heatmapData.push({
+              day,
+              hour,
+              count,
+              dayName: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][day],
+            });
+          }
+        }
+      }
+
+      // Find peak times
+      const peakHourEntry = [...hourCounts.entries()].reduce((max, curr) =>
+        curr[1] > max[1] ? curr : max, [0, 0]
+      );
+      const peakDayEntry = [...dayCounts.entries()].reduce((max, curr) =>
+        curr[1] > max[1] ? curr : max, [0, 0]
+      );
+
+      res.json({
+        hourlyDistribution,
+        dailyDistribution,
+        heatmapData,
+        totalTrades: consolidatedPositions.length,
+        peakHour: peakHourEntry[1] > 0 ? { hour: peakHourEntry[0], count: peakHourEntry[1] } : null,
+        peakDay: peakDayEntry[1] > 0 ? {
+          day: peakDayEntry[0],
+          dayName: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][peakDayEntry[0]],
+          count: peakDayEntry[1]
+        } : null,
+      });
+    } catch (error) {
+      console.error('Error fetching trading hotspots:', error);
+      res.status(500).json({ error: 'Failed to fetch trading hotspots' });
     }
   });
 

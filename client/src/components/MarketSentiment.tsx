@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
+import { formatPST } from "@/lib/utils";
 
 interface FearGreedData {
   value: string;
@@ -238,7 +239,7 @@ const FearGreedMetric = memo(({ data, isLoading, error, showDetails }: {
 
           {fearGreedData && (
             <div className="text-xs text-muted-foreground text-center pt-1.5 border-t">
-              {format(new Date(parseInt(fearGreedData.timestamp) * 1000), 'MMM d, h:mm a')}
+              {formatPST(parseInt(fearGreedData.timestamp) * 1000, 'MMM d, h:mm a')}
             </div>
           )}
         </>
@@ -561,27 +562,29 @@ export default function MarketSentiment() {
           </div>
         </CardHeader>
 
-        {/* News Ticker at Bottom */}
-        {newsQuery.data?.articles && newsQuery.data.articles.length > 0 ? (
-          <NewsTicker 
-            articles={newsQuery.data.articles}
-            category={newsCategory}
-            onCategoryChange={(value) => setNewsCategory(value as any)}
-          />
-        ) : newsQuery.isLoading ? (
-          <div className="border-t py-2 text-center text-xs text-muted-foreground" data-testid="status-news-loading">
-            Loading news...
-          </div>
-        ) : (
-          <div className="border-t py-2 text-center" data-testid="status-news-error">
-            <AlertTriangle className="h-4 w-4 mx-auto text-muted-foreground mb-0.5" />
-            <div className="text-xs text-muted-foreground">
-              News feed unavailable
+        {/* News Ticker at Bottom - only show when details are expanded */}
+        {showDetails && (
+          newsQuery.data?.articles && newsQuery.data.articles.length > 0 ? (
+            <NewsTicker
+              articles={newsQuery.data.articles}
+              category={newsCategory}
+              onCategoryChange={(value) => setNewsCategory(value as any)}
+            />
+          ) : newsQuery.isLoading ? (
+            <div className="border-t py-2 text-center text-xs text-muted-foreground" data-testid="status-news-loading">
+              Loading news...
             </div>
-            <div className="text-xs text-muted-foreground mt-0.5">
-              Configure API keys: ALPHA_VANTAGE_API_KEY, CRYPTO_NEWS_API_KEY, TRUTH_SOCIAL_API_KEY
+          ) : (
+            <div className="border-t py-2 text-center" data-testid="status-news-error">
+              <AlertTriangle className="h-4 w-4 mx-auto text-muted-foreground mb-0.5" />
+              <div className="text-xs text-muted-foreground">
+                News feed unavailable
+              </div>
+              <div className="text-xs text-muted-foreground mt-0.5">
+                Configure API keys: ALPHA_VANTAGE_API_KEY, CRYPTO_NEWS_API_KEY, TRUTH_SOCIAL_API_KEY
+              </div>
             </div>
-          </div>
+          )
         )}
       </Card>
     </div>

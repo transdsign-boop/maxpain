@@ -7,6 +7,8 @@
  * 3. Implementing exponential backoff on rate limit errors
  */
 
+import { wsBroadcaster } from './websocket-broadcaster';
+
 interface CacheEntry {
   data: any;
   timestamp: number;
@@ -46,8 +48,16 @@ class RateLimiter {
     // Check if we're in backoff period
     if (this.backoffUntil > Date.now()) {
       const waitMs = this.backoffUntil - Date.now();
-      console.log(`⏳ Rate limited - waiting ${Math.ceil(waitMs / 1000)}s before retry`);
-      throw new Error(`Rate limited - retry after ${Math.ceil(waitMs / 1000)}s`);
+      const waitSec = Math.ceil(waitMs / 1000);
+      console.log(`⏳ Rate limited - waiting ${waitSec}s before retry`);
+
+      // Broadcast warning to connected clients
+      wsBroadcaster.broadcastApiWarning(`Rate limited - ${waitSec}s backoff remaining`, {
+        backoffUntil: this.backoffUntil,
+        remainingSeconds: waitSec
+      });
+
+      throw new Error(`Rate limited - retry after ${waitSec}s`);
     }
 
     return new Promise<T>((resolve, reject) => {
@@ -71,6 +81,12 @@ class RateLimiter {
               console.error('⚠️ Rate limit detected - entering backoff period');
               // Back off for 60 seconds
               this.backoffUntil = Date.now() + 60000;
+
+              // Broadcast rate limit error to connected clients
+              wsBroadcaster.broadcastApiError('Rate limit detected - entering 60s backoff', {
+                backoffUntil: this.backoffUntil,
+                error: error.message
+              });
             }
             throw error;
           }
