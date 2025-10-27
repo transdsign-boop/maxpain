@@ -795,9 +795,13 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
 
   const isLong = position.side === 'long';
 
+  // Calculate full SL loss and TP profit amounts
+  const fullSlLoss = -1 * notionalValue * (actualSlPercent / 100);
+  const fullTpProfit = notionalValue * (actualTpPercent / 100);
+
   return (
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
-      <div 
+      <div
         className={`relative rounded-2xl overflow-hidden ring-1 ring-border shadow-lg transition-all duration-300 ${isFlashing ? 'animate-layer-flash' : ''}`}
         data-testid={`position-${position.symbol}`}
       >
@@ -871,18 +875,36 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
                 </div>
 
                 {/* Center: P&L and Close button */}
-                <div className="flex flex-col items-center justify-center flex-1 gap-1.5">
-                  <div className="flex flex-col items-center">
-                    <div className={`text-2xl font-black font-mono leading-none ${getPnlColor(unrealizedPnlDollar)}`}>
-                      {unrealizedPnlDollar >= 0 ? '+' : ''}{formatCurrency(unrealizedPnlDollar)}
+                <div className="flex flex-col items-center justify-center flex-1 gap-1 min-w-0 px-1">
+                  {/* Three P&L values stacked vertically for better visibility */}
+                  <div className="w-full space-y-0.5">
+                    {/* Current P&L - Most important, show first */}
+                    <div className="flex flex-col items-center">
+                      <div className={`text-xl font-black font-mono leading-none ${getPnlColor(unrealizedPnlDollar)}`}>
+                        {unrealizedPnlDollar >= 0 ? '+' : ''}${Math.abs(unrealizedPnlDollar).toFixed(2)}
+                      </div>
+                      <div className={`text-[10px] font-bold font-mono ${getPnlColor(unrealizedPnlPercent)}`}>
+                        {unrealizedPnlPercent >= 0 ? '+' : ''}{unrealizedPnlPercent.toFixed(2)}%
+                      </div>
                     </div>
-                    <div className={`text-sm font-bold font-mono ${getPnlColor(unrealizedPnlPercent)}`}>
-                      {unrealizedPnlPercent >= 0 ? '+' : ''}{unrealizedPnlPercent.toFixed(2)}%
-                    </div>
-                    <div className="text-[10px] text-muted-foreground font-mono mt-0.5">
-                      {formatCurrency(notionalValue)}
+
+                    {/* SL and TP in one row */}
+                    <div className="flex items-center justify-center gap-3 text-[10px] font-mono">
+                      <div className="flex items-center gap-1">
+                        <span className="text-muted-foreground">SL:</span>
+                        <span className="font-bold text-red-600 dark:text-red-500">
+                          ${Math.abs(fullSlLoss).toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-muted-foreground">TP:</span>
+                        <span className="font-bold text-lime-600 dark:text-lime-400">
+                          ${fullTpProfit.toFixed(2)}
+                        </span>
+                      </div>
                     </div>
                   </div>
+
                   <button
                     className="rounded flex items-center justify-center px-2 py-0.5 border border-destructive bg-transparent text-destructive text-[10px] font-semibold transition-all hover:brightness-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                     data-testid={`button-close-position-${position.symbol}`}
@@ -1010,15 +1032,34 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
 
               {/* Center: P&L and Close button */}
               <div className="flex flex-col items-center justify-center flex-1 gap-1.5">
-                <div className="flex flex-col items-center">
-                  <div className={`text-2xl font-black font-mono leading-none ${getPnlColor(unrealizedPnlDollar)}`}>
-                    {unrealizedPnlDollar >= 0 ? '+' : ''}{formatCurrency(unrealizedPnlDollar)}
+                <div className="flex items-center gap-3">
+                  {/* Left: SL Loss */}
+                  <div className="flex flex-col items-center">
+                    <div className="text-[9px] text-muted-foreground">SL</div>
+                    <div className="text-lg font-bold font-mono text-red-600 dark:text-red-500">
+                      -${Math.abs(fullSlLoss).toFixed(2)}
+                    </div>
                   </div>
-                  <div className={`text-sm font-bold font-mono ${getPnlColor(unrealizedPnlPercent)}`}>
-                    {unrealizedPnlPercent >= 0 ? '+' : ''}{unrealizedPnlPercent.toFixed(2)}%
+
+                  {/* Center: Current P&L */}
+                  <div className="flex flex-col items-center">
+                    <div className={`text-2xl font-black font-mono leading-none ${getPnlColor(unrealizedPnlDollar)}`}>
+                      {unrealizedPnlDollar >= 0 ? '+' : ''}${Math.abs(unrealizedPnlDollar).toFixed(2)}
+                    </div>
+                    <div className={`text-sm font-bold font-mono ${getPnlColor(unrealizedPnlPercent)}`}>
+                      {unrealizedPnlPercent >= 0 ? '+' : ''}{unrealizedPnlPercent.toFixed(2)}%
+                    </div>
+                    <div className="text-[10px] text-muted-foreground font-mono mt-0.5">
+                      ${notionalValue.toFixed(2)}
+                    </div>
                   </div>
-                  <div className="text-[10px] text-muted-foreground font-mono mt-0.5">
-                    {formatCurrency(notionalValue)}
+
+                  {/* Right: TP Profit */}
+                  <div className="flex flex-col items-center">
+                    <div className="text-[9px] text-muted-foreground">TP</div>
+                    <div className="text-lg font-bold font-mono text-lime-600 dark:text-lime-400">
+                      +${fullTpProfit.toFixed(2)}
+                    </div>
                   </div>
                 </div>
                 <button

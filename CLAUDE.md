@@ -31,6 +31,7 @@ MPI™ Liquidation Hunter Bot - A sophisticated algorithmic trading system for c
 npm run dev
 
 # Restart development server (kills port 5000 processes and restarts)
+# Uses scripts/restart-server.sh to ensure clean shutdown
 npm run restart
 
 # Type checking (validate TypeScript without building)
@@ -98,8 +99,8 @@ This project does not have a test suite configured. All testing is done manually
 ├── server/              # Node.js backend services
 │   ├── exchanges/       # Exchange adapters (aster-stream.ts, registry.ts)
 │   ├── scripts/         # Maintenance/analysis scripts
-│   ├── routes.ts        # API endpoint definitions (279KB - contains all REST endpoints)
-│   ├── strategy-engine.ts        # Core trading logic coordinator (221KB - main engine)
+│   ├── routes.ts        # API endpoint definitions (325KB - contains all REST endpoints)
+│   ├── strategy-engine.ts        # Core trading logic coordinator (235KB - main engine)
 │   ├── dca-calculator.ts         # DCA mathematical computations
 │   ├── dca-sql.ts                # Raw SQL queries for DCA params (bypasses ORM caching)
 │   ├── cascade-detector-service.ts # Liquidation cascade analysis
@@ -112,6 +113,10 @@ This project does not have a test suite configured. All testing is done manually
 │   ├── rate-limiter.ts             # Request throttling and caching
 │   ├── storage.ts                  # Database access layer
 │   ├── telegram-service.ts         # Trade notifications
+│   ├── vwap-direction-filter.ts    # VWAP-based trade direction filtering
+│   ├── vwap-price-feed.ts          # Real-time VWAP calculations
+│   ├── websocket-broadcaster.ts    # WebSocket message broadcasting
+│   ├── console-logger.ts           # Frontend console log streaming
 │   └── index.ts                    # Express server entry point
 ├── shared/              # Shared TypeScript definitions
 │   └── schema.ts        # Drizzle ORM schema + Zod validators
@@ -343,6 +348,7 @@ Required in `.env` (see `.env.example`):
 
 Optional:
 - `PORT`: Server port (default: 5000)
+- `ANTHROPIC_API_KEY`: For embedded Claude chat assistant (if using AI features)
 - `TELEGRAM_BOT_TOKEN`: For trade notifications
 - `TELEGRAM_CHAT_ID`: Telegram chat ID for notifications
 

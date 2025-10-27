@@ -144,6 +144,25 @@ class RateLimiter {
   }
 
   /**
+   * Rate-limited fetch wrapper
+   * Wraps native fetch with rate limiting and caching
+   */
+  async fetch(url: string, options?: RequestInit): Promise<Response> {
+    const cacheKey = options?.method === 'GET' ? url : null;
+
+    return this.enqueue(cacheKey, async () => {
+      const response = await fetch(url, options);
+
+      // Check for rate limiting
+      if (response.status === 418) {
+        throw new Error('HTTP 418 - Rate limit exceeded');
+      }
+
+      return response;
+    });
+  }
+
+  /**
    * Clear cache (useful for testing or forcing refresh)
    */
   clearCache() {

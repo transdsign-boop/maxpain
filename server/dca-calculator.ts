@@ -672,7 +672,7 @@ export async function recalculateReservedRiskForSession(
       // Calculate current ATR for the symbol
       const atrPercent = await calculateATRPercent(
         position.symbol,
-        parseFloat(strategy.atrPeriod),
+        10, // Use default ATR period of 10
         apiKey,
         secretKey
       );

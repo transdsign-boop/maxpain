@@ -577,9 +577,9 @@ export default function AccountLedger() {
             {entries.map((entry) => (
               <tr key={entry.id} className="border-b last:border-0 hover:bg-muted/50">
                 <td className="py-3 px-3 text-xs">
-                  <div>{formatDatePST(entry.timestamp)}</div>
+                  <div>{formatDatePST(new Date(entry.timestamp))}</div>
                   <div className="text-muted-foreground">
-                    {formatTimePST(entry.timestamp)}
+                    {formatTimePST(new Date(entry.timestamp))}
                   </div>
                 </td>
                 <td className="py-3 px-3">

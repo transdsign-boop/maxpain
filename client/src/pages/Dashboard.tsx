@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import ConnectionStatus from "@/components/ConnectionStatus";
-import LiveLiquidationsSidebar from "@/components/LiveLiquidationsSidebar";
 import MarketSentiment from "@/components/MarketSentiment";
 import PerformanceOverview from "@/components/PerformanceOverview";
 import TradingStrategyDialog from "@/components/TradingStrategyDialog";
@@ -18,7 +17,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Settings2, Pause, Play, AlertTriangle, BarChart3, Menu, BookOpen, AlertCircle, Send } from "lucide-react";
+import { Settings2, Pause, Play, AlertTriangle, Menu, BookOpen, AlertCircle, Send } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -36,13 +35,6 @@ interface Liquidation {
 
 export default function Dashboard() {
   const [isConnected, setIsConnected] = useState(true);
-  const [timeRange, setTimeRange] = useState("1h");
-  const [sideFilter, setSideFilter] = useState<"all" | "long" | "short">("all");
-  const [minValue, setMinValue] = useState("0");
-  const [selectedAssets, setSelectedAssets] = useState<string[]>([]);
-  const [settingsLoaded, setSettingsLoaded] = useState(false);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   
   // Trading strategy dialog state
   const [isStrategyDialogOpen, setIsStrategyDialogOpen] = useState(false);
@@ -211,46 +203,6 @@ export default function Dashboard() {
     },
   });
 
-  // Save settings to database
-  const saveSettings = async () => {
-    try {
-      await fetch('/api/settings', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          selectedAssets,
-          sideFilter,
-          minValue,
-          timeRange,
-        }),
-      });
-    } catch (error) {
-      console.error('Failed to save settings:', error);
-    }
-  };
-
-  // Load settings from database
-  const loadSettings = async () => {
-    try {
-      const response = await fetch('/api/settings');
-      if (response.ok) {
-        const settings = await response.json();
-        if (settings) {
-          setSelectedAssets(settings.selectedAssets || []);
-          setSideFilter(settings.sideFilter || "all");
-          setMinValue(settings.minValue || "0");
-          setTimeRange(settings.timeRange || "1h");
-        }
-      }
-    } catch (error) {
-      console.error('Failed to load settings:', error);
-    } finally {
-      // Mark settings as loaded to enable saving
-      setSettingsLoaded(true);
-    }
-  };
 
   // Real-time WebSocket connection
   useEffect(() => {
@@ -395,7 +347,6 @@ export default function Dashboard() {
 
     loadInitialData();
     connectWebSocket();
-    loadSettings();
 
     return () => {
       isMounted = false;
@@ -412,53 +363,6 @@ export default function Dashboard() {
       }
     };
   }, []);
-
-  // Save settings when they change (only after initial load)
-  useEffect(() => {
-    if (settingsLoaded) {
-      saveSettings();
-    }
-  }, [selectedAssets, sideFilter, minValue, timeRange, settingsLoaded]);
-
-  // Filter liquidations based on current filters
-  const filteredLiquidations = liquidations.filter(liq => {
-    // Only show liquidations for assets that are specifically selected to be watched
-    if (!selectedAssets.includes(liq.symbol)) return false;
-    if (sideFilter !== "all" && liq.side !== sideFilter) return false;
-    if (parseFloat(liq.value) < parseFloat(minValue)) return false;
-    
-    // Apply time range filter
-    if (timeRange) {
-      const now = new Date();
-      const liquidationTime = new Date(liq.timestamp);
-      const timeDiffMs = now.getTime() - liquidationTime.getTime();
-      
-      let maxTimeMs: number;
-      switch (timeRange) {
-        case "1m": maxTimeMs = 1 * 60 * 1000; break;
-        case "5m": maxTimeMs = 5 * 60 * 1000; break;
-        case "15m": maxTimeMs = 15 * 60 * 1000; break;
-        case "1h": maxTimeMs = 60 * 60 * 1000; break;
-        case "4h": maxTimeMs = 4 * 60 * 60 * 1000; break;
-        case "1d": maxTimeMs = 24 * 60 * 60 * 1000; break;
-        default: maxTimeMs = 60 * 60 * 1000; // default 1 hour
-      }
-      
-      if (timeDiffMs > maxTimeMs) return false;
-    }
-    
-    return true;
-  });
-
-  // Calculate stats
-  const totalVolume = filteredLiquidations.reduce((sum, liq) => sum + parseFloat(liq.value), 0).toString();
-  const longLiquidations = filteredLiquidations.filter(liq => liq.side === "long").length;
-  const shortLiquidations = filteredLiquidations.filter(liq => liq.side === "short").length;
-  
-  const largestLiquidation = filteredLiquidations.length > 0 ? 
-    filteredLiquidations.reduce((largest, current) => 
-      parseFloat(current.value) > parseFloat(largest.value) ? current : largest
-    ) : null;
 
   const handleRefresh = async () => {
     console.log("Refreshing data...");
@@ -695,10 +599,8 @@ export default function Dashboard() {
       </header>
 
       {/* Main Content with Trading Controls */}
-      <main 
-        className={`p-3 md:p-6 space-y-4 md:space-y-6 transition-all duration-300 ${
-          isSidebarCollapsed ? 'lg:mr-12' : 'lg:mr-80'
-        }`}
+      <main
+        className="p-3 md:p-6 space-y-4 md:space-y-6"
         style={{ paddingTop: '56px' }}
       >
         {/* Cascade Risk Indicator */}
@@ -708,7 +610,7 @@ export default function Dashboard() {
         <MarketSentiment />
 
         {/* VWAP Direction Filter Status */}
-        {activeStrategy && <VWAPStatusDisplay strategyId={activeStrategy.id} />}
+        {activeStrategy && <VWAPStatusDisplay strategyId={activeStrategy.id} liquidations={liquidations} />}
 
         {/* Performance Overview */}
         <PerformanceOverview />
@@ -719,45 +621,6 @@ export default function Dashboard() {
         {/* Active Positions */}
         <StrategyStatus />
       </main>
-
-      {/* Live Liquidations Sidebar - Desktop only */}
-      <div className="hidden lg:block">
-        <LiveLiquidationsSidebar 
-          liquidations={liquidations}
-          isConnected={isConnected}
-          selectedAssets={selectedAssets}
-          isCollapsed={isSidebarCollapsed}
-          onToggleCollapse={setIsSidebarCollapsed}
-        />
-      </div>
-
-      {/* Floating Action Button - Mobile/Tablet only */}
-      <button
-        onClick={() => setIsMobileSidebarOpen(true)}
-        className="lg:hidden fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-lg hover:brightness-110 active:scale-95 transition-all flex items-center justify-center"
-        data-testid="button-fab-liquidations"
-        aria-label="View liquidations"
-      >
-        <BarChart3 className="h-6 w-6" />
-      </button>
-
-      {/* Mobile Liquidations Sheet */}
-      <Sheet open={isMobileSidebarOpen} onOpenChange={setIsMobileSidebarOpen}>
-        <SheetContent side="right" className="w-full sm:w-96 p-0">
-          <SheetHeader className="px-4 pt-4 pb-2">
-            <SheetTitle>Live Liquidations</SheetTitle>
-          </SheetHeader>
-          <div className="h-[calc(100vh-80px)]">
-            <LiveLiquidationsSidebar 
-              liquidations={liquidations}
-              isConnected={isConnected}
-              selectedAssets={selectedAssets}
-              isCollapsed={false}
-              onToggleCollapse={() => {}}
-            />
-          </div>
-        </SheetContent>
-      </Sheet>
 
       {/* Trading Strategy Dialog */}
       <TradingStrategyDialog
