@@ -121,7 +121,7 @@ const MarketMetric = memo(({ data, isLoading, error, showDetails }: {
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-1.5 md:space-y-2">
       {/* Sentiment Indicator */}
       <div className="text-center">
         <div className={`text-2xl font-mono font-bold ${
@@ -131,9 +131,9 @@ const MarketMetric = memo(({ data, isLoading, error, showDetails }: {
             ? 'text-[rgb(251,146,60)]'
             : 'text-muted-foreground'
         }`} data-testid="icon-market-sentiment">
-          {data.sentiment === 'bullish' && <TrendingUp className="h-6 w-6 mx-auto" />}
-          {data.sentiment === 'bearish' && <TrendingDown className="h-6 w-6 mx-auto" />}
-          {data.sentiment === 'neutral' && <Minus className="h-6 w-6 mx-auto" />}
+          {data.sentiment === 'bullish' && <TrendingUp className="h-5 w-5 md:h-6 md:w-6 mx-auto" />}
+          {data.sentiment === 'bearish' && <TrendingDown className="h-5 w-5 md:h-6 md:w-6 mx-auto" />}
+          {data.sentiment === 'neutral' && <Minus className="h-5 w-5 md:h-6 md:w-6 mx-auto" />}
         </div>
         <div className="text-xs font-medium mt-0.5 capitalize" data-testid="text-market-sentiment">
           {data.sentiment}
@@ -203,10 +203,10 @@ const FearGreedMetric = memo(({ data, isLoading, error, showDetails }: {
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-1.5 md:space-y-2">
       <div className="text-center">
         <div
-          className={`text-3xl font-mono font-bold ${getFearGreedColor(fearGreedValue)}`}
+          className={`text-2xl md:text-3xl font-mono font-bold ${getFearGreedColor(fearGreedValue)}`}
           data-testid="value-fear-greed"
         >
           {fearGreedValue ?? '--'}
@@ -273,10 +273,10 @@ const SocialMetric = memo(({ data, isLoading, error, showDetails }: {
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-1.5 md:space-y-2">
       <div className="text-center">
         <div
-          className={`text-3xl font-mono font-bold ${
+          className={`text-2xl md:text-3xl font-mono font-bold ${
             (data?.score || 0) > 60
               ? 'text-[rgb(190,242,100)]'
               : (data?.score || 0) < 40
@@ -336,36 +336,37 @@ const NewsTicker = memo(({ articles, category, onCategoryChange }: {
   return (
     <div className="border-t bg-muted/30">
       {/* Ticker Header */}
-      <div className="flex items-center justify-between px-3 py-1.5 border-b">
-        <div className="flex items-center gap-1.5">
+      <div className="flex items-center justify-between px-2 md:px-3 py-1 md:py-1.5 border-b">
+        <div className="flex items-center gap-1 md:gap-1.5">
           <Newspaper className="h-3 w-3 text-muted-foreground" />
           <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-            Market News
+            <span className="hidden sm:inline">Market News</span>
+            <span className="sm:hidden">News</span>
           </span>
         </div>
-        <ToggleGroup 
-          type="single" 
-          value={category} 
+        <ToggleGroup
+          type="single"
+          value={category}
           onValueChange={(value) => value && onCategoryChange(value)}
           className="gap-0.5"
         >
-          <ToggleGroupItem value="all" className="h-5 px-2 text-xs" data-testid="toggle-news-all">
+          <ToggleGroupItem value="all" className="h-5 px-1.5 md:px-2 text-xs" data-testid="toggle-news-all">
             All
           </ToggleGroupItem>
-          <ToggleGroupItem value="economic" className="h-5 px-2 text-xs" data-testid="toggle-news-market">
+          <ToggleGroupItem value="economic" className="h-5 px-1.5 md:px-2 text-xs hidden sm:inline-flex" data-testid="toggle-news-market">
             Market
           </ToggleGroupItem>
-          <ToggleGroupItem value="crypto" className="h-5 px-2 text-xs" data-testid="toggle-news-crypto">
+          <ToggleGroupItem value="crypto" className="h-5 px-1.5 md:px-2 text-xs" data-testid="toggle-news-crypto">
             Crypto
           </ToggleGroupItem>
-          <ToggleGroupItem value="political" className="h-5 px-2 text-xs" data-testid="toggle-news-political">
+          <ToggleGroupItem value="political" className="h-5 px-1.5 md:px-2 text-xs hidden sm:inline-flex" data-testid="toggle-news-political">
             Political
           </ToggleGroupItem>
         </ToggleGroup>
       </div>
 
       {/* Scrolling Ticker */}
-      <div className="relative overflow-hidden h-8">
+      <div className="relative overflow-hidden h-7 md:h-8">
         <div className="ticker-wrapper absolute inset-0 flex items-center">
           <div className="ticker-content flex gap-8 whitespace-nowrap">
             {duplicatedArticles.map((article, i) => {
@@ -486,28 +487,28 @@ export default function MarketSentiment() {
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3 md:space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-foreground">Market Sentiment</h2>
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className="text-xs" data-testid="badge-live-data">
+        <h2 className="text-base md:text-lg font-semibold text-foreground">Market Sentiment</h2>
+        <div className="flex items-center gap-1.5 md:gap-2">
+          <Badge variant="outline" className="text-xs hidden md:inline-flex" data-testid="badge-live-data">
             Live Data
           </Badge>
           <Button
             variant="ghost"
             size="sm"
             onClick={() => setShowDetails(!showDetails)}
-            className="gap-1"
+            className="gap-1 h-7 md:h-9 px-2 md:px-3"
           >
             {showDetails ? (
               <>
-                <ChevronUp className="h-4 w-4" />
-                Hide Details
+                <ChevronUp className="h-3.5 w-3.5 md:h-4 md:w-4" />
+                <span className="hidden md:inline">Hide Details</span>
               </>
             ) : (
               <>
-                <ChevronDown className="h-4 w-4" />
-                Show Details
+                <ChevronDown className="h-3.5 w-3.5 md:h-4 md:w-4" />
+                <span className="hidden md:inline">Show Details</span>
               </>
             )}
           </Button>
@@ -516,13 +517,14 @@ export default function MarketSentiment() {
 
       {/* Consolidated Card */}
       <Card data-testid="card-market-sentiment">
-        <CardHeader className="pb-2">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <CardHeader className="p-3 md:p-6 pb-2">
+          <div className="grid grid-cols-3 gap-2 md:gap-3">
             {/* Market Sentiment Column */}
             <div>
-              <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 mb-2">
-                <Activity className="h-3.5 w-3.5" />
-                Market Sentiment
+              <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1 md:gap-1.5 mb-2">
+                <Activity className="h-3 w-3 md:h-3.5 md:w-3.5" />
+                <span className="hidden sm:inline">Market Sentiment</span>
+                <span className="sm:hidden">Market</span>
               </CardTitle>
               <MarketMetric
                 data={marketSentimentQuery.data}
@@ -533,10 +535,11 @@ export default function MarketSentiment() {
             </div>
 
             {/* Fear & Greed Column */}
-            <div className="md:border-l md:pl-3">
-              <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 mb-2">
-                <TrendingUpIcon className="h-3.5 w-3.5" />
-                Fear & Greed
+            <div className="border-l pl-2 md:pl-3">
+              <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1 md:gap-1.5 mb-2">
+                <TrendingUpIcon className="h-3 w-3 md:h-3.5 md:w-3.5" />
+                <span className="hidden sm:inline">Fear & Greed</span>
+                <span className="sm:hidden">F&G</span>
               </CardTitle>
               <FearGreedMetric
                 data={fearGreedQuery.data}
@@ -547,10 +550,11 @@ export default function MarketSentiment() {
             </div>
 
             {/* Social Sentiment Column */}
-            <div className="md:border-l md:pl-3">
-              <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 mb-2">
-                <Activity className="h-3.5 w-3.5" />
-                Social Sentiment
+            <div className="border-l pl-2 md:pl-3">
+              <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1 md:gap-1.5 mb-2">
+                <Activity className="h-3 w-3 md:h-3.5 md:w-3.5" />
+                <span className="hidden sm:inline">Social Sentiment</span>
+                <span className="sm:hidden">Social</span>
               </CardTitle>
               <SocialMetric
                 data={socialSentimentQuery.data}

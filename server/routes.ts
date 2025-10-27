@@ -639,7 +639,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ error: `Consolidation failed: ${error.message}` });
     }
   });
-  
+
   // Liquidation API routes
   app.get("/api/liquidations", async (req, res) => {
     try {

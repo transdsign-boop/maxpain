@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, TrendingDown, Minus, BarChart3 } from "lucide-react";
-import { useState } from "react";
+import { TrendingUp, TrendingDown, Minus, BarChart3, ArrowUpDown } from "lucide-react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import VWAPChartDialog from "@/components/VWAPChartDialog";
+import { formatInTimeZone } from "date-fns-tz";
 
 interface VWAPSymbolStatus {
   symbol: string;
@@ -37,8 +38,19 @@ interface VWAPStatusResponse {
   symbols: VWAPSymbolStatus[];
 }
 
+interface Liquidation {
+  id: string;
+  symbol: string;
+  side: "long" | "short";
+  size: string;
+  price: string;
+  value: string;
+  timestamp: Date;
+}
+
 interface VWAPStatusDisplayProps {
   strategyId: string;
+  liquidations: Liquidation[];
 }
 
 function formatTimeRemaining(ms: number): string {
@@ -59,6 +71,26 @@ function formatVolume(volume: number): string {
     return `$${(volume / 1_000).toFixed(0)}K`;
   }
   return `$${volume.toFixed(0)}`;
+}
+
+function formatValue(value: number): string {
+  if (value >= 1_000_000) {
+    return `${(value / 1_000_000).toFixed(1)}M`;
+  } else if (value >= 1_000) {
+    return `${Math.round(value / 1_000)}K`;
+  }
+  return `${Math.round(value)}`;
+}
+
+function formatTimeAgo(timestamp: Date): string {
+  const now = Date.now();
+  const liqTime = typeof timestamp === 'string' ? new Date(timestamp).getTime() : timestamp.getTime();
+  const diffSeconds = Math.floor((now - liqTime) / 1000);
+
+  if (diffSeconds < 60) return `${diffSeconds}s`;
+  if (diffSeconds < 3600) return `${Math.floor(diffSeconds / 60)}m`;
+  if (diffSeconds < 86400) return `${Math.floor(diffSeconds / 3600)}h`;
+  return `${Math.floor(diffSeconds / 86400)}d`;
 }
 
 function DirectionBadge({ direction, inBufferZone }: { direction: string; inBufferZone: boolean }) {
@@ -91,15 +123,195 @@ function DirectionBadge({ direction, inBufferZone }: { direction: string; inBuff
   );
 }
 
-export default function VWAPStatusDisplay({ strategyId }: VWAPStatusDisplayProps) {
+export default function VWAPStatusDisplay({ strategyId, liquidations }: VWAPStatusDisplayProps) {
   const [selectedSymbolName, setSelectedSymbolName] = useState<string | null>(null);
   const [chartDialogOpen, setChartDialogOpen] = useState(false);
+  const [flashingSymbols, setFlashingSymbols] = useState<Set<string>>(new Set());
+  const previousLiquidationIds = useRef<Set<string>>(new Set());
 
   const { data: vwapStatus, isLoading } = useQuery<VWAPStatusResponse>({
     queryKey: [`/api/strategies/${strategyId}/vwap/status`],
     refetchInterval: 60000, // Refresh every 1 minute
     enabled: !!strategyId,
   });
+
+  // Fetch strategy to get percentile threshold
+  const { data: strategy } = useQuery<any>({
+    queryKey: ['/api/strategies', strategyId],
+    queryFn: async () => {
+      const response = await fetch('/api/strategies');
+      const strategies = await response.json();
+      const strategy = strategies.find((s: any) => s.id === strategyId);
+      console.log('Strategy loaded:', strategy);
+      console.log('Percentile threshold:', strategy?.percentileThreshold);
+      return strategy;
+    },
+    enabled: !!strategyId,
+  });
+
+  // Get unique symbols from VWAP status
+  const uniqueSymbols = useMemo(() => {
+    return vwapStatus?.symbols.map(s => s.symbol) || [];
+  }, [vwapStatus?.symbols]);
+
+  // Fetch complete historical data PER SYMBOL for percentile calculation (matches sidebar approach)
+  const { data: symbolHistories } = useQuery<Record<string, Liquidation[]>>({
+    queryKey: ['liquidations-by-symbol-vwap', uniqueSymbols.join(',')],
+    queryFn: async () => {
+      // Query each symbol separately with limit=10000 (matches strategy engine)
+      const results = await Promise.all(
+        uniqueSymbols.map(async (symbol) => {
+          const response = await fetch(`/api/liquidations/by-symbol?symbols=${symbol}&limit=10000`);
+          const data = await response.json();
+          return { symbol, data };
+        })
+      );
+
+      // Group results by symbol
+      const grouped: Record<string, Liquidation[]> = {};
+      results.forEach(({ symbol, data }) => {
+        grouped[symbol] = data.map((liq: any) => ({
+          ...liq,
+          timestamp: typeof liq.timestamp === 'string' ? new Date(liq.timestamp) : liq.timestamp
+        }));
+      });
+
+      return grouped;
+    },
+    enabled: uniqueSymbols.length > 0,
+    staleTime: 30000, // Cache for 30 seconds
+  });
+
+  // Pre-sort values per symbol for percentile calculation (ALL historical data)
+  const sortedValuesBySymbol = useMemo(() => {
+    if (!symbolHistories) return {};
+
+    const cache: Record<string, number[]> = {};
+    Object.entries(symbolHistories).forEach(([symbol, liqs]) => {
+      cache[symbol] = liqs.map(l => parseFloat(l.value)).sort((a, b) => a - b);
+    });
+    return cache;
+  }, [symbolHistories]);
+
+  // Calculate percentile for a liquidation using ALL historical data
+  const calculatePercentile = (symbol: string, value: number): number => {
+    const values = sortedValuesBySymbol[symbol];
+    if (!values || values.length === 0) return 0;
+
+    let left = 0, right = values.length;
+    while (left < right) {
+      const mid = Math.floor((left + right) / 2);
+      if (values[mid] <= value) {
+        left = mid + 1;
+      } else {
+        right = mid;
+      }
+    }
+    return Math.round((left / values.length) * 100);
+  };
+
+  // Filter liquidations from last 8 hours FOR DISPLAY ONLY
+  const eightHoursAgo = Date.now() - 8 * 60 * 60 * 1000;
+  const recentLiquidations = liquidations.filter(liq => {
+    const liqTime = typeof liq.timestamp === 'string' ? new Date(liq.timestamp).getTime() : liq.timestamp.getTime();
+    return liqTime >= eightHoursAgo;
+  });
+
+  // Group recent liquidations by symbol FOR DISPLAY
+  const liquidationsBySymbol = recentLiquidations.reduce((acc, liq) => {
+    if (!acc[liq.symbol]) acc[liq.symbol] = [];
+    acc[liq.symbol].push(liq);
+    return acc;
+  }, {} as Record<string, Liquidation[]>);
+
+  // Get tracked symbols from vwapStatus
+  const trackedSymbols = vwapStatus?.symbols.map(s => s.symbol) || [];
+
+  // Find the symbol with the most recent liquidation
+  const symbolWithLatestLiquidation = useMemo(() => {
+    if (recentLiquidations.length === 0) return null;
+
+    // Sort all liquidations by timestamp (newest first)
+    const sorted = [...recentLiquidations].sort((a, b) => {
+      const timeA = typeof a.timestamp === 'string' ? new Date(a.timestamp).getTime() : a.timestamp.getTime();
+      const timeB = typeof b.timestamp === 'string' ? new Date(b.timestamp).getTime() : b.timestamp.getTime();
+      return timeB - timeA;
+    });
+
+    return sorted[0]?.symbol || null;
+  }, [recentLiquidations]);
+
+  // Get non-tracked liquidations for ticker
+  const nonTrackedLiquidations = recentLiquidations.filter(liq => !trackedSymbols.includes(liq.symbol));
+
+  // Calculate liquidation metrics for header
+  const liquidationMetrics = useMemo(() => {
+    const totalValue = recentLiquidations.reduce((sum, liq) => sum + parseFloat(liq.value), 0);
+    const count = recentLiquidations.length;
+    const largestValue = Math.max(...recentLiquidations.map(liq => parseFloat(liq.value)), 0);
+
+    return {
+      totalValue,
+      count,
+      largestValue,
+      formattedTotal: totalValue >= 1_000_000
+        ? `$${(totalValue / 1_000_000).toFixed(2)}M`
+        : `$${(totalValue / 1_000).toFixed(0)}K`,
+      formattedLargest: largestValue >= 1_000_000
+        ? `$${(largestValue / 1_000_000).toFixed(2)}M`
+        : `$${(largestValue / 1_000).toFixed(0)}K`
+    };
+  }, [recentLiquidations]);
+
+  // Detect new liquidations and trigger flash animation
+  useEffect(() => {
+    const currentIds = new Set(liquidations.map(l => l.id));
+    const newLiquidations = liquidations.filter(l => !previousLiquidationIds.current.has(l.id));
+
+    if (newLiquidations.length > 0) {
+      // Get symbols that have new liquidations
+      const newSymbols = new Set(newLiquidations.map(l => l.symbol));
+      setFlashingSymbols(newSymbols);
+
+      // Remove flash after animation completes (500ms)
+      const timer = setTimeout(() => {
+        setFlashingSymbols(new Set());
+      }, 500);
+
+      previousLiquidationIds.current = currentIds;
+      return () => clearTimeout(timer);
+    }
+
+    previousLiquidationIds.current = currentIds;
+  }, [liquidations]);
+
+  // Calculate heat intensity for a symbol (0-1 scale)
+  const getHeatIntensity = (symbol: string): number => {
+    const liqs = liquidationsBySymbol[symbol] || [];
+    if (liqs.length === 0) return 0;
+
+    const totalValue = liqs.reduce((sum, liq) => sum + parseFloat(liq.value), 0);
+    const count = liqs.length;
+
+    // Normalize: combine count and value
+    // High activity = many liquidations or high total value
+    const normalizedCount = Math.min(count / 50, 1); // 50+ liquidations = max
+    const normalizedValue = Math.min(totalValue / 1_000_000, 1); // $1M+ = max
+
+    return (normalizedCount + normalizedValue) / 2;
+  };
+
+  // Get latest 3 liquidations for a symbol
+  const getLatestLiquidations = (symbol: string): Liquidation[] => {
+    const liqs = liquidationsBySymbol[symbol] || [];
+    return liqs
+      .sort((a, b) => {
+        const timeA = typeof a.timestamp === 'string' ? new Date(a.timestamp).getTime() : a.timestamp.getTime();
+        const timeB = typeof b.timestamp === 'string' ? new Date(b.timestamp).getTime() : b.timestamp.getTime();
+        return timeB - timeA; // Most recent first
+      })
+      .slice(0, 3);
+  };
 
   // Get the current data for the selected symbol (updates live with each query refresh)
   const selectedSymbol = selectedSymbolName
@@ -163,10 +375,12 @@ export default function VWAPStatusDisplay({ strategyId }: VWAPStatusDisplayProps
           <div>
             <CardTitle className="text-sm font-medium flex items-center gap-2">
               <TrendingUp className="h-4 w-4" />
-              VWAP Direction Filter
+              VWAP Direction Filter + Live Liquidations
             </CardTitle>
-            <CardDescription className="text-xs mt-1">
-              {vwapStatus.timeframeMinutes / 60}h • {(vwapStatus.bufferPercentage * 100).toFixed(2)}% buffer
+            <CardDescription className="text-xs mt-1 flex items-center gap-3">
+              <span>{vwapStatus.timeframeMinutes / 60}h • {(vwapStatus.bufferPercentage * 100).toFixed(2)}% buffer</span>
+              <span className="text-muted-foreground">|</span>
+              <span className="font-mono">{liquidationMetrics.count} liqs • {liquidationMetrics.formattedTotal} total • {liquidationMetrics.formattedLargest} max</span>
             </CardDescription>
           </div>
           <div className="flex gap-3 text-xs font-medium">
@@ -185,43 +399,48 @@ export default function VWAPStatusDisplay({ strategyId }: VWAPStatusDisplayProps
         </div>
       </CardHeader>
       <CardContent>
-        {/* Ultra-compact grid layout - all symbols visible at once */}
-        <div className="grid grid-cols-9 gap-0.5">
+        {/* Grid layout with VWAP + Liquidations */}
+        <div className="grid grid-cols-6 gap-1">
           {vwapStatus.symbols.map((symbolStatus) => {
             const isSelected = selectedSymbolName === symbolStatus.symbol;
+            const latestLiqs = getLatestLiquidations(symbolStatus.symbol);
+            const heatIntensity = getHeatIntensity(symbolStatus.symbol);
 
             // Calculate opacity based on distance from VWAP (0 = transparent, 1 = solid)
             const getOpacity = () => {
-              // If no VWAP data yet (still loading), return low opacity
               if (symbolStatus.currentVWAP === 0 || symbolStatus.currentPrice === 0) return 0.1;
-              if (symbolStatus.inBufferZone) return 0; // Fully transparent in buffer
+              if (symbolStatus.inBufferZone) return 0;
               const absDistance = Math.abs(symbolStatus.distanceFromVWAP);
-              // Handle NaN/Infinity from division errors
               if (!isFinite(absDistance)) return 0.1;
-              // Map distance to opacity: 0-0.5% = 0.1, 0.5-1% = 0.3, 1-2% = 0.5, 2%+ = 0.8
               if (absDistance < 0.5) return 0.15;
               if (absDistance < 1.0) return 0.35;
               if (absDistance < 2.0) return 0.55;
               if (absDistance < 4.0) return 0.75;
-              return 0.9; // Very far from VWAP
+              return 0.9;
             };
 
             const opacity = getOpacity();
 
-            // Get RGB color values based on direction
+            // Background color based on VWAP direction (same as before)
             const getBgColor = () => {
               if (symbolStatus.inBufferZone) return 'transparent';
-              if (symbolStatus.direction === 'LONG_ONLY') return `rgba(34, 197, 94, ${opacity})`; // green-500
-              if (symbolStatus.direction === 'SHORT_ONLY') return `rgba(239, 68, 68, ${opacity})`; // red-500
-              return `rgba(107, 114, 128, ${opacity})`; // gray-500
+              if (symbolStatus.direction === 'LONG_ONLY') return `rgba(34, 197, 94, ${opacity})`;
+              if (symbolStatus.direction === 'SHORT_ONLY') return `rgba(239, 68, 68, ${opacity})`;
+              return `rgba(107, 114, 128, ${opacity})`;
             };
 
-            const getBorderColor = () => {
-              if (symbolStatus.inBufferZone) return 'rgba(156, 163, 175, 0.3)'; // gray-400/30
-              if (symbolStatus.direction === 'LONG_ONLY') return `rgba(34, 197, 94, ${Math.min(opacity + 0.2, 1)})`;
-              if (symbolStatus.direction === 'SHORT_ONLY') return `rgba(239, 68, 68, ${Math.min(opacity + 0.2, 1)})`;
-              return `rgba(107, 114, 128, ${Math.min(opacity + 0.2, 1)})`;
+            // Border based on liquidation heat intensity (lime green)
+            const getBorderStyle = () => {
+              const width = 1 + (heatIntensity * 3); // 1-4px based on heat
+              const baseOpacity = 0.3 + (heatIntensity * 0.7); // 0.3-1.0 based on heat
+              return {
+                borderWidth: `${width}px`,
+                borderColor: `rgba(132, 204, 22, ${baseOpacity})`, // lime-500 color for heat
+              };
             };
+
+            const isFlashing = flashingSymbols.has(symbolStatus.symbol);
+            const hasLatestLiquidation = symbolStatus.symbol === symbolWithLatestLiquidation;
 
             const getTextColor = () => {
               if (symbolStatus.inBufferZone) return 'text-gray-500';
@@ -233,26 +452,102 @@ export default function VWAPStatusDisplay({ strategyId }: VWAPStatusDisplayProps
             return (
               <div
                 key={symbolStatus.symbol}
-                className={`border rounded p-1.5 transition-all cursor-pointer ${isSelected ? 'ring-2 ring-offset-1 ring-blue-500' : ''}`}
+                className={`rounded p-1.5 transition-all cursor-pointer ${isSelected ? 'ring-2 ring-offset-1 ring-blue-500' : ''} ${isFlashing ? 'animate-border-flash' : ''} ${hasLatestLiquidation ? 'border-4 border-primary ring-2 ring-primary/30 shadow-lg' : 'border'}`}
                 style={{
                   backgroundColor: getBgColor(),
-                  borderColor: getBorderColor(),
-                  borderWidth: isSelected ? '2px' : '1px',
+                  ...(hasLatestLiquidation ? {} : getBorderStyle()), // Don't apply heat border if it's the latest
                 }}
                 onClick={() => setSelectedSymbolName(selectedSymbolName === symbolStatus.symbol ? null : symbolStatus.symbol)}
               >
-                <div className="flex flex-col items-center justify-center h-full">
-                  <span className={`font-mono text-xs font-bold ${getTextColor()}`}>
+                {/* Symbol header */}
+                <div className="flex items-center justify-center mb-0.5">
+                  <span className={`font-mono text-[11px] font-bold ${getTextColor()}`}>
                     {symbolStatus.symbol.replace('USDT', '')}
                   </span>
-                  <span className={`font-mono text-[9px] mt-0.5 ${getTextColor()} opacity-70`}>
-                    {formatVolume(symbolStatus.volume24h || 0)}
-                  </span>
+                </div>
+
+                {/* Separator */}
+                <div className="border-t border-current opacity-20 mb-0.5"></div>
+
+                {/* Latest liquidations */}
+                <div className="space-y-0.5">
+                  {latestLiqs.length > 0 ? (
+                    latestLiqs.map((liq, idx) => {
+                      const percentile = calculatePercentile(liq.symbol, parseFloat(liq.value));
+                      const threshold = strategy?.percentileThreshold || 0;
+                      const meetsThreshold = threshold > 0 && percentile >= threshold;
+
+                      // Debug logging for first liquidation only
+                      if (idx === 0 && symbolStatus.symbol === 'BTCUSDT') {
+                        console.log('BTC Liquidation Debug:', {
+                          percentile,
+                          threshold,
+                          meetsThreshold,
+                          strategyLoaded: !!strategy,
+                          thresholdValue: strategy?.percentileThreshold
+                        });
+                      }
+
+                      return (
+                        <div key={idx} className="flex items-center gap-0.5 text-[9px] font-mono">
+                          {/* Vertical bar indicator */}
+                          <span className={`w-0.5 h-2.5 rounded-sm ${liq.side === 'short' ? 'bg-red-500' : 'bg-green-500'}`}></span>
+                          <span className={opacity > 0.5 ? 'text-white' : 'text-foreground'}>
+                            {formatValue(parseFloat(liq.value))}
+                          </span>
+                          <span className={`${meetsThreshold ? 'text-lime-500 font-bold' : opacity > 0.5 ? 'text-white/70' : 'text-muted-foreground'}`}>
+                            {percentile}%
+                          </span>
+                          <span className={`${opacity > 0.5 ? 'text-white/50' : 'text-muted-foreground'} ml-auto`}>
+                            {formatTimeAgo(liq.timestamp)}
+                          </span>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className={`text-[9px] text-center ${opacity > 0.5 ? 'text-white/50' : 'text-muted-foreground'}`}>
+                      No recent liqs
+                    </div>
+                  )}
                 </div>
               </div>
             );
           })}
         </div>
+
+        {/* Auto-scrolling ticker for non-tracked assets */}
+        {nonTrackedLiquidations.length > 0 && (
+          <div className="mt-2 border-t pt-1.5 overflow-hidden">
+            <div className="text-[9px] text-muted-foreground mb-0.5">Other Activity:</div>
+            <div className="ticker-wrapper">
+              <div className="ticker-content">
+                {nonTrackedLiquidations.slice(0, 20).map((liq, idx) => {
+                  const percentile = calculatePercentile(liq.symbol, parseFloat(liq.value));
+                  const meetsThreshold = strategy?.percentileThreshold ? percentile >= strategy.percentileThreshold : false;
+                  return (
+                    <span key={idx} className="ticker-item text-[10px] font-mono">
+                      <span className="font-bold">{liq.symbol.replace('USDT', '')}</span>
+                      <span className="text-muted-foreground">{formatValue(parseFloat(liq.value))}</span>
+                      <span className={meetsThreshold ? 'text-lime-500 font-bold' : 'text-muted-foreground'}>({percentile}%)</span>
+                    </span>
+                  );
+                })}
+                {/* Duplicate for seamless loop */}
+                {nonTrackedLiquidations.slice(0, 20).map((liq, idx) => {
+                  const percentile = calculatePercentile(liq.symbol, parseFloat(liq.value));
+                  const meetsThreshold = strategy?.percentileThreshold ? percentile >= strategy.percentileThreshold : false;
+                  return (
+                    <span key={`dup-${idx}`} className="ticker-item text-[10px] font-mono">
+                      <span className="font-bold">{liq.symbol.replace('USDT', '')}</span>
+                      <span className="text-muted-foreground">{formatValue(parseFloat(liq.value))}</span>
+                      <span className={meetsThreshold ? 'text-lime-500 font-bold' : 'text-muted-foreground'}>({percentile}%)</span>
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Details panel when a symbol is selected */}
         {selectedSymbol && (
@@ -317,6 +612,12 @@ export default function VWAPStatusDisplay({ strategyId }: VWAPStatusDisplayProps
                 <span className="font-mono font-semibold">{formatTimeRemaining(selectedSymbol.timeUntilReset)}</span>
               </div>
               <div className="flex justify-between">
+                <span className="text-muted-foreground">Last Reset (PST):</span>
+                <span className="font-mono font-semibold">
+                  {formatInTimeZone(new Date(selectedSymbol.statistics.sessionStartTime), 'America/Los_Angeles', 'MMM d, h:mm a')}
+                </span>
+              </div>
+              <div className="flex justify-between">
                 <span className="text-muted-foreground">Direction Changes:</span>
                 <span className="font-mono font-semibold">{selectedSymbol.statistics.directionChanges}</span>
               </div>
@@ -330,6 +631,80 @@ export default function VWAPStatusDisplay({ strategyId }: VWAPStatusDisplayProps
               </div>
             </div>
             )}
+
+            {/* Recent Liquidations Section */}
+            {(() => {
+              const symbolLiqs = (liquidationsBySymbol[selectedSymbol.symbol] || [])
+                .sort((a, b) => {
+                  const timeA = typeof a.timestamp === 'string' ? new Date(a.timestamp).getTime() : a.timestamp.getTime();
+                  const timeB = typeof b.timestamp === 'string' ? new Date(b.timestamp).getTime() : b.timestamp.getTime();
+                  return timeB - timeA; // Most recent first
+                });
+              const last10Liqs = symbolLiqs.slice(0, 10);
+
+              if (last10Liqs.length === 0) {
+                return (
+                  <div className="mt-3 pt-3 border-t">
+                    <div className="text-xs text-muted-foreground text-center py-2">
+                      No recent liquidations for {selectedSymbol.symbol}
+                    </div>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="mt-3 pt-3 border-t">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-xs font-semibold">Recent Liquidations ({last10Liqs.length})</h4>
+                    <span className="text-xs text-muted-foreground">Last 8 hours</span>
+                  </div>
+                  <div className="space-y-1">
+                    {last10Liqs.map((liq, idx) => {
+                      const percentile = calculatePercentile(liq.symbol, parseFloat(liq.value));
+                      const meetsThreshold = strategy?.percentileThreshold ? percentile >= strategy.percentileThreshold : false;
+                      const liqTime = typeof liq.timestamp === 'string' ? new Date(liq.timestamp) : liq.timestamp;
+
+                      return (
+                        <div
+                          key={liq.id || idx}
+                          className={`flex items-center gap-2 p-1.5 rounded text-xs font-mono ${
+                            idx === 0 ? 'bg-primary/10 border-4 border-primary ring-2 ring-primary/30' : 'bg-card'
+                          }`}
+                        >
+                          {/* Side indicator */}
+                          <span className={`w-1 h-4 rounded-sm ${liq.side === 'short' ? 'bg-red-500' : 'bg-green-500'}`}></span>
+
+                          {/* Side label */}
+                          <span className={`w-12 font-bold ${liq.side === 'short' ? 'text-red-500' : 'text-green-500'}`}>
+                            {liq.side.toUpperCase()}
+                          </span>
+
+                          {/* Value */}
+                          <span className="font-semibold">
+                            ${parseFloat(liq.value).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                          </span>
+
+                          {/* Percentile */}
+                          <span className={`${meetsThreshold ? 'text-lime-500 font-bold' : 'text-muted-foreground'}`}>
+                            {percentile}%
+                          </span>
+
+                          {/* Price */}
+                          <span className="text-muted-foreground ml-auto">
+                            @${parseFloat(liq.price).toFixed(2)}
+                          </span>
+
+                          {/* Time ago */}
+                          <span className="text-muted-foreground">
+                            {formatTimeAgo(liqTime)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
 

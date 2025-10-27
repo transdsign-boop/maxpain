@@ -1,3 +1,7 @@
+// Load environment variables from .env file
+import dotenv from "dotenv";
+dotenv.config();
+
 // Import console logger FIRST to capture all output
 import "./console-logger";
 

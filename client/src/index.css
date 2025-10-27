@@ -213,6 +213,35 @@
   body {
     @apply font-sans antialiased bg-background text-foreground;
   }
+
+  /* Global Scrollbar Styling for Dark Theme */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted)) hsl(var(--background));
+  }
+
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: hsl(var(--background));
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--muted));
+    border-radius: 5px;
+    border: 2px solid hsl(var(--background));
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--muted-foreground) / 0.4);
+  }
+
+  *::-webkit-scrollbar-corner {
+    background: hsl(var(--background));
+  }
 }
 
 /**
@@ -380,6 +409,22 @@
 
   .animate-layer-flash {
     animation: layer-flash 0.6s ease-out;
+  }
+
+  /* Border Flash Animation for Liquidations */
+  @keyframes border-flash {
+    0%, 100% {
+      border-color: inherit;
+      box-shadow: 0 0 0 0 rgba(132, 204, 22, 0);
+    }
+    50% {
+      border-color: rgba(190, 242, 100, 1);
+      box-shadow: 0 0 15px 3px rgba(132, 204, 22, 0.7);
+    }
+  }
+
+  .animate-border-flash {
+    animation: border-flash 0.5s ease-out;
   }
 
   /* Custom Scrollbar Styling */
