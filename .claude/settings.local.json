@@ -145,7 +145,8 @@
       "Bash(if timeout 2 curl -s -f http://localhost:5000/api/strategies)",
       "Bash(env)",
       "Bash(killall:*)",
-      "Bash(timeout:*)"
+      "Bash(timeout:*)",
+      "WebFetch(domain:maxpainindustry.replit.app)"
     ],
     "deny": [],
     "ask": []
