@@ -146,7 +146,8 @@
       "Bash(env)",
       "Bash(killall:*)",
       "Bash(timeout:*)",
-      "WebFetch(domain:maxpainindustry.replit.app)"
+      "WebFetch(domain:maxpainindustry.replit.app)",
+      "Bash(then echo \"✅ Server is online after $is\")"
     ],
     "deny": [],
     "ask": []
