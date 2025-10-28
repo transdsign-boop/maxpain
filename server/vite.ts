@@ -44,8 +44,8 @@ export async function setupVite(app: Express, server: Server) {
   app.use("*", async (req, res, next) => {
     const url = req.originalUrl;
 
-    // Skip WebSocket upgrade requests
-    if (url === '/ws' || url.startsWith('/ws?')) {
+    // Skip WebSocket upgrade requests - check both path and Upgrade header
+    if ((url === '/ws' || url.startsWith('/ws?')) || req.headers.upgrade === 'websocket') {
       return next();
     }
 
