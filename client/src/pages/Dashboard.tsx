@@ -41,7 +41,6 @@ export default function Dashboard() {
   const [minValue, setMinValue] = useState("0");
   const [selectedAssets, setSelectedAssets] = useState<string[]>([]);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   
   // Trading strategy dialog state
@@ -695,10 +694,8 @@ export default function Dashboard() {
       </header>
 
       {/* Main Content with Trading Controls */}
-      <main 
-        className={`p-3 md:p-6 space-y-4 md:space-y-6 transition-all duration-300 ${
-          isSidebarCollapsed ? 'lg:mr-12' : 'lg:mr-80'
-        }`}
+      <main
+        className="p-3 md:p-6 space-y-4 md:space-y-6"
         style={{ paddingTop: '56px' }}
       >
         {/* Cascade Risk Indicator */}
@@ -719,17 +716,6 @@ export default function Dashboard() {
         {/* Active Positions */}
         <StrategyStatus />
       </main>
-
-      {/* Live Liquidations Sidebar - Desktop only */}
-      <div className="hidden lg:block">
-        <LiveLiquidationsSidebar 
-          liquidations={liquidations}
-          isConnected={isConnected}
-          selectedAssets={selectedAssets}
-          isCollapsed={isSidebarCollapsed}
-          onToggleCollapse={setIsSidebarCollapsed}
-        />
-      </div>
 
       {/* Floating Action Button - Mobile/Tablet only */}
       <button
