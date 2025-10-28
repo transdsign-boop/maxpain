@@ -55,8 +55,7 @@ COPY --from=builder /app/server ./server
 EXPOSE 5000
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:5000/api/strategies', (r) => { process.exit(r.statusCode === 200 ? 0 : 1); })"
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 CMD node -e "require('http').get('http://localhost:5000/api/strategies', (r) => { process.exit(r.statusCode === 200 ? 0 : 1); })"
 
 # Set production environment
 ENV NODE_ENV=production
