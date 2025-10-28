@@ -298,6 +298,42 @@ export const frontendStrategySchema = z.object({
     const num = parseFloat(val);
     return !isNaN(num) && num >= 1 && num <= 100;
   }, "Max portfolio risk must be between 1% and 100%").default("15.0"),
+  // Adaptive Take Profit (Automatic Volatility Envelope)
+  adaptiveTpEnabled: z.boolean().optional().default(false),
+  tpAtrMultiplier: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 0.1 && num <= 10;
+  }, "TP ATR multiplier must be between 0.1 and 10").optional().default("1.5"),
+  minTpPercent: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 0.1 && num <= 20;
+  }, "Min TP percent must be between 0.1% and 20%").optional().default("0.5"),
+  maxTpPercent: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 0.1 && num <= 20;
+  }, "Max TP percent must be between 0.1% and 20%").optional().default("5.0"),
+  // Adaptive Stop Loss (Automatic Volatility-Based Risk)
+  adaptiveSlEnabled: z.boolean().optional().default(false),
+  slAtrMultiplier: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 0.1 && num <= 10;
+  }, "SL ATR multiplier must be between 0.1 and 10").optional().default("2.0"),
+  minSlPercent: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 0.1 && num <= 50;
+  }, "Min SL percent must be between 0.1% and 50%").optional().default("1.0"),
+  maxSlPercent: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 0.1 && num <= 50;
+  }, "Max SL percent must be between 0.1% and 50%").optional().default("5.0"),
+  // VWAP Direction Filter Configuration
+  vwapFilterEnabled: z.boolean().optional().default(false),
+  vwapTimeframeMinutes: z.number().min(60).max(1440).optional().default(240),
+  vwapBufferPercentage: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 0.0001 && num <= 0.01;
+  }, "VWAP buffer must be between 0.0001 and 0.01").optional().default("0.0005"),
+  vwapEnableBuffer: z.boolean().optional().default(true),
 });
 
 // Update schema for partial updates
@@ -504,6 +540,9 @@ export const accountLedger = pgTable("account_ledger", {
 
   // Exchange transfer fields (nullable for manual entries)
   tranId: text("tran_id"), // Exchange transaction ID
+
+  // Time-weighted return tracking (total account balance at time of this entry)
+  baselineBalance: decimal("baseline_balance", { precision: 18, scale: 2 }), // Account balance when this entry was created
 
   createdAt: timestamp("created_at").notNull().defaultNow(), // When the record was created
   updatedAt: timestamp("updated_at").notNull().defaultNow(), // Last update timestamp
