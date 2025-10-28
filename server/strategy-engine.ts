@@ -403,9 +403,14 @@ export class StrategyEngine extends EventEmitter {
 
       console.log(`📊 Initialized ${strategy.selectedAssets.length} VWAP filters with strategy config`);
 
-      // Start the REST API polling price feed - updates every 5 seconds with 30s caching
+      // Start WebSocket kline stream for real-time VWAP updates (1-minute candles)
+      // This provides live price data and automatic period resets without API polling
+      liveDataOrchestrator.startKlineStream(strategy.selectedAssets);
+      console.log(`📊 VWAP Kline Stream started (WebSocket real-time) for ${strategy.selectedAssets.length} symbols`);
+
+      // Start the REST API polling price feed as backup - updates every 5 seconds with 30s caching
       vwapPriceFeed.start(strategy.selectedAssets);
-      console.log(`📊 VWAP Price Feed started (REST API polling) for ${strategy.selectedAssets.length} symbols`);
+      console.log(`📊 VWAP Price Feed started (REST API backup) for ${strategy.selectedAssets.length} symbols`);
     }
 
     // Start WebSocket user data stream for real-time account/position updates
