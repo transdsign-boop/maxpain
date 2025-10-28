@@ -142,7 +142,10 @@
       "Bash(else echo \"⏳ Waiting for server ($i/10)\")",
       "Read(//dev/**)",
       "Bash(timeout 3 curl:*)",
-      "Bash(if timeout 2 curl -s -f http://localhost:5000/api/strategies)"
+      "Bash(if timeout 2 curl -s -f http://localhost:5000/api/strategies)",
+      "Bash(env)",
+      "Bash(killall:*)",
+      "Bash(timeout:*)"
     ],
     "deny": [],
     "ask": []
