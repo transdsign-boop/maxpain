@@ -121,24 +121,24 @@ const MarketMetric = memo(({ data, isLoading, error, showDetails }: {
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-1 md:space-y-2">
       {/* Sentiment Indicator */}
       <div className="text-center">
-        <div className={`text-2xl font-mono font-bold ${
+        <div className={`text-xl md:text-2xl font-mono font-bold ${
           data.sentiment === 'bullish'
             ? 'text-[rgb(190,242,100)]'
             : data.sentiment === 'bearish'
             ? 'text-[rgb(251,146,60)]'
             : 'text-muted-foreground'
         }`} data-testid="icon-market-sentiment">
-          {data.sentiment === 'bullish' && <TrendingUp className="h-6 w-6 mx-auto" />}
-          {data.sentiment === 'bearish' && <TrendingDown className="h-6 w-6 mx-auto" />}
-          {data.sentiment === 'neutral' && <Minus className="h-6 w-6 mx-auto" />}
+          {data.sentiment === 'bullish' && <TrendingUp className="h-4 w-4 md:h-6 md:w-6 mx-auto" />}
+          {data.sentiment === 'bearish' && <TrendingDown className="h-4 w-4 md:h-6 md:w-6 mx-auto" />}
+          {data.sentiment === 'neutral' && <Minus className="h-4 w-4 md:h-6 md:w-6 mx-auto" />}
         </div>
-        <div className="text-xs font-medium mt-0.5 capitalize" data-testid="text-market-sentiment">
+        <div className="text-[10px] md:text-xs font-medium mt-0.5 capitalize" data-testid="text-market-sentiment">
           {data.sentiment}
         </div>
-        <div className="text-xs text-muted-foreground">
+        <div className="text-[10px] md:text-xs text-muted-foreground">
           {(data.combinedScore * 100).toFixed(0)}%
         </div>
       </div>
@@ -146,15 +146,15 @@ const MarketMetric = memo(({ data, isLoading, error, showDetails }: {
       {showDetails && (
         <>
           {/* Order Book */}
-          <div className="space-y-0.5 pt-1.5 border-t">
-            <div className="text-xs font-medium text-muted-foreground">Order Book</div>
-            <div className="flex items-center justify-between text-xs">
+          <div className="space-y-0.5 pt-1 md:pt-1.5 border-t">
+            <div className="text-[10px] md:text-xs font-medium text-muted-foreground">Order Book</div>
+            <div className="flex items-center justify-between text-[10px] md:text-xs">
               <span className="text-muted-foreground">Bid</span>
               <span className="font-mono text-[rgb(190,242,100)]" data-testid="value-bid-depth">
                 {formatCurrency(parseFloat(data.orderBook.bidDepth))}
               </span>
             </div>
-            <div className="flex items-center justify-between text-xs">
+            <div className="flex items-center justify-between text-[10px] md:text-xs">
               <span className="text-muted-foreground">Ask</span>
               <span className="font-mono text-[rgb(251,146,60)]" data-testid="value-ask-depth">
                 {formatCurrency(parseFloat(data.orderBook.askDepth))}
@@ -163,15 +163,15 @@ const MarketMetric = memo(({ data, isLoading, error, showDetails }: {
           </div>
 
           {/* Liquidations */}
-          <div className="space-y-0.5 pt-1.5 border-t">
-            <div className="text-xs font-medium text-muted-foreground">Liquidations (1h)</div>
-            <div className="flex items-center justify-between text-xs">
+          <div className="space-y-0.5 pt-1 md:pt-1.5 border-t">
+            <div className="text-[10px] md:text-xs font-medium text-muted-foreground">Liquidations (1h)</div>
+            <div className="flex items-center justify-between text-[10px] md:text-xs">
               <span className="text-[rgb(251,146,60)]">Long</span>
               <span className="font-mono" data-testid="value-liq-long">
                 {formatCurrency(parseFloat(data.liquidations.longValue))}
               </span>
             </div>
-            <div className="flex items-center justify-between text-xs">
+            <div className="flex items-center justify-between text-[10px] md:text-xs">
               <span className="text-[rgb(190,242,100)]">Short</span>
               <span className="font-mono" data-testid="value-liq-short">
                 {formatCurrency(parseFloat(data.liquidations.shortValue))}
@@ -203,15 +203,15 @@ const FearGreedMetric = memo(({ data, isLoading, error, showDetails }: {
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-1 md:space-y-2">
       <div className="text-center">
         <div
-          className={`text-3xl font-mono font-bold ${getFearGreedColor(fearGreedValue)}`}
+          className={`text-2xl md:text-3xl font-mono font-bold ${getFearGreedColor(fearGreedValue)}`}
           data-testid="value-fear-greed"
         >
           {fearGreedValue ?? '--'}
         </div>
-        <div className="text-xs font-medium mt-0.5" data-testid="text-fear-greed-label">
+        <div className="text-[10px] md:text-xs font-medium mt-0.5" data-testid="text-fear-greed-label">
           {getFearGreedLabel(fearGreedValue)}
         </div>
       </div>
@@ -220,7 +220,7 @@ const FearGreedMetric = memo(({ data, isLoading, error, showDetails }: {
         <>
           {/* Gauge Bar */}
           <div className="space-y-0.5">
-            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+            <div className="h-1 md:h-1.5 bg-muted rounded-full overflow-hidden">
               <div
                 className="h-full transition-all duration-500 rounded-full"
                 style={{
@@ -231,14 +231,14 @@ const FearGreedMetric = memo(({ data, isLoading, error, showDetails }: {
                 }}
               />
             </div>
-            <div className="flex justify-between text-xs text-muted-foreground">
+            <div className="flex justify-between text-[10px] md:text-xs text-muted-foreground">
               <span>Fear</span>
               <span>Greed</span>
             </div>
           </div>
 
           {fearGreedData && (
-            <div className="text-xs text-muted-foreground text-center pt-1.5 border-t">
+            <div className="text-[10px] md:text-xs text-muted-foreground text-center pt-1 md:pt-1.5 border-t">
               {formatPST(parseInt(fearGreedData.timestamp) * 1000, 'MMM d, h:mm a')}
             </div>
           )}
@@ -273,10 +273,10 @@ const SocialMetric = memo(({ data, isLoading, error, showDetails }: {
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-1 md:space-y-2">
       <div className="text-center">
         <div
-          className={`text-3xl font-mono font-bold ${
+          className={`text-2xl md:text-3xl font-mono font-bold ${
             (data?.score || 0) > 60
               ? 'text-[rgb(190,242,100)]'
               : (data?.score || 0) < 40
@@ -287,7 +287,7 @@ const SocialMetric = memo(({ data, isLoading, error, showDetails }: {
         >
           {data?.score || '--'}
         </div>
-        <div className="text-xs font-medium mt-0.5" data-testid="text-social-label">
+        <div className="text-[10px] md:text-xs font-medium mt-0.5" data-testid="text-social-label">
           {(data?.score || 0) > 60
             ? 'Positive'
             : (data?.score || 0) < 40
@@ -299,8 +299,8 @@ const SocialMetric = memo(({ data, isLoading, error, showDetails }: {
       {showDetails && (
         <>
           {/* Trending Topics */}
-          <div className="space-y-0.5 pt-1.5 border-t">
-            <div className="text-xs font-medium text-muted-foreground">
+          <div className="space-y-0.5 pt-1 md:pt-1.5 border-t">
+            <div className="text-[10px] md:text-xs font-medium text-muted-foreground">
               Trending
             </div>
             <div className="flex flex-wrap gap-1">
@@ -308,7 +308,7 @@ const SocialMetric = memo(({ data, isLoading, error, showDetails }: {
                 <Badge
                   key={i}
                   variant="outline"
-                  className="text-xs"
+                  className="text-[10px] md:text-xs h-4 md:h-5 px-1.5 md:px-2"
                   data-testid={`badge-trending-${i}`}
                 >
                   #{topic}
@@ -486,28 +486,28 @@ export default function MarketSentiment() {
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3 md:space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-foreground">Market Sentiment</h2>
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className="text-xs" data-testid="badge-live-data">
+        <h2 className="text-base md:text-lg font-semibold text-foreground">Market Sentiment</h2>
+        <div className="flex items-center gap-1 md:gap-2">
+          <Badge variant="outline" className="text-xs hidden md:inline-flex" data-testid="badge-live-data">
             Live Data
           </Badge>
           <Button
             variant="ghost"
             size="sm"
             onClick={() => setShowDetails(!showDetails)}
-            className="gap-1"
+            className="gap-1 h-7 md:h-9 text-xs md:text-sm px-2 md:px-3"
           >
             {showDetails ? (
               <>
-                <ChevronUp className="h-4 w-4" />
-                Hide Details
+                <ChevronUp className="h-3 w-3 md:h-4 md:w-4" />
+                <span className="hidden md:inline">Hide Details</span>
               </>
             ) : (
               <>
-                <ChevronDown className="h-4 w-4" />
-                Show Details
+                <ChevronDown className="h-3 w-3 md:h-4 md:w-4" />
+                <span className="hidden md:inline">Show Details</span>
               </>
             )}
           </Button>
@@ -516,13 +516,13 @@ export default function MarketSentiment() {
 
       {/* Consolidated Card */}
       <Card data-testid="card-market-sentiment">
-        <CardHeader className="pb-2">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <CardHeader className="pb-2 px-3 pt-3 md:px-6 md:pt-6">
+          <div className="grid grid-cols-3 gap-2 md:gap-3">
             {/* Market Sentiment Column */}
             <div>
-              <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 mb-2">
-                <Activity className="h-3.5 w-3.5" />
-                Market Sentiment
+              <CardTitle className="text-[10px] md:text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-0.5 md:gap-1.5 mb-1 md:mb-2">
+                <Activity className="h-3 w-3 md:h-3.5 md:w-3.5 flex-shrink-0" />
+                <span className="truncate">Market</span>
               </CardTitle>
               <MarketMetric
                 data={marketSentimentQuery.data}
@@ -533,10 +533,10 @@ export default function MarketSentiment() {
             </div>
 
             {/* Fear & Greed Column */}
-            <div className="md:border-l md:pl-3">
-              <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 mb-2">
-                <TrendingUpIcon className="h-3.5 w-3.5" />
-                Fear & Greed
+            <div className="border-l pl-2 md:pl-3">
+              <CardTitle className="text-[10px] md:text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-0.5 md:gap-1.5 mb-1 md:mb-2">
+                <TrendingUpIcon className="h-3 w-3 md:h-3.5 md:w-3.5 flex-shrink-0" />
+                <span className="truncate">F&G</span>
               </CardTitle>
               <FearGreedMetric
                 data={fearGreedQuery.data}
@@ -547,10 +547,10 @@ export default function MarketSentiment() {
             </div>
 
             {/* Social Sentiment Column */}
-            <div className="md:border-l md:pl-3">
-              <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 mb-2">
-                <Activity className="h-3.5 w-3.5" />
-                Social Sentiment
+            <div className="border-l pl-2 md:pl-3">
+              <CardTitle className="text-[10px] md:text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-0.5 md:gap-1.5 mb-1 md:mb-2">
+                <Activity className="h-3 w-3 md:h-3.5 md:w-3.5 flex-shrink-0" />
+                <span className="truncate">Social</span>
               </CardTitle>
               <SocialMetric
                 data={socialSentimentQuery.data}

@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import ConnectionStatus from "@/components/ConnectionStatus";
-import LiveLiquidationsSidebar from "@/components/LiveLiquidationsSidebar";
 import MarketSentiment from "@/components/MarketSentiment";
 import PerformanceOverview from "@/components/PerformanceOverview";
 import TradingStrategyDialog from "@/components/TradingStrategyDialog";
@@ -18,7 +17,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Settings2, Pause, Play, AlertTriangle, BarChart3, Menu, BookOpen, AlertCircle, Send } from "lucide-react";
+import { Settings2, Pause, Play, AlertTriangle, Menu, BookOpen, AlertCircle, Send } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -41,8 +40,7 @@ export default function Dashboard() {
   const [minValue, setMinValue] = useState("0");
   const [selectedAssets, setSelectedAssets] = useState<string[]>([]);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
-  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
-  
+
   // Trading strategy dialog state
   const [isStrategyDialogOpen, setIsStrategyDialogOpen] = useState(false);
   
@@ -716,34 +714,6 @@ export default function Dashboard() {
         {/* Active Positions */}
         <StrategyStatus />
       </main>
-
-      {/* Floating Action Button - Mobile/Tablet only */}
-      <button
-        onClick={() => setIsMobileSidebarOpen(true)}
-        className="lg:hidden fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-lg hover:brightness-110 active:scale-95 transition-all flex items-center justify-center"
-        data-testid="button-fab-liquidations"
-        aria-label="View liquidations"
-      >
-        <BarChart3 className="h-6 w-6" />
-      </button>
-
-      {/* Mobile Liquidations Sheet */}
-      <Sheet open={isMobileSidebarOpen} onOpenChange={setIsMobileSidebarOpen}>
-        <SheetContent side="right" className="w-full sm:w-96 p-0">
-          <SheetHeader className="px-4 pt-4 pb-2">
-            <SheetTitle>Live Liquidations</SheetTitle>
-          </SheetHeader>
-          <div className="h-[calc(100vh-80px)]">
-            <LiveLiquidationsSidebar 
-              liquidations={liquidations}
-              isConnected={isConnected}
-              selectedAssets={selectedAssets}
-              isCollapsed={false}
-              onToggleCollapse={() => {}}
-            />
-          </div>
-        </SheetContent>
-      </Sheet>
 
       {/* Trading Strategy Dialog */}
       <TradingStrategyDialog
