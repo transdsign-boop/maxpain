@@ -220,29 +220,21 @@ export class StrategyEngine extends EventEmitter {
     return parseFloat(rounded.toFixed(decimals));
   }
 
-  // Start the strategy engine (non-blocking initialization)
+  // Start the strategy engine
   async start() {
     if (this.isRunning) return;
     
     console.log('🚀 StrategyEngine starting...');
     this.isRunning = true;
     
-    // Fetch exchange info for precision requirements (for live trading) - non-blocking
-    this.fetchExchangeInfo().catch(error => {
-      console.error('❌ Failed to fetch exchange info:', error);
-    });
+    // Fetch exchange info for precision requirements (for live trading)
+    await this.fetchExchangeInfo();
     
-    // Fetch and cache the exchange's position mode setting - non-blocking
-    this.fetchExchangePositionMode().then(mode => {
-      this.exchangePositionMode = mode;
-    }).catch(error => {
-      console.error('❌ Failed to fetch exchange position mode:', error);
-    });
+    // Fetch and cache the exchange's position mode setting
+    this.exchangePositionMode = await this.fetchExchangePositionMode();
     
-    // Load active strategies and sessions - non-blocking
-    this.loadActiveStrategies().catch(error => {
-      console.error('❌ Failed to load active strategies:', error);
-    });
+    // Load active strategies and sessions
+    await this.loadActiveStrategies();
     
     // NOTE: Removed programmatic layer monitoring - layers now use exchange orders (LIMIT TP, STOP_MARKET SL)
     // Exchange will automatically execute these orders, and we'll receive ORDER_TRADE_UPDATE events via WebSocket
