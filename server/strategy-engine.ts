@@ -1986,10 +1986,12 @@ export class StrategyEngine extends EventEmitter {
         };
       }
       
-      console.log(`   Total Balance (wallet + unrealized): $${currentBalance.toFixed(2)}, SL%: ${strategy.stopLossPercent}%`);
-      
-      // Calculate stop loss percentage from strategy
-      const stopLossPercent = parseFloat(strategy.stopLossPercent);
+      // Calculate stop loss percentage from strategy (use adaptive SL if enabled)
+      const stopLossPercent = strategy.adaptiveSlEnabled
+        ? parseFloat(strategy.minSlPercent || strategy.stopLossPercent)
+        : parseFloat(strategy.stopLossPercent);
+
+      console.log(`   Total Balance (wallet + unrealized): $${currentBalance.toFixed(2)}, SL%: ${stopLossPercent}% (${strategy.adaptiveSlEnabled ? 'adaptive min' : 'fixed'})`);
       
       // Calculate BOTH filled risk (current exposure) and reserved risk (full DCA potential)
       // DYNAMIC CALCULATION: Recalculate reserved risk using CURRENT strategy settings

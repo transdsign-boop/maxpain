@@ -708,7 +708,7 @@ export default function Dashboard() {
         <MarketSentiment />
 
         {/* VWAP Direction Filter Status */}
-        {activeStrategy && <VWAPStatusDisplay strategyId={activeStrategy.id} />}
+        {activeStrategy && <VWAPStatusDisplay strategyId={activeStrategy.id} liquidations={liquidations} />}
 
         {/* Performance Overview */}
         <PerformanceOverview />

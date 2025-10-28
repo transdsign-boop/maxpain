@@ -512,17 +512,18 @@ function PerformanceOverview() {
       // Use actual margin from backend calculation (includes ALL assets: USDF + USDT)
       const actualMarginUsed = portfolioRisk.actualMarginUsed;
       const actualMarginUsedPct = portfolioRisk.actualMarginUsedPercentage;
-      
-      // Calculate total potential risk (filled + reserved)
-      const totalPotentialRisk = portfolioRisk.filledRiskDollars + portfolioRisk.reservedRiskDollars;
-      
+
+      // Backend's reservedRiskDollars already includes filled risk (it's the total max if all layers fill)
+      // So DON'T add them together - reservedRiskDollars IS the total potential risk
+      const totalPotentialRisk = portfolioRisk.reservedRiskDollars;
+
       return {
         totalRisk: totalPotentialRisk,
         riskPercentage: actualMarginUsedPct, // Use backend's actual margin percentage
         filledRisk: portfolioRisk.filledRiskDollars,
-        reservedRisk: totalPotentialRisk, // Show total potential risk (not just reserved)
+        reservedRisk: portfolioRisk.reservedRiskDollars, // Backend already includes filled in this total
         filledRiskPercentage: portfolioRisk.filledRiskPercentage,
-        reservedRiskPercentage: portfolioRisk.filledRiskPercentage + portfolioRisk.reservedRiskPercentage,
+        reservedRiskPercentage: portfolioRisk.reservedRiskPercentage, // Already the total percentage
         marginUsedPercentage: actualMarginUsedPct,
         marginUsed: actualMarginUsed,
       };
@@ -535,15 +536,16 @@ function PerformanceOverview() {
     
     // If we have partial WebSocket data (without actualMarginUsed), use it with fallback margin
     if (portfolioRisk?.filledRiskDollars !== undefined) {
-      const totalPotentialRisk = portfolioRisk.filledRiskDollars + portfolioRisk.reservedRiskDollars;
-      
+      // Backend's reservedRiskDollars already includes filled risk
+      const totalPotentialRisk = portfolioRisk.reservedRiskDollars;
+
       return {
         totalRisk: totalPotentialRisk,
         riskPercentage: marginUsedPercentage, // Fallback to calculated margin
         filledRisk: portfolioRisk.filledRiskDollars,
-        reservedRisk: totalPotentialRisk,
+        reservedRisk: portfolioRisk.reservedRiskDollars, // Already the total
         filledRiskPercentage: portfolioRisk.filledRiskPercentage,
-        reservedRiskPercentage: portfolioRisk.filledRiskPercentage + portfolioRisk.reservedRiskPercentage,
+        reservedRiskPercentage: portfolioRisk.reservedRiskPercentage, // Already the total percentage
         marginUsedPercentage,
         marginUsed,
       };
@@ -625,6 +627,21 @@ function PerformanceOverview() {
     return isOverLimit ? 'text-destructive' :
       filledRiskPercentage >= warningThreshold ? 'text-orange-500 dark:text-orange-400' :
       'text-blue-500 dark:text-blue-400';
+  }, [activeStrategy?.maxPortfolioRiskPercent, filledRiskPercentage]);
+
+  // Memoized risk pulsation effect - changes speed and color based on risk level
+  const getRiskPulsationClass = useMemo(() => {
+    const serverRiskLimit = activeStrategy ? parseFloat(activeStrategy.maxPortfolioRiskPercent) : 15;
+    const isOverLimit = filledRiskPercentage > serverRiskLimit;
+    const warningThreshold = serverRiskLimit * 0.8; // 80% of max
+
+    if (isOverLimit) {
+      return 'risk-pulse-critical'; // Fast emergency pulse, red
+    } else if (filledRiskPercentage >= warningThreshold) {
+      return 'risk-pulse-warning'; // Medium pulse, orange
+    } else {
+      return 'risk-pulse-normal'; // Gentle pulse, blue
+    }
   }, [activeStrategy?.maxPortfolioRiskPercent, filledRiskPercentage]);
 
   const getRiskStrokeClass = useMemo(() => {
@@ -1398,7 +1415,7 @@ function PerformanceOverview() {
 
           {/* Margin Usage Meter - Dual Ring (Margin Used vs Projected Risk) */}
           <div className="flex flex-col items-center gap-3 lg:border-l lg:pl-6" data-testid="container-risk-bar">
-            <div className="text-xs text-muted-foreground uppercase tracking-wider text-center whitespace-nowrap">Margin Usage</div>
+            <div className="text-xs text-muted-foreground uppercase tracking-wider text-center whitespace-nowrap">Risk Meter</div>
             <div className="relative flex flex-col items-center">
               {/* Dual Ring Meter */}
               <div className="relative w-36 h-36">
@@ -1452,19 +1469,72 @@ function PerformanceOverview() {
                     data-testid="bar-margin-used"
                   />
                 </svg>
+                {/* Pulsating background - changes based on risk level */}
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className={`w-16 h-16 rounded-full ${getRiskPulsationClass}`} />
+                </div>
                 {/* Centered content */}
-                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
                   <div className="text-sm font-mono text-muted-foreground">Margin</div>
                   <div className="text-xl font-mono font-bold">{marginUsedPercentage.toFixed(1)}%</div>
-                  <div className={`text-[10px] font-mono mt-0.5 ${getRiskColorClass}`}>
+                  <div className="text-[10px] font-mono mt-0.5 text-white font-semibold" style={{ textShadow: '0 0 4px rgba(0,0,0,0.8), 0 0 8px rgba(0,0,0,0.6)' }}>
                     {filledRiskPercentage.toFixed(1)}% of {activeStrategy?.maxPortfolioRiskPercent || '15'}%
                   </div>
                 </div>
+
+                {/* CSS for pulsation animations */}
+                <style>{`
+                  @keyframes pulse-normal {
+                    0%, 100% {
+                      background-color: rgba(59, 130, 246, 0.1);
+                      box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4);
+                    }
+                    50% {
+                      background-color: rgba(59, 130, 246, 0.2);
+                      box-shadow: 0 0 20px 10px rgba(59, 130, 246, 0);
+                    }
+                  }
+
+                  @keyframes pulse-warning {
+                    0%, 100% {
+                      background-color: rgba(251, 146, 60, 0.2);
+                      box-shadow: 0 0 0 0 rgba(251, 146, 60, 0.5);
+                    }
+                    50% {
+                      background-color: rgba(251, 146, 60, 0.3);
+                      box-shadow: 0 0 25px 12px rgba(251, 146, 60, 0);
+                    }
+                  }
+
+                  @keyframes pulse-critical {
+                    0%, 100% {
+                      background-color: rgba(239, 68, 68, 0.3);
+                      box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+                    }
+                    50% {
+                      background-color: rgba(239, 68, 68, 0.5);
+                      box-shadow: 0 0 30px 15px rgba(239, 68, 68, 0);
+                    }
+                  }
+
+                  .risk-pulse-normal {
+                    animation: pulse-normal 3s ease-in-out infinite;
+                  }
+
+                  .risk-pulse-warning {
+                    animation: pulse-warning 1.5s ease-in-out infinite;
+                  }
+
+                  .risk-pulse-critical {
+                    animation: pulse-critical 0.8s ease-in-out infinite;
+                  }
+                `}</style>
               </div>
               
               <div className="text-[10px] text-muted-foreground text-center mt-1">
                 <div>Used: ${marginUsed.toFixed(2)}</div>
-                <div className={getRiskColorClass}>Risk: ${filledRisk.toFixed(2)}</div>
+                <div className={getRiskColorClass}>Filled: ${filledRisk.toFixed(2)}</div>
+                <div className="text-muted-foreground/70">Reserved: ${reservedRisk.toFixed(2)}</div>
               </div>
               
               {/* Risk Limit Slider */}
