@@ -63,24 +63,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     profileImageUrl: null,
   });
   
-  // Start the strategy engine
-  await strategyEngine.start();
+  // Start the strategy engine (non-blocking)
+  strategyEngine.start().catch(error => {
+    console.error('❌ Failed to start strategy engine:', error);
+  });
   
-  // Auto-register active strategies on server startup
+  // Auto-register active strategies on server startup (non-blocking)
   console.log('🔄 Checking for active strategies to auto-register...');
-  const activeStrategies = await storage.getAllActiveStrategies();
-  
-  if (activeStrategies.length > 0) {
-    console.log(`📋 Found ${activeStrategies.length} active strategy(ies) - registering with strategy engine...`);
-    for (const strategy of activeStrategies) {
-      console.log(`   - Registering: ${strategy.name} (paused: ${strategy.paused})`);
-      await strategyEngine.registerStrategy(strategy);
-      liveDataOrchestrator.start(strategy.id);
+  storage.getAllActiveStrategies().then(activeStrategies => {
+    if (activeStrategies.length > 0) {
+      console.log(`📋 Found ${activeStrategies.length} active strategy(ies) - registering with strategy engine...`);
+      for (const strategy of activeStrategies) {
+        console.log(`   - Registering: ${strategy.name} (paused: ${strategy.paused})`);
+        strategyEngine.registerStrategy(strategy).then(() => {
+          liveDataOrchestrator.start(strategy.id);
+          console.log(`✅ Strategy ${strategy.name} registered successfully`);
+        }).catch(error => {
+          console.error(`❌ Failed to register strategy ${strategy.name}:`, error);
+        });
+      }
+    } else {
+      console.log('ℹ️  No active strategies found - ready for manual activation');
     }
-    console.log('✅ Active strategies auto-registered successfully');
-  } else {
-    console.log('ℹ️  No active strategies found - ready for manual activation');
-  }
+  }).catch(error => {
+    console.error('❌ Failed to check for active strategies:', error);
+  });
   
   // ONE-TIME FIX: Repair corrupted avgEntryPrice positions
   app.post("/api/admin/repair-positions", async (req, res) => {
