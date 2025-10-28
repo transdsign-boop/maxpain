@@ -77,37 +77,7 @@ app.use((req, res, next) => {
     port,
     host: "0.0.0.0",
     reusePort: true,
-  }, async () => {
+  }, () => {
     log(`serving on port ${port}`);
-    
-    // Initialize strategy engine and auto-register strategies AFTER server is listening
-    // This prevents blocking the HTTP server from opening port 5000 (120s timeout)
-    try {
-      const { strategyEngine } = await import('./strategy-engine');
-      const { storage } = await import('./storage');
-      
-      // Start the strategy engine (this can be slow)
-      console.log('🚀 Initializing strategy engine in background...');
-      await strategyEngine.start();
-      
-      // Auto-register active strategies
-      console.log('🔄 Checking for active strategies to auto-register...');
-      const activeStrategies = await storage.getAllActiveStrategies();
-      
-      if (activeStrategies.length > 0) {
-        console.log(`📋 Found ${activeStrategies.length} active strategy(ies) - registering with strategy engine...`);
-        for (const strategy of activeStrategies) {
-          console.log(`   - Registering: ${strategy.name} (paused: ${strategy.paused})`);
-          await strategyEngine.registerStrategy(strategy);
-          liveDataOrchestrator.start(strategy.id);
-        }
-        console.log('✅ Active strategies auto-registered successfully');
-      } else {
-        console.log('ℹ️  No active strategies found - ready for manual activation');
-      }
-    } catch (error) {
-      console.error('❌ Error initializing trading strategies:', error);
-      // Don't crash the server - just log the error
-    }
   });
 })();

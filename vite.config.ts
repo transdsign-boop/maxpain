@@ -27,11 +27,6 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
-    sourcemap: 'inline', // Use inline sourcemaps instead of eval
-  },
-  esbuild: {
-    // Disable eval-based source maps for CSP compatibility
-    sourcemap: 'inline',
   },
   server: {
     fs: {

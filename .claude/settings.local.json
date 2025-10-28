@@ -142,12 +142,7 @@
       "Bash(else echo \"⏳ Waiting for server ($i/10)\")",
       "Read(//dev/**)",
       "Bash(timeout 3 curl:*)",
-      "Bash(if timeout 2 curl -s -f http://localhost:5000/api/strategies)",
-      "Bash(env)",
-      "Bash(killall:*)",
-      "Bash(timeout:*)",
-      "WebFetch(domain:maxpainindustry.replit.app)",
-      "Bash(then echo \"✅ Server is online after $is\")"
+      "Bash(if timeout 2 curl -s -f http://localhost:5000/api/strategies)"
     ],
     "deny": [],
     "ask": []
