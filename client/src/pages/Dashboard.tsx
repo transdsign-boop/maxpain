@@ -17,7 +17,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Settings2, Pause, Play, AlertTriangle, Menu, BookOpen, AlertCircle, Send } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Settings2, Pause, Play, AlertTriangle, Menu, BookOpen, AlertCircle, Send, ChevronDown, ChevronUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -33,6 +34,31 @@ interface Liquidation {
   timestamp: Date;
 }
 
+interface CollapsibleSectionProps {
+  title: string;
+  isOpen: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}
+
+function CollapsibleSection({ title, isOpen, onToggle, children }: CollapsibleSectionProps) {
+  return (
+    <Collapsible open={isOpen} onOpenChange={onToggle}>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-lg font-semibold">{title}</h2>
+        <CollapsibleTrigger asChild>
+          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+            {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </Button>
+        </CollapsibleTrigger>
+      </div>
+      <CollapsibleContent>
+        {children}
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
 export default function Dashboard() {
   const [isConnected, setIsConnected] = useState(true);
   const [timeRange, setTimeRange] = useState("1h");
@@ -43,22 +69,44 @@ export default function Dashboard() {
 
   // Trading strategy dialog state
   const [isStrategyDialogOpen, setIsStrategyDialogOpen] = useState(false);
-  
+
   // Trade errors dialog state
   const [isTradeErrorsDialogOpen, setIsTradeErrorsDialogOpen] = useState(false);
-  
+
   // Emergency stop dialog state
   const [isEmergencyStopDialogOpen, setIsEmergencyStopDialogOpen] = useState(false);
   const [emergencyStopPin, setEmergencyStopPin] = useState("");
-  
+
   // Trade block status from WebSocket
   const [tradeBlockStatus, setTradeBlockStatus] = useState<{blocked: boolean; reason?: string} | null>(null);
-  
+
   // Real liquidation data from WebSocket and API
   const [liquidations, setLiquidations] = useState<Liquidation[]>([]);
-  
+
   // Track last viewed strategy to persist selection when pausing
   const [lastViewedStrategyId, setLastViewedStrategyId] = useState<string | null>(null);
+
+  // Section collapse state (persisted in localStorage)
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>(() => {
+    const saved = localStorage.getItem('dashboard-collapsed-sections');
+    return saved ? JSON.parse(saved) : {
+      cascadeRisk: false,
+      marketSentiment: false,
+      vwapStatus: false,
+      performance: false,
+      tradingHotspots: false,
+      activePositions: false,
+    };
+  });
+
+  // Save collapsed state to localStorage
+  useEffect(() => {
+    localStorage.setItem('dashboard-collapsed-sections', JSON.stringify(collapsedSections));
+  }, [collapsedSections]);
+
+  const toggleSection = (section: string) => {
+    setCollapsedSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
 
   // Use centralized hook for all strategy-related data (reduces API calls by 10-20x)
   const {
@@ -697,22 +745,62 @@ export default function Dashboard() {
         style={{ paddingTop: '56px' }}
       >
         {/* Cascade Risk Indicator */}
-        <CascadeRiskIndicator />
+        <CollapsibleSection
+          title="Cascade Risk Indicator"
+          isOpen={!collapsedSections.cascadeRisk}
+          onToggle={() => toggleSection('cascadeRisk')}
+        >
+          <CascadeRiskIndicator />
+        </CollapsibleSection>
 
         {/* Market Sentiment Dashboard */}
-        <MarketSentiment />
+        <CollapsibleSection
+          title="Market Sentiment"
+          isOpen={!collapsedSections.marketSentiment}
+          onToggle={() => toggleSection('marketSentiment')}
+        >
+          <MarketSentiment />
+        </CollapsibleSection>
 
         {/* VWAP Direction Filter Status */}
-        {activeStrategy && <VWAPStatusDisplay strategyId={activeStrategy.id} liquidations={liquidations} />}
+        {activeStrategy && (
+          <CollapsibleSection
+            title="VWAP Direction Filter"
+            isOpen={!collapsedSections.vwapStatus}
+            onToggle={() => toggleSection('vwapStatus')}
+          >
+            <VWAPStatusDisplay strategyId={activeStrategy.id} liquidations={liquidations} />
+          </CollapsibleSection>
+        )}
 
         {/* Performance Overview */}
-        <PerformanceOverview />
+        <CollapsibleSection
+          title="Account Performance"
+          isOpen={!collapsedSections.performance}
+          onToggle={() => toggleSection('performance')}
+        >
+          <PerformanceOverview />
+        </CollapsibleSection>
 
         {/* Trading Activity Analysis */}
-        {activeStrategy && <TradingHotspotsAnalytics strategyId={activeStrategy.id} />}
+        {activeStrategy && (
+          <CollapsibleSection
+            title="Trading Activity Analysis"
+            isOpen={!collapsedSections.tradingHotspots}
+            onToggle={() => toggleSection('tradingHotspots')}
+          >
+            <TradingHotspotsAnalytics strategyId={activeStrategy.id} />
+          </CollapsibleSection>
+        )}
 
         {/* Active Positions */}
-        <StrategyStatus />
+        <CollapsibleSection
+          title="Active Positions"
+          isOpen={!collapsedSections.activePositions}
+          onToggle={() => toggleSection('activePositions')}
+        >
+          <StrategyStatus />
+        </CollapsibleSection>
       </main>
 
       {/* Trading Strategy Dialog */}

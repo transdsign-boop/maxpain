@@ -1361,34 +1361,34 @@ function PerformanceOverview() {
         {/* Main Balance Section with Risk Bar */}
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_2fr_auto] gap-6">
           {/* Current Balance - Prominent */}
-          <div className="space-y-3">
+          <div className="space-y-2 lg:space-y-3">
             <div className="flex items-center gap-2">
-              <DollarSign className="h-5 w-5 text-muted-foreground" />
-              <div className="text-sm text-muted-foreground uppercase tracking-wider">Current Balance</div>
+              <DollarSign className="h-4 w-4 lg:h-5 lg:w-5 text-muted-foreground" />
+              <div className="text-xs lg:text-sm text-muted-foreground uppercase tracking-wider">Current Balance</div>
             </div>
-            <div className="text-7xl font-mono font-bold" data-testid="text-total-balance">
+            <div className="text-4xl lg:text-7xl font-mono font-bold" data-testid="text-total-balance">
               ${totalBalance.toFixed(2)}
             </div>
-            <div className={`text-base font-mono ${unrealizedPnl >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`}>
+            <div className={`text-sm lg:text-base font-mono ${unrealizedPnl >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`}>
               Unrealized: {unrealizedPnl >= 0 ? '+' : ''}${unrealizedPnl.toFixed(2)}
             </div>
-            <div className={`text-sm text-muted-foreground`}>
+            <div className={`text-xs lg:text-sm text-muted-foreground`}>
               {unrealizedPnlPercent >= 0 ? '+' : ''}{unrealizedPnlPercent.toFixed(2)}%
             </div>
           </div>
 
           {/* Available Balance + Interval P&L */}
-          <div className="space-y-3">
+          <div className="space-y-2 lg:space-y-3">
             {/* Interval P&L - Shows P&L for currently viewed chart interval */}
-            <div className="mb-4 pb-4 border-b">
-              <div className="text-sm text-muted-foreground uppercase tracking-wider">Interval P&L</div>
-              <div className={`text-3xl font-mono font-bold mt-2 ${displayPerformance.totalRealizedPnl >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`}>
+            <div className="mb-3 pb-3 lg:mb-4 lg:pb-4 border-b">
+              <div className="text-xs lg:text-sm text-muted-foreground uppercase tracking-wider">Interval P&L</div>
+              <div className={`text-2xl lg:text-3xl font-mono font-bold mt-1 lg:mt-2 ${displayPerformance.totalRealizedPnl >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`}>
                 {displayPerformance.totalRealizedPnl >= 0 ? '+' : ''}${displayPerformance.totalRealizedPnl.toFixed(2)}
               </div>
-              <div className={`text-lg font-mono font-bold ${displayPerformance.intervalPnlPercent >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`}>
+              <div className={`text-base lg:text-lg font-mono font-bold ${displayPerformance.intervalPnlPercent >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`}>
                 {displayPerformance.intervalPnlPercent >= 0 ? '+' : ''}{displayPerformance.intervalPnlPercent.toFixed(2)}%
               </div>
-              <div className="text-sm text-muted-foreground mt-1">
+              <div className="text-xs lg:text-sm text-muted-foreground mt-1">
                 {dateRange.start || dateRange.end
                   ? 'Filtered period'
                   : selectedTradeRange.start !== null
@@ -1397,28 +1397,28 @@ function PerformanceOverview() {
               </div>
             </div>
 
-            <div className="text-sm text-muted-foreground uppercase tracking-wider">Total Balance</div>
-            <div className="text-4xl font-mono font-bold" data-testid="text-wallet-balance">
+            <div className="text-xs lg:text-sm text-muted-foreground uppercase tracking-wider">Total Balance</div>
+            <div className="text-2xl lg:text-4xl font-mono font-bold" data-testid="text-wallet-balance">
               ${walletBalance.toFixed(2)}
             </div>
-            <div className="text-sm text-muted-foreground">
+            <div className="text-xs lg:text-sm text-muted-foreground">
               Wallet only
             </div>
-            <div className="text-sm text-muted-foreground uppercase tracking-wider mt-4">Available</div>
-            <div className="text-3xl font-mono font-bold" data-testid="text-available-balance">
+            <div className="text-xs lg:text-sm text-muted-foreground uppercase tracking-wider mt-3 lg:mt-4">Available</div>
+            <div className="text-2xl lg:text-3xl font-mono font-bold" data-testid="text-available-balance">
               ${availableBalance.toFixed(2)}
             </div>
-            <div className="text-sm text-muted-foreground">
+            <div className="text-xs lg:text-sm text-muted-foreground">
               For trading
             </div>
           </div>
 
           {/* Margin Usage Meter - Dual Ring (Margin Used vs Projected Risk) */}
-          <div className="flex flex-col items-center gap-3 lg:border-l lg:pl-6" data-testid="container-risk-bar">
-            <div className="text-xs text-muted-foreground uppercase tracking-wider text-center whitespace-nowrap">Risk Meter</div>
+          <div className="flex flex-col items-center justify-center gap-4 lg:border-l lg:pl-8" data-testid="container-risk-bar">
+            <div className="text-sm text-muted-foreground uppercase tracking-wider text-center whitespace-nowrap">Risk Meter</div>
             <div className="relative flex flex-col items-center">
               {/* Dual Ring Meter */}
-              <div className="relative w-36 h-36">
+              <div className="relative w-48 h-48 sm:w-56 sm:h-56 lg:w-64 lg:h-64 xl:w-72 xl:h-72">
                 <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
                   {/* Outer ring background (filled risk - loss if all current positions hit SL) */}
                   <circle
@@ -1471,13 +1471,13 @@ function PerformanceOverview() {
                 </svg>
                 {/* Pulsating background - changes based on risk level */}
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <div className={`w-16 h-16 rounded-full ${getRiskPulsationClass}`} />
+                  <div className={`w-20 h-20 sm:w-24 sm:h-24 lg:w-28 lg:h-28 xl:w-32 xl:h-32 rounded-full ${getRiskPulsationClass}`} />
                 </div>
                 {/* Centered content */}
                 <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
-                  <div className="text-sm font-mono text-muted-foreground">Margin</div>
-                  <div className="text-xl font-mono font-bold">{marginUsedPercentage.toFixed(1)}%</div>
-                  <div className="text-[10px] font-mono mt-0.5 text-white font-semibold" style={{ textShadow: '0 0 4px rgba(0,0,0,0.8), 0 0 8px rgba(0,0,0,0.6)' }}>
+                  <div className="text-base sm:text-lg lg:text-xl font-mono text-muted-foreground">Margin</div>
+                  <div className="text-2xl sm:text-3xl lg:text-4xl xl:text-5xl font-mono font-bold">{marginUsedPercentage.toFixed(1)}%</div>
+                  <div className="text-xs sm:text-sm lg:text-base font-mono mt-0.5 sm:mt-1 text-white font-semibold" style={{ textShadow: '0 0 4px rgba(0,0,0,0.8), 0 0 8px rgba(0,0,0,0.6)' }}>
                     {filledRiskPercentage.toFixed(1)}% of {activeStrategy?.maxPortfolioRiskPercent || '15'}%
                   </div>
                 </div>
@@ -1530,18 +1530,18 @@ function PerformanceOverview() {
                   }
                 `}</style>
               </div>
-              
-              <div className="text-[10px] text-muted-foreground text-center mt-1">
+
+              <div className="text-xs sm:text-sm text-muted-foreground text-center mt-2">
                 <div>Used: ${marginUsed.toFixed(2)}</div>
                 <div className={getRiskColorClass}>Filled: ${filledRisk.toFixed(2)}</div>
                 <div className="text-muted-foreground/70">Reserved: ${reservedRisk.toFixed(2)}</div>
               </div>
-              
+
               {/* Risk Limit Slider */}
-              <div className="mt-3 w-36 space-y-1.5">
+              <div className="mt-4 w-48 sm:w-56 lg:w-64 xl:w-72 space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] text-muted-foreground">Max</span>
-                  <span className="text-xs font-mono font-semibold">{localRiskLimit.toFixed(1)}%</span>
+                  <span className="text-xs sm:text-sm text-muted-foreground">Max Risk</span>
+                  <span className="text-sm sm:text-base font-mono font-semibold">{localRiskLimit.toFixed(1)}%</span>
                 </div>
                 <Slider
                   value={[localRiskLimit]}
@@ -1553,7 +1553,7 @@ function PerformanceOverview() {
                   className="cursor-pointer"
                   data-testid="slider-max-risk"
                 />
-                <div className="text-center text-[10px] font-mono text-muted-foreground">
+                <div className="text-center text-xs sm:text-sm font-mono text-muted-foreground">
                   ${maxRiskDollars.toFixed(2)}
                 </div>
               </div>
