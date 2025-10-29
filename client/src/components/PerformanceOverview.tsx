@@ -682,6 +682,14 @@ function PerformanceOverview() {
     return (totalBalance * localRiskLimit) / 100;
   }, [liveAccount, localRiskLimit]);
 
+  // Calculate current total balance (for interval P&L percentage)
+  const currentTotalBalance = useMemo(() => {
+    if (!liveAccount) return 0;
+    const walletBalance = parseFloat(liveAccount.totalWalletBalance || '0') || 0;
+    const unrealizedPnl = parseFloat(liveAccount.totalUnrealizedProfit || '0') || 0;
+    return walletBalance + unrealizedPnl;
+  }, [liveAccount]);
+
   // Use unified performance data (live-only mode)
   // Recalculate metrics when date filter is active
   const displayPerformance = useMemo(() => {
@@ -812,20 +820,20 @@ function PerformanceOverview() {
     // Interval P&L = difference between end and start
     const totalRealizedPnl = endCumulativePnl - startCumulativePnl;
 
-    // Calculate percentage based on total deposits (initial capital)
-    // This shows % return on the money you actually put in
-    // Use 3900 as fallback if totalDeposited is not loaded yet
-    const depositBase = totalDeposited > 0 ? totalDeposited : 3900;
-    const intervalPnlPercent = depositBase > 0
-      ? (totalRealizedPnl / depositBase) * 100
+    // Calculate percentage based on current total balance
+    // This shows % return on your current account balance
+    // Use 3900 as fallback if currentTotalBalance is not loaded yet
+    const balanceBase = currentTotalBalance > 0 ? currentTotalBalance : 3900;
+    const intervalPnlPercent = balanceBase > 0
+      ? (totalRealizedPnl / balanceBase) * 100
       : 0;
 
     // Debug logging
     if (totalRealizedPnl !== 0) {
       console.log('Interval P&L Calculation:', {
         totalRealizedPnl,
-        totalDeposited,
-        depositBase,
+        currentTotalBalance,
+        balanceBase,
         intervalPnlPercent
       });
     }
@@ -857,8 +865,8 @@ function PerformanceOverview() {
       }
     });
 
-    // Calculate percentage based on starting capital (deposits)
-    maxDrawdownPercent = depositBase > 0 ? (maxDrawdown / depositBase) * 100 : 0;
+    // Calculate percentage based on current balance
+    maxDrawdownPercent = balanceBase > 0 ? (maxDrawdown / balanceBase) * 100 : 0;
     
     // Calculate average trade time from filtered closed positions
     let avgTradeTimeMs = 0;
@@ -914,10 +922,10 @@ function PerformanceOverview() {
     const timeRangeDays = sourceChartData.length > 1
       ? (sourceChartData[sourceChartData.length - 1].timestamp - sourceChartData[0].timestamp) / (1000 * 60 * 60 * 24)
       : 1;
-    const annualizedReturn = timeRangeDays > 0
-      ? (totalRealizedPnl / totalDeposited) * (365 / timeRangeDays) * 100
+    const annualizedReturn = timeRangeDays > 0 && balanceBase > 0
+      ? (totalRealizedPnl / balanceBase) * (365 / timeRangeDays) * 100
       : 0;
-    const calmarRatio = maxDrawdown > 0 && totalDeposited > 0
+    const calmarRatio = maxDrawdown > 0 && balanceBase > 0
       ? annualizedReturn / maxDrawdownPercent
       : 0;
 
@@ -1011,9 +1019,9 @@ function PerformanceOverview() {
     console.log('\n📊 CALMAR RATIO CALCULATION:');
     console.log(`  Formula: Annualized Return / Max Drawdown %`);
     console.log(`  Step 1 - Annualized Return:`);
-    console.log(`    (Total P&L / Total Deposited) × (365 / Days)`);
-    console.log(`    (${totalRealizedPnl.toFixed(2)} / ${totalDeposited.toFixed(2)}) × (365 / ${timeRangeDays.toFixed(2)})`);
-    console.log(`    ${(totalRealizedPnl / totalDeposited).toFixed(4)} × ${(365 / timeRangeDays).toFixed(2)}`);
+    console.log(`    (Total P&L / Current Balance) × (365 / Days)`);
+    console.log(`    (${totalRealizedPnl.toFixed(2)} / ${balanceBase.toFixed(2)}) × (365 / ${timeRangeDays.toFixed(2)})`);
+    console.log(`    ${(totalRealizedPnl / balanceBase).toFixed(4)} × ${(365 / timeRangeDays).toFixed(2)}`);
     console.log(`    = ${annualizedReturn.toFixed(2)}%`);
     console.log(`  Step 2 - Calmar Ratio:`);
     console.log(`    ${annualizedReturn.toFixed(2)} / ${maxDrawdownPercent.toFixed(2)} = ${calmarRatio.toFixed(2)}`);
@@ -1087,7 +1095,7 @@ function PerformanceOverview() {
       calmarRatio,
       expectancy,
     };
-  }, [performance, dateRange, selectedTradeRange, realizedPnlEvents, allCommissions, allFundingFees, sourceChartData, closedPositions, rawSourceData, getCumulativeDepositsAtTime, getCumulativeFeeIncomeAtTime, totalDeposited]);
+  }, [performance, dateRange, selectedTradeRange, realizedPnlEvents, allCommissions, allFundingFees, sourceChartData, closedPositions, rawSourceData, getCumulativeDepositsAtTime, getCumulativeFeeIncomeAtTime, totalDeposited, currentTotalBalance]);
   const displayLoading = isLoading || chartLoading || liveAccountLoading;
   const showLoadingUI = displayLoading || !performance;
 
