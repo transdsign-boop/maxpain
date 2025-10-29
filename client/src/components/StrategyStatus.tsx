@@ -634,10 +634,11 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
   const [isFlashing, setIsFlashing] = useState(false);
   const [fillSourceFilter, setFillSourceFilter] = useState<'all' | 'bot' | 'manual' | 'sync'>('all');
   const prevLayersRef = useRef(position.layersFilled);
+  const [isHovered, setIsHovered] = useState(false);
 
   const { data: fills } = useQuery<Fill[]>({
     queryKey: ['/api/positions', position.id, 'fills'],
-    enabled: isExpanded,
+    enabled: true, // Always fetch fills to get accurate layer count
   });
 
   // Filter fills by source
@@ -799,331 +800,243 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
   const fullSlLoss = -1 * notionalValue * (actualSlPercent / 100);
   const fullTpProfit = notionalValue * (actualTpPercent / 100);
 
+  // Calculate arc path for circular gauge
+  const gaugeSize = 200;
+  const centerX = gaugeSize / 2;
+  const centerY = gaugeSize / 2;
+  const radius = 75;
+  const strokeWidth = 18;
+
+  // Convert pressure value (0-100) to arc angle (-135° to +135° = 270° total range)
+  const startAngle = -135;
+  const endAngle = 135;
+  const totalAngle = endAngle - startAngle;
+  const currentAngle = startAngle + (pressureValue / 100) * totalAngle;
+
+  // Neutral point angle (where entry is)
+  const neutralAngle = startAngle + (neutralPoint / 100) * totalAngle;
+
+  // Helper to convert angle to path coordinates
+  const polarToCartesian = (angle: number, r: number) => {
+    const rad = (angle - 90) * Math.PI / 180;
+    return {
+      x: centerX + r * Math.cos(rad),
+      y: centerY + r * Math.sin(rad)
+    };
+  };
+
+  // Create arc path
+  const describeArc = (startAngleDeg: number, endAngleDeg: number, r: number) => {
+    const start = polarToCartesian(startAngleDeg, r);
+    const end = polarToCartesian(endAngleDeg, r);
+    const largeArcFlag = endAngleDeg - startAngleDeg <= 180 ? 0 : 1;
+    return `M ${start.x} ${start.y} A ${r} ${r} 0 ${largeArcFlag} 1 ${end.x} ${end.y}`;
+  };
+
+  // Gauge background arc (full range)
+  const backgroundArcPath = describeArc(startAngle, endAngle, radius);
+
+  // SL to Entry arc (red zone)
+  const slArcPath = describeArc(startAngle, neutralAngle, radius);
+
+  // Entry to TP arc (green zone)
+  const tpArcPath = describeArc(neutralAngle, endAngle, radius);
+
+  // Current position indicator arc
+  const currentArcPath = currentAngle >= neutralAngle
+    ? describeArc(neutralAngle, currentAngle, radius)
+    : describeArc(currentAngle, neutralAngle, radius);
+
+  // Current position needle
+  const needlePos = polarToCartesian(currentAngle, radius);
+  const needleInnerPos = polarToCartesian(currentAngle, radius - strokeWidth - 5);
+  const needleOuterPos = polarToCartesian(currentAngle, radius + 10);
+
   return (
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
       <div
-        className={`relative rounded-2xl overflow-hidden ring-1 ring-border shadow-lg transition-all duration-300 ${isFlashing ? 'animate-layer-flash' : ''}`}
+        className={`relative transition-all duration-300 ${isFlashing ? 'animate-layer-flash' : ''}`}
         data-testid={`position-${position.symbol}`}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
       >
-        {/* Position pressure indicator line */}
-        <div 
-          className="absolute top-0 bottom-0 w-0.5 transition-all duration-300 z-10"
-          style={{ 
-            left: `${pressureValue}%`,
-            backgroundColor: gradientColor
-          }}
-          data-testid={`pressure-indicator-${position.symbol}`}
-        />
-        
-        {/* Gradient intensity overlay */}
-        <div 
-          className="absolute top-0 bottom-0 transition-all duration-300 z-0"
-          style={{ 
-            left: pressureValue > neutralPoint ? `${neutralPoint}%` : `${pressureValue}%`,
-            right: pressureValue < neutralPoint ? `${100 - neutralPoint}%` : `${100 - pressureValue}%`,
-            background: `linear-gradient(${gradientDirection}, ${gradientStart}, ${gradientEnd})`
-          }}
-        />
-        
-        {/* Mobile layout (stacked) and Desktop layout (grid) */}
-        <div className="relative z-10">
-          {/* Mobile: Stacked layout */}
-          <div className="lg:hidden">
-            {/* Header row: Symbol, badges, and info */}
-            <div className="relative">
-              <div className="relative p-2 space-y-1.5">
-                {/* Symbol and badges row */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="font-bold text-foreground text-lg tracking-tight">{position.symbol}</div>
-                    <Badge className={`text-xs px-1.5 py-0.5 ${isLong ? 'bg-lime-500/15 text-lime-300 border-lime-400/30' : 'bg-red-600/15 text-red-400 border-red-500/30'}`}>
-                      {isLong ? <TrendingUp className="h-3 w-3 mr-0.5" /> : <TrendingDown className="h-3 w-3 mr-0.5" />}
-                      {position.side.toUpperCase()}
-                    </Badge>
-                    {isHedge && (
-                      <Badge variant="secondary" className="text-xs">HEDGE</Badge>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="px-1.5 py-0.5 rounded text-[10px] text-muted-foreground bg-muted/50">
-                      {actualLayersFilled}/{position.maxLayers}
-                    </span>
-                    <span className="px-1.5 py-0.5 rounded text-[10px] text-muted-foreground bg-muted/50">
-                      {leverage}×
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Price data with compact P&L and Close button */}
-            <div className="px-2 py-2 border-t border-border/30">
-              <div className="flex items-center gap-3">
-                {/* Left column: Avg and SL */}
-                <div className="space-y-1.5 flex-shrink-0">
-                  <div>
-                    <div className="text-[10px] text-muted-foreground">Avg:</div>
-                    <div className="text-xs font-medium text-foreground">{formatCurrency(avgEntry)}</div>
-                  </div>
-                  <div>
-                    <div className="text-[10px] text-muted-foreground">SL:</div>
-                    <div className="text-xs text-red-700 dark:text-red-500">
-                      {formatCurrency(stopLossPrice)}
-                      <span className="text-[10px] ml-1 font-bold">({actualSlPercent.toFixed(2)}%)</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Center: P&L and Close button */}
-                <div className="flex flex-col items-center justify-center flex-1 gap-1 min-w-0 px-1">
-                  {/* Three P&L values stacked vertically for better visibility */}
-                  <div className="w-full space-y-0.5">
-                    {/* Current P&L - Most important, show first */}
-                    <div className="flex flex-col items-center">
-                      <div className={`text-xl font-black font-mono leading-none ${getPnlColor(unrealizedPnlDollar)}`}>
-                        {unrealizedPnlDollar >= 0 ? '+' : ''}${Math.abs(unrealizedPnlDollar).toFixed(2)}
-                      </div>
-                      <div className={`text-[10px] font-bold font-mono ${getPnlColor(unrealizedPnlPercent)}`}>
-                        {unrealizedPnlPercent >= 0 ? '+' : ''}{unrealizedPnlPercent.toFixed(2)}%
-                      </div>
-                    </div>
-
-                    {/* SL and TP in one row */}
-                    <div className="flex items-center justify-center gap-3 text-[10px] font-mono">
-                      <div className="flex items-center gap-1">
-                        <span className="text-muted-foreground">SL:</span>
-                        <span className="font-bold text-red-600 dark:text-red-500">
-                          ${Math.abs(fullSlLoss).toFixed(2)}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <span className="text-muted-foreground">TP:</span>
-                        <span className="font-bold text-lime-600 dark:text-lime-400">
-                          ${fullTpProfit.toFixed(2)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <button
-                    className="rounded flex items-center justify-center px-2 py-0.5 border border-destructive bg-transparent text-destructive text-[10px] font-semibold transition-all hover:brightness-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                    data-testid={`button-close-position-${position.symbol}`}
-                    onClick={onClose}
-                    disabled={isClosing}
-                  >
-                    Close
-                  </button>
-                </div>
-
-                {/* Right column: Current and TP */}
-                <div className="space-y-1.5 flex-shrink-0">
-                  <div>
-                    <div className="text-[10px] text-muted-foreground">Current:</div>
-                    <div className="text-xs font-semibold text-foreground" data-testid={`current-price-${position.symbol}`}>
-                      {formatCurrency(currentPrice)}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-[10px] text-muted-foreground">TP:</div>
-                    <div className="text-xs text-lime-600 dark:text-lime-400">
-                      {formatCurrency(takeProfitPrice)}
-                      <span className="text-[10px] ml-1 font-bold">({actualTpPercent.toFixed(2)}%)</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Liquidation gauge and expand button */}
-            <div className="px-2 py-2 flex items-center justify-between gap-2 border-t border-border/30">
-              {/* Liquidation donut (if applicable) */}
-              {liquidationPrice !== null && distanceToLiquidation !== null && (
-                <div className="flex items-center gap-2">
-                  <div className="relative" style={{ width: '40px', height: '40px' }}>
-                    <svg viewBox="0 0 100 100" className="transform -rotate-90">
-                      <circle
-                        cx="50"
-                        cy="50"
-                        r="40"
-                        fill="none"
-                        stroke="hsl(var(--muted))"
-                        strokeWidth="8"
-                      />
-                      <circle
-                        cx="50"
-                        cy="50"
-                        r="40"
-                        fill="none"
-                        stroke={distanceToLiquidation < 5 ? 'rgb(220, 38, 38)' : distanceToLiquidation < 15 ? 'rgb(251, 146, 60)' : 'rgb(190, 242, 100)'}
-                        strokeWidth="8"
-                        strokeDasharray={`${Math.min(100, distanceToLiquidation * 2.5)} ${251.2 - Math.min(100, distanceToLiquidation * 2.5)}`}
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                    <div className="absolute inset-0 flex flex-col items-center justify-center">
-                      <div className={`text-[10px] font-bold ${distanceToLiquidation < 5 ? 'text-red-700' : distanceToLiquidation < 15 ? 'text-orange-500' : 'text-lime-600'}`}>
-                        {distanceToLiquidation.toFixed(0)}%
-                      </div>
-                    </div>
-                  </div>
-                  <span className="text-[10px] text-muted-foreground">to liq</span>
-                </div>
-              )}
-
-              {/* Expand button */}
-              <div className="ml-auto">
-                <CollapsibleTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-7 w-7" data-testid="button-toggle-layers">
-                    {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                  </Button>
-                </CollapsibleTrigger>
-              </div>
-            </div>
-          </div>
-
-          {/* Desktop: Grid layout */}
-          <div className="hidden lg:grid lg:grid-cols-[180px_1fr_auto]">
-            {/* Left: Asset label */}
-            <div className="relative">
-              {/* Compact chips */}
-              <div className="relative p-2 flex items-center gap-2 flex-wrap">
-                <Badge className={`text-xs px-1.5 py-0.5 ${isLong ? 'bg-lime-500/15 text-lime-300 border-lime-400/30' : 'bg-red-600/15 text-red-400 border-red-500/30'}`}>
+        {/* Circular Gauge Layout */}
+        <div className="relative flex flex-col items-center p-4 rounded-2xl border bg-card shadow-lg hover:shadow-xl transition-shadow">
+          {/* Top Info Bar */}
+          <div className="w-full mb-3">
+            <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-lg">{position.symbol}</span>
+                <Badge className={`text-xs ${isLong ? 'bg-lime-500/15 text-lime-300 border-lime-400/30' : 'bg-red-600/15 text-red-400 border-red-500/30'}`}>
                   {isLong ? <TrendingUp className="h-3 w-3 mr-1" /> : <TrendingDown className="h-3 w-3 mr-1" />}
                   {position.side.toUpperCase()}
                 </Badge>
-                <span className="px-1.5 py-0.5 rounded-lg text-[10px] text-muted-foreground bg-muted/50 border border-border/50">
-                  {actualLayersFilled}/{position.maxLayers}
-                </span>
-                <span className="px-1.5 py-0.5 rounded-lg text-[10px] text-muted-foreground bg-muted/50 border border-border/50">
-                  {leverage}× • {formatCurrency(notionalValue)}
-                </span>
                 {isHedge && (
                   <Badge variant="secondary" className="text-xs">HEDGE</Badge>
                 )}
               </div>
+              <div className="text-xs text-muted-foreground">
+                {actualLayersFilled}/{position.maxLayers} layers
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-base font-bold font-mono text-foreground">
+                ${notionalValue.toFixed(2)}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {leverage}× leverage
+              </span>
+              <span className="text-xs text-muted-foreground">
+                • {parseFloat(position.totalQuantity).toFixed(4)} qty
+              </span>
+            </div>
+          </div>
 
-              {/* Bottom: Symbol label with expand button */}
-              <div className="relative px-2 pb-2 flex items-center gap-2">
-                <div className="font-bold text-foreground text-lg tracking-tight">{position.symbol}</div>
-                <CollapsibleTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-6 w-6 ml-auto" data-testid="button-toggle-layers">
-                    {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                  </Button>
-                </CollapsibleTrigger>
+          {/* Circular Gauge */}
+          <div className="relative" style={{ width: `${gaugeSize}px`, height: `${gaugeSize}px` }}>
+            <svg width={gaugeSize} height={gaugeSize} className="transform rotate-0">
+              {/* Background arc */}
+              <path
+                d={backgroundArcPath}
+                fill="none"
+                stroke="hsl(var(--muted))"
+                strokeWidth={strokeWidth}
+                strokeLinecap="round"
+              />
+
+              {/* SL zone (red) */}
+              <path
+                d={slArcPath}
+                fill="none"
+                stroke="rgb(220, 38, 38)"
+                strokeWidth={strokeWidth}
+                strokeLinecap="butt"
+                opacity={0.3}
+              />
+
+              {/* TP zone (green) */}
+              <path
+                d={tpArcPath}
+                fill="none"
+                stroke="rgb(190, 242, 100)"
+                strokeWidth={strokeWidth}
+                strokeLinecap="butt"
+                opacity={0.3}
+              />
+
+              {/* Current position arc */}
+              <path
+                d={currentArcPath}
+                fill="none"
+                stroke={gradientColor}
+                strokeWidth={strokeWidth}
+                strokeLinecap="butt"
+                opacity={0.8}
+              />
+
+              {/* Current position needle */}
+              <line
+                x1={needleInnerPos.x}
+                y1={needleInnerPos.y}
+                x2={needleOuterPos.x}
+                y2={needleOuterPos.y}
+                stroke={gradientColor}
+                strokeWidth="3"
+                strokeLinecap="round"
+              />
+            </svg>
+
+            {/* Center content */}
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <div className={`text-3xl font-black font-mono ${getPnlColor(unrealizedPnlDollar)}`}>
+                {unrealizedPnlDollar >= 0 ? '+' : ''}${Math.abs(unrealizedPnlDollar).toFixed(2)}
+              </div>
+              <div className={`text-sm font-bold font-mono ${getPnlColor(unrealizedPnlPercent)}`}>
+                {unrealizedPnlPercent >= 0 ? '+' : ''}{unrealizedPnlPercent.toFixed(2)}%
+              </div>
+              <div className="text-xs text-muted-foreground mt-1">
+                {formatCurrency(currentPrice)}
               </div>
             </div>
 
-            {/* Middle: price data with P&L and Close button */}
-            <div className="px-2 py-2 flex items-center gap-3">
-              {/* Left column: Avg and SL */}
-              <div className="space-y-1.5 flex-shrink-0">
-                <div className="min-w-0">
-                  <div className="text-[10px] text-muted-foreground truncate">Avg:</div>
-                  <div className="text-xs text-foreground/90 truncate">{formatCurrency(avgEntry)}</div>
-                </div>
-                <div className="min-w-0">
-                  <div className="text-[10px] text-muted-foreground truncate">SL:</div>
-                  <div className="text-xs text-red-700 dark:text-red-500 truncate">
-                    {formatCurrency(stopLossPrice)}
-                    <span className="text-[10px] ml-1 font-bold">({actualSlPercent.toFixed(2)}%)</span>
-                  </div>
-                </div>
+            {/* Price markers around the gauge */}
+            {/* SL Price (bottom left) */}
+            <div className="absolute" style={{ left: '0px', bottom: '20px' }}>
+              <div className="text-[10px] text-red-600 dark:text-red-500 font-bold">
+                SL: {formatCurrency(stopLossPrice)}
               </div>
-
-              {/* Center: P&L and Close button */}
-              <div className="flex flex-col items-center justify-center flex-1 gap-1.5">
-                <div className="flex items-center gap-3">
-                  {/* Left: SL Loss */}
-                  <div className="flex flex-col items-center">
-                    <div className="text-[9px] text-muted-foreground">SL</div>
-                    <div className="text-lg font-bold font-mono text-red-600 dark:text-red-500">
-                      -${Math.abs(fullSlLoss).toFixed(2)}
-                    </div>
-                  </div>
-
-                  {/* Center: Current P&L */}
-                  <div className="flex flex-col items-center">
-                    <div className={`text-2xl font-black font-mono leading-none ${getPnlColor(unrealizedPnlDollar)}`}>
-                      {unrealizedPnlDollar >= 0 ? '+' : ''}${Math.abs(unrealizedPnlDollar).toFixed(2)}
-                    </div>
-                    <div className={`text-sm font-bold font-mono ${getPnlColor(unrealizedPnlPercent)}`}>
-                      {unrealizedPnlPercent >= 0 ? '+' : ''}{unrealizedPnlPercent.toFixed(2)}%
-                    </div>
-                    <div className="text-[10px] text-muted-foreground font-mono mt-0.5">
-                      ${notionalValue.toFixed(2)}
-                    </div>
-                  </div>
-
-                  {/* Right: TP Profit */}
-                  <div className="flex flex-col items-center">
-                    <div className="text-[9px] text-muted-foreground">TP</div>
-                    <div className="text-lg font-bold font-mono text-lime-600 dark:text-lime-400">
-                      +${fullTpProfit.toFixed(2)}
-                    </div>
-                  </div>
-                </div>
-                <button
-                  className="rounded flex items-center justify-center px-2 py-0.5 border border-destructive bg-transparent text-destructive text-[10px] font-semibold transition-all hover:brightness-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                  data-testid={`button-close-position-${position.symbol}`}
-                  onClick={onClose}
-                  disabled={isClosing}
-                >
-                  Close
-                </button>
-              </div>
-
-              {/* Right column: Current and TP */}
-              <div className="space-y-1.5 flex-shrink-0">
-                <div className="min-w-0">
-                  <div className="text-[10px] text-muted-foreground truncate">Current:</div>
-                  <div className="text-xs font-semibold text-foreground truncate" data-testid={`current-price-${position.symbol}`}>
-                    {formatCurrency(currentPrice)}
-                  </div>
-                </div>
-                <div className="min-w-0">
-                  <div className="text-[10px] text-muted-foreground truncate">TP:</div>
-                  <div className="text-xs text-lime-600 dark:text-lime-400 truncate">
-                    {formatCurrency(takeProfitPrice)}
-                    <span className="text-[10px] ml-1 font-bold">({actualTpPercent.toFixed(2)}%)</span>
-                  </div>
-                </div>
+              <div className="text-[9px] text-muted-foreground">
+                -{actualSlPercent.toFixed(1)}%
               </div>
             </div>
 
-            {/* Right Column: Liquidation Risk Donut */}
-            <div className="flex items-center justify-center py-2 px-2 border-l border-border/30">
-              {liquidationPrice !== null && distanceToLiquidation !== null && (
-                <div className="flex items-center gap-2">
-                  <div className="relative" style={{ width: '50px', height: '50px' }}>
-                    <svg viewBox="0 0 100 100" className="transform -rotate-90">
-                      <circle
-                        cx="50"
-                        cy="50"
-                        r="40"
-                        fill="none"
-                        stroke="hsl(var(--muted))"
-                        strokeWidth="8"
-                      />
-                      <circle
-                        cx="50"
-                        cy="50"
-                        r="40"
-                        fill="none"
-                        stroke={distanceToLiquidation < 5 ? 'rgb(220, 38, 38)' : distanceToLiquidation < 15 ? 'rgb(251, 146, 60)' : 'rgb(190, 242, 100)'}
-                        strokeWidth="8"
-                        strokeDasharray={`${Math.min(100, distanceToLiquidation * 2.5)} ${251.2 - Math.min(100, distanceToLiquidation * 2.5)}`}
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                    <div className="absolute inset-0 flex flex-col items-center justify-center">
-                      <div className={`text-[10px] font-bold ${distanceToLiquidation < 5 ? 'text-red-700' : distanceToLiquidation < 15 ? 'text-orange-500' : 'text-lime-600'}`}>
-                        {distanceToLiquidation.toFixed(0)}%
-                      </div>
-                    </div>
+            {/* TP Price (bottom right) */}
+            <div className="absolute" style={{ right: '0px', bottom: '20px' }}>
+              <div className="text-[10px] text-lime-600 dark:text-lime-400 font-bold text-right">
+                TP: {formatCurrency(takeProfitPrice)}
+              </div>
+              <div className="text-[9px] text-muted-foreground text-right">
+                +{actualTpPercent.toFixed(1)}%
+              </div>
+            </div>
+
+            {/* Entry Price (top) */}
+            <div className="absolute left-1/2 -translate-x-1/2" style={{ top: '-5px' }}>
+              <div className="text-[10px] text-muted-foreground text-center">
+                Avg Entry
+              </div>
+              <div className="text-[11px] font-semibold text-center">
+                {formatCurrency(avgEntry)}
+              </div>
+            </div>
+
+            {/* Liquidation indicator (if applicable) */}
+            {liquidationPrice !== null && distanceToLiquidation !== null && (
+              <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-full ml-2">
+                <div className="flex flex-col items-center">
+                  <div className={`text-xs font-bold ${distanceToLiquidation < 5 ? 'text-red-700' : distanceToLiquidation < 15 ? 'text-orange-500' : 'text-lime-600'}`}>
+                    {distanceToLiquidation.toFixed(0)}%
                   </div>
-                  <span className="text-[10px] text-muted-foreground whitespace-nowrap">to liq</span>
+                  <div className="text-[9px] text-muted-foreground whitespace-nowrap">
+                    to liq
+                  </div>
                 </div>
-              )}
+              </div>
+            )}
+          </div>
+
+          {/* Bottom Info & Actions */}
+          <div className="w-full mt-3 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-[10px] font-mono">
+              <div className="flex flex-col items-center">
+                <span className="text-muted-foreground">If SL</span>
+                <span className="font-bold text-red-600 dark:text-red-500">
+                  -${Math.abs(fullSlLoss).toFixed(2)}
+                </span>
+              </div>
+              <div className="h-6 w-px bg-border" />
+              <div className="flex flex-col items-center">
+                <span className="text-muted-foreground">If TP</span>
+                <span className="font-bold text-lime-600 dark:text-lime-400">
+                  +${fullTpProfit.toFixed(2)}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-7 w-7" data-testid="button-toggle-layers">
+                  {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                </Button>
+              </CollapsibleTrigger>
+              <button
+                className="rounded flex items-center justify-center px-3 py-1 border border-destructive bg-transparent text-destructive text-xs font-semibold transition-all hover:bg-destructive hover:text-destructive-foreground active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                data-testid={`button-close-position-${position.symbol}`}
+                onClick={onClose}
+                disabled={isClosing}
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>
@@ -1663,31 +1576,180 @@ export const StrategyStatus = memo(function StrategyStatus() {
 
           <TabsContent value="active" className="mt-3 md:mt-4">
             {displaySummary?.positions && displaySummary.positions.length > 0 ? (
-              <div className="space-y-2">
-                {displaySummary.positions.map((position) => {
-                  const orderKey = `${position.symbol}-${position.side.toUpperCase()}`;
-                  const orders = protectiveOrders?.[orderKey];
-                  
-                  return (
-                    <PositionCard
-                      key={position.id}
-                      position={position}
-                      strategy={activeStrategy}
-                      onClose={() => {
-                        setPositionToClose(position);
-                        setIsCloseConfirmOpen(true);
-                      }}
-                      isClosing={closePositionMutation.isPending}
-                      formatCurrency={formatCurrency}
-                      formatPercentage={formatPercentage}
-                      getPnlColor={getPnlColor}
-                      isHedge={hedgeSymbols.has(position.symbol)}
-                      actualTpPrice={orders?.tpPrice}
-                      actualSlPrice={orders?.slPrice}
-                    />
-                  );
-                })}
-              </div>
+              (() => {
+                // Group positions by symbol and side
+                const positionGroups: {
+                  symbol: string;
+                  positions: Position[];
+                  totalSize: number;
+                  isHedged: boolean;
+                }[] = [];
+
+                // Create groups for hedged positions (same symbol, both long and short)
+                const processedSymbols = new Set<string>();
+
+                displaySummary.positions.forEach(position => {
+                  if (processedSymbols.has(position.symbol)) return;
+
+                  const symbolPositions = displaySummary.positions.filter(p => p.symbol === position.symbol);
+                  const hasLong = symbolPositions.some(p => p.side === 'long');
+                  const hasShort = symbolPositions.some(p => p.side === 'short');
+                  const isHedged = hasLong && hasShort;
+
+                  // Calculate total size (notional value) for sorting
+                  const totalSize = symbolPositions.reduce((sum, p) => {
+                    const notional = parseFloat(p.totalQuantity) * parseFloat(p.avgEntryPrice);
+                    return sum + notional;
+                  }, 0);
+
+                  positionGroups.push({
+                    symbol: position.symbol,
+                    positions: symbolPositions.sort((a, b) => {
+                      // Within a hedged group, show long first, then short
+                      if (isHedged) {
+                        return a.side === 'long' ? -1 : 1;
+                      }
+                      return 0;
+                    }),
+                    totalSize,
+                    isHedged
+                  });
+
+                  processedSymbols.add(position.symbol);
+                });
+
+                // Sort groups by total size (largest first)
+                positionGroups.sort((a, b) => b.totalSize - a.totalSize);
+
+                // Separate into hedged, long-only, and short-only sections
+                const hedgedGroups = positionGroups.filter(g => g.isHedged);
+                const longGroups = positionGroups.filter(g => !g.isHedged && g.positions[0].side === 'long');
+                const shortGroups = positionGroups.filter(g => !g.isHedged && g.positions[0].side === 'short');
+
+                return (
+                  <div className="space-y-4">
+                    {/* Hedged Positions Section */}
+                    {hedgedGroups.length > 0 && (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2 px-1">
+                          <div className="h-px flex-1 bg-gradient-to-r from-orange-500/50 to-transparent" />
+                          <h3 className="text-xs font-semibold text-orange-500 uppercase tracking-wider">
+                            Hedged Positions ({hedgedGroups.length})
+                          </h3>
+                          <div className="h-px flex-1 bg-gradient-to-l from-orange-500/50 to-transparent" />
+                        </div>
+                        {hedgedGroups.map(group => (
+                          <div key={`hedged-${group.symbol}`} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 p-2 border-l-2 border-orange-500/30">
+                            {group.positions.map(position => {
+                              const orderKey = `${position.symbol}-${position.side.toUpperCase()}`;
+                              const orders = protectiveOrders ? (protectiveOrders as any)[orderKey] : undefined;
+
+                              return (
+                                <PositionCard
+                                  key={position.id}
+                                  position={position}
+                                  strategy={activeStrategy}
+                                  onClose={() => {
+                                    setPositionToClose(position);
+                                    setIsCloseConfirmOpen(true);
+                                  }}
+                                  isClosing={closePositionMutation.isPending}
+                                  formatCurrency={formatCurrency}
+                                  formatPercentage={formatPercentage}
+                                  getPnlColor={getPnlColor}
+                                  isHedge={true}
+                                  actualTpPrice={orders?.tpPrice}
+                                  actualSlPrice={orders?.slPrice}
+                                />
+                              );
+                            })}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Long Positions Section */}
+                    {longGroups.length > 0 && (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2 px-1">
+                          <div className="h-px flex-1 bg-gradient-to-r from-lime-500/50 to-transparent" />
+                          <h3 className="text-xs font-semibold text-lime-500 uppercase tracking-wider">
+                            Long Positions ({longGroups.length})
+                          </h3>
+                          <div className="h-px flex-1 bg-gradient-to-l from-lime-500/50 to-transparent" />
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                          {longGroups.map(group =>
+                            group.positions.map(position => {
+                              const orderKey = `${position.symbol}-${position.side.toUpperCase()}`;
+                              const orders = protectiveOrders ? (protectiveOrders as any)[orderKey] : undefined;
+
+                              return (
+                                <PositionCard
+                                  key={position.id}
+                                  position={position}
+                                  strategy={activeStrategy}
+                                  onClose={() => {
+                                    setPositionToClose(position);
+                                    setIsCloseConfirmOpen(true);
+                                  }}
+                                  isClosing={closePositionMutation.isPending}
+                                  formatCurrency={formatCurrency}
+                                  formatPercentage={formatPercentage}
+                                  getPnlColor={getPnlColor}
+                                  isHedge={false}
+                                  actualTpPrice={orders?.tpPrice}
+                                  actualSlPrice={orders?.slPrice}
+                                />
+                              );
+                            })
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Short Positions Section */}
+                    {shortGroups.length > 0 && (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2 px-1">
+                          <div className="h-px flex-1 bg-gradient-to-r from-red-500/50 to-transparent" />
+                          <h3 className="text-xs font-semibold text-red-500 uppercase tracking-wider">
+                            Short Positions ({shortGroups.length})
+                          </h3>
+                          <div className="h-px flex-1 bg-gradient-to-l from-red-500/50 to-transparent" />
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                          {shortGroups.map(group =>
+                            group.positions.map(position => {
+                              const orderKey = `${position.symbol}-${position.side.toUpperCase()}`;
+                              const orders = protectiveOrders ? (protectiveOrders as any)[orderKey] : undefined;
+
+                              return (
+                                <PositionCard
+                                  key={position.id}
+                                  position={position}
+                                  strategy={activeStrategy}
+                                  onClose={() => {
+                                    setPositionToClose(position);
+                                    setIsCloseConfirmOpen(true);
+                                  }}
+                                  isClosing={closePositionMutation.isPending}
+                                  formatCurrency={formatCurrency}
+                                  formatPercentage={formatPercentage}
+                                  getPnlColor={getPnlColor}
+                                  isHedge={false}
+                                  actualTpPrice={orders?.tpPrice}
+                                  actualSlPrice={orders?.slPrice}
+                                />
+                              );
+                            })
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()
             ) : (
               <div className="text-center py-8">
                 <DollarSign className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
