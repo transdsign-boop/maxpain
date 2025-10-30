@@ -1,11 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, TrendingDown, Minus, BarChart3, ArrowUpDown } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, BarChart3, ArrowUpDown, ChevronDown } from "lucide-react";
 import { useState, useMemo, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import VWAPChartDialog from "@/components/VWAPChartDialog";
 import { formatInTimeZone } from "date-fns-tz";
+import { useLiquidityStatus } from "@/hooks/use-liquidity-status";
 
 interface VWAPSymbolStatus {
   symbol: string;
@@ -150,17 +152,34 @@ export default function VWAPStatusDisplay({ strategyId, liquidations }: VWAPStat
   });
 
   // Get unique symbols from VWAP status
-  const uniqueSymbols = useMemo(() => {
+  const trackedSymbolsList = useMemo(() => {
     return vwapStatus?.symbols.map(s => s.symbol) || [];
   }, [vwapStatus?.symbols]);
 
-  // Fetch complete historical data PER SYMBOL for percentile calculation (matches sidebar approach)
+  // Get all unique symbols from both tracked symbols AND recent liquidations
+  const allUniqueSymbols = useMemo(() => {
+    const tracked = new Set(trackedSymbolsList);
+    // Add symbols from recent liquidations
+    liquidations.forEach(liq => tracked.add(liq.symbol));
+    return Array.from(tracked);
+  }, [trackedSymbolsList, liquidations]);
+
+  // Get liquidity status for tracked symbols
+  const { data: liveAccount } = useQuery<any>({
+    queryKey: ['/api/live/account'],
+    staleTime: Infinity,
+  });
+  const accountBalance = parseFloat(liveAccount?.totalWalletBalance || '0');
+  const leverage = strategy?.leverage || 5;
+  const { liquidityStatusMap } = useLiquidityStatus(trackedSymbolsList, accountBalance, leverage);
+
+  // Fetch complete historical data PER SYMBOL for percentile calculation (includes ALL symbols, not just tracked)
   const { data: symbolHistories } = useQuery<Record<string, Liquidation[]>>({
-    queryKey: ['liquidations-by-symbol-vwap', uniqueSymbols.join(',')],
+    queryKey: ['liquidations-by-symbol-vwap', allUniqueSymbols.sort().join(',')],
     queryFn: async () => {
-      // Query each symbol separately with limit=10000 (matches strategy engine)
+      // Query each symbol separately with limit=500 (matches strategy engine)
       const results = await Promise.all(
-        uniqueSymbols.map(async (symbol) => {
+        allUniqueSymbols.map(async (symbol) => {
           const response = await fetch(`/api/liquidations/by-symbol?symbols=${symbol}&limit=500`);
           const data = await response.json();
           return { symbol, data };
@@ -178,7 +197,7 @@ export default function VWAPStatusDisplay({ strategyId, liquidations }: VWAPStat
 
       return grouped;
     },
-    enabled: uniqueSymbols.length > 0,
+    enabled: allUniqueSymbols.length > 0,
     staleTime: 30000, // Cache for 30 seconds
   });
 
@@ -324,7 +343,7 @@ export default function VWAPStatusDisplay({ strategyId, liquidations }: VWAPStat
         <CardHeader>
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <TrendingUp className="h-4 w-4" />
-            VWAP Direction Filter
+            VWAP Direction Filter and live liquidations
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -347,7 +366,7 @@ export default function VWAPStatusDisplay({ strategyId, liquidations }: VWAPStat
         <CardHeader>
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <TrendingUp className="h-4 w-4" />
-            VWAP Direction Filter
+            VWAP Direction Filter and live liquidations
           </CardTitle>
           <CardDescription className="text-xs mt-1">
             {vwapStatus.timeframeMinutes / 60}h timeframe • {(vwapStatus.bufferPercentage * 100).toFixed(2)}% buffer
@@ -375,7 +394,7 @@ export default function VWAPStatusDisplay({ strategyId, liquidations }: VWAPStat
           <div>
             <CardTitle className="text-sm font-medium flex items-center gap-2">
               <TrendingUp className="h-4 w-4" />
-              VWAP Direction Filter + Live Liquidations
+              VWAP Direction Filter and live liquidations
             </CardTitle>
             <CardDescription className="text-xs mt-1 flex items-center gap-3">
               <span>{vwapStatus.timeframeMinutes / 60}h • {(vwapStatus.bufferPercentage * 100).toFixed(2)}% buffer</span>
@@ -460,10 +479,16 @@ export default function VWAPStatusDisplay({ strategyId, liquidations }: VWAPStat
                 onClick={() => setSelectedSymbolName(selectedSymbolName === symbolStatus.symbol ? null : symbolStatus.symbol)}
               >
                 {/* Symbol header */}
-                <div className="flex items-center justify-center mb-0.5">
+                <div className="flex items-center justify-center gap-1 mb-0.5">
                   <span className={`font-mono text-[11px] font-bold ${getTextColor()}`}>
                     {symbolStatus.symbol.replace('USDT', '')}
                   </span>
+                  {liquidityStatusMap.get(symbolStatus.symbol) && (
+                    <div
+                      className={`w-1.5 h-1.5 ${liquidityStatusMap.get(symbolStatus.symbol)?.color}`}
+                      title={liquidityStatusMap.get(symbolStatus.symbol)?.tooltip}
+                    />
+                  )}
                 </div>
 
                 {/* Separator */}
@@ -515,38 +540,35 @@ export default function VWAPStatusDisplay({ strategyId, liquidations }: VWAPStat
           })}
         </div>
 
-        {/* Auto-scrolling ticker for non-tracked assets */}
+        {/* Collapsible dropdown for non-tracked assets */}
         {nonTrackedLiquidations.length > 0 && (
-          <div className="mt-2 border-t pt-1.5 overflow-hidden">
-            <div className="text-[9px] text-muted-foreground mb-0.5">Other Activity:</div>
-            <div className="ticker-wrapper">
-              <div className="ticker-content">
-                {nonTrackedLiquidations.slice(0, 20).map((liq, idx) => {
-                  const percentile = calculatePercentile(liq.symbol, parseFloat(liq.value));
-                  const meetsThreshold = strategy?.percentileThreshold ? percentile >= strategy.percentileThreshold : false;
-                  return (
-                    <span key={idx} className="ticker-item text-[10px] font-mono">
-                      <span className="font-bold">{liq.symbol.replace('USDT', '')}</span>
-                      <span className="text-muted-foreground">{formatValue(parseFloat(liq.value))}</span>
-                      <span className={meetsThreshold ? 'text-lime-500 font-bold' : 'text-muted-foreground'}>({percentile}%)</span>
-                    </span>
-                  );
-                })}
-                {/* Duplicate for seamless loop */}
-                {nonTrackedLiquidations.slice(0, 20).map((liq, idx) => {
-                  const percentile = calculatePercentile(liq.symbol, parseFloat(liq.value));
-                  const meetsThreshold = strategy?.percentileThreshold ? percentile >= strategy.percentileThreshold : false;
-                  return (
-                    <span key={`dup-${idx}`} className="ticker-item text-[10px] font-mono">
-                      <span className="font-bold">{liq.symbol.replace('USDT', '')}</span>
-                      <span className="text-muted-foreground">{formatValue(parseFloat(liq.value))}</span>
-                      <span className={meetsThreshold ? 'text-lime-500 font-bold' : 'text-muted-foreground'}>({percentile}%)</span>
-                    </span>
-                  );
-                })}
+          <Collapsible className="mt-2 border-t pt-1.5">
+            <CollapsibleTrigger className="w-full flex items-center justify-between hover:bg-muted/50 rounded px-2 py-1 transition-colors">
+              <div className="text-[9px] text-muted-foreground">
+                Other Activity: {nonTrackedLiquidations.length} liquidation{nonTrackedLiquidations.length !== 1 ? 's' : ''}
               </div>
-            </div>
-          </div>
+              <ChevronDown className="h-3 w-3 text-muted-foreground transition-transform" />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-1.5 space-y-0.5 max-h-64 overflow-y-auto">
+              {nonTrackedLiquidations.map((liq, idx) => {
+                const percentile = calculatePercentile(liq.symbol, parseFloat(liq.value));
+                const meetsThreshold = strategy?.percentileThreshold ? percentile >= strategy.percentileThreshold : false;
+                return (
+                  <div key={idx} className="flex items-center justify-between px-2 py-1 rounded text-[10px] font-mono hover:bg-muted/50 transition-colors">
+                    <div className="flex items-center gap-2">
+                      <div className={`w-0.5 h-3 rounded-sm ${liq.side === 'short' ? 'bg-red-500' : 'bg-green-500'}`}></div>
+                      <span className="font-bold min-w-[60px]">{liq.symbol.replace('USDT', '')}</span>
+                      <span className="text-muted-foreground">${formatValue(parseFloat(liq.value))}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={meetsThreshold ? 'text-lime-500 font-bold' : 'text-muted-foreground'}>{percentile}%</span>
+                      <span className="text-muted-foreground">{formatTimeAgo(liq.timestamp)}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </CollapsibleContent>
+          </Collapsible>
         )}
 
         {/* Details panel when a symbol is selected */}

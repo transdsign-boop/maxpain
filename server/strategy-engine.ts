@@ -1553,9 +1553,12 @@ export class StrategyEngine extends EventEmitter {
         // Calculate current filled risk for THIS position
         const currentQuantity = Math.abs(parseFloat(position.totalQuantity));
         const avgEntry = parseFloat(position.avgEntryPrice);
-        const currentStopLoss = position.side === 'long'
-          ? avgEntry * (1 - parseFloat(strategy.stopLossPercent) / 100)
-          : avgEntry * (1 + parseFloat(strategy.stopLossPercent) / 100);
+
+        // Use adaptive SL if enabled - respects per-symbol ATR calculation
+        const { calculateStopLossPrice } = await import('./adaptive-sl-tp-utils');
+        const slResult = await calculateStopLossPrice(strategy, position.symbol, avgEntry, position.side);
+        const currentStopLoss = slResult.price;
+
         const currentLossPerUnit = position.side === 'long'
           ? avgEntry - currentStopLoss
           : currentStopLoss - avgEntry;
@@ -1896,63 +1899,92 @@ export class StrategyEngine extends EventEmitter {
       // AUTOMATIC POSITION RECONCILIATION: Close stale database positions before calculating risk
       // This prevents ghost positions (closed on exchange but open in DB) from blocking trades
       await this.reconcileStalePositions(session.id, strategy);
-      
-      // Get all open positions for this session
-      const openPositions = await storage.getOpenPositions(session.id);
-      
-      // CRITICAL: Count UNIQUE symbol/side combinations to handle potential duplicate records
-      // Use a Map to deduplicate and aggregate position data by symbol+side
-      const uniquePositions = new Map<string, Position>();
-      
-      for (const pos of openPositions) {
-        const key = `${pos.symbol}-${pos.side}`;
-        const existing = uniquePositions.get(key);
-        
-        // Keep the position with the most recent update (or higher quantity if same time)
-        if (!existing || pos.updatedAt > existing.updatedAt || 
-            (pos.updatedAt === existing.updatedAt && parseFloat(pos.totalQuantity) > parseFloat(existing.totalQuantity))) {
-          uniquePositions.set(key, pos);
+
+      // CRITICAL CHANGE: Use EXCHANGE positions (not database) for filled risk calculation
+      // This ensures we calculate risk based on what's ACTUALLY on the exchange
+      // Database positions may be incomplete (missing manual trades or pre-session positions)
+      const exchangePositions = await this.getExchangePositions();
+
+      if (!exchangePositions) {
+        console.warn('⚠️ Could not fetch exchange positions, falling back to database positions');
+        // Fallback to database positions if exchange fetch fails
+        const openPositions = await storage.getOpenPositions(session.id);
+        const uniquePositions = new Map<string, Position>();
+
+        for (const pos of openPositions) {
+          const key = `${pos.symbol}-${pos.side}`;
+          const existing = uniquePositions.get(key);
+
+          if (!existing || pos.updatedAt > existing.updatedAt ||
+              (pos.updatedAt === existing.updatedAt && parseFloat(pos.totalQuantity) > parseFloat(existing.totalQuantity))) {
+            uniquePositions.set(key, pos);
+          }
         }
+
+        const deduplicatedPositions = Array.from(uniquePositions.values());
+
+        // Convert to exchange position format for consistency
+        var exchangePositionsList = deduplicatedPositions.map(pos => ({
+          symbol: pos.symbol,
+          positionAmt: pos.totalQuantity,
+          entryPrice: pos.avgEntryPrice,
+          positionSide: pos.side.toUpperCase()
+        }));
+      } else {
+        // Filter to only open positions (non-zero quantity)
+        var exchangePositionsList = exchangePositions.filter(p => parseFloat(p.positionAmt || '0') !== 0);
       }
-      
-      const deduplicatedPositions = Array.from(uniquePositions.values());
-      
+
+      console.log(`🔍 Portfolio Risk Calculation: Using ${exchangePositionsList.length} exchange positions (actual current exposure)`);
+
+      // Convert exchange positions to consistent format for calculation
+      interface PositionForCalc {
+        symbol: string;
+        side: 'long' | 'short';
+        quantity: number;
+        entryPrice: number;
+      }
+
+      const positionsForCalculation: PositionForCalc[] = exchangePositionsList.map(exPos => {
+        const qty = parseFloat(exPos.positionAmt || '0');
+        return {
+          symbol: exPos.symbol,
+          side: qty > 0 ? 'long' as const : 'short' as const,
+          quantity: Math.abs(qty),
+          entryPrice: parseFloat(exPos.entryPrice || '0')
+        };
+      });
+
       // Count UNIQUE SYMBOLS (hedged positions count as 1)
       // If ASTERUSDT has both long and short, that's 1 position toward the limit
       const uniqueSymbols = new Set<string>();
       const hedgedSymbols = new Set<string>();
-      
+
       // Detect hedged positions (same symbol with both long and short)
       const symbolSides = new Map<string, Set<string>>();
-      deduplicatedPositions.forEach(pos => {
+      positionsForCalculation.forEach(pos => {
         if (!symbolSides.has(pos.symbol)) {
           symbolSides.set(pos.symbol, new Set());
         }
         symbolSides.get(pos.symbol)!.add(pos.side);
         uniqueSymbols.add(pos.symbol);
       });
-      
+
       // Identify hedged symbols
       symbolSides.forEach((sides, symbol) => {
         if (sides.has('long') && sides.has('short')) {
           hedgedSymbols.add(symbol);
         }
       });
-      
+
       const openPositionCount = uniqueSymbols.size;
-      
+
       // Log what positions we're calculating risk for
-      console.log(`🔍 Portfolio Risk Calculation: Found ${openPositions.length} records (${openPositionCount} unique symbols, ${hedgedSymbols.size} hedged)`);
-      deduplicatedPositions.forEach(pos => {
+      positionsForCalculation.forEach(pos => {
         const isHedged = hedgedSymbols.has(pos.symbol);
         const hedgeIndicator = isHedged ? ' [HEDGED]' : '';
-        console.log(`   - ${pos.symbol} ${pos.side}${hedgeIndicator}: qty=${pos.totalQuantity}, avgPrice=${pos.avgEntryPrice}, id=${pos.id}`);
+        console.log(`   - ${pos.symbol} ${pos.side}${hedgeIndicator}: qty=${pos.quantity.toFixed(4)}, entry=$${pos.entryPrice.toFixed(6)}`);
       });
-      
-      // Warn if duplicates detected
-      if (openPositions.length > deduplicatedPositions.length) {
-        console.warn(`⚠️ DUPLICATE POSITIONS DETECTED: ${openPositions.length} records but only ${deduplicatedPositions.length} unique symbol/side combinations`);
-      }
       
       // If no positions, return zero risk
       if (openPositionCount === 0) {
@@ -1991,46 +2023,76 @@ export class StrategyEngine extends EventEmitter {
         };
       }
       
-      // Calculate stop loss percentage from strategy (use adaptive SL if enabled)
-      const stopLossPercent = strategy.adaptiveSlEnabled
-        ? parseFloat(strategy.minSlPercent || strategy.stopLossPercent)
-        : parseFloat(strategy.stopLossPercent);
+      console.log(`   Total Balance (wallet + unrealized): $${currentBalance.toFixed(2)}, SL: ${strategy.adaptiveSlEnabled ? 'adaptive (ATR-based per position)' : 'fixed ' + strategy.stopLossPercent + '%'}`);
 
-      console.log(`   Total Balance (wallet + unrealized): $${currentBalance.toFixed(2)}, SL%: ${stopLossPercent}% (${strategy.adaptiveSlEnabled ? 'adaptive min' : 'fixed'})`);
-      
       // Calculate BOTH filled risk (current exposure) and reserved risk (full DCA potential)
       // DYNAMIC CALCULATION: Recalculate reserved risk using CURRENT strategy settings
       let totalFilledLoss = 0;
       let totalReservedLoss = 0;
-      
+
       // Import DCA calculator for dynamic risk calculation
       const { calculateDCALevels, calculateATRPercent } = await import('./dca-calculator');
       const { getStrategyWithDCA } = await import('./dca-sql');
-      
+      const { calculateStopLossPrice } = await import('./adaptive-sl-tp-utils');
+
       // Fetch current DCA parameters once (same for all positions)
       const strategyWithDCA = await getStrategyWithDCA(strategy.id);
-      
-      for (const position of deduplicatedPositions) {
-        const entryPrice = parseFloat(position.avgEntryPrice);
+
+      // Calculate FILLED RISK from all exchange positions
+      for (const position of positionsForCalculation) {
+        const entryPrice = position.entryPrice;
         const isLong = position.side === 'long';
-        const filledQuantity = Math.abs(parseFloat(position.totalQuantity));
-        
-        // Calculate stop loss price based on entry price and strategy SL%
-        const stopLossPrice = isLong 
-          ? entryPrice * (1 - stopLossPercent / 100)
-          : entryPrice * (1 + stopLossPercent / 100);
-        
+        const filledQuantity = position.quantity;
+
+        // Calculate stop loss price - respects adaptive SL if enabled
+        const slResult = await calculateStopLossPrice(strategy, position.symbol, entryPrice, position.side);
+        const stopLossPrice = slResult.price;
+        const stopLossPercent = slResult.percent;
+
         // Calculate loss per unit
-        const lossPerUnit = isLong 
+        const lossPerUnit = isLong
           ? entryPrice - stopLossPrice
           : stopLossPrice - entryPrice;
-        
+
         // Filled risk: risk from currently filled layers only
         const filledLoss = lossPerUnit * filledQuantity;
         totalFilledLoss += filledLoss;
-        
+
+        console.log(`   ${position.symbol} ${position.side}: SL=${stopLossPercent.toFixed(1)}%, filled=$${filledLoss.toFixed(2)}`);
+      }
+
+      // Calculate RESERVED RISK from database positions (for DCA tracking)
+      // Get database positions for reserved risk calculation
+      const dbPositions = await storage.getOpenPositions(session.id);
+      const uniqueDbPositions = new Map<string, Position>();
+
+      for (const pos of dbPositions) {
+        const key = `${pos.symbol}-${pos.side}`;
+        const existing = uniqueDbPositions.get(key);
+
+        if (!existing || pos.updatedAt > existing.updatedAt ||
+            (pos.updatedAt === existing.updatedAt && parseFloat(pos.totalQuantity) > parseFloat(existing.totalQuantity))) {
+          uniqueDbPositions.set(key, pos);
+        }
+      }
+
+      const deduplicatedDbPositions = Array.from(uniqueDbPositions.values());
+
+      for (const position of deduplicatedDbPositions) {
+        const entryPrice = parseFloat(position.avgEntryPrice);
+        const filledQuantity = Math.abs(parseFloat(position.totalQuantity));
+        const isLong = position.side === 'long';
+
+        // Calculate base filled risk for this position
+        const slResult = await calculateStopLossPrice(strategy, position.symbol, entryPrice, position.side);
+        const stopLossPrice = slResult.price;
+        const lossPerUnit = isLong
+          ? entryPrice - stopLossPrice
+          : stopLossPrice - entryPrice;
+        const baseFilledRisk = lossPerUnit * filledQuantity;
+
         // Reserved risk: DYNAMICALLY recalculate using CURRENT strategy settings
-        let reservedLoss = filledLoss; // Default fallback
+        let reservedLoss = baseFilledRisk; // Default fallback
         let scheduleSource = 'filled qty';
         
         // Recalculate reserved risk based on CURRENT maxLayers and other DCA settings
@@ -2085,8 +2147,8 @@ export class StrategyEngine extends EventEmitter {
         }
         
         totalReservedLoss += reservedLoss;
-        
-        console.log(`   ${position.symbol} ${position.side}: filled=$${filledLoss.toFixed(2)}, reserved=$${reservedLoss.toFixed(2)} (${scheduleSource})`);
+
+        console.log(`   ${position.symbol} ${position.side} [DB]: reserved=$${reservedLoss.toFixed(2)} (${scheduleSource})`);
       }
       
       // Calculate risk percentages
@@ -2354,6 +2416,13 @@ export class StrategyEngine extends EventEmitter {
       }
 
       console.log(`🎯 Entering ${orderSide} position for ${liquidation.symbol} at $${price} using DCA Layer 1 (qty: ${quantity.toFixed(6)} units)`);
+
+      // VALIDATION: Confirm Layer 1 size matches DCA calculation
+      const layer1Notional = quantity * price;
+      const layer1Margin = layer1Notional / leverage;
+      const layer1PercentOfBalance = (layer1Margin / currentBalance) * 100;
+      console.log(`📊 Layer 1 validation: $${layer1Notional.toFixed(2)} notional = $${layer1Margin.toFixed(2)} margin (${layer1PercentOfBalance.toFixed(3)}% of balance)`);
+      console.log(`   Expected: ~${parseFloat(fullStrategy.dcaStartStepPercent).toFixed(2)}% of margin (if no exchange minimum upsizing)`);
 
       // Set leverage on exchange if leverage has changed
       const currentLeverage = this.leverageSetForSymbols.get(liquidation.symbol);
@@ -3907,9 +3976,7 @@ export class StrategyEngine extends EventEmitter {
         // The exchange position may have stale/incorrect entry price after layers
         // Database tracks the true weighted average entry price from all fills
         const entryPrice = parseFloat(dbPosition.avgEntryPrice);
-        
-        const stopLossPercent = parseFloat(strategy.stopLossPercent);
-        
+
         // Calculate ATR-based TP price using database entry price
         const tpPrice = await this.calculateATRBasedTP(
           strategy,
@@ -3917,10 +3984,16 @@ export class StrategyEngine extends EventEmitter {
           entryPrice,
           side === 'LONG' ? 'long' : 'short'
         );
-        
-        const slPrice = side === 'LONG'
-          ? entryPrice * (1 - stopLossPercent / 100)
-          : entryPrice * (1 + stopLossPercent / 100);
+
+        // Calculate SL price - respects adaptive SL if enabled
+        const { calculateStopLossPrice } = await import('./adaptive-sl-tp-utils');
+        const slResult = await calculateStopLossPrice(
+          strategy,
+          symbol,
+          entryPrice,
+          side === 'LONG' ? 'long' : 'short'
+        );
+        const slPrice = slResult.price;
         
         // Check if TP and SL orders exist
         const hasTPOrder = allOrders.some(o => 
@@ -4071,9 +4144,7 @@ export class StrategyEngine extends EventEmitter {
         }
         
         if (!dbPosition || !strategy) continue;
-        
-        const stopLossPercent = parseFloat(strategy.stopLossPercent);
-        
+
         // Calculate ATR-based TP price
         const tpPrice = await this.calculateATRBasedTP(
           strategy,
@@ -4081,10 +4152,16 @@ export class StrategyEngine extends EventEmitter {
           entryPrice,
           side === 'LONG' ? 'long' : 'short'
         );
-        
-        const slPrice = side === 'LONG'
-          ? entryPrice * (1 - stopLossPercent / 100)
-          : entryPrice * (1 + stopLossPercent / 100);
+
+        // Calculate SL price - respects adaptive SL if enabled
+        const { calculateStopLossPrice } = await import('./adaptive-sl-tp-utils');
+        const slResult = await calculateStopLossPrice(
+          strategy,
+          symbol,
+          entryPrice,
+          side === 'LONG' ? 'long' : 'short'
+        );
+        const slPrice = slResult.price;
         
         // Check if TP and SL orders exist
         const hasTPOrder = allOrders.some(o => 
@@ -4191,13 +4268,17 @@ export class StrategyEngine extends EventEmitter {
         }
         
         if (!strategy) continue;
-        
-        const stopLossPercent = parseFloat(strategy.stopLossPercent);
-        
-        // Calculate CORRECT stop-loss price (without leverage multiplication!)
-        const correctSlPrice = side === 'LONG'
-          ? entryPrice * (1 - stopLossPercent / 100)
-          : entryPrice * (1 + stopLossPercent / 100);
+
+        // Calculate CORRECT stop-loss price - respects adaptive SL if enabled
+        const { calculateStopLossPrice } = await import('./adaptive-sl-tp-utils');
+        const slResult = await calculateStopLossPrice(
+          strategy,
+          symbol,
+          entryPrice,
+          side === 'LONG' ? 'long' : 'short'
+        );
+        const correctSlPrice = slResult.price;
+        const stopLossPercent = slResult.percent;
         
         // Find existing SL order
         const existingSlOrder = allOrders.find(o => 
@@ -4519,12 +4600,8 @@ export class StrategyEngine extends EventEmitter {
         } else {
           console.warn(`⚠️ No first layer TP/SL data found for ${q1Key}`);
         }
-        
-        // Send Telegram alert for new position
-        const positionFills = [fill];
-        telegramService.sendPositionOpenedAlert(position, positionFills).catch(err => 
-          console.error('Failed to send Telegram position opened alert:', err)
-        );
+
+        // Telegram alert will be sent after fill is created (not here)
       } catch (positionError) {
         console.error(`❌ Failed to create position:`, positionError);
         // Don't clean up data on position creation failure - we might retry
@@ -4648,8 +4725,12 @@ export class StrategyEngine extends EventEmitter {
     if (!currentPrice) return;
 
     const avgEntryPrice = parseFloat(position.avgEntryPrice);
-    const profitTargetPercent = parseFloat(strategy.profitTargetPercent);
-    
+
+    // Use adaptive TP/SL if enabled
+    const { getTakeProfitPercent, getStopLossPercent } = await import('./adaptive-sl-tp-utils');
+    const profitTargetPercent = await getTakeProfitPercent(strategy, position.symbol);
+    const stopLossPercent = await getStopLossPercent(strategy, position.symbol);
+
     let unrealizedPnl = 0;
     if (position.side === 'long') {
       unrealizedPnl = ((currentPrice - avgEntryPrice) / avgEntryPrice) * 100;
@@ -4669,9 +4750,8 @@ export class StrategyEngine extends EventEmitter {
     }
 
     // Check if stop loss is triggered (exit with stop market order - 0.035% taker fee)
-    const stopLossPercent = parseFloat(strategy.stopLossPercent);
     if (unrealizedPnl <= -stopLossPercent) {
-      console.log(`🛑 Stop loss triggered for ${position.symbol}: ${unrealizedPnl.toFixed(2)}% loss exceeds -${stopLossPercent}% threshold`);
+      console.log(`🛑 Stop loss triggered for ${position.symbol}: ${unrealizedPnl.toFixed(2)}% loss exceeds -${stopLossPercent.toFixed(1)}% threshold (${strategy.adaptiveSlEnabled ? 'adaptive' : 'fixed'})`);
       await this.closePosition(position, currentPrice, unrealizedPnl, 'stop_loss');
       return;
     }
