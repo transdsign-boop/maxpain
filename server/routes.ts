@@ -9,9 +9,9 @@ import { strategyEngine } from "./strategy-engine";
 import { cascadeDetectorService } from "./cascade-detector-service";
 import { wsBroadcaster } from "./websocket-broadcaster";
 import { liveDataOrchestrator } from "./live-data-orchestrator";
-import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySchema, updateStrategySchema, type Position, type Fill, type Liquidation, type InsertFill, positions, strategies, transfers, fills, tradeSessions, accountLedger } from "@shared/schema";
+import { insertLiquidationSchema, insertUserSettingsSchema, frontendStrategySchema, updateStrategySchema, type Position, type Fill, type Liquidation, type InsertFill, positions, strategies, transfers, fills, tradeSessions, accountLedger, investorReportArchive } from "@shared/schema";
 import { db } from "./db";
-import { desc, eq, sql, gte, lte } from "drizzle-orm";
+import { desc, eq, sql, gte, lte, and, asc } from "drizzle-orm";
 import { fetchRealizedPnlEvents, fetchAllAccountTrades } from "./exchange-sync";
 import { fetchPositionPnL } from "./exchange-utils";
 import { getConsoleLogs } from "./console-logger";
@@ -3410,8 +3410,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           if (response.ok) {
             const accountData = await response.json();
-            baselineBalance = parseFloat(accountData.totalWalletBalance || '0') + parseFloat(accountData.totalUnrealizedProfit || '0');
-            console.log(`📊 Baseline balance captured: $${baselineBalance.toFixed(2)}`);
+            const currentBalance = parseFloat(accountData.totalWalletBalance || '0') + parseFloat(accountData.totalUnrealizedProfit || '0');
+
+            // Baseline should be balance BEFORE this transaction
+            // If adding funds: subtract the deposit from current balance
+            // If removing funds: add the withdrawal back to current balance
+            if (type === 'deposit' || type === 'manual_add') {
+              baselineBalance = currentBalance - amount;
+            } else if (type === 'withdrawal' || type === 'manual_subtract') {
+              baselineBalance = currentBalance + amount;
+            } else {
+              baselineBalance = currentBalance;
+            }
+
+            console.log(`📊 Baseline balance captured: $${baselineBalance.toFixed(2)} (current: $${currentBalance.toFixed(2)}, ${type} amount: $${amount})`);
           }
         }
       } catch (error) {
@@ -3476,8 +3488,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           if (response.ok) {
             const accountData = await response.json();
-            baselineBalance = parseFloat(accountData.totalWalletBalance || '0') + parseFloat(accountData.totalUnrealizedProfit || '0');
-            console.log(`📊 Baseline balance captured: $${baselineBalance.toFixed(2)}`);
+            const currentBalance = parseFloat(accountData.totalWalletBalance || '0') + parseFloat(accountData.totalUnrealizedProfit || '0');
+            const amountNum = parseFloat(amount);
+
+            // Baseline should be balance BEFORE this transaction
+            // If adding funds: subtract the deposit from current balance
+            // If removing funds: add the withdrawal back to current balance
+            if (type === 'manual_add') {
+              baselineBalance = currentBalance - amountNum;
+            } else if (type === 'manual_subtract') {
+              baselineBalance = currentBalance + amountNum;
+            } else {
+              baselineBalance = currentBalance;
+            }
+
+            console.log(`📊 Baseline balance captured: $${baselineBalance.toFixed(2)} (current: $${currentBalance.toFixed(2)}, ${type} amount: $${amountNum})`);
           }
         }
       } catch (error) {
@@ -3587,6 +3612,104 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error deleting entry:', error);
       res.status(500).json({ error: 'Failed to delete entry' });
+    }
+  });
+
+  // ONE-TIME FIX: Correct baselines that were captured AFTER deposits
+  app.post('/api/account/ledger/fix-baselines', async (req, res) => {
+    try {
+      const entries = await db.select().from(accountLedger)
+        .where(eq(accountLedger.userId, DEFAULT_USER_ID))
+        .orderBy(accountLedger.timestamp);
+
+      const fixed = [];
+
+      for (const entry of entries) {
+        if (entry.baselineBalance && (entry.type === 'deposit' || entry.type === 'manual_add' || entry.type === 'withdrawal' || entry.type === 'manual_subtract')) {
+          const currentBaseline = parseFloat(entry.baselineBalance);
+          const amount = parseFloat(entry.amount);
+
+          // Calculate what the baseline should be (balance BEFORE transaction)
+          let correctBaseline;
+          if (entry.type === 'deposit' || entry.type === 'manual_add') {
+            // If baseline was captured after deposit, subtract the deposit amount
+            correctBaseline = currentBaseline - amount;
+          } else if (entry.type === 'withdrawal' || entry.type === 'manual_subtract') {
+            // If baseline was captured after withdrawal, add it back
+            correctBaseline = currentBaseline + amount;
+          }
+
+          // Only update if different and makes sense (not negative)
+          if (correctBaseline !== undefined && correctBaseline >= 0 && Math.abs(correctBaseline - currentBaseline) > 0.01) {
+            await db.update(accountLedger)
+              .set({
+                baselineBalance: correctBaseline.toString(),
+                updatedAt: new Date(),
+              })
+              .where(eq(accountLedger.id, entry.id));
+
+            fixed.push({
+              id: entry.id,
+              investor: entry.investor,
+              amount: entry.amount,
+              oldBaseline: currentBaseline.toFixed(2),
+              newBaseline: correctBaseline.toFixed(2),
+            });
+
+            console.log(`✅ Fixed baseline for ${entry.investor} $${entry.amount}: $${currentBaseline.toFixed(2)} → $${correctBaseline.toFixed(2)}`);
+          }
+        }
+      }
+
+      res.json({
+        success: true,
+        fixed: fixed.length,
+        entries: fixed,
+      });
+    } catch (error) {
+      console.error('Error fixing baselines:', error);
+      res.status(500).json({ error: 'Failed to fix baselines' });
+    }
+  });
+
+  // ONE-TIME FIX: Set specific baseline values manually
+  app.post('/api/account/ledger/fix-baselines-manual', async (req, res) => {
+    try {
+      const fixes = [
+        // Initial deposits - all start with baseline $0 (starting capital)
+        { investor: 'R', amount: '1300.00', timestamp: '2025-10-16T17:09:00.000Z', baseline: '0.00' },
+        { investor: 'DT', amount: '1300.00', timestamp: '2025-10-16T17:19:00.000Z', baseline: '0.00' },
+        // Additional deposits - baseline is balance BEFORE deposit
+        { investor: 'DT', amount: '5000.00', timestamp: '2025-10-28T18:14:09.119Z', baseline: '4200.00' },
+        { investor: 'K', amount: '5000.00', timestamp: '2025-10-30T06:05:49.936Z', baseline: '9505.87' },
+      ];
+
+      const results = [];
+      for (const fix of fixes) {
+        const updated = await db.update(accountLedger)
+          .set({
+            baselineBalance: fix.baseline,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(accountLedger.investor, fix.investor),
+              eq(accountLedger.amount, fix.amount),
+              eq(accountLedger.timestamp, new Date(fix.timestamp))
+            )
+          )
+          .returning();
+
+        if (updated.length > 0) {
+          results.push({ ...fix, success: true });
+          console.log(`✅ Fixed ${fix.investor} $${fix.amount} baseline to ${fix.baseline}`);
+        }
+      }
+
+      res.json({ success: true, fixed: results.length, entries: results });
+    } catch (error) {
+      console.error('Error fixing baselines manually:', error);
+      res.status(500).json({ error: 'Failed to fix baselines' });
     }
   });
 
@@ -3703,29 +3826,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const investors = Array.from(investorsSet);
 
-      // Get current account balance
-      const apiKey = process.env.ASTER_API_KEY;
-      const secretKey = process.env.ASTER_SECRET_KEY;
-
-      if (!apiKey || !secretKey) {
-        return res.status(500).json({ error: 'API keys not configured' });
+      // Get current account balance from WebSocket cache (like investor report)
+      const strategies = await storage.getStrategiesByUser(DEFAULT_USER_ID);
+      if (strategies.length === 0) {
+        return res.status(404).json({ error: 'No strategy found' });
       }
 
-      const timestamp = Date.now();
-      const params = new URLSearchParams({ timestamp: timestamp.toString() });
-      const signature = crypto.createHmac('sha256', secretKey).update(params.toString()).digest('hex');
-      params.append('signature', signature);
-
-      const response = await fetch(`https://fapi.asterdex.com/fapi/v2/account?${params}`, {
-        headers: { 'X-MBX-APIKEY': apiKey },
-      });
-
-      if (!response.ok) {
-        return res.status(500).json({ error: 'Failed to fetch account balance' });
+      const strategy = strategies[0];
+      const snapshot = liveDataOrchestrator.getSnapshot(strategy.id);
+      if (!snapshot || !snapshot.account || !snapshot.account.totalWalletBalance) {
+        return res.status(503).json({
+          error: 'Account data not yet available via WebSocket. Please wait a moment...',
+          retryAfter: 5
+        });
       }
 
-      const accountData = await response.json();
-      const totalCurrentBalance = parseFloat(accountData.totalWalletBalance || '0') + parseFloat(accountData.totalUnrealizedProfit || '0');
+      const totalCurrentBalance = parseFloat(snapshot.account.totalWalletBalance);
 
       // Check if we have baseline data for time-weighted calculation
       const hasBaselineData = ledgerEntries.some(e => e.baselineBalance !== null);
@@ -3735,93 +3851,119 @@ export async function registerRoutes(app: Express): Promise<Server> {
       investors.forEach(inv => investorPnLMap.set(inv, 0));
 
       if (hasBaselineData) {
-        // TIME-WEIGHTED CALCULATION: Split into periods and allocate gains per period
-        console.log('📊 Calculating time-weighted returns using baseline data...');
+        // COMPOUNDING PERIOD-BASED CALCULATION WITH BASELINE GROUPING
+        // Group deposits by baseline value - only unique baselines create new periods
+        // After each period, gains/losses compound into investor balances
+        // Ownership % recalculates when new capital arrives
+        console.log('📊 Calculating compounding period-based returns with baseline grouping...');
+
+        // Track current balance for each investor (compounds over time)
+        const investorBalances = new Map<string, number>();
+        investors.forEach(inv => investorBalances.set(inv, 0));
 
         // Get entries with baselines to define periods
         const baselineEntries = ledgerEntries.filter(e => e.baselineBalance !== null);
 
-        // Calculate gains for each period
-        let previousBalance = baselineEntries.length > 0 ? parseFloat(baselineEntries[0].baselineBalance || '0') : 0;
-
-        baselineEntries.forEach((entry, idx) => {
-          const baselineBeforeDeposit = parseFloat(entry.baselineBalance || '0');
-          const depositAmount = parseFloat(entry.amount);
-
-          // Gain in this period = baseline (before deposit) - previous balance (after last deposit)
-          // baseline represents balance BEFORE adding this deposit
-          const periodGain = baselineBeforeDeposit - previousBalance;
-
-          // Get capital distribution at START of this period (before this deposit)
-          const capitalAtPeriodStart = new Map<string, number>();
-          let totalCapitalAtStart = 0;
-
-          ledgerEntries.forEach(e => {
-            if (new Date(e.timestamp) < new Date(entry.timestamp)) {
-              const investor = e.investor || 'Unassigned';
-              const amount = parseFloat(e.amount);
-              const current = capitalAtPeriodStart.get(investor) || 0;
-
-              if (e.type === 'deposit' || e.type === 'manual_add') {
-                capitalAtPeriodStart.set(investor, current + amount);
-                totalCapitalAtStart += amount;
-              } else if (e.type === 'withdrawal' || e.type === 'manual_subtract') {
-                capitalAtPeriodStart.set(investor, current - amount);
-                totalCapitalAtStart -= amount;
-              }
-            }
-          });
-
-          // Allocate period gain proportionally to investors who had capital at period start
-          if (totalCapitalAtStart > 0 && periodGain !== 0) {
-            capitalAtPeriodStart.forEach((cap, investor) => {
-              const share = cap / totalCapitalAtStart;
-              const allocatedGain = periodGain * share;
-              investorPnLMap.set(investor, (investorPnLMap.get(investor) || 0) + allocatedGain);
-              console.log(`  Period ${idx + 1}: ${investor} gets ${(share * 100).toFixed(2)}% of $${periodGain.toFixed(2)} = $${allocatedGain.toFixed(2)}`);
-            });
+        // Group deposits by their baseline value (unique baseline = new period boundary)
+        const baselineGroups: Array<{baseline: number, deposits: any[]}> = [];
+        baselineEntries.forEach(entry => {
+          const baseline = parseFloat(entry.baselineBalance || '0');
+          let group = baselineGroups.find(g => Math.abs(g.baseline - baseline) < 0.01);
+          if (!group) {
+            group = { baseline, deposits: [] };
+            baselineGroups.push(group);
           }
-
-          // Update previousBalance to balance AFTER this deposit
-          previousBalance = baselineBeforeDeposit + depositAmount;
+          group.deposits.push(entry);
         });
 
-        // Final period: from last baseline to current
-        const finalPeriodGain = totalCurrentBalance - previousBalance;
-        if (finalPeriodGain !== 0) {
-          // Get capital distribution BEFORE the most recent deposit
-          // (exclude the last baseline entry since it just started this period)
-          const currentCapitalMap = new Map<string, number>();
-          let totalCurrentCapital = 0;
-          const lastBaselineEntry = baselineEntries.length > 0 ? baselineEntries[baselineEntries.length - 1] : null;
+        // Sort groups by baseline value
+        baselineGroups.sort((a, b) => a.baseline - b.baseline);
 
-          ledgerEntries.forEach(e => {
-            // CRITICAL: Skip the most recent deposit - it doesn't participate in final period
-            if (lastBaselineEntry && e.id === lastBaselineEntry.id) {
-              return;
+        let currentTotalBalance = baselineGroups.length > 0 ? baselineGroups[0].baseline : 0;
+
+        // Process each baseline group
+        baselineGroups.forEach((group, groupIdx) => {
+          console.log(`\n  Period ${groupIdx + 1}: Processing baseline $${group.baseline.toFixed(2)} with ${group.deposits.length} deposit(s)`);
+
+          // Calculate period gain from previous total to this baseline
+          if (groupIdx > 0 && currentTotalBalance > 0) {
+            const periodGain = group.baseline - currentTotalBalance;
+
+            // Get total balance across all investors at start of period
+            let totalBalance = 0;
+            investorBalances.forEach(bal => totalBalance += bal);
+
+            // Allocate period gain/loss proportionally based on current balances
+            if (totalBalance > 0) {
+              console.log(`    Period gain/loss: $${currentTotalBalance.toFixed(2)} → $${group.baseline.toFixed(2)} (${periodGain >= 0 ? '+' : ''}$${periodGain.toFixed(2)})`);
+
+              investorBalances.forEach((balance, investor) => {
+                if (balance > 0) {
+                  const share = balance / totalBalance;
+                  const allocatedGain = periodGain * share;
+                  const newBalance = balance + allocatedGain;
+                  investorBalances.set(investor, newBalance);
+
+                  console.log(`      ${investor}: $${balance.toFixed(2)} (${(share * 100).toFixed(2)}%) → $${newBalance.toFixed(2)} (${allocatedGain >= 0 ? '+' : ''}$${allocatedGain.toFixed(2)})`);
+                }
+              });
             }
+          }
 
-            const investor = e.investor || 'Unassigned';
-            const amount = parseFloat(e.amount);
-            const current = currentCapitalMap.get(investor) || 0;
+          // Process all deposits in this baseline group
+          let groupTotalDeposits = 0;
+          group.deposits.forEach(entry => {
+            const depositAmount = parseFloat(entry.amount);
+            const depositInvestor = entry.investor || 'Unassigned';
 
-            if (e.type === 'deposit' || e.type === 'manual_add') {
-              currentCapitalMap.set(investor, current + amount);
-              totalCurrentCapital += amount;
-            } else if (e.type === 'withdrawal' || e.type === 'manual_subtract') {
-              currentCapitalMap.set(investor, current - amount);
-              totalCurrentCapital -= amount;
-            }
+            const currentBalance = investorBalances.get(depositInvestor) || 0;
+            investorBalances.set(depositInvestor, currentBalance + depositAmount);
+            groupTotalDeposits += depositAmount;
+
+            console.log(`    ${depositInvestor} deposits +$${depositAmount.toFixed(2)} → balance: $${(currentBalance + depositAmount).toFixed(2)}`);
           });
 
-          // Allocate final period gain
-          currentCapitalMap.forEach((cap, investor) => {
-            const share = totalCurrentCapital > 0 ? cap / totalCurrentCapital : 0;
-            const allocatedGain = finalPeriodGain * share;
-            investorPnLMap.set(investor, (investorPnLMap.get(investor) || 0) + allocatedGain);
-            console.log(`  Final period: ${investor} gets ${(share*100).toFixed(2)}% of $${finalPeriodGain.toFixed(2)} = $${allocatedGain.toFixed(2)}`);
+          // Update current total (baseline + all deposits in this group)
+          currentTotalBalance = group.baseline + groupTotalDeposits;
+          console.log(`    Period total after deposits: $${currentTotalBalance.toFixed(2)}`);
+        });
+
+        // Final period: from last baseline group to current balance
+        const finalPeriodGain = totalCurrentBalance - currentTotalBalance;
+        if (finalPeriodGain !== 0) {
+          let totalBalance = 0;
+          investorBalances.forEach(bal => totalBalance += bal);
+
+          console.log(`\n  Final Period: Total balance $${currentTotalBalance.toFixed(2)} → $${totalCurrentBalance.toFixed(2)} (${finalPeriodGain >= 0 ? '+' : ''}$${finalPeriodGain.toFixed(2)})`);
+
+          investorBalances.forEach((balance, investor) => {
+            if (balance > 0) {
+              const share = balance / totalBalance;
+              const allocatedGain = finalPeriodGain * share;
+              const newBalance = balance + allocatedGain;
+              investorBalances.set(investor, newBalance);
+
+              console.log(`    ${investor}: $${balance.toFixed(2)} (${(share * 100).toFixed(2)}%) → $${newBalance.toFixed(2)} (${allocatedGain >= 0 ? '+' : ''}$${allocatedGain.toFixed(2)})`);
+            }
           });
         }
+
+        // Calculate P&L for each investor (final balance - total invested)
+        investorBalances.forEach((finalBalance, investor) => {
+          // Get total capital invested by this investor
+          const capitalInvested = ledgerEntries
+            .filter(e => (e.investor || 'Unassigned') === investor)
+            .reduce((sum, e) => {
+              const amt = parseFloat(e.amount);
+              if (e.type === 'deposit' || e.type === 'manual_add') return sum + amt;
+              if (e.type === 'withdrawal' || e.type === 'manual_subtract') return sum - amt;
+              return sum;
+            }, 0);
+
+          const pnl = finalBalance - capitalInvested;
+          investorPnLMap.set(investor, pnl);
+          console.log(`\n✅ ${investor}: Invested $${capitalInvested.toFixed(2)} → Balance $${finalBalance.toFixed(2)} → P&L ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`);
+        });
       }
 
       // Calculate returns for each investor
@@ -3904,6 +4046,347 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error calculating investor returns:', error);
       res.status(500).json({ error: 'Failed to calculate investor returns' });
+    }
+  });
+
+  // Get comprehensive investor report with period-by-period breakdown
+  app.get('/api/account/investor-report', async (req, res) => {
+    try {
+      const strategies = await storage.getStrategiesByUser(DEFAULT_USER_ID);
+      if (strategies.length === 0) {
+        return res.status(404).json({ error: 'No strategy found' });
+      }
+
+      const strategy = strategies[0];
+
+      // Get actual account balance from WebSocket cache (prevents rate limiting)
+      const snapshot = liveDataOrchestrator.getSnapshot(strategy.id);
+      if (!snapshot || !snapshot.account || !snapshot.account.totalWalletBalance) {
+        return res.status(503).json({
+          error: 'Account data not yet available via WebSocket. Please wait a moment...',
+          retryAfter: 5
+        });
+      }
+
+      const totalCurrentBalance = parseFloat(snapshot.account.totalWalletBalance);
+
+      // Get all ledger entries
+      const ledgerEntries = await db
+        .select()
+        .from(accountLedger)
+        .where(eq(accountLedger.userId, 'personal_user'))
+        .orderBy(asc(accountLedger.timestamp));
+
+      if (ledgerEntries.length === 0) {
+        return res.json({
+          reportDate: new Date().toISOString(),
+          fundBalance: totalCurrentBalance,
+          totalCapital: 0,
+          overallPnl: 0,
+          overallRoi: 0,
+          investors: [],
+          periods: [],
+          deposits: [],
+        });
+      }
+
+      // Get unique investors
+      const investors = Array.from(new Set(ledgerEntries.map(e => e.investor || 'Unassigned')));
+
+      // Check if we have baseline data
+      const hasBaselineData = ledgerEntries.some(e => e.baselineBalance !== null);
+
+      if (!hasBaselineData) {
+        return res.status(400).json({ error: 'No baseline data available for period-by-period report' });
+      }
+
+      // Track investor balances (compounding)
+      const investorBalances = new Map<string, number>();
+      investors.forEach(inv => investorBalances.set(inv, 0));
+
+      const baselineEntries = ledgerEntries.filter(e => e.baselineBalance !== null);
+
+      // Store period data
+      const periods: any[] = [];
+      const depositTimeline: any[] = [];
+
+      // Group deposits by their baseline value (unique baseline = new period boundary)
+      const baselineGroups: Array<{baseline: number, deposits: any[]}> = [];
+      baselineEntries.forEach(entry => {
+        const baseline = parseFloat(entry.baselineBalance || '0');
+        let group = baselineGroups.find(g => Math.abs(g.baseline - baseline) < 0.01);
+        if (!group) {
+          group = { baseline, deposits: [] };
+          baselineGroups.push(group);
+        }
+        group.deposits.push(entry);
+      });
+
+      // Sort groups by baseline value
+      baselineGroups.sort((a, b) => a.baseline - b.baseline);
+
+      let currentTotalBalance = 0;
+
+      // Process each baseline group
+      baselineGroups.forEach((group, groupIdx) => {
+        // If this isn't the first group, calculate period gain from previous total to this baseline
+        if (groupIdx > 0 && currentTotalBalance > 0) {
+          const periodGain = group.baseline - currentTotalBalance;
+
+          if (periodGain !== 0) {
+            // Get ownership percentages before this period
+            const ownershipBefore: any = {};
+            const allocations: any = {};
+            let totalBalance = 0;
+            investorBalances.forEach(bal => totalBalance += bal);
+
+            // Allocate period gain/loss proportionally
+            investorBalances.forEach((balance, investor) => {
+              if (balance > 0) {
+                const share = balance / totalBalance;
+                ownershipBefore[investor] = share * 100;
+                const allocatedGain = periodGain * share;
+                investorBalances.set(investor, balance + allocatedGain);
+                allocations[investor] = allocatedGain;
+              }
+            });
+
+            periods.push({
+              periodNumber: periods.length + 1,
+              startBalance: currentTotalBalance,
+              endBalance: group.baseline,
+              gainLoss: periodGain,
+              roiPercent: currentTotalBalance > 0 ? (periodGain / currentTotalBalance) * 100 : 0,
+              ownership: ownershipBefore,
+              allocations,
+            });
+          }
+        }
+
+        // Process all deposits in this group
+        let groupTotalDeposits = 0;
+        group.deposits.forEach(entry => {
+          const depositAmount = parseFloat(entry.amount);
+          const depositInvestor = entry.investor || 'Unassigned';
+          groupTotalDeposits += depositAmount;
+
+          // Record deposit in timeline
+          depositTimeline.push({
+            date: entry.timestamp,
+            investor: depositInvestor,
+            amount: depositAmount,
+            balanceBefore: group.baseline,
+            balanceAfter: group.baseline + groupTotalDeposits,
+          });
+
+          // Add deposit to investor's balance
+          const currentBalance = investorBalances.get(depositInvestor) || 0;
+          investorBalances.set(depositInvestor, currentBalance + depositAmount);
+        });
+
+        // Update current total balance (baseline + all deposits in this group)
+        currentTotalBalance = group.baseline + groupTotalDeposits;
+      });
+
+      // Final period: from last baseline group to current balance
+      const finalPeriodGain = totalCurrentBalance - currentTotalBalance;
+      if (finalPeriodGain !== 0) {
+        let totalBalance = 0;
+        investorBalances.forEach(bal => totalBalance += bal);
+
+        const ownershipCurrent: any = {};
+        const finalAllocations: any = {};
+
+        investorBalances.forEach((balance, investor) => {
+          if (balance > 0) {
+            const share = balance / totalBalance;
+            ownershipCurrent[investor] = (share * 100);
+            const allocatedGain = finalPeriodGain * share;
+            investorBalances.set(investor, balance + allocatedGain);
+            finalAllocations[investor] = allocatedGain;
+          }
+        });
+
+        periods.push({
+          periodNumber: periods.length + 1,
+          startBalance: currentTotalBalance,
+          endBalance: totalCurrentBalance,
+          gainLoss: finalPeriodGain,
+          roiPercent: currentTotalBalance > 0 ? (finalPeriodGain / currentTotalBalance) * 100 : 0,
+          ownership: ownershipCurrent,
+          allocations: finalAllocations,
+        });
+      }
+
+      // Calculate final investor positions
+      const investorPositions: any[] = [];
+      investorBalances.forEach((finalBalance, investor) => {
+        const capitalInvested = ledgerEntries
+          .filter(e => (e.investor || 'Unassigned') === investor)
+          .reduce((sum, e) => {
+            const amt = parseFloat(e.amount);
+            if (e.type === 'deposit' || e.type === 'manual_add') return sum + amt;
+            if (e.type === 'withdrawal' || e.type === 'manual_subtract') return sum - amt;
+            return sum;
+          }, 0);
+
+        const pnl = finalBalance - capitalInvested;
+        const roiPercent = capitalInvested > 0 ? (pnl / capitalInvested) * 100 : 0;
+
+        // Current ownership %
+        const currentOwnership = totalCurrentBalance > 0 ? (finalBalance / totalCurrentBalance) * 100 : 0;
+
+        investorPositions.push({
+          investor,
+          capitalInvested,
+          currentBalance: finalBalance,
+          pnl,
+          roiPercent,
+          currentOwnership,
+        });
+      });
+
+      // Sort by capital invested (descending)
+      investorPositions.sort((a, b) => b.capitalInvested - a.capitalInvested);
+
+      const totalCapital = investorPositions.reduce((sum, inv) => sum + inv.capitalInvested, 0);
+      const totalPnl = totalCurrentBalance - totalCapital;
+      const overallRoi = totalCapital > 0 ? (totalPnl / totalCapital) * 100 : 0;
+
+      res.json({
+        reportDate: new Date().toISOString(),
+        fundBalance: totalCurrentBalance,
+        totalCapital,
+        overallPnl: totalPnl,
+        overallRoi,
+        investors: investorPositions,
+        periods,
+        deposits: depositTimeline,
+        methodology: 'Compounding Period-Based Allocation',
+      });
+    } catch (error: any) {
+      console.error('Error generating investor report:', error);
+      console.error('Error stack:', error.stack);
+      res.status(500).json({
+        error: 'Failed to generate investor report',
+        details: error.message
+      });
+    }
+  });
+
+  // Archive current investor report (manual trigger or cron)
+  app.post('/api/account/investor-report/archive', async (req, res) => {
+    try {
+      // Get current report data
+      const strategies = await storage.getStrategiesByUser(DEFAULT_USER_ID);
+      if (strategies.length === 0) {
+        return res.status(404).json({ error: 'No strategy found' });
+      }
+
+      const strategy = strategies[0];
+      const snapshot = liveDataOrchestrator.getSnapshot(strategy.id);
+      if (!snapshot || !snapshot.account || !snapshot.account.totalWalletBalance) {
+        return res.status(503).json({
+          error: 'Account data not yet available via WebSocket',
+        });
+      }
+
+      // Generate report (reuse logic from main endpoint - this could be refactored into a function)
+      const reportResponse = await fetch(`http://localhost:${process.env.PORT || 5000}/api/account/investor-report`);
+      if (!reportResponse.ok) {
+        throw new Error('Failed to fetch report data');
+      }
+      const reportData = await reportResponse.json();
+
+      // Create midnight UTC timestamp for today
+      const reportDate = new Date();
+      reportDate.setUTCHours(0, 0, 0, 0);
+
+      // Check if we already have an archive for today
+      const existing = await db.select().from(investorReportArchive)
+        .where(and(
+          eq(investorReportArchive.userId, DEFAULT_USER_ID),
+          eq(investorReportArchive.reportDate, reportDate)
+        ))
+        .limit(1);
+
+      if (existing.length > 0) {
+        // Update existing
+        await db.update(investorReportArchive)
+          .set({
+            reportData: reportData,
+          })
+          .where(eq(investorReportArchive.id, existing[0].id));
+
+        console.log(`✅ Updated investor report archive for ${reportDate.toISOString()}`);
+      } else {
+        // Insert new
+        await db.insert(investorReportArchive).values({
+          userId: DEFAULT_USER_ID,
+          reportDate: reportDate,
+          reportData: reportData,
+        });
+
+        console.log(`✅ Created investor report archive for ${reportDate.toISOString()}`);
+      }
+
+      res.json({ success: true, reportDate: reportDate.toISOString() });
+    } catch (error: any) {
+      console.error('Error archiving investor report:', error);
+      res.status(500).json({
+        error: 'Failed to archive report',
+        details: error.message
+      });
+    }
+  });
+
+  // Get list of archived report dates
+  app.get('/api/account/investor-report/archived', async (req, res) => {
+    try {
+      const archives = await db.select({
+        reportDate: investorReportArchive.reportDate,
+      })
+      .from(investorReportArchive)
+      .where(eq(investorReportArchive.userId, DEFAULT_USER_ID))
+      .orderBy(desc(investorReportArchive.reportDate));
+
+      const dates = archives.map(a => a.reportDate.toISOString());
+      res.json({ dates });
+    } catch (error: any) {
+      console.error('Error fetching archived report dates:', error);
+      res.status(500).json({
+        error: 'Failed to fetch archived reports',
+        details: error.message
+      });
+    }
+  });
+
+  // Get specific archived report by date
+  app.get('/api/account/investor-report/archived/:date', async (req, res) => {
+    try {
+      const { date } = req.params;
+      const requestedDate = new Date(date);
+      requestedDate.setUTCHours(0, 0, 0, 0);
+
+      const archive = await db.select()
+        .from(investorReportArchive)
+        .where(and(
+          eq(investorReportArchive.userId, DEFAULT_USER_ID),
+          eq(investorReportArchive.reportDate, requestedDate)
+        ))
+        .limit(1);
+
+      if (archive.length === 0) {
+        return res.status(404).json({ error: 'No archived report found for this date' });
+      }
+
+      res.json(archive[0].reportData);
+    } catch (error: any) {
+      console.error('Error fetching archived report:', error);
+      res.status(500).json({
+        error: 'Failed to fetch archived report',
+        details: error.message
+      });
     }
   });
 
@@ -4002,34 +4485,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Period ends when the entry at ledgerEntryIdx is deposited
           // So this entry earns from periods where period.ledgerEntryIdx > entryIdx
           if (period.ledgerEntryIdx > entryIdx) {
-            // CRITICAL: Most recent deposit should NOT participate in final period
-            // because it hasn't had time to generate any returns yet
-            if (periodIdx === finalPeriodIdx && entryIdx === lastBaselineEntryIdx) {
-              return; // Skip final period for most recent deposit
-            }
-
             // Get total capital in the period (from all entries BEFORE this period's deposit)
             let capitalInPeriod = 0;
-            ledgerEntries.forEach((e, eIdx) => {
-              if (eIdx < period.ledgerEntryIdx) {
+
+            // For final period, include ALL current capital
+            if (periodIdx === finalPeriodIdx) {
+              ledgerEntries.forEach((e) => {
                 const amt = parseFloat(e.amount);
                 if (e.type === 'deposit' || e.type === 'manual_add') {
                   capitalInPeriod += amt;
                 } else if (e.type === 'withdrawal' || e.type === 'manual_subtract') {
                   capitalInPeriod -= amt;
                 }
-              }
-            });
-
-            // CRITICAL: For final period, exclude most recent deposit from capital calculation
-            if (periodIdx === finalPeriodIdx && lastBaselineEntryIdx >= 0) {
+              });
+            } else {
+              // For non-final periods, only count capital that existed before the period's ending deposit
               ledgerEntries.forEach((e, eIdx) => {
-                if (eIdx === lastBaselineEntryIdx) {
+                if (eIdx < period.ledgerEntryIdx) {
                   const amt = parseFloat(e.amount);
                   if (e.type === 'deposit' || e.type === 'manual_add') {
-                    capitalInPeriod -= amt;
-                  } else if (e.type === 'withdrawal' || e.type === 'manual_subtract') {
                     capitalInPeriod += amt;
+                  } else if (e.type === 'withdrawal' || e.type === 'manual_subtract') {
+                    capitalInPeriod -= amt;
                   }
                 }
               });

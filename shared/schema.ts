@@ -560,3 +560,20 @@ export const insertAccountLedgerSchema = createInsertSchema(accountLedger).omit(
 
 export type InsertAccountLedger = z.infer<typeof insertAccountLedgerSchema>;
 export type AccountLedger = typeof accountLedger.$inferSelect;
+
+// Investor Report Archive
+export const investorReportArchive = pgTable("investor_report_archive", {
+  id: varchar("id", { length: 36 }).primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: varchar("user_id", { length: 255 }).notNull(),
+  reportDate: timestamp("report_date").notNull(),
+  reportData: jsonb("report_data").notNull(), // Store the full report as JSON
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertInvestorReportArchiveSchema = createInsertSchema(investorReportArchive).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertInvestorReportArchive = z.infer<typeof insertInvestorReportArchiveSchema>;
+export type InvestorReportArchive = typeof investorReportArchive.$inferSelect;
