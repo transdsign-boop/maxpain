@@ -157,7 +157,9 @@
       "Bash(timeout 3 curl:*)",
       "Bash(then echo \"✅ Server is ready and online\")",
       "Bash(then echo \"✅ Server is ready - changes reverted\")",
-      "Bash(then echo \"✅ Replit dev server is ready and online\")"
+      "Bash(then echo \"✅ Replit dev server is ready and online\")",
+      "Bash(then echo 'Port 5000 still in use, killing...')",
+      "Bash(then echo \"✅ Server is online and ready after $i seconds\")"
     ],
     "deny": [],
     "ask": []
