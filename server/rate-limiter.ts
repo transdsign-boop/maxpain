@@ -24,7 +24,7 @@ class RateLimiter {
   private queue: QueuedRequest[] = [];
   private processing = false;
   private lastRequestTime = 0;
-  private minDelay = 200; // 200ms between requests = max 5 requests/second
+  private minDelay = 350; // 350ms between requests = max ~3 requests/second (reduced to prevent 418)
   private cache = new Map<string, CacheEntry>();
   private cacheTTL = 30000; // 30 seconds
   private backoffUntil = 0; // Timestamp when we can resume requests
@@ -141,25 +141,6 @@ class RateLimiter {
 
   private sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
-  }
-
-  /**
-   * Rate-limited fetch wrapper
-   * Wraps native fetch with rate limiting and caching
-   */
-  async fetch(url: string, options?: RequestInit): Promise<Response> {
-    const cacheKey = options?.method === 'GET' ? url : null;
-
-    return this.enqueue(cacheKey, async () => {
-      const response = await fetch(url, options);
-
-      // Check for rate limiting
-      if (response.status === 418) {
-        throw new Error('HTTP 418 - Rate limit exceeded');
-      }
-
-      return response;
-    });
   }
 
   /**

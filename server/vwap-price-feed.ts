@@ -120,28 +120,12 @@ export class VWAPPriceFeed {
    * Uses sequential fetching with rate limiter to avoid 418 errors
    */
   private async initializeHistoricalKlines(): Promise<void> {
-    console.log(`📥 Skipping historical klines fetch - VWAP will build from live WebSocket data`);
-    console.log(`   ⚡ This avoids 24 API calls during startup and prevents rate limiting`);
-
-    // Initialize empty klines for all symbols
-    // WebSocket will populate them as data arrives
-    for (const symbol of this.symbols) {
-      this.periodKlines.set(symbol, []);
-    }
-
-    // NOTE: VWAP values will start at 0 and build up as WebSocket klines arrive
-    // Within 1-2 minutes, VWAP will have enough data to be meaningful
-    // The filter's reset times will be properly set when the first kline arrives
-
-    console.log(`✅ VWAP initialized for ${this.symbols.length} symbols - waiting for live data`);
-
-    /* ORIGINAL CODE (causes rate limiting):
     console.log(`📥 Fetching historical klines for ${this.symbols.length} symbols (with 250ms delays to avoid burst limit)...`);
 
     let successCount = 0;
     let errorCount = 0;
 
-    // Fetch one symbol at a time
+    // Fetch one symbol at a time through the rate limiter
     for (const symbol of this.symbols) {
       try {
         const filter = vwapFilterManager.getFilter(symbol);
@@ -151,6 +135,7 @@ export class VWAPPriceFeed {
         const periodStartTime = this.getAlignedPeriodStart(Date.now(), config.timeframeMinutes);
 
         // Fetch historical klines for the current period
+        // Using 1-minute candles with limit=1000 (max allowed)
         const response = await fetch(
           `https://fapi.asterdex.com/fapi/v1/klines?symbol=${symbol}&interval=1m&startTime=${periodStartTime}&limit=1000`
         );
@@ -166,28 +151,21 @@ export class VWAPPriceFeed {
 
         if (klines && klines.length > 0) {
           filter.recalculateFromKlines(klines);
-          const latestKline = klines[klines.length - 1];
-          filter.updatePrice({
-            timestamp: parseInt(latestKline[0]),
-            high: parseFloat(latestKline[2]),
-            low: parseFloat(latestKline[3]),
-            close: parseFloat(latestKline[4]),
-            volume: parseFloat(latestKline[5])
-          });
-
           successCount++;
         }
 
+        // Add 250ms delay between requests to avoid burst rate limit
+        // 24 symbols × 250ms = 6 seconds (well below burst threshold)
         await new Promise(resolve => setTimeout(resolve, 250));
       } catch (error: any) {
         errorCount++;
+        // Initialize with empty klines on error
         this.periodKlines.set(symbol, []);
         console.error(`❌ Error fetching historical klines for ${symbol}:`, error.message);
       }
     }
 
     console.log(`✅ Historical klines initialized: ${successCount} succeeded, ${errorCount} failed`);
-    */
   }
 
   /**
@@ -370,25 +348,10 @@ export class VWAPPriceFeed {
 
       // Check if we need to reset for a new period
       const klineOpenTime = parseInt(k.t);
-      const currentStatus = filter.getStatus();
-      if (klineOpenTime >= currentStatus.nextResetTime) {
-        // New period started - trigger filter reset by calling updatePrice
+      if (klineOpenTime >= filter.getStatus().nextResetTime) {
+        // New period started, clear old klines
         console.log(`🔄 New VWAP period started for ${symbol}`);
-        console.log(`   Previous period: ${new Date(currentStatus.nextResetTime - config.timeframeMinutes * 60000).toISOString()}`);
-        console.log(`   New period: ${new Date(this.getAlignedPeriodStart(klineOpenTime, config.timeframeMinutes)).toISOString()}`);
-
-        // Clear old klines
         this.periodKlines.set(symbol, []);
-
-        // Trigger the filter's reset by calling updatePrice with current kline
-        // This ensures sessionStartTime and nextResetTime are updated
-        filter.updatePrice({
-          timestamp: klineOpenTime,
-          high: parseFloat(k.h),
-          low: parseFloat(k.l),
-          close: parseFloat(k.c),
-          volume: parseFloat(k.v)
-        });
       }
 
       // Add closed candle to accumulated klines

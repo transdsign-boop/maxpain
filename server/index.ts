@@ -1,13 +1,10 @@
-// Load environment variables from .env file
-import dotenv from "dotenv";
-dotenv.config();
-
 // Import console logger FIRST to capture all output
 import "./console-logger";
 
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import cron from "node-cron";
 
 const app = express();
 app.use(express.json());
@@ -80,4 +77,27 @@ app.use((req, res, next) => {
   }, () => {
     log(`serving on port ${port}`);
   });
+
+  // Schedule daily investor report archiving at midnight UTC
+  cron.schedule('0 0 * * *', async () => {
+    try {
+      console.log('📊 Running daily investor report archive...');
+      const response = await fetch(`http://localhost:${port}/api/account/investor-report/archive`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      if (response.ok) {
+        console.log('✅ Investor report archived successfully');
+      } else {
+        console.error('❌ Failed to archive investor report:', await response.text());
+      }
+    } catch (error) {
+      console.error('❌ Error archiving investor report:', error);
+    }
+  }, {
+    timezone: "UTC"
+  });
+
+  console.log('⏰ Daily investor report archive job scheduled for midnight UTC');
 })();

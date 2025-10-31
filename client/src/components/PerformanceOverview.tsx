@@ -619,51 +619,70 @@ function PerformanceOverview() {
   }, [activeStrategy?.maxPortfolioRiskPercent]);
 
   // Memoized risk color helper - uses server-backed limit to avoid desynchronization
+  // Lime green → Yellow → Orange → Red gradient with higher sensitivity
   const getRiskColorClass = useMemo(() => {
     const serverRiskLimit = activeStrategy ? parseFloat(activeStrategy.maxPortfolioRiskPercent) : 15;
-    const isOverLimit = filledRiskPercentage > serverRiskLimit;
-    const warningThreshold = serverRiskLimit * 0.8; // 80% of max
+    const riskPercentOfLimit = (filledRiskPercentage / serverRiskLimit) * 100;
 
-    return isOverLimit ? 'text-destructive' :
-      filledRiskPercentage >= warningThreshold ? 'text-orange-500 dark:text-orange-400' :
-      'text-blue-500 dark:text-blue-400';
+    // More sensitive color transitions for better risk awareness
+    if (riskPercentOfLimit >= 100) {
+      return 'text-red-500'; // Critical: Over limit
+    } else if (riskPercentOfLimit >= 85) {
+      return 'text-red-400'; // Severe: 85-100%
+    } else if (riskPercentOfLimit >= 70) {
+      return 'text-orange-500'; // Warning: 70-85%
+    } else if (riskPercentOfLimit >= 50) {
+      return 'text-yellow-500'; // Caution: 50-70%
+    } else {
+      return 'text-[rgb(190,242,100)]'; // Safe: 0-50% - Lime green
+    }
   }, [activeStrategy?.maxPortfolioRiskPercent, filledRiskPercentage]);
 
   // Memoized risk pulsation effect - changes speed and color based on risk level
   const getRiskPulsationClass = useMemo(() => {
     const serverRiskLimit = activeStrategy ? parseFloat(activeStrategy.maxPortfolioRiskPercent) : 15;
-    const isOverLimit = filledRiskPercentage > serverRiskLimit;
-    const warningThreshold = serverRiskLimit * 0.8; // 80% of max
+    const riskPercentOfLimit = (filledRiskPercentage / serverRiskLimit) * 100;
 
-    if (isOverLimit) {
+    // More sensitive pulsation based on risk level
+    if (riskPercentOfLimit >= 85) {
       return 'risk-pulse-critical'; // Fast emergency pulse, red
-    } else if (filledRiskPercentage >= warningThreshold) {
+    } else if (riskPercentOfLimit >= 70) {
       return 'risk-pulse-warning'; // Medium pulse, orange
+    } else if (riskPercentOfLimit >= 50) {
+      return 'risk-pulse-caution'; // Gentle pulse, yellow
     } else {
-      return 'risk-pulse-normal'; // Gentle pulse, blue
+      return 'risk-pulse-safe'; // Very gentle pulse, lime green
     }
   }, [activeStrategy?.maxPortfolioRiskPercent, filledRiskPercentage]);
 
   const getRiskStrokeClass = useMemo(() => {
     const serverRiskLimit = activeStrategy ? parseFloat(activeStrategy.maxPortfolioRiskPercent) : 15;
-    const isOverLimit = filledRiskPercentage > serverRiskLimit;
-    const warningThreshold = serverRiskLimit * 0.8; // 80% of max
+    const riskPercentOfLimit = (filledRiskPercentage / serverRiskLimit) * 100;
 
-    return isOverLimit ? 'text-destructive' :
-      filledRiskPercentage >= warningThreshold ? 'stroke-orange-500 dark:stroke-orange-400' :
-      'stroke-blue-500 dark:stroke-blue-400';
+    // More sensitive stroke color transitions: lime green → yellow → orange → red
+    if (riskPercentOfLimit >= 100) {
+      return 'stroke-red-500'; // Critical: Over limit
+    } else if (riskPercentOfLimit >= 85) {
+      return 'stroke-red-400'; // Severe: 85-100%
+    } else if (riskPercentOfLimit >= 70) {
+      return 'stroke-orange-500'; // Warning: 70-85%
+    } else if (riskPercentOfLimit >= 50) {
+      return 'stroke-yellow-500'; // Caution: 50-70%
+    } else {
+      return 'stroke-[rgb(190,242,100)]'; // Safe: 0-50% - Lime green
+    }
   }, [activeStrategy?.maxPortfolioRiskPercent, filledRiskPercentage]);
 
-  // Margin usage color scale: lime -> blue -> orange -> red
+  // Margin usage color scale: lime -> yellow -> orange -> red (no blue)
   const getMarginColorClass = useMemo(() => {
-    if (marginUsedPercentage >= 75) {
-      return 'stroke-destructive';
+    if (marginUsedPercentage >= 85) {
+      return 'stroke-red-500'; // Critical: 85%+
+    } else if (marginUsedPercentage >= 70) {
+      return 'stroke-orange-500'; // Warning: 70-85%
     } else if (marginUsedPercentage >= 50) {
-      return 'stroke-orange-500 dark:stroke-orange-400';
-    } else if (marginUsedPercentage >= 25) {
-      return 'stroke-blue-500 dark:stroke-blue-400';
+      return 'stroke-yellow-500'; // Caution: 50-70%
     } else {
-      return 'stroke-lime-600 dark:stroke-lime-500';
+      return 'stroke-[rgb(190,242,100)]'; // Safe: 0-50% - Lime green
     }
   }, [marginUsedPercentage]);
 
@@ -681,6 +700,14 @@ function PerformanceOverview() {
     const totalBalance = walletBalance + unrealizedPnl;
     return (totalBalance * localRiskLimit) / 100;
   }, [liveAccount, localRiskLimit]);
+
+  // Calculate current total balance (for interval P&L percentage)
+  const currentTotalBalance = useMemo(() => {
+    if (!liveAccount) return 0;
+    const walletBalance = parseFloat(liveAccount.totalWalletBalance || '0') || 0;
+    const unrealizedPnl = parseFloat(liveAccount.totalUnrealizedProfit || '0') || 0;
+    return walletBalance + unrealizedPnl;
+  }, [liveAccount]);
 
   // Use unified performance data (live-only mode)
   // Recalculate metrics when date filter is active
@@ -809,23 +836,26 @@ function PerformanceOverview() {
       ? sourceChartData[sourceChartData.length - 1].cumulativePnl
       : 0;
 
-    // Interval P&L = difference between end and start
-    const totalRealizedPnl = endCumulativePnl - startCumulativePnl;
+    // Interval P&L = ACTUAL wallet profit (balance - deposits)
+    // This includes both realized gains from closed positions AND unrealized P&L from open positions
+    const totalRealizedPnl = currentTotalBalance > 0 && totalDeposited > 0
+      ? currentTotalBalance - totalDeposited
+      : endCumulativePnl - startCumulativePnl; // Fallback to chart data if wallet balance not loaded
 
-    // Calculate percentage based on total deposits (initial capital)
-    // This shows % return on the money you actually put in
-    // Use 3900 as fallback if totalDeposited is not loaded yet
-    const depositBase = totalDeposited > 0 ? totalDeposited : 3900;
-    const intervalPnlPercent = depositBase > 0
-      ? (totalRealizedPnl / depositBase) * 100
+    // Calculate percentage based on total deposited capital (ROI on your investment)
+    // Use totalDeposited or fallback to 3900 if not loaded yet
+    const balanceBase = totalDeposited > 0 ? totalDeposited : 3900;
+    const intervalPnlPercent = balanceBase > 0
+      ? (totalRealizedPnl / balanceBase) * 100
       : 0;
 
     // Debug logging
     if (totalRealizedPnl !== 0) {
-      console.log('Interval P&L Calculation:', {
-        totalRealizedPnl,
+      console.log('Interval P&L Calculation (ACTUAL WALLET):', {
+        currentTotalBalance,
         totalDeposited,
-        depositBase,
+        actualWalletPnl: totalRealizedPnl,
+        chartRealizedPnl: endCumulativePnl,
         intervalPnlPercent
       });
     }
@@ -857,8 +887,8 @@ function PerformanceOverview() {
       }
     });
 
-    // Calculate percentage based on starting capital (deposits)
-    maxDrawdownPercent = depositBase > 0 ? (maxDrawdown / depositBase) * 100 : 0;
+    // Calculate percentage based on current balance
+    maxDrawdownPercent = balanceBase > 0 ? (maxDrawdown / balanceBase) * 100 : 0;
     
     // Calculate average trade time from filtered closed positions
     let avgTradeTimeMs = 0;
@@ -914,10 +944,10 @@ function PerformanceOverview() {
     const timeRangeDays = sourceChartData.length > 1
       ? (sourceChartData[sourceChartData.length - 1].timestamp - sourceChartData[0].timestamp) / (1000 * 60 * 60 * 24)
       : 1;
-    const annualizedReturn = timeRangeDays > 0
-      ? (totalRealizedPnl / totalDeposited) * (365 / timeRangeDays) * 100
+    const annualizedReturn = timeRangeDays > 0 && balanceBase > 0
+      ? (totalRealizedPnl / balanceBase) * (365 / timeRangeDays) * 100
       : 0;
-    const calmarRatio = maxDrawdown > 0 && totalDeposited > 0
+    const calmarRatio = maxDrawdown > 0 && balanceBase > 0
       ? annualizedReturn / maxDrawdownPercent
       : 0;
 
@@ -1011,9 +1041,9 @@ function PerformanceOverview() {
     console.log('\n📊 CALMAR RATIO CALCULATION:');
     console.log(`  Formula: Annualized Return / Max Drawdown %`);
     console.log(`  Step 1 - Annualized Return:`);
-    console.log(`    (Total P&L / Total Deposited) × (365 / Days)`);
-    console.log(`    (${totalRealizedPnl.toFixed(2)} / ${totalDeposited.toFixed(2)}) × (365 / ${timeRangeDays.toFixed(2)})`);
-    console.log(`    ${(totalRealizedPnl / totalDeposited).toFixed(4)} × ${(365 / timeRangeDays).toFixed(2)}`);
+    console.log(`    (Total P&L / Current Balance) × (365 / Days)`);
+    console.log(`    (${totalRealizedPnl.toFixed(2)} / ${balanceBase.toFixed(2)}) × (365 / ${timeRangeDays.toFixed(2)})`);
+    console.log(`    ${(totalRealizedPnl / balanceBase).toFixed(4)} × ${(365 / timeRangeDays).toFixed(2)}`);
     console.log(`    = ${annualizedReturn.toFixed(2)}%`);
     console.log(`  Step 2 - Calmar Ratio:`);
     console.log(`    ${annualizedReturn.toFixed(2)} / ${maxDrawdownPercent.toFixed(2)} = ${calmarRatio.toFixed(2)}`);
@@ -1087,7 +1117,7 @@ function PerformanceOverview() {
       calmarRatio,
       expectancy,
     };
-  }, [performance, dateRange, selectedTradeRange, realizedPnlEvents, allCommissions, allFundingFees, sourceChartData, closedPositions, rawSourceData, getCumulativeDepositsAtTime, getCumulativeFeeIncomeAtTime, totalDeposited]);
+  }, [performance, dateRange, selectedTradeRange, realizedPnlEvents, allCommissions, allFundingFees, sourceChartData, closedPositions, rawSourceData, getCumulativeDepositsAtTime, getCumulativeFeeIncomeAtTime, totalDeposited, currentTotalBalance]);
   const displayLoading = isLoading || chartLoading || liveAccountLoading;
   const showLoadingUI = displayLoading || !performance;
 
@@ -1361,34 +1391,34 @@ function PerformanceOverview() {
         {/* Main Balance Section with Risk Bar */}
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_2fr_auto] gap-6">
           {/* Current Balance - Prominent */}
-          <div className="space-y-3">
+          <div className="space-y-2 lg:space-y-3">
             <div className="flex items-center gap-2">
-              <DollarSign className="h-5 w-5 text-muted-foreground" />
-              <div className="text-sm text-muted-foreground uppercase tracking-wider">Current Balance</div>
+              <DollarSign className="h-4 w-4 lg:h-5 lg:w-5 text-muted-foreground" />
+              <div className="text-xs lg:text-sm text-muted-foreground uppercase tracking-wider">Current Balance</div>
             </div>
-            <div className="text-7xl font-mono font-bold" data-testid="text-total-balance">
+            <div className="text-4xl lg:text-7xl font-mono font-bold" data-testid="text-total-balance">
               ${totalBalance.toFixed(2)}
             </div>
-            <div className={`text-base font-mono ${unrealizedPnl >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`}>
+            <div className={`text-sm lg:text-base font-mono ${unrealizedPnl >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`}>
               Unrealized: {unrealizedPnl >= 0 ? '+' : ''}${unrealizedPnl.toFixed(2)}
             </div>
-            <div className={`text-sm text-muted-foreground`}>
+            <div className={`text-xs lg:text-sm text-muted-foreground`}>
               {unrealizedPnlPercent >= 0 ? '+' : ''}{unrealizedPnlPercent.toFixed(2)}%
             </div>
           </div>
 
           {/* Available Balance + Interval P&L */}
-          <div className="space-y-3">
+          <div className="space-y-2 lg:space-y-3">
             {/* Interval P&L - Shows P&L for currently viewed chart interval */}
-            <div className="mb-4 pb-4 border-b">
-              <div className="text-sm text-muted-foreground uppercase tracking-wider">Interval P&L</div>
-              <div className={`text-3xl font-mono font-bold mt-2 ${displayPerformance.totalRealizedPnl >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`}>
+            <div className="mb-3 pb-3 lg:mb-4 lg:pb-4 border-b">
+              <div className="text-xs lg:text-sm text-muted-foreground uppercase tracking-wider">Interval P&L</div>
+              <div className={`text-2xl lg:text-3xl font-mono font-bold mt-1 lg:mt-2 ${displayPerformance.totalRealizedPnl >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`}>
                 {displayPerformance.totalRealizedPnl >= 0 ? '+' : ''}${displayPerformance.totalRealizedPnl.toFixed(2)}
               </div>
-              <div className={`text-lg font-mono font-bold ${displayPerformance.intervalPnlPercent >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`}>
+              <div className={`text-base lg:text-lg font-mono font-bold ${displayPerformance.intervalPnlPercent >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`}>
                 {displayPerformance.intervalPnlPercent >= 0 ? '+' : ''}{displayPerformance.intervalPnlPercent.toFixed(2)}%
               </div>
-              <div className="text-sm text-muted-foreground mt-1">
+              <div className="text-xs lg:text-sm text-muted-foreground mt-1">
                 {dateRange.start || dateRange.end
                   ? 'Filtered period'
                   : selectedTradeRange.start !== null
@@ -1397,28 +1427,28 @@ function PerformanceOverview() {
               </div>
             </div>
 
-            <div className="text-sm text-muted-foreground uppercase tracking-wider">Total Balance</div>
-            <div className="text-4xl font-mono font-bold" data-testid="text-wallet-balance">
+            <div className="text-xs lg:text-sm text-muted-foreground uppercase tracking-wider">Total Balance</div>
+            <div className="text-2xl lg:text-4xl font-mono font-bold" data-testid="text-wallet-balance">
               ${walletBalance.toFixed(2)}
             </div>
-            <div className="text-sm text-muted-foreground">
+            <div className="text-xs lg:text-sm text-muted-foreground">
               Wallet only
             </div>
-            <div className="text-sm text-muted-foreground uppercase tracking-wider mt-4">Available</div>
-            <div className="text-3xl font-mono font-bold" data-testid="text-available-balance">
+            <div className="text-xs lg:text-sm text-muted-foreground uppercase tracking-wider mt-3 lg:mt-4">Available</div>
+            <div className="text-2xl lg:text-3xl font-mono font-bold" data-testid="text-available-balance">
               ${availableBalance.toFixed(2)}
             </div>
-            <div className="text-sm text-muted-foreground">
+            <div className="text-xs lg:text-sm text-muted-foreground">
               For trading
             </div>
           </div>
 
           {/* Margin Usage Meter - Dual Ring (Margin Used vs Projected Risk) */}
-          <div className="flex flex-col items-center gap-3 lg:border-l lg:pl-6" data-testid="container-risk-bar">
-            <div className="text-xs text-muted-foreground uppercase tracking-wider text-center whitespace-nowrap">Risk Meter</div>
+          <div className="flex flex-col items-center justify-center gap-4 lg:border-l lg:pl-8" data-testid="container-risk-bar">
+            <div className="text-sm text-muted-foreground uppercase tracking-wider text-center whitespace-nowrap">Risk Meter</div>
             <div className="relative flex flex-col items-center">
               {/* Dual Ring Meter */}
-              <div className="relative w-36 h-36">
+              <div className="relative w-48 h-48 sm:w-56 sm:h-56 lg:w-64 lg:h-64 xl:w-72 xl:h-72">
                 <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
                   {/* Outer ring background (filled risk - loss if all current positions hit SL) */}
                   <circle
@@ -1471,27 +1501,38 @@ function PerformanceOverview() {
                 </svg>
                 {/* Pulsating background - changes based on risk level */}
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <div className={`w-16 h-16 rounded-full ${getRiskPulsationClass}`} />
+                  <div className={`w-20 h-20 sm:w-24 sm:h-24 lg:w-28 lg:h-28 xl:w-32 xl:h-32 rounded-full ${getRiskPulsationClass}`} />
                 </div>
                 {/* Centered content */}
                 <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
-                  <div className="text-sm font-mono text-muted-foreground">Margin</div>
-                  <div className="text-xl font-mono font-bold">{marginUsedPercentage.toFixed(1)}%</div>
-                  <div className="text-[10px] font-mono mt-0.5 text-white font-semibold" style={{ textShadow: '0 0 4px rgba(0,0,0,0.8), 0 0 8px rgba(0,0,0,0.6)' }}>
+                  <div className="text-base sm:text-lg lg:text-xl font-mono text-muted-foreground">Margin</div>
+                  <div className="text-2xl sm:text-3xl lg:text-4xl xl:text-5xl font-mono font-bold">{marginUsedPercentage.toFixed(1)}%</div>
+                  <div className="text-xs sm:text-sm lg:text-base font-mono mt-0.5 sm:mt-1 text-white font-semibold" style={{ textShadow: '0 0 4px rgba(0,0,0,0.8), 0 0 8px rgba(0,0,0,0.6)' }}>
                     {filledRiskPercentage.toFixed(1)}% of {activeStrategy?.maxPortfolioRiskPercent || '15'}%
                   </div>
                 </div>
 
                 {/* CSS for pulsation animations */}
                 <style>{`
-                  @keyframes pulse-normal {
+                  @keyframes pulse-safe {
                     0%, 100% {
-                      background-color: rgba(59, 130, 246, 0.1);
-                      box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4);
+                      background-color: rgba(190, 242, 100, 0.08);
+                      box-shadow: 0 0 0 0 rgba(190, 242, 100, 0.3);
                     }
                     50% {
-                      background-color: rgba(59, 130, 246, 0.2);
-                      box-shadow: 0 0 20px 10px rgba(59, 130, 246, 0);
+                      background-color: rgba(190, 242, 100, 0.15);
+                      box-shadow: 0 0 15px 8px rgba(190, 242, 100, 0);
+                    }
+                  }
+
+                  @keyframes pulse-caution {
+                    0%, 100% {
+                      background-color: rgba(234, 179, 8, 0.12);
+                      box-shadow: 0 0 0 0 rgba(234, 179, 8, 0.4);
+                    }
+                    50% {
+                      background-color: rgba(234, 179, 8, 0.2);
+                      box-shadow: 0 0 20px 10px rgba(234, 179, 8, 0);
                     }
                   }
 
@@ -1517,8 +1558,12 @@ function PerformanceOverview() {
                     }
                   }
 
-                  .risk-pulse-normal {
-                    animation: pulse-normal 3s ease-in-out infinite;
+                  .risk-pulse-safe {
+                    animation: pulse-safe 4s ease-in-out infinite;
+                  }
+
+                  .risk-pulse-caution {
+                    animation: pulse-caution 2.5s ease-in-out infinite;
                   }
 
                   .risk-pulse-warning {
@@ -1530,18 +1575,18 @@ function PerformanceOverview() {
                   }
                 `}</style>
               </div>
-              
-              <div className="text-[10px] text-muted-foreground text-center mt-1">
+
+              <div className="text-xs sm:text-sm text-muted-foreground text-center mt-2">
                 <div>Used: ${marginUsed.toFixed(2)}</div>
                 <div className={getRiskColorClass}>Filled: ${filledRisk.toFixed(2)}</div>
                 <div className="text-muted-foreground/70">Reserved: ${reservedRisk.toFixed(2)}</div>
               </div>
-              
+
               {/* Risk Limit Slider */}
-              <div className="mt-3 w-36 space-y-1.5">
+              <div className="mt-4 w-48 sm:w-56 lg:w-64 xl:w-72 space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] text-muted-foreground">Max</span>
-                  <span className="text-xs font-mono font-semibold">{localRiskLimit.toFixed(1)}%</span>
+                  <span className="text-xs sm:text-sm text-muted-foreground">Max Risk</span>
+                  <span className="text-sm sm:text-base font-mono font-semibold">{localRiskLimit.toFixed(1)}%</span>
                 </div>
                 <Slider
                   value={[localRiskLimit]}
@@ -1553,7 +1598,7 @@ function PerformanceOverview() {
                   className="cursor-pointer"
                   data-testid="slider-max-risk"
                 />
-                <div className="text-center text-[10px] font-mono text-muted-foreground">
+                <div className="text-center text-xs sm:text-sm font-mono text-muted-foreground">
                   ${maxRiskDollars.toFixed(2)}
                 </div>
               </div>

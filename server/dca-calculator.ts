@@ -37,8 +37,13 @@ export interface DCAResult {
  * Calculate ATR (Average True Range) as percentage for a symbol
  * ATR measures market volatility and is used to scale DCA spacing
  */
+// ATR cache to prevent redundant API calls
+// Cache ATR values for 30 seconds (same symbol = same ATR for short period)
+const atrCache = new Map<string, { value: number; timestamp: number }>();
+const ATR_CACHE_TTL = 30000; // 30 seconds
+
 export async function calculateATRPercent(
-  symbol: string, 
+  symbol: string,
   periods: number = 10,
   apiKey?: string,
   secretKey?: string
@@ -48,10 +53,16 @@ export async function calculateATRPercent(
     return 1.2; // Default ATR% for development
   }
 
+  // Check cache first (30 second TTL)
+  const cached = atrCache.get(symbol);
+  if (cached && Date.now() - cached.timestamp < ATR_CACHE_TTL) {
+    return cached.value;
+  }
+
   try {
     // Fetch recent klines (candlesticks) from Aster DEX
     const timestamp = Date.now();
-    const params = `symbol=${symbol}&interval=15m&limit=${periods + 1}&timestamp=${timestamp}`;
+    const params = `symbol=${symbol}&interval=1m&limit=${periods + 1}&timestamp=${timestamp}`;
     const signature = crypto
       .createHmac('sha256', secretKey)
       .update(params)
@@ -65,6 +76,11 @@ export async function calculateATRPercent(
     );
 
     if (!response.ok) {
+      // On error, return cached value if available (even if expired)
+      if (cached) {
+        console.warn(`Failed to fetch klines for ${symbol}, using cached ATR (${cached.value.toFixed(2)}%)`);
+        return cached.value;
+      }
       console.error(`Failed to fetch klines for ${symbol}, using default ATR`);
       return 1.2;
     }
@@ -92,16 +108,24 @@ export async function calculateATRPercent(
     
     // Calculate ATR as average of true ranges
     const atr = trueRanges.reduce((sum, tr) => sum + tr, 0) / trueRanges.length;
-    
+
     // Convert to percentage of current price
     const currentPrice = parseFloat(klines[klines.length - 1][4]);
     const atrPercent = (atr / currentPrice) * 100;
-    
+
+    // Cache the result for 30 seconds
+    atrCache.set(symbol, { value: atrPercent, timestamp: Date.now() });
+
     console.log(`📊 ATR for ${symbol}: ${atrPercent.toFixed(3)}% (${atr.toFixed(6)} / ${currentPrice})`);
-    
+
     return atrPercent;
   } catch (error) {
     console.error(`Error calculating ATR for ${symbol}:`, error);
+    // Return cached value if available, otherwise default
+    if (cached) {
+      console.warn(`Using expired cached ATR for ${symbol}: ${cached.value.toFixed(2)}%`);
+      return cached.value;
+    }
     return 1.2; // Default fallback
   }
 }
@@ -239,8 +263,20 @@ export function calculateDCALevels(
 
   if (q1 < requiredQty) {
     const oldQ1 = q1;
+    const oldNotional = oldQ1 * entryPrice;
+    const requiredNotional = requiredQty * entryPrice;
+    const upsizeMultiplier = requiredNotional / oldNotional;
+
+    // SAFETY CHECK: Prevent excessive upsizing (>2x intended size)
+    if (upsizeMultiplier > 2.0) {
+      console.log(`   ⚠️⚠️⚠️ WARNING: Exchange minimum would force Layer 1 to be ${upsizeMultiplier.toFixed(1)}x larger than intended!`);
+      console.log(`   💡 Intended: $${oldNotional.toFixed(2)} (0.4% of margin)`);
+      console.log(`   📈 Exchange requires: $${requiredNotional.toFixed(2)} (${((requiredNotional / oldNotional) * 0.4).toFixed(2)}% of margin)`);
+      console.log(`   ⚠️ This symbol may have high exchange minimums. Consider using a larger start step % or avoiding this symbol.`);
+    }
+
     q1 = requiredQty; // Scale up to meet minimum (respects both minQty and minNotional)
-    
+
     // Now solve for new growth factor that maintains the same total risk
     // Original: totalRisk = q1_old * totalWeight_old * lossPerUnit = maxRiskDollars
     // New: totalRisk = q1_new * totalWeight_new * lossPerUnit = maxRiskDollars
@@ -672,7 +708,7 @@ export async function recalculateReservedRiskForSession(
       // Calculate current ATR for the symbol
       const atrPercent = await calculateATRPercent(
         position.symbol,
-        10, // Use default ATR period of 10
+        parseFloat(strategy.atrPeriod),
         apiKey,
         secretKey
       );

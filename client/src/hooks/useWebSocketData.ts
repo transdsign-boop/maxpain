@@ -125,17 +125,6 @@ export function useWebSocketData(options: UseWebSocketDataOptions = {}) {
               queryClient.invalidateQueries({ queryKey: ['/api/live/open-orders'] });
               queryClient.invalidateQueries({ queryKey: ['/api/orders'] });
               break;
-
-            case 'vwap_update':
-              // Invalidate VWAP status for real-time updates (including resets)
-              queryClient.invalidateQueries({
-                predicate: (query) => {
-                  // Invalidate all queries matching pattern /api/strategies/:id/vwap/status
-                  const key = query.queryKey[0];
-                  return typeof key === 'string' && key.includes('/vwap/status');
-                }
-              });
-              break;
           }
         } catch (error) {
           console.error('Error parsing WebSocket message:', error);

@@ -87,14 +87,12 @@ export class VWAPDirectionFilter {
   /**
    * Get the start time of the current aligned period
    * For 240min (4h): aligns to 00:00, 04:00, 08:00, 12:00, 16:00, 20:00 UTC
-   * This matches TradingView's 4h periods: 5PM, 9PM, 1AM, 5AM, 9AM, 1PM PDT (UTC-7)
    */
   private getAlignedPeriodStart(timestamp: number): number {
     const date = new Date(timestamp);
     const periodMs = this.config.timeframeMinutes * 60 * 1000;
 
-    // Align to midnight UTC (5PM PDT / 6PM PST) for TradingView compatibility
-    // No offset needed - already aligns to 00:00 UTC naturally
+    // Get milliseconds since start of day (UTC)
     const startOfDay = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
     const msSinceStartOfDay = timestamp - startOfDay.getTime();
 

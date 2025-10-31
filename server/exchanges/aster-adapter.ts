@@ -20,7 +20,6 @@ import {
   NormalizedExchangeInfo,
   NormalizedAssetBalance,
 } from './types';
-import { rateLimiter } from '../rate-limiter';
 
 export class AsterExchangeAdapter implements IExchangeAdapter {
   readonly exchangeType: ExchangeType = 'aster';
@@ -556,11 +555,7 @@ export class AsterExchangeAdapter implements IExchangeAdapter {
   }
 
   async getExchangeInfo(): Promise<NormalizedExchangeInfo> {
-    // Use rate limiter to prevent 429 errors
-    const response = await rateLimiter.fetch(`${this.baseURL}/fapi/v1/exchangeInfo`, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' }
-    });
+    const response = await fetch(`${this.baseURL}/fapi/v1/exchangeInfo`);
 
     if (!response.ok) {
       throw new Error(`Failed to fetch exchange info: ${response.statusText}`);
@@ -750,14 +745,14 @@ export class AsterExchangeAdapter implements IExchangeAdapter {
   private async fetchExchangeInfo(): Promise<void> {
     try {
       const exchangeInfo = await this.getExchangeInfo();
-
+      
       // Cache it for future instances
       AsterExchangeAdapter.exchangeInfoCache = exchangeInfo;
       AsterExchangeAdapter.exchangeInfoCacheTime = Date.now();
-
+      
       for (const symbol of exchangeInfo.symbols) {
         const tickSize = '0.01';
-
+        
         this.symbolPrecisionCache.set(symbol.symbol, {
           quantityPrecision: symbol.quantityPrecision,
           pricePrecision: symbol.pricePrecision,
@@ -766,16 +761,11 @@ export class AsterExchangeAdapter implements IExchangeAdapter {
           minNotional: parseFloat(symbol.minNotional),
         });
       }
-
+      
       this.exchangeInfoFetched = true;
       console.log(`✅ [Aster] Fetched and cached precision info for ${this.symbolPrecisionCache.size} symbols`);
     } catch (error) {
       console.error('❌ [Aster] Error fetching exchange info:', error);
-
-      // CRITICAL: Set exchangeInfoFetched = true even on error to prevent retry storms
-      // Use safe fallback defaults for precision (set in getPrecision/getMinNotional)
-      this.exchangeInfoFetched = true;
-      console.warn('⚠️ [Aster] Using fallback precision defaults due to fetch error');
     }
   }
 

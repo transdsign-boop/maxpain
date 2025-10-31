@@ -169,13 +169,16 @@ export class OrderProtectionService {
 
   /**
    * Round price to exchange tick size
+   * @param roundUp If true, rounds up to next tick; if false, rounds down
    */
-  private roundPrice(symbol: string, price: number): number {
+  private roundPrice(symbol: string, price: number, roundUp: boolean = false): number {
     const precision = this.symbolPrecisionCache.get(symbol);
     if (!precision) return Math.floor(price * 100) / 100;
 
     const tickSize = parseFloat(precision.tickSize);
-    const rounded = Math.floor(price / tickSize) * tickSize;
+    const rounded = roundUp
+      ? Math.ceil(price / tickSize) * tickSize
+      : Math.floor(price / tickSize) * tickSize;
     const decimals = precision.tickSize.includes('.') ? precision.tickSize.split('.')[1].length : 0;
 
     return parseFloat(rounded.toFixed(decimals));
@@ -319,13 +322,15 @@ export class OrderProtectionService {
     let slSide: 'BUY' | 'SELL';
 
     if (position.side === 'long') {
-      tpPrice = this.roundPrice(position.symbol, rawTpPrice);
-      slPrice = this.roundPrice(position.symbol, rawSlPrice);
+      // LONG: Round TP UP (sell higher), Round SL DOWN (sell at stop or lower)
+      tpPrice = this.roundPrice(position.symbol, rawTpPrice, true);
+      slPrice = this.roundPrice(position.symbol, rawSlPrice, false);
       tpSide = 'SELL';
       slSide = 'SELL';
     } else {
-      tpPrice = this.roundPrice(position.symbol, rawTpPrice);
-      slPrice = this.roundPrice(position.symbol, rawSlPrice);
+      // SHORT: Round TP DOWN (buy lower), Round SL UP (buy at stop or higher)
+      tpPrice = this.roundPrice(position.symbol, rawTpPrice, false);
+      slPrice = this.roundPrice(position.symbol, rawSlPrice, true);
       tpSide = 'BUY';
       slSide = 'BUY';
     }
@@ -509,11 +514,15 @@ export class OrderProtectionService {
     const existingSlOrders = existingOrders.filter(o => o.type === 'STOP_MARKET');
 
     // Must have matching counts
-    if (existingTpOrders.length !== desiredTpOrders.length || 
+    if (existingTpOrders.length !== desiredTpOrders.length ||
         existingSlOrders.length !== desiredSlOrders.length) {
       console.log(`📊 Order count mismatch: TP ${existingTpOrders.length} vs ${desiredTpOrders.length}, SL ${existingSlOrders.length} vs ${desiredSlOrders.length}`);
       return false;
     }
+
+    // CRITICAL: If desired price differs significantly from existing, force update
+    // This prevents tolerance from allowing orders that violate min/max constraints
+    const STRICT_PRICE_DIFF_THRESHOLD = 0.001; // 0.1% - if difference exceeds this, force update
 
     // Use tolerance to prevent churn from minor ATR drift
     const PRICE_TOLERANCE_PERCENT = 0.002; // 0.2%
@@ -536,29 +545,51 @@ export class OrderProtectionService {
     let tpPriceMatches = true;
     if (desiredTpOrders.length > 0 && existingTpOrders.length > 0) {
       const desiredTpPrice = desiredTpOrders[0].price;
-      const tpPriceTolerance = Math.max(
-        desiredTpPrice * PRICE_TOLERANCE_PERCENT,
-        this.getTickSize(existingTpOrders[0].symbol) * 2
-      );
-      
-      tpPriceMatches = existingTpOrders.every(o => {
-        const priceDiff = Math.abs(parseFloat(o.price) - desiredTpPrice);
-        return priceDiff <= tpPriceTolerance;
-      });
+
+      // Check if price difference exceeds strict threshold (indicates constraint violation)
+      const existingTpPrice = parseFloat(existingTpOrders[0].price);
+      const strictDiffPercent = Math.abs(existingTpPrice - desiredTpPrice) / desiredTpPrice;
+
+      if (strictDiffPercent > STRICT_PRICE_DIFF_THRESHOLD) {
+        console.log(`⚠️ TP price difference ${(strictDiffPercent * 100).toFixed(2)}% exceeds strict threshold, forcing update`);
+        tpPriceMatches = false;
+      } else {
+        // Use normal tolerance for minor differences
+        const tpPriceTolerance = Math.max(
+          desiredTpPrice * PRICE_TOLERANCE_PERCENT,
+          this.getTickSize(existingTpOrders[0].symbol) * 2
+        );
+
+        tpPriceMatches = existingTpOrders.every(o => {
+          const priceDiff = Math.abs(parseFloat(o.price) - desiredTpPrice);
+          return priceDiff <= tpPriceTolerance;
+        });
+      }
     }
 
     let slPriceMatches = true;
     if (desiredSlOrders.length > 0 && existingSlOrders.length > 0) {
       const desiredSlPrice = desiredSlOrders[0].price;
-      const slPriceTolerance = Math.max(
-        desiredSlPrice * PRICE_TOLERANCE_PERCENT,
-        this.getTickSize(existingSlOrders[0].symbol) * 2
-      );
-      
-      slPriceMatches = existingSlOrders.every(o => {
-        const priceDiff = Math.abs(parseFloat(o.stopPrice) - desiredSlPrice);
-        return priceDiff <= slPriceTolerance;
-      });
+
+      // Check if price difference exceeds strict threshold (indicates constraint violation)
+      const existingSlPrice = parseFloat(existingSlOrders[0].stopPrice);
+      const strictDiffPercent = Math.abs(existingSlPrice - desiredSlPrice) / desiredSlPrice;
+
+      if (strictDiffPercent > STRICT_PRICE_DIFF_THRESHOLD) {
+        console.log(`⚠️ SL price difference ${(strictDiffPercent * 100).toFixed(2)}% exceeds strict threshold, forcing update`);
+        slPriceMatches = false;
+      } else {
+        // Use normal tolerance for minor differences
+        const slPriceTolerance = Math.max(
+          desiredSlPrice * PRICE_TOLERANCE_PERCENT,
+          this.getTickSize(existingSlOrders[0].symbol) * 2
+        );
+
+        slPriceMatches = existingSlOrders.every(o => {
+          const priceDiff = Math.abs(parseFloat(o.stopPrice) - desiredSlPrice);
+          return priceDiff <= slPriceTolerance;
+        });
+      }
     }
 
     const allMatch = tpPriceMatches && tpQtyMatches && slPriceMatches && slQtyMatches;

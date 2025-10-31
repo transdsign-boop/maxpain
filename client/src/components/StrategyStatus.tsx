@@ -14,6 +14,7 @@ import { format } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
 import { soundNotifications } from "@/lib/soundNotifications";
 import { useStrategyData } from "@/hooks/use-strategy-data";
+import { useLiquidityStatus } from "@/hooks/use-liquidity-status";
 import { formatPST, formatDateTimePST, formatTimePST, formatTimeSecondsPST } from "@/lib/utils";
 
 interface Fill {
@@ -79,6 +80,12 @@ interface PositionCardProps{
   isHedge?: boolean;
   actualTpPrice?: number | null;
   actualSlPrice?: number | null;
+  liquidityStatus?: {
+    status: 'excellent' | 'acceptable' | 'watch' | 'critical';
+    color: string;
+    ratio: number;
+    tooltip: string;
+  };
 }
 
 interface CompletedTradeCardProps {
@@ -629,7 +636,7 @@ function RealizedPnlEventCard({ event, formatCurrency, getPnlColor }: RealizedPn
   );
 }
 
-function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, formatPercentage, getPnlColor, isHedge, actualTpPrice, actualSlPrice }: PositionCardProps) {
+function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, formatPercentage, getPnlColor, isHedge, actualTpPrice, actualSlPrice, liquidityStatus }: PositionCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isFlashing, setIsFlashing] = useState(false);
   const [fillSourceFilter, setFillSourceFilter] = useState<'all' | 'bot' | 'manual' | 'sync'>('all');
@@ -637,20 +644,23 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
 
   const { data: fills } = useQuery<Fill[]>({
     queryKey: ['/api/positions', position.id, 'fills'],
-    enabled: isExpanded,
+    enabled: isExpanded, // Only fetch when expanded
   });
 
-  // Filter fills by source
+  // Calculate actual layers from ALL entry fills (layerNumber > 0)
+  const allEntryFills = (fills || []).filter(f => f.layerNumber > 0);
+  const uniqueEntryLayers = new Set(allEntryFills.map(f => f.layerNumber));
+  const actualLayersFilled = fills && uniqueEntryLayers.size > 0 ? uniqueEntryLayers.size : position.layersFilled;
+
+  // Filter fills by source (for display only)
   const filteredFills = fills?.filter(f => {
     if (fillSourceFilter === 'all') return true;
-    return f.source === fillSourceFilter || (!f.source && fillSourceFilter === 'bot'); // Treat missing source as 'bot'
+    return f.source === fillSourceFilter || (!f.source && fillSourceFilter === 'bot');
   }) || [];
 
-  // Calculate actual layers from entry fills (layerNumber > 0)
   const entryFills = filteredFills.filter(f => f.layerNumber > 0);
   const exitFills = filteredFills.filter(f => f.layerNumber === 0);
-  const actualLayersFilled = fills && entryFills.length > 0 ? entryFills.length : position.layersFilled;
-  
+
   // Flash effect when layers increase
   useEffect(() => {
     if (actualLayersFilled > prevLayersRef.current) {
@@ -662,42 +672,31 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
     prevLayersRef.current = actualLayersFilled;
   }, [actualLayersFilled]);
 
-  // unrealizedPnl is stored as percentage in the database (e.g., 0.36292126 = 0.36%)
+  // Calculate all necessary values
   const unrealizedPnlPercent = parseFloat(position.unrealizedPnl);
   const totalCost = parseFloat(position.totalCost);
-  
-  // Get leverage first (needed for notional value calculation)
-  // Use position's actual exchange leverage, fallback to strategy if not available
   const rawLeverage = Number((position as any).leverage) || Number(strategy?.leverage);
   const leverage = Number.isFinite(rawLeverage) && rawLeverage > 0 ? rawLeverage : 1;
-  
-  // Calculate notional value (totalCost stores margin, multiply by leverage for notional)
   const notionalValue = totalCost * leverage;
-  
-  // Calculate dollar P&L from percentage and NOTIONAL position size (not margin)
   const unrealizedPnlDollar = (unrealizedPnlPercent / 100) * notionalValue;
-  
   const avgEntry = parseFloat(position.avgEntryPrice);
-  
-  // Calculate current price from unrealized P&L percentage
+
   const currentPrice = position.side === 'long'
     ? avgEntry * (1 + unrealizedPnlPercent / 100)
     : avgEntry * (1 - unrealizedPnlPercent / 100);
-  
-  // Sanitize strategy values with defaults to prevent NaN issues
+
+  // Sanitize strategy values
   const rawSL = Number(strategy?.stopLossPercent);
   const sanitizedSL = Number.isFinite(rawSL) && rawSL > 0 ? rawSL : 2;
-  
   const rawTP = Number(strategy?.profitTargetPercent);
   const sanitizedTP = Number.isFinite(rawTP) && rawTP > 0 ? rawTP : 1;
-  
-  // Calculate SL and TP prices using sanitized values (with exchange rounding)
-  // Matches backend roundPrice logic - floor to nearest tick size
+
+  // Calculate SL and TP prices - use actual protective orders when available (includes adaptive calculations)
+  // Otherwise fall back to fixed strategy percentages
   const calculateRoundedPrice = (rawPrice: number) => {
-    // Tick size approximation based on price magnitude (matches exchange tick sizes)
-    let decimals: number;
     let tickSize: number;
-    
+    let decimals: number;
+
     if (rawPrice >= 1000) {
       tickSize = 0.1;
       decimals = 1;
@@ -711,500 +710,353 @@ function PositionCard({ position, strategy, onClose, isClosing, formatCurrency, 
       tickSize = 0.0001;
       decimals = 4;
     } else {
-      // For prices < 1 (like DOGE at ~0.26), use 5 decimals
       tickSize = 0.00001;
       decimals = 5;
     }
-    
+
     const rounded = Math.floor(rawPrice / tickSize) * tickSize;
     return parseFloat(rounded.toFixed(decimals));
   };
-  
-  // Use actual TP/SL prices from exchange if available, otherwise calculate from strategy settings
-  const rawStopLossPrice = actualSlPrice || (position.side === 'long'
+
+  // Calculate fallback prices from fixed percentages
+  const fallbackStopLossPrice = position.side === 'long'
     ? avgEntry * (1 - sanitizedSL / 100)
-    : avgEntry * (1 + sanitizedSL / 100));
-    
-  const rawTakeProfitPrice = actualTpPrice || (position.side === 'long'
+    : avgEntry * (1 + sanitizedSL / 100);
+
+  const fallbackTakeProfitPrice = position.side === 'long'
     ? avgEntry * (1 + sanitizedTP / 100)
-    : avgEntry * (1 - sanitizedTP / 100));
-  
-  const stopLossPrice = actualSlPrice || calculateRoundedPrice(rawStopLossPrice);
-  const takeProfitPrice = actualTpPrice || calculateRoundedPrice(rawTakeProfitPrice);
-  
-  // Calculate actual TP percentage from exchange TP price
+    : avgEntry * (1 - sanitizedTP / 100);
+
+  // Use actual protective order prices if available (these include adaptive ATR calculations)
+  const stopLossPrice = actualSlPrice || calculateRoundedPrice(fallbackStopLossPrice);
+  const takeProfitPrice = actualTpPrice || calculateRoundedPrice(fallbackTakeProfitPrice);
+
+  // Calculate percentages from the actual prices (this will be correct for both adaptive and fixed)
   const actualTpPercent = takeProfitPrice
     ? (position.side === 'long'
         ? ((takeProfitPrice - avgEntry) / avgEntry) * 100
         : ((avgEntry - takeProfitPrice) / avgEntry) * 100)
     : sanitizedTP;
 
-  // Calculate actual SL percentage from exchange SL price
   const actualSlPercent = stopLossPrice
     ? (position.side === 'long'
         ? ((avgEntry - stopLossPrice) / avgEntry) * 100
         : ((stopLossPrice - avgEntry) / avgEntry) * 100)
     : sanitizedSL;
 
-  // Use real liquidation price from exchange (if available), otherwise calculate
-  const hasLiquidation = leverage > 1 && !isNaN(leverage) && isFinite(leverage);
-  
-  const liquidationPrice = position.liquidationPrice 
-    ? parseFloat(position.liquidationPrice)
-    : hasLiquidation
-      ? position.side === 'long'
-        ? avgEntry * (1 - (1 / leverage) * 0.95)
-        : avgEntry * (1 + (1 / leverage) * 0.95)
-      : null;
-  
-  // Calculate distance to liquidation as a percentage
-  let distanceToLiquidation = null;
-  if (liquidationPrice && hasLiquidation && currentPrice > 0) {
-    const rawDistance = position.side === 'long'
-      ? ((currentPrice - liquidationPrice) / currentPrice) * 100
-      : ((liquidationPrice - currentPrice) / currentPrice) * 100;
-    
-    distanceToLiquidation = Math.max(0, rawDistance);
-  }
-  
-  // Calculate position pressure for visual indicator using ACTUAL TP/SL percentages
-  const totalRange = actualTpPercent + actualSlPercent;
-  const clampedPnl = Math.max(-actualSlPercent, Math.min(actualTpPercent, unrealizedPnlPercent));
-  const clampedFromLeft = clampedPnl + actualSlPercent;
-  const pressureValue = totalRange > 0 ? Math.max(0, Math.min(100, (clampedFromLeft / totalRange) * 100)) : 50;
-  const neutralPoint = totalRange > 0 ? (actualSlPercent / totalRange) * 100 : 50;
-
-  // Calculate gradient opacity based on distance from neutral point
-  // Opacity increases as we move closer to either extreme (SL or TP)
-  const distanceFromNeutral = Math.abs(pressureValue - neutralPoint);
-  const maxDistance = unrealizedPnlPercent > 0 
-    ? (100 - neutralPoint) // Distance to TP
-    : neutralPoint; // Distance to SL
-  const opacityFactor = maxDistance > 0 ? distanceFromNeutral / maxDistance : 0;
-  
-  // Create gradient colors with increasing opacity toward the target
-  const gradientColor = unrealizedPnlPercent > 0 
-    ? 'rgb(190, 242, 100)'
-    : unrealizedPnlPercent < 0 
-    ? 'rgb(220, 38, 38)'
-    : 'rgb(156, 163, 175)';
-  
-  const gradientDirection = pressureValue > neutralPoint ? 'to right' : 'to left';
-  const gradientStart = `rgba(${unrealizedPnlPercent > 0 ? '190, 242, 100' : unrealizedPnlPercent < 0 ? '220, 38, 38' : '156, 163, 175'}, 0.05)`;
-  const gradientEnd = `rgba(${unrealizedPnlPercent > 0 ? '190, 242, 100' : unrealizedPnlPercent < 0 ? '220, 38, 38' : '156, 163, 175'}, ${Math.min(0.5, 0.1 + opacityFactor * 0.4)})`;
-
   const isLong = position.side === 'long';
 
-  // Calculate full SL loss and TP profit amounts
-  const fullSlLoss = -1 * notionalValue * (actualSlPercent / 100);
+  // Calculate potential loss/profit
+  const fullSlLoss = notionalValue * (actualSlPercent / 100);
   const fullTpProfit = notionalValue * (actualTpPercent / 100);
+
+  // Calculate vertical bar position with SUBTLE TP weighting for better visibility
+  const totalRange = actualTpPercent + actualSlPercent;
+  const clampedPnl = Math.max(-actualSlPercent, Math.min(actualTpPercent, unrealizedPnlPercent));
+
+  // Bar height allocation - HEAVILY weighted toward TP for maximum visibility (6x)
+  // This makes TP zone dominate the visual space for easy profit tracking
+  const totalBarHeight = 120; // pixels
+  const tpWeight = 6.0; // Give TP 6x visual space for maximum visibility
+  const weightedTpPercent = actualTpPercent * tpWeight;
+  const weightedTotalRange = actualSlPercent + weightedTpPercent;
+  const slZoneHeight = (actualSlPercent / weightedTotalRange) * totalBarHeight;
+  const tpZoneHeight = (weightedTpPercent / weightedTotalRange) * totalBarHeight;
+
+  // Position on the bar (0 = bottom, 100 = top) - apply same weighting to indicator
+  let barPosition: number;
+  if (isLong) {
+    // Long: bottom = SL, middle = Entry, top = TP
+    // Apply weighting when in TP zone (positive P&L)
+    const visualPnl = clampedPnl >= 0 ? clampedPnl * tpWeight : clampedPnl;
+    barPosition = weightedTotalRange > 0 ? ((visualPnl + actualSlPercent) / weightedTotalRange) * 100 : 50;
+  } else {
+    // Short: bottom = TP, middle = Entry, top = SL
+    // For shorts, positive P&L = winning = toward bottom (TP zone)
+    // Apply weighting when in TP zone (positive P&L for shorts too)
+    const visualPnl = clampedPnl >= 0 ? clampedPnl * tpWeight : clampedPnl;
+    barPosition = weightedTotalRange > 0 ? ((weightedTpPercent - visualPnl) / weightedTotalRange) * 100 : 50;
+  }
+
+  // Clamp bar position to ensure indicator is always visible (2% margin from edges)
+  barPosition = Math.max(2, Math.min(98, barPosition));
+
+  // Determine border animation based on P&L
+  const getBorderClass = () => {
+    if (unrealizedPnlPercent > 0) {
+      return 'animate-profit-pulse border-2 border-[rgb(190,242,100)]';
+    } else if (unrealizedPnlPercent < 0) {
+      return 'border-2 border-[rgb(251,146,60)]/50';
+    }
+    return 'border';
+  };
 
   return (
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
       <div
-        className={`relative rounded-2xl overflow-hidden ring-1 ring-border shadow-lg transition-all duration-300 ${isFlashing ? 'animate-layer-flash' : ''}`}
+        className={`transition-all duration-300 ${isFlashing ? 'animate-layer-flash' : ''}`}
         data-testid={`position-${position.symbol}`}
       >
-        {/* Position pressure indicator line */}
-        <div 
-          className="absolute top-0 bottom-0 w-0.5 transition-all duration-300 z-10"
-          style={{ 
-            left: `${pressureValue}%`,
-            backgroundColor: gradientColor
-          }}
-          data-testid={`pressure-indicator-${position.symbol}`}
-        />
-        
-        {/* Gradient intensity overlay */}
-        <div 
-          className="absolute top-0 bottom-0 transition-all duration-300 z-0"
-          style={{ 
-            left: pressureValue > neutralPoint ? `${neutralPoint}%` : `${pressureValue}%`,
-            right: pressureValue < neutralPoint ? `${100 - neutralPoint}%` : `${100 - pressureValue}%`,
-            background: `linear-gradient(${gradientDirection}, ${gradientStart}, ${gradientEnd})`
-          }}
-        />
-        
-        {/* Mobile layout (stacked) and Desktop layout (grid) */}
-        <div className="relative z-10">
-          {/* Mobile: Stacked layout */}
-          <div className="lg:hidden">
-            {/* Header row: Symbol, badges, and info */}
-            <div className="relative">
-              <div className="relative p-2 space-y-1.5">
-                {/* Symbol and badges row */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="font-bold text-foreground text-lg tracking-tight">{position.symbol}</div>
-                    <Badge className={`text-xs px-1.5 py-0.5 ${isLong ? 'bg-lime-500/15 text-lime-300 border-lime-400/30' : 'bg-red-600/15 text-red-400 border-red-500/30'}`}>
-                      {isLong ? <TrendingUp className="h-3 w-3 mr-0.5" /> : <TrendingDown className="h-3 w-3 mr-0.5" />}
-                      {position.side.toUpperCase()}
-                    </Badge>
-                    {isHedge && (
-                      <Badge variant="secondary" className="text-xs">HEDGE</Badge>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="px-1.5 py-0.5 rounded text-[10px] text-muted-foreground bg-muted/50">
-                      {actualLayersFilled}/{position.maxLayers}
-                    </span>
-                    <span className="px-1.5 py-0.5 rounded text-[10px] text-muted-foreground bg-muted/50">
-                      {leverage}×
-                    </span>
-                  </div>
-                </div>
+        {/* P&L Display - Outside the card */}
+        <div className={`text-center mb-0.5 text-sm font-mono font-bold ${getPnlColor(unrealizedPnlDollar)}`}>
+          {unrealizedPnlDollar >= 0 ? '+' : ''}${Math.abs(unrealizedPnlDollar).toFixed(2)}
+        </div>
+
+        {/* Ultra-Compact Vertical Layout */}
+        <div className={`flex flex-col items-center gap-1 p-1 rounded bg-card hover:shadow-md transition-shadow w-[70px] ${getBorderClass()}`}>
+          {/* Vertical Price Bar with proportional zones */}
+          <div className="flex flex-col items-center gap-0.5 w-full">
+            {/* Top label (TP for long, SL for short) */}
+            <div className="text-xs font-mono text-center leading-tight w-full">
+              <div className={`font-bold flex items-center justify-center gap-0.5 ${isLong ? 'text-lime-600 dark:text-lime-400' : 'text-red-600 dark:text-red-500'}`}>
+                <span>{isLong ? 'TP' : 'SL'} {isLong ? `+${actualTpPercent.toFixed(1)}%` : `-${actualSlPercent.toFixed(1)}%`}</span>
+                {isLong && strategy?.adaptiveTpEnabled && actualTpPercent >= parseFloat(String(strategy?.maxTpPercent || 5)) && (
+                  <span className="text-[10px] opacity-60" title="Hitting max TP ceiling">⬆</span>
+                )}
+                {!isLong && strategy?.adaptiveSlEnabled && actualSlPercent >= parseFloat(String(strategy?.maxSlPercent || 5)) && (
+                  <span className="text-[10px] opacity-60" title="Hitting max SL ceiling">⬆</span>
+                )}
+              </div>
+              <div className={`text-[11px] ${isLong ? 'text-lime-600 dark:text-lime-400' : 'text-red-600 dark:text-red-500'}`}>
+                {isLong ? `+$${fullTpProfit.toFixed(0)}` : `-$${fullSlLoss.toFixed(0)}`}
               </div>
             </div>
 
-            {/* Price data with compact P&L and Close button */}
-            <div className="px-2 py-2 border-t border-border/30">
-              <div className="flex items-center gap-3">
-                {/* Left column: Avg and SL */}
-                <div className="space-y-1.5 flex-shrink-0">
-                  <div>
-                    <div className="text-[10px] text-muted-foreground">Avg:</div>
-                    <div className="text-xs font-medium text-foreground">{formatCurrency(avgEntry)}</div>
-                  </div>
-                  <div>
-                    <div className="text-[10px] text-muted-foreground">SL:</div>
-                    <div className="text-xs text-red-700 dark:text-red-500">
-                      {formatCurrency(stopLossPrice)}
-                      <span className="text-[10px] ml-1 font-bold">({actualSlPercent.toFixed(2)}%)</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Center: P&L and Close button */}
-                <div className="flex flex-col items-center justify-center flex-1 gap-1 min-w-0 px-1">
-                  {/* Three P&L values stacked vertically for better visibility */}
-                  <div className="w-full space-y-0.5">
-                    {/* Current P&L - Most important, show first */}
-                    <div className="flex flex-col items-center">
-                      <div className={`text-xl font-black font-mono leading-none ${getPnlColor(unrealizedPnlDollar)}`}>
-                        {unrealizedPnlDollar >= 0 ? '+' : ''}${Math.abs(unrealizedPnlDollar).toFixed(2)}
-                      </div>
-                      <div className={`text-[10px] font-bold font-mono ${getPnlColor(unrealizedPnlPercent)}`}>
-                        {unrealizedPnlPercent >= 0 ? '+' : ''}{unrealizedPnlPercent.toFixed(2)}%
-                      </div>
-                    </div>
-
-                    {/* SL and TP in one row */}
-                    <div className="flex items-center justify-center gap-3 text-[10px] font-mono">
-                      <div className="flex items-center gap-1">
-                        <span className="text-muted-foreground">SL:</span>
-                        <span className="font-bold text-red-600 dark:text-red-500">
-                          ${Math.abs(fullSlLoss).toFixed(2)}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <span className="text-muted-foreground">TP:</span>
-                        <span className="font-bold text-lime-600 dark:text-lime-400">
-                          ${fullTpProfit.toFixed(2)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <button
-                    className="rounded flex items-center justify-center px-2 py-0.5 border border-destructive bg-transparent text-destructive text-[10px] font-semibold transition-all hover:brightness-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                    data-testid={`button-close-position-${position.symbol}`}
-                    onClick={onClose}
-                    disabled={isClosing}
-                  >
-                    Close
-                  </button>
-                </div>
-
-                {/* Right column: Current and TP */}
-                <div className="space-y-1.5 flex-shrink-0">
-                  <div>
-                    <div className="text-[10px] text-muted-foreground">Current:</div>
-                    <div className="text-xs font-semibold text-foreground" data-testid={`current-price-${position.symbol}`}>
-                      {formatCurrency(currentPrice)}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-[10px] text-muted-foreground">TP:</div>
-                    <div className="text-xs text-lime-600 dark:text-lime-400">
-                      {formatCurrency(takeProfitPrice)}
-                      <span className="text-[10px] ml-1 font-bold">({actualTpPercent.toFixed(2)}%)</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Liquidation gauge and expand button */}
-            <div className="px-2 py-2 flex items-center justify-between gap-2 border-t border-border/30">
-              {/* Liquidation donut (if applicable) */}
-              {liquidationPrice !== null && distanceToLiquidation !== null && (
-                <div className="flex items-center gap-2">
-                  <div className="relative" style={{ width: '40px', height: '40px' }}>
-                    <svg viewBox="0 0 100 100" className="transform -rotate-90">
-                      <circle
-                        cx="50"
-                        cy="50"
-                        r="40"
-                        fill="none"
-                        stroke="hsl(var(--muted))"
-                        strokeWidth="8"
-                      />
-                      <circle
-                        cx="50"
-                        cy="50"
-                        r="40"
-                        fill="none"
-                        stroke={distanceToLiquidation < 5 ? 'rgb(220, 38, 38)' : distanceToLiquidation < 15 ? 'rgb(251, 146, 60)' : 'rgb(190, 242, 100)'}
-                        strokeWidth="8"
-                        strokeDasharray={`${Math.min(100, distanceToLiquidation * 2.5)} ${251.2 - Math.min(100, distanceToLiquidation * 2.5)}`}
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                    <div className="absolute inset-0 flex flex-col items-center justify-center">
-                      <div className={`text-[10px] font-bold ${distanceToLiquidation < 5 ? 'text-red-700' : distanceToLiquidation < 15 ? 'text-orange-500' : 'text-lime-600'}`}>
-                        {distanceToLiquidation.toFixed(0)}%
-                      </div>
-                    </div>
-                  </div>
-                  <span className="text-[10px] text-muted-foreground">to liq</span>
-                </div>
+            {/* Vertical bar with proportional zones */}
+            <div
+              className="relative w-4 bg-muted overflow-hidden"
+              style={{
+                height: `${totalBarHeight}px`,
+                borderRadius: '3px'
+              }}
+            >
+              {/* Color zones with proportional heights */}
+              {isLong ? (
+                <>
+                  {/* Long: bottom zone = SL (red), top zone = TP (green) */}
+                  <div
+                    className="absolute bottom-0 left-0 right-0 bg-red-600/20"
+                    style={{ height: `${slZoneHeight}px` }}
+                  />
+                  <div
+                    className="absolute top-0 left-0 right-0 bg-lime-600/20"
+                    style={{ height: `${tpZoneHeight}px` }}
+                  />
+                </>
+              ) : (
+                <>
+                  {/* Short: bottom zone = TP (green), top zone = SL (red) */}
+                  <div
+                    className="absolute bottom-0 left-0 right-0 bg-lime-600/20"
+                    style={{ height: `${tpZoneHeight}px` }}
+                  />
+                  <div
+                    className="absolute top-0 left-0 right-0 bg-red-600/20"
+                    style={{ height: `${slZoneHeight}px` }}
+                  />
+                </>
               )}
 
-              {/* Expand button */}
-              <div className="ml-auto">
-                <CollapsibleTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-7 w-7" data-testid="button-toggle-layers">
-                    {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                  </Button>
-                </CollapsibleTrigger>
+              {/* Entry line (at the boundary between zones) */}
+              <div
+                className="absolute left-0 right-0 h-[2px] bg-foreground/50"
+                style={{
+                  bottom: isLong ? `${slZoneHeight}px` : `${tpZoneHeight}px`
+                }}
+              />
+
+              {/* Current price indicator */}
+              <div
+                className="absolute left-0 right-0 h-[3px] transition-all duration-300"
+                style={{
+                  bottom: `${barPosition}%`,
+                  backgroundColor: unrealizedPnlDollar >= 0 ? 'rgb(190, 242, 100)' : 'rgb(220, 38, 38)'
+                }}
+              >
+                {/* Arrowhead pointing right */}
+                <div
+                  className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-full"
+                  style={{
+                    width: 0,
+                    height: 0,
+                    borderTop: '4px solid transparent',
+                    borderBottom: '4px solid transparent',
+                    borderLeft: `6px solid ${unrealizedPnlDollar >= 0 ? 'rgb(190, 242, 100)' : 'rgb(220, 38, 38)'}`,
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Bottom label (SL for long, TP for short) */}
+            <div className="text-xs font-mono text-center leading-tight w-full">
+              <div className={`text-[11px] ${isLong ? 'text-red-600 dark:text-red-500' : 'text-lime-600 dark:text-lime-400'}`}>
+                {isLong ? `-$${fullSlLoss.toFixed(0)}` : `+$${fullTpProfit.toFixed(0)}`}
+              </div>
+              <div className={`font-bold flex items-center justify-center gap-0.5 ${isLong ? 'text-red-600 dark:text-red-500' : 'text-lime-600 dark:text-lime-400'}`}>
+                <span>{isLong ? 'SL' : 'TP'} {isLong ? `-${actualSlPercent.toFixed(1)}%` : `+${actualTpPercent.toFixed(1)}%`}</span>
+                {isLong && strategy?.adaptiveSlEnabled && actualSlPercent >= parseFloat(String(strategy?.maxSlPercent || 5)) && (
+                  <span className="text-[10px] opacity-60" title="Hitting max SL ceiling">⬆</span>
+                )}
+                {!isLong && strategy?.adaptiveTpEnabled && actualTpPercent >= parseFloat(String(strategy?.maxTpPercent || 5)) && (
+                  <span className="text-[10px] opacity-60" title="Hitting max TP ceiling">⬆</span>
+                )}
+              </div>
+            </div>
+
+            {/* Symbol and size below the bar */}
+            <div className="text-center mt-0.5 w-full">
+              <div className="flex items-center justify-center gap-0.5 flex-wrap">
+                <span className={`font-bold text-[13px] ${
+                  isHedge
+                    ? 'text-yellow-500 dark:text-yellow-400'
+                    : isLong
+                      ? 'text-lime-600 dark:text-lime-400'
+                      : 'text-red-600 dark:text-red-500'
+                }`}>
+                  {position.symbol.replace('USDT', '')}
+                </span>
+                {isHedge && (
+                  <Badge variant="secondary" className="text-[11px] h-3 px-0.5 leading-none">H</Badge>
+                )}
+                {liquidityStatus && (
+                  <div
+                    className={`w-1 h-1 rounded-full ${liquidityStatus.color}`}
+                    title={liquidityStatus.tooltip}
+                  />
+                )}
+              </div>
+              <div className="text-[11px] font-mono text-muted-foreground">
+                ${notionalValue.toFixed(0)}
               </div>
             </div>
           </div>
 
-          {/* Desktop: Grid layout */}
-          <div className="hidden lg:grid lg:grid-cols-[180px_1fr_auto]">
-            {/* Left: Asset label */}
-            <div className="relative">
-              {/* Compact chips */}
-              <div className="relative p-2 flex items-center gap-2 flex-wrap">
-                <Badge className={`text-xs px-1.5 py-0.5 ${isLong ? 'bg-lime-500/15 text-lime-300 border-lime-400/30' : 'bg-red-600/15 text-red-400 border-red-500/30'}`}>
-                  {isLong ? <TrendingUp className="h-3 w-3 mr-1" /> : <TrendingDown className="h-3 w-3 mr-1" />}
-                  {position.side.toUpperCase()}
-                </Badge>
-                <span className="px-1.5 py-0.5 rounded-lg text-[10px] text-muted-foreground bg-muted/50 border border-border/50">
-                  {actualLayersFilled}/{position.maxLayers}
-                </span>
-                <span className="px-1.5 py-0.5 rounded-lg text-[10px] text-muted-foreground bg-muted/50 border border-border/50">
-                  {leverage}× • {formatCurrency(notionalValue)}
-                </span>
-                {isHedge && (
-                  <Badge variant="secondary" className="text-xs">HEDGE</Badge>
-                )}
-              </div>
-
-              {/* Bottom: Symbol label with expand button */}
-              <div className="relative px-2 pb-2 flex items-center gap-2">
-                <div className="font-bold text-foreground text-lg tracking-tight">{position.symbol}</div>
-                <CollapsibleTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-6 w-6 ml-auto" data-testid="button-toggle-layers">
-                    {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                  </Button>
-                </CollapsibleTrigger>
-              </div>
-            </div>
-
-            {/* Middle: price data with P&L and Close button */}
-            <div className="px-2 py-2 flex items-center gap-3">
-              {/* Left column: Avg and SL */}
-              <div className="space-y-1.5 flex-shrink-0">
-                <div className="min-w-0">
-                  <div className="text-[10px] text-muted-foreground truncate">Avg:</div>
-                  <div className="text-xs text-foreground/90 truncate">{formatCurrency(avgEntry)}</div>
-                </div>
-                <div className="min-w-0">
-                  <div className="text-[10px] text-muted-foreground truncate">SL:</div>
-                  <div className="text-xs text-red-700 dark:text-red-500 truncate">
-                    {formatCurrency(stopLossPrice)}
-                    <span className="text-[10px] ml-1 font-bold">({actualSlPercent.toFixed(2)}%)</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Center: P&L and Close button */}
-              <div className="flex flex-col items-center justify-center flex-1 gap-1.5">
-                <div className="flex items-center gap-3">
-                  {/* Left: SL Loss */}
-                  <div className="flex flex-col items-center">
-                    <div className="text-[9px] text-muted-foreground">SL</div>
-                    <div className="text-lg font-bold font-mono text-red-600 dark:text-red-500">
-                      -${Math.abs(fullSlLoss).toFixed(2)}
-                    </div>
-                  </div>
-
-                  {/* Center: Current P&L */}
-                  <div className="flex flex-col items-center">
-                    <div className={`text-2xl font-black font-mono leading-none ${getPnlColor(unrealizedPnlDollar)}`}>
-                      {unrealizedPnlDollar >= 0 ? '+' : ''}${Math.abs(unrealizedPnlDollar).toFixed(2)}
-                    </div>
-                    <div className={`text-sm font-bold font-mono ${getPnlColor(unrealizedPnlPercent)}`}>
-                      {unrealizedPnlPercent >= 0 ? '+' : ''}{unrealizedPnlPercent.toFixed(2)}%
-                    </div>
-                    <div className="text-[10px] text-muted-foreground font-mono mt-0.5">
-                      ${notionalValue.toFixed(2)}
-                    </div>
-                  </div>
-
-                  {/* Right: TP Profit */}
-                  <div className="flex flex-col items-center">
-                    <div className="text-[9px] text-muted-foreground">TP</div>
-                    <div className="text-lg font-bold font-mono text-lime-600 dark:text-lime-400">
-                      +${fullTpProfit.toFixed(2)}
-                    </div>
-                  </div>
-                </div>
-                <button
-                  className="rounded flex items-center justify-center px-2 py-0.5 border border-destructive bg-transparent text-destructive text-[10px] font-semibold transition-all hover:brightness-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                  data-testid={`button-close-position-${position.symbol}`}
-                  onClick={onClose}
-                  disabled={isClosing}
-                >
-                  Close
-                </button>
-              </div>
-
-              {/* Right column: Current and TP */}
-              <div className="space-y-1.5 flex-shrink-0">
-                <div className="min-w-0">
-                  <div className="text-[10px] text-muted-foreground truncate">Current:</div>
-                  <div className="text-xs font-semibold text-foreground truncate" data-testid={`current-price-${position.symbol}`}>
-                    {formatCurrency(currentPrice)}
-                  </div>
-                </div>
-                <div className="min-w-0">
-                  <div className="text-[10px] text-muted-foreground truncate">TP:</div>
-                  <div className="text-xs text-lime-600 dark:text-lime-400 truncate">
-                    {formatCurrency(takeProfitPrice)}
-                    <span className="text-[10px] ml-1 font-bold">({actualTpPercent.toFixed(2)}%)</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Right Column: Liquidation Risk Donut */}
-            <div className="flex items-center justify-center py-2 px-2 border-l border-border/30">
-              {liquidationPrice !== null && distanceToLiquidation !== null && (
-                <div className="flex items-center gap-2">
-                  <div className="relative" style={{ width: '50px', height: '50px' }}>
-                    <svg viewBox="0 0 100 100" className="transform -rotate-90">
-                      <circle
-                        cx="50"
-                        cy="50"
-                        r="40"
-                        fill="none"
-                        stroke="hsl(var(--muted))"
-                        strokeWidth="8"
-                      />
-                      <circle
-                        cx="50"
-                        cy="50"
-                        r="40"
-                        fill="none"
-                        stroke={distanceToLiquidation < 5 ? 'rgb(220, 38, 38)' : distanceToLiquidation < 15 ? 'rgb(251, 146, 60)' : 'rgb(190, 242, 100)'}
-                        strokeWidth="8"
-                        strokeDasharray={`${Math.min(100, distanceToLiquidation * 2.5)} ${251.2 - Math.min(100, distanceToLiquidation * 2.5)}`}
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                    <div className="absolute inset-0 flex flex-col items-center justify-center">
-                      <div className={`text-[10px] font-bold ${distanceToLiquidation < 5 ? 'text-red-700' : distanceToLiquidation < 15 ? 'text-orange-500' : 'text-lime-600'}`}>
-                        {distanceToLiquidation.toFixed(0)}%
-                      </div>
-                    </div>
-                  </div>
-                  <span className="text-[10px] text-muted-foreground whitespace-nowrap">to liq</span>
-                </div>
-              )}
+          {/* Action buttons below the bar */}
+          <div className="flex flex-col items-center gap-0.5 w-full border-t pt-1">
+            {/* Action buttons */}
+            <div className="flex flex-col gap-0.5 w-full">
+              <button
+                className="rounded flex items-center justify-center px-1 py-0.5 border border-destructive bg-transparent text-destructive text-[11px] font-semibold transition-all hover:bg-destructive hover:text-destructive-foreground active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed w-full"
+                data-testid={`button-close-position-${position.symbol}`}
+                onClick={onClose}
+                disabled={isClosing}
+              >
+                Close
+              </button>
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-5 w-full px-0.5 text-[11px]" data-testid="button-toggle-layers">
+                  {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                </Button>
+              </CollapsibleTrigger>
             </div>
           </div>
         </div>
 
+        {/* Expandable Details */}
         <CollapsibleContent>
-          <div className="border-t px-3 py-2 relative z-10 bg-background/30">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-medium text-muted-foreground">Layer Details</p>
-              {fills && fills.length > 0 && (
-                <div className="flex items-center gap-2">
-                  <label className="text-xs text-muted-foreground">Filter:</label>
-                  <select
-                    value={fillSourceFilter}
-                    onChange={(e) => setFillSourceFilter(e.target.value as 'all' | 'bot' | 'manual' | 'sync')}
-                    className="text-xs bg-background border border-input rounded px-2 py-1 cursor-pointer"
-                  >
-                    <option value="all">All Fills</option>
-                    <option value="bot">Bot Only</option>
-                    <option value="manual">Manual Only</option>
-                    <option value="sync">Synced Only</option>
-                  </select>
-                </div>
-              )}
-            </div>
-            {fills && fills.length > 0 ? (
-              <div className="space-y-2">
-                {entryFills.length > 0 && (
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground/70 mb-1">Entry Layers ({entryFills.length})</p>
-                    <div className="space-y-1">
-                      {entryFills.sort((a, b) => a.layerNumber - b.layerNumber).map((fill) => (
-                        <div key={fill.id} className="flex items-center justify-between text-xs py-1 px-2 rounded bg-muted/30">
-                          <div className="flex items-center gap-2 flex-1">
-                            <Badge variant="outline" className="text-xs h-5">L{fill.layerNumber}</Badge>
-                            <FillSourceBadge source={fill.source} />
-                            <span className="text-foreground">
-                              {parseFloat(fill.quantity).toFixed(4)} @ {formatCurrency(parseFloat(fill.price))}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground/70">
-                              {formatPST(fill.filledAt, 'MMM d, h:mm:ss a')}
-                            </span>
-                            <span className="text-muted-foreground text-xs">
-                              Fee: {formatCurrency(parseFloat(fill.fee || '0'))}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {exitFills.length > 0 && (
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground/70 mb-1">Exit</p>
-                    <div className="space-y-1">
-                      {exitFills.map((fill) => (
-                        <div key={fill.id} className="flex items-center justify-between text-xs py-1 px-2 rounded bg-muted/30">
-                          <div className="flex items-center gap-2 flex-1">
-                            <Badge variant="outline" className="text-xs h-5">Exit</Badge>
-                            <FillSourceBadge source={fill.source} />
-                            <span className="text-foreground">
-                              {parseFloat(fill.quantity).toFixed(4)} @ {formatCurrency(parseFloat(fill.price))}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground/70">
-                              {formatPST(fill.filledAt, 'MMM d, h:mm:ss a')}
-                            </span>
-                            <span className="text-muted-foreground text-xs">
-                              Fee: {formatCurrency(parseFloat(fill.fee || '0'))}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+          <div className="mt-1 p-2 rounded-lg border bg-muted/30 w-[250px]">
+            {/* Position Details */}
+            <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-sm mb-2">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Qty:</span>
+                <span className="font-mono">{parseFloat(position.totalQuantity).toFixed(4)}</span>
               </div>
-            ) : (
-              <p className="text-xs text-muted-foreground">No layer details available</p>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Leverage:</span>
+                <span className="font-mono">{leverage}×</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Entry:</span>
+                <span className="font-mono">{formatCurrency(avgEntry)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Current:</span>
+                <span className="font-mono">{formatCurrency(currentPrice)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">TP:</span>
+                <span className="font-mono text-lime-600 dark:text-lime-400">{formatCurrency(takeProfitPrice)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">SL:</span>
+                <span className="font-mono text-red-600 dark:text-red-500">{formatCurrency(stopLossPrice)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Layers:</span>
+                <span className="font-mono">{actualLayersFilled}/{position.maxLayers}</span>
+              </div>
+            </div>
+
+            {/* Layer Details */}
+            {fills && fills.length > 0 && (
+              <>
+                <div className="flex items-center justify-between mb-1.5 pt-1.5 border-t">
+                  <p className="text-sm font-medium text-muted-foreground">Layer Details</p>
+                  <div className="flex items-center gap-1">
+                    <label className="text-xs text-muted-foreground">Filter:</label>
+                    <select
+                      value={fillSourceFilter}
+                      onChange={(e) => setFillSourceFilter(e.target.value as 'all' | 'bot' | 'manual' | 'sync')}
+                      className="text-xs bg-background border border-input rounded px-1 py-0.5 cursor-pointer"
+                    >
+                      <option value="all">All Fills</option>
+                      <option value="bot">Bot Only</option>
+                      <option value="manual">Manual Only</option>
+                      <option value="sync">Synced Only</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  {entryFills.length > 0 && (
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground/70 mb-1">Entry Layers ({entryFills.length})</p>
+                      <div className="space-y-0.5">
+                        {entryFills.sort((a, b) => a.layerNumber - b.layerNumber).map((fill) => (
+                          <div key={fill.id} className="text-xs py-1 px-1.5 rounded bg-muted/30">
+                            <div className="flex items-center gap-1 mb-0.5">
+                              <Badge variant="outline" className="text-[11px] h-5 px-1">L{fill.layerNumber}</Badge>
+                              <FillSourceBadge source={fill.source} />
+                              <span className="font-mono">
+                                {parseFloat(fill.quantity).toFixed(2)} @ ${parseFloat(fill.price).toFixed(4)}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-muted-foreground/70 flex justify-between">
+                              <span>{formatPST(fill.filledAt, 'MMM d, h:mm a')}</span>
+                              <span>Fee: ${parseFloat(fill.fee || '0').toFixed(2)}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {exitFills.length > 0 && (
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground/70 mb-1">Exit</p>
+                      <div className="space-y-0.5">
+                        {exitFills.map((fill) => (
+                          <div key={fill.id} className="text-xs py-1 px-1.5 rounded bg-muted/30">
+                            <div className="flex items-center gap-1 mb-0.5">
+                              <Badge variant="outline" className="text-[11px] h-5 px-1">Exit</Badge>
+                              <FillSourceBadge source={fill.source} />
+                              <span className="font-mono">
+                                {parseFloat(fill.quantity).toFixed(2)} @ ${parseFloat(fill.price).toFixed(4)}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-muted-foreground/70 flex justify-between">
+                              <span>{formatPST(fill.filledAt, 'MMM d, h:mm a')}</span>
+                              <span>Fee: ${parseFloat(fill.fee || '0').toFixed(2)}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
+            {!fills && (
+              <p className="text-sm text-muted-foreground text-center pt-1.5 border-t">Loading layer details...</p>
             )}
           </div>
         </CollapsibleContent>
@@ -1234,6 +1086,19 @@ export const StrategyStatus = memo(function StrategyStatus() {
     assetPerformance,
     chartData, // Chart data with consolidated positions (same as performance chart)
   } = useStrategyData();
+
+  // Get all unique symbols from open positions
+  const openSymbols = useMemo(() => {
+    if (!livePositionsData) return [];
+    return [...new Set(livePositionsData
+      .filter(p => parseFloat(p.positionAmt) !== 0)
+      .map(p => p.symbol))];
+  }, [livePositionsData]);
+
+  // Fetch liquidity status for all open symbols
+  const accountBalance = parseFloat(liveAccount?.totalWalletBalance || '0');
+  const strategyLeverage = activeStrategy?.leverage || 5;
+  const { liquidityStatusMap } = useLiquidityStatus(openSymbols, accountBalance, strategyLeverage);
 
   // Fetch fills for each live position to get layer counts
   const livePositionIds = livePositionsData
@@ -1295,11 +1160,20 @@ export const StrategyStatus = memo(function StrategyStatus() {
         
         const positionId = `live-${p.symbol}-${parseFloat(p.positionAmt) > 0 ? 'LONG' : 'SHORT'}`;
         const fills = livePositionFills.data?.[positionId] || [];
-        
-        // Calculate layers from fills - count unique layer numbers
-        const uniqueLayers = new Set(fills.map((f: any) => f.layerNumber));
+
+        // Calculate layers from fills - count unique ENTRY layer numbers (exclude layer 0 = exits)
+        const entryFills = fills.filter((f: any) => f.layerNumber > 0);
+        const uniqueLayers = new Set(entryFills.map((f: any) => f.layerNumber));
         const layersFilled = uniqueLayers.size || 1; // Default to 1 if no fills data
-        
+
+        // Get earliest fill time for position open time
+        const earliestFill = fills.length > 0
+          ? fills.reduce((earliest: any, current: any) =>
+              new Date(current.filledAt) < new Date(earliest.filledAt) ? current : earliest
+            )
+          : null;
+        const openedAt = earliestFill ? earliestFill.filledAt : new Date().toISOString();
+
         return {
           id: positionId,
           symbol: p.symbol,
@@ -1316,7 +1190,7 @@ export const StrategyStatus = memo(function StrategyStatus() {
           maxLayers: activeStrategy?.maxLayers,
           lastLayerPrice: p.entryPrice, // Use entry price as last layer price
           isOpen: true,
-          openedAt: new Date(),
+          openedAt: openedAt,
           updatedAt: new Date(),
           closedAt: null,
           sessionId: activeStrategy?.id || '',
@@ -1663,30 +1537,41 @@ export const StrategyStatus = memo(function StrategyStatus() {
 
           <TabsContent value="active" className="mt-3 md:mt-4">
             {displaySummary?.positions && displaySummary.positions.length > 0 ? (
-              <div className="space-y-2">
-                {displaySummary.positions.map((position) => {
-                  const orderKey = `${position.symbol}-${position.side.toUpperCase()}`;
-                  const orders = protectiveOrders?.[orderKey];
-                  
-                  return (
-                    <PositionCard
-                      key={position.id}
-                      position={position}
-                      strategy={activeStrategy}
-                      onClose={() => {
-                        setPositionToClose(position);
-                        setIsCloseConfirmOpen(true);
-                      }}
-                      isClosing={closePositionMutation.isPending}
-                      formatCurrency={formatCurrency}
-                      formatPercentage={formatPercentage}
-                      getPnlColor={getPnlColor}
-                      isHedge={hedgeSymbols.has(position.symbol)}
-                      actualTpPrice={orders?.tpPrice}
-                      actualSlPrice={orders?.slPrice}
-                    />
-                  );
-                })}
+              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 2xl:grid-cols-12 gap-1.5">
+                {displaySummary.positions
+                  .sort((a, b) => {
+                    // Sort by notional value (largest first)
+                    const aNotional = parseFloat(a.totalQuantity) * parseFloat(a.avgEntryPrice);
+                    const bNotional = parseFloat(b.totalQuantity) * parseFloat(b.avgEntryPrice);
+                    return bNotional - aNotional;
+                  })
+                  .map(position => {
+                    const orderKey = `${position.symbol}-${position.side.toUpperCase()}`;
+                    const orders = protectiveOrders ? (protectiveOrders as any)[orderKey] : undefined;
+
+                    // Check if this position is part of a hedge
+                    const isHedge = hedgeSymbols.has(position.symbol);
+
+                    return (
+                      <PositionCard
+                        key={position.id}
+                        position={position}
+                        strategy={activeStrategy}
+                        onClose={() => {
+                          setPositionToClose(position);
+                          setIsCloseConfirmOpen(true);
+                        }}
+                        isClosing={closePositionMutation.isPending}
+                        formatCurrency={formatCurrency}
+                        formatPercentage={formatPercentage}
+                        getPnlColor={getPnlColor}
+                        isHedge={isHedge}
+                        actualTpPrice={orders?.tpPrice}
+                        actualSlPrice={orders?.slPrice}
+                        liquidityStatus={liquidityStatusMap.get(position.symbol)}
+                      />
+                    );
+                  })}
               </div>
             ) : (
               <div className="text-center py-8">

@@ -60,6 +60,20 @@ interface ContributorReturn {
   entryCount: number;
 }
 
+interface EntryReturn {
+  id: string;
+  investor: string;
+  timestamp: string;
+  type: string;
+  amount: string;
+  baseline: string;
+  pnl: string;
+  currentBalance: string;
+  roiPercent: string;
+  reason: string;
+  notes: string;
+}
+
 interface PendingTransfer {
   tranId: string;
   asset: string;
@@ -138,6 +152,17 @@ export default function AccountLedger() {
     },
   });
 
+  // Fetch individual entry returns (time-weighted ROI per entry)
+  const { data: entryReturns = [] } = useQuery<EntryReturn[]>({
+    queryKey: ["/api/account/ledger/entries-returns"],
+    queryFn: async () => {
+      const res = await fetch("/api/account/ledger/entries-returns");
+      if (!res.ok) throw new Error("Failed to fetch entry returns");
+      const data = await res.json();
+      return data.entries || [];
+    },
+  });
+
   // Fetch pending transfers
   const { data: pendingTransfers = [], refetch: refetchPending } = useQuery<PendingTransfer[]>({
     queryKey: ["/api/account/ledger/pending-transfers"],
@@ -177,7 +202,8 @@ export default function AccountLedger() {
       });
       queryClient.invalidateQueries({ queryKey: ["/api/account/ledger"] });
       queryClient.invalidateQueries({ queryKey: ["/api/account/ledger/pnl"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/account/ledger/investors-returns"] }); // DB endpoint unchanged for compatibility
+      queryClient.invalidateQueries({ queryKey: ["/api/account/ledger/investors-returns"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/account/ledger/entries-returns"] });
       refetchPending(); // Refresh pending list
       setTransferDetailsDialogOpen(false);
       setSelectedTransfer(null);
@@ -240,6 +266,7 @@ export default function AccountLedger() {
       queryClient.invalidateQueries({ queryKey: ["/api/account/ledger"] });
       queryClient.invalidateQueries({ queryKey: ["/api/account/ledger/pnl"] });
       queryClient.invalidateQueries({ queryKey: ["/api/account/ledger/investors-returns"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/account/ledger/entries-returns"] });
       setDialogOpen(false);
       resetForm();
     },
@@ -269,6 +296,7 @@ export default function AccountLedger() {
       queryClient.invalidateQueries({ queryKey: ["/api/account/ledger"] });
       queryClient.invalidateQueries({ queryKey: ["/api/account/ledger/pnl"] });
       queryClient.invalidateQueries({ queryKey: ["/api/account/ledger/investors-returns"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/account/ledger/entries-returns"] });
     },
     onError: () => {
       toast({
@@ -302,6 +330,7 @@ export default function AccountLedger() {
       queryClient.invalidateQueries({ queryKey: ["/api/account/ledger"] });
       queryClient.invalidateQueries({ queryKey: ["/api/account/ledger/pnl"] });
       queryClient.invalidateQueries({ queryKey: ["/api/account/ledger/investors-returns"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/account/ledger/entries-returns"] });
       setTransferDetailsDialogOpen(false);
       setSelectedTransfer(null);
       setTransferDetails({ investor: "", reason: "", notes: "" });
@@ -407,16 +436,16 @@ export default function AccountLedger() {
         </div>
       </div>
 
-      {/* ROI Per Contributor */}
+      {/* Capital Distribution Summary */}
       {contributorReturns.length > 0 && (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <TrendingUp className="h-4 w-4" />
-              ROI Per Contributor
+              <DollarSign className="h-4 w-4" />
+              Capital Distribution (Go-Forward Share)
             </CardTitle>
             <p className="text-xs text-muted-foreground mt-1">
-              Returns calculated based on each contributor's capital. Balance allocated proportionally by distribution %.
+              Current capital allocation and future gain/loss distribution percentages.
             </p>
           </CardHeader>
           <CardContent>
@@ -425,10 +454,10 @@ export default function AccountLedger() {
                 <thead className="border-b">
                   <tr className="text-xs text-muted-foreground uppercase">
                     <th className="text-left py-2 px-3">Contributor</th>
-                    <th className="text-right py-2 px-3">Capital</th>
+                    <th className="text-right py-2 px-3">Total Capital</th>
                     <th className="text-right py-2 px-3">Current Balance</th>
                     <th className="text-right py-2 px-3">P&L</th>
-                    <th className="text-right py-2 px-3">ROI %</th>
+                    <th className="text-right py-2 px-3">Avg ROI %</th>
                     <th className="text-right py-2 px-3">Distribution %</th>
                     <th className="text-right py-2 px-3">Entries</th>
                   </tr>
@@ -465,11 +494,84 @@ export default function AccountLedger() {
                         {parseFloat(contributor.roiPercent) >= 0 ? "+" : ""}
                         {parseFloat(contributor.roiPercent).toFixed(2)}%
                       </td>
-                      <td className="py-3 px-3 text-right font-mono text-muted-foreground">
+                      <td className="py-3 px-3 text-right font-mono text-muted-foreground font-semibold">
                         {parseFloat(contributor.capitalShare).toFixed(2)}%
                       </td>
                       <td className="py-3 px-3 text-right text-muted-foreground">
                         {contributor.entryCount}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ROI Per Entry (Individual Deposits) */}
+      {entryReturns.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <TrendingUp className="h-4 w-4" />
+              Individual Deposit Performance
+            </CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">
+              Each deposit entry tracked separately. ROI calculated from deposit date forward (time-weighted).
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="border-b">
+                  <tr className="text-xs text-muted-foreground uppercase">
+                    <th className="text-left py-2 px-3">Contributor</th>
+                    <th className="text-left py-2 px-3">Date</th>
+                    <th className="text-right py-2 px-3">Amount</th>
+                    <th className="text-right py-2 px-3">Current Balance</th>
+                    <th className="text-right py-2 px-3">P&L</th>
+                    <th className="text-right py-2 px-3">ROI %</th>
+                    <th className="text-left py-2 px-3">Reason</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {entryReturns.map((entry) => (
+                    <tr key={entry.id} className="border-b last:border-0 hover:bg-muted/50">
+                      <td className="py-3 px-3 font-semibold">
+                        {entry.investor}
+                      </td>
+                      <td className="py-3 px-3 text-xs text-muted-foreground">
+                        {formatDateTimePST(entry.timestamp)}
+                      </td>
+                      <td className="py-3 px-3 text-right font-mono">
+                        ${parseFloat(entry.amount).toFixed(2)}
+                      </td>
+                      <td className="py-3 px-3 text-right font-mono">
+                        ${parseFloat(entry.currentBalance).toFixed(2)}
+                      </td>
+                      <td
+                        className={`py-3 px-3 text-right font-mono font-semibold ${
+                          parseFloat(entry.pnl) >= 0
+                            ? "text-[rgb(190,242,100)]"
+                            : "text-[rgb(251,146,60)]"
+                        }`}
+                      >
+                        {parseFloat(entry.pnl) >= 0 ? "+" : ""}$
+                        {parseFloat(entry.pnl).toFixed(2)}
+                      </td>
+                      <td
+                        className={`py-3 px-3 text-right font-mono font-semibold ${
+                          parseFloat(entry.roiPercent) >= 0
+                            ? "text-[rgb(190,242,100)]"
+                            : "text-[rgb(251,146,60)]"
+                        }`}
+                      >
+                        {parseFloat(entry.roiPercent) >= 0 ? "+" : ""}
+                        {parseFloat(entry.roiPercent).toFixed(2)}%
+                      </td>
+                      <td className="py-3 px-3 text-xs text-muted-foreground">
+                        {entry.reason || "-"}
                       </td>
                     </tr>
                   ))}
@@ -577,9 +679,9 @@ export default function AccountLedger() {
             {entries.map((entry) => (
               <tr key={entry.id} className="border-b last:border-0 hover:bg-muted/50">
                 <td className="py-3 px-3 text-xs">
-                  <div>{formatDatePST(new Date(entry.timestamp))}</div>
+                  <div>{formatDatePST(entry.timestamp)}</div>
                   <div className="text-muted-foreground">
-                    {formatTimePST(new Date(entry.timestamp))}
+                    {formatTimePST(entry.timestamp)}
                   </div>
                 </td>
                 <td className="py-3 px-3">

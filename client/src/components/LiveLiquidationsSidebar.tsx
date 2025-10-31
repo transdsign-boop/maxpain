@@ -37,18 +37,12 @@ function LiveLiquidationsSidebar({
   onLiquidationClick
 }: LiveLiquidationsSidebarProps) {
 
-  // Show liquidations from the last 8 hours, sorted by newest first
+  // Show liquidations from the last 8 hours
   const eightHoursAgo = new Date(Date.now() - 8 * 60 * 60 * 1000);
-  const recentLiquidations = liquidations
-    .filter(liq => {
-      const liqDate = typeof liq.timestamp === 'string' ? new Date(liq.timestamp) : liq.timestamp;
-      return liqDate >= eightHoursAgo;
-    })
-    .sort((a, b) => {
-      const aTime = typeof a.timestamp === 'string' ? new Date(a.timestamp).getTime() : a.timestamp.getTime();
-      const bTime = typeof b.timestamp === 'string' ? new Date(b.timestamp).getTime() : b.timestamp.getTime();
-      return bTime - aTime; // Sort descending (newest first)
-    });
+  const recentLiquidations = liquidations.filter(liq => {
+    const liqDate = typeof liq.timestamp === 'string' ? new Date(liq.timestamp) : liq.timestamp;
+    return liqDate >= eightHoursAgo;
+  });
 
   // Calculate total value from ALL liquidations
   const totalValue = liquidations.reduce((sum, liq) => sum + parseFloat(liq.value), 0);
@@ -173,7 +167,7 @@ function LiveLiquidationsSidebar({
   return (
     <>
       {/* Desktop Sidebar */}
-      <div
+      <div 
         className={`fixed right-0 bg-background border-l transition-all duration-300 z-40 ${
           isCollapsed ? 'w-12' : 'w-80'
         } hidden md:block`}
@@ -236,10 +230,10 @@ function LiveLiquidationsSidebar({
                 {recentLiquidations.map((liquidation, index) => (
                   <div
                     key={liquidation.id}
-                    className={`relative p-3 rounded-lg transition-all duration-200 ${
-                      index === 0
-                        ? 'bg-gradient-to-r from-primary/10 to-primary/5 border-4 border-primary ring-2 ring-primary/30 shadow-lg'
-                        : 'bg-card border border-border/50'
+                    className={`relative p-3 rounded-lg border transition-all duration-200 ${
+                      index === 0 
+                        ? 'bg-gradient-to-r from-primary/10 to-primary/5 border-primary/30 ring-1 ring-primary/20 shadow-sm' 
+                        : 'bg-card border-border/50'
                     }`}
                     data-testid={`card-liquidation-${liquidation.id}`}
                   >
@@ -401,10 +395,10 @@ function LiveLiquidationsSidebar({
                   {recentLiquidations.map((liquidation, index) => (
                     <div
                       key={liquidation.id}
-                      className={`relative p-3 rounded-lg transition-all duration-200 ${
-                        index === 0
-                          ? 'bg-gradient-to-r from-primary/10 to-primary/5 border-4 border-primary ring-2 ring-primary/30 shadow-lg'
-                          : 'bg-card border border-border/50'
+                      className={`relative p-3 rounded-lg border transition-all duration-200 ${
+                        index === 0 
+                          ? 'bg-gradient-to-r from-primary/10 to-primary/5 border-primary/30 ring-1 ring-primary/20 shadow-sm' 
+                          : 'bg-card border-border/50'
                       }`}
                     >
                       <div className="flex items-center justify-between mb-2">

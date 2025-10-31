@@ -12,12 +12,14 @@ import VWAPStatusDisplay from "@/components/VWAPStatusDisplay";
 import TradingHotspotsAnalytics from "@/components/TradingHotspotsAnalytics";
 import ThemeToggle from "@/components/ThemeToggle";
 import AsterLogo from "@/components/AsterLogo";
+import { InvestorReport } from "@/components/InvestorReport";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Settings2, Pause, Play, AlertTriangle, Menu, BookOpen, AlertCircle, Send } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Settings2, Pause, Play, AlertTriangle, Menu, BookOpen, AlertCircle, Send, ChevronDown, ChevronUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -33,27 +35,79 @@ interface Liquidation {
   timestamp: Date;
 }
 
+interface CollapsibleSectionProps {
+  title: string;
+  isOpen: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}
+
+function CollapsibleSection({ title, isOpen, onToggle, children }: CollapsibleSectionProps) {
+  return (
+    <Collapsible open={isOpen} onOpenChange={onToggle}>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-lg font-semibold">{title}</h2>
+        <CollapsibleTrigger asChild>
+          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+            {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </Button>
+        </CollapsibleTrigger>
+      </div>
+      <CollapsibleContent>
+        {children}
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
 export default function Dashboard() {
   const [isConnected, setIsConnected] = useState(true);
-  
+  const [timeRange, setTimeRange] = useState("1h");
+  const [sideFilter, setSideFilter] = useState<"all" | "long" | "short">("all");
+  const [minValue, setMinValue] = useState("0");
+  const [selectedAssets, setSelectedAssets] = useState<string[]>([]);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+
   // Trading strategy dialog state
   const [isStrategyDialogOpen, setIsStrategyDialogOpen] = useState(false);
-  
+
   // Trade errors dialog state
   const [isTradeErrorsDialogOpen, setIsTradeErrorsDialogOpen] = useState(false);
-  
+
   // Emergency stop dialog state
   const [isEmergencyStopDialogOpen, setIsEmergencyStopDialogOpen] = useState(false);
   const [emergencyStopPin, setEmergencyStopPin] = useState("");
-  
+
   // Trade block status from WebSocket
   const [tradeBlockStatus, setTradeBlockStatus] = useState<{blocked: boolean; reason?: string} | null>(null);
-  
+
   // Real liquidation data from WebSocket and API
   const [liquidations, setLiquidations] = useState<Liquidation[]>([]);
-  
+
   // Track last viewed strategy to persist selection when pausing
   const [lastViewedStrategyId, setLastViewedStrategyId] = useState<string | null>(null);
+
+  // Section collapse state (persisted in localStorage)
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>(() => {
+    const saved = localStorage.getItem('dashboard-collapsed-sections');
+    return saved ? JSON.parse(saved) : {
+      cascadeRisk: false,
+      marketSentiment: false,
+      vwapStatus: false,
+      performance: false,
+      tradingHotspots: false,
+      activePositions: false,
+    };
+  });
+
+  // Save collapsed state to localStorage
+  useEffect(() => {
+    localStorage.setItem('dashboard-collapsed-sections', JSON.stringify(collapsedSections));
+  }, [collapsedSections]);
+
+  const toggleSection = (section: string) => {
+    setCollapsedSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
 
   // Use centralized hook for all strategy-related data (reduces API calls by 10-20x)
   const {
@@ -203,6 +257,46 @@ export default function Dashboard() {
     },
   });
 
+  // Save settings to database
+  const saveSettings = async () => {
+    try {
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          selectedAssets,
+          sideFilter,
+          minValue,
+          timeRange,
+        }),
+      });
+    } catch (error) {
+      console.error('Failed to save settings:', error);
+    }
+  };
+
+  // Load settings from database
+  const loadSettings = async () => {
+    try {
+      const response = await fetch('/api/settings');
+      if (response.ok) {
+        const settings = await response.json();
+        if (settings) {
+          setSelectedAssets(settings.selectedAssets || []);
+          setSideFilter(settings.sideFilter || "all");
+          setMinValue(settings.minValue || "0");
+          setTimeRange(settings.timeRange || "1h");
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load settings:', error);
+    } finally {
+      // Mark settings as loaded to enable saving
+      setSettingsLoaded(true);
+    }
+  };
 
   // Real-time WebSocket connection
   useEffect(() => {
@@ -347,6 +441,7 @@ export default function Dashboard() {
 
     loadInitialData();
     connectWebSocket();
+    loadSettings();
 
     return () => {
       isMounted = false;
@@ -363,6 +458,53 @@ export default function Dashboard() {
       }
     };
   }, []);
+
+  // Save settings when they change (only after initial load)
+  useEffect(() => {
+    if (settingsLoaded) {
+      saveSettings();
+    }
+  }, [selectedAssets, sideFilter, minValue, timeRange, settingsLoaded]);
+
+  // Filter liquidations based on current filters
+  const filteredLiquidations = liquidations.filter(liq => {
+    // Only show liquidations for assets that are specifically selected to be watched
+    if (!selectedAssets.includes(liq.symbol)) return false;
+    if (sideFilter !== "all" && liq.side !== sideFilter) return false;
+    if (parseFloat(liq.value) < parseFloat(minValue)) return false;
+    
+    // Apply time range filter
+    if (timeRange) {
+      const now = new Date();
+      const liquidationTime = new Date(liq.timestamp);
+      const timeDiffMs = now.getTime() - liquidationTime.getTime();
+      
+      let maxTimeMs: number;
+      switch (timeRange) {
+        case "1m": maxTimeMs = 1 * 60 * 1000; break;
+        case "5m": maxTimeMs = 5 * 60 * 1000; break;
+        case "15m": maxTimeMs = 15 * 60 * 1000; break;
+        case "1h": maxTimeMs = 60 * 60 * 1000; break;
+        case "4h": maxTimeMs = 4 * 60 * 60 * 1000; break;
+        case "1d": maxTimeMs = 24 * 60 * 60 * 1000; break;
+        default: maxTimeMs = 60 * 60 * 1000; // default 1 hour
+      }
+      
+      if (timeDiffMs > maxTimeMs) return false;
+    }
+    
+    return true;
+  });
+
+  // Calculate stats
+  const totalVolume = filteredLiquidations.reduce((sum, liq) => sum + parseFloat(liq.value), 0).toString();
+  const longLiquidations = filteredLiquidations.filter(liq => liq.side === "long").length;
+  const shortLiquidations = filteredLiquidations.filter(liq => liq.side === "short").length;
+  
+  const largestLiquidation = filteredLiquidations.length > 0 ? 
+    filteredLiquidations.reduce((largest, current) => 
+      parseFloat(current.value) > parseFloat(largest.value) ? current : largest
+    ) : null;
 
   const handleRefresh = async () => {
     console.log("Refreshing data...");
@@ -442,8 +584,8 @@ export default function Dashboard() {
             
             {/* Documentation Button */}
             <Link href="/documentation">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 size="icon"
                 data-testid="button-documentation"
                 title="Professional Documentation"
@@ -451,7 +593,10 @@ export default function Dashboard() {
                 <BookOpen className="h-4 w-4" />
               </Button>
             </Link>
-            
+
+            {/* Investor Report Button */}
+            <InvestorReport />
+
             {/* Trade Errors Button */}
             <Button 
               variant="outline" 
@@ -604,22 +749,56 @@ export default function Dashboard() {
         style={{ paddingTop: '56px' }}
       >
         {/* Cascade Risk Indicator */}
-        <CascadeRiskIndicator />
+        <CollapsibleSection
+          title="Cascade Risk Indicator"
+          isOpen={!collapsedSections.cascadeRisk}
+          onToggle={() => toggleSection('cascadeRisk')}
+        >
+          <CascadeRiskIndicator />
+        </CollapsibleSection>
 
         {/* Market Sentiment Dashboard */}
         <MarketSentiment />
 
         {/* VWAP Direction Filter Status */}
-        {activeStrategy && <VWAPStatusDisplay strategyId={activeStrategy.id} liquidations={liquidations} />}
-
-        {/* Performance Overview */}
-        <PerformanceOverview />
-
-        {/* Trading Activity Analysis */}
-        {activeStrategy && <TradingHotspotsAnalytics strategyId={activeStrategy.id} />}
+        {activeStrategy && (
+          <CollapsibleSection
+            title="Assets Traded"
+            isOpen={!collapsedSections.vwapStatus}
+            onToggle={() => toggleSection('vwapStatus')}
+          >
+            <VWAPStatusDisplay strategyId={activeStrategy.id} liquidations={liquidations} />
+          </CollapsibleSection>
+        )}
 
         {/* Active Positions */}
-        <StrategyStatus />
+        <CollapsibleSection
+          title="Transactions"
+          isOpen={!collapsedSections.activePositions}
+          onToggle={() => toggleSection('activePositions')}
+        >
+          <StrategyStatus />
+        </CollapsibleSection>
+
+        {/* Performance Overview */}
+        <CollapsibleSection
+          title="Account Performance"
+          isOpen={!collapsedSections.performance}
+          onToggle={() => toggleSection('performance')}
+        >
+          <PerformanceOverview />
+        </CollapsibleSection>
+
+        {/* Trading Activity Analysis */}
+        {activeStrategy && (
+          <CollapsibleSection
+            title="Trading Activity Analysis"
+            isOpen={!collapsedSections.tradingHotspots}
+            onToggle={() => toggleSection('tradingHotspots')}
+          >
+            <TradingHotspotsAnalytics strategyId={activeStrategy.id} />
+          </CollapsibleSection>
+        )}
       </main>
 
       {/* Trading Strategy Dialog */}

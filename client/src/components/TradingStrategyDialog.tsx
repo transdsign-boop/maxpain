@@ -20,6 +20,7 @@ import { Play, Square, TrendingUp, DollarSign, Layers, Target, Trash2, Key, Chec
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useLiquidityStatus } from "@/hooks/use-liquidity-status";
 
 // Types
 interface Strategy {
@@ -1221,6 +1222,11 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
     }
   });
 
+  // Get liquidity status for all available symbols (colored indicators)
+  const allSymbols = availableAssets?.map((a: any) => a.symbol) || [];
+  const leverage = form.watch("leverage") || 5;
+  const { liquidityStatusMap } = useLiquidityStatus(allSymbols, accountBalance, leverage);
+
   // Create strategy mutation
   const createStrategyMutation = useMutation({
     mutationFn: async (data: StrategyFormData) => {
@@ -1742,7 +1748,15 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                           >
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2">
-                                <span className="font-medium text-sm">{asset.symbol}</span>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-medium text-sm">{asset.symbol}</span>
+                                  {liquidityStatusMap.get(asset.symbol) && (
+                                    <div
+                                      className={`w-2 h-2 ${liquidityStatusMap.get(asset.symbol)?.color}`}
+                                      title={liquidityStatusMap.get(asset.symbol)?.tooltip}
+                                    />
+                                  )}
+                                </div>
                                 <span className="text-xs text-muted-foreground">({asset.liquidationCount})</span>
                               </div>
                               <Checkbox
@@ -1830,7 +1844,15 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
                                   className="flex items-center justify-between p-2 hover-elevate border-b last:border-b-0"
                                 >
                                   <div className="flex items-center gap-2 flex-1">
-                                    <span className="font-medium text-sm">{asset.symbol}</span>
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="font-medium text-sm">{asset.symbol}</span>
+                                      {liquidityStatusMap.get(asset.symbol) && (
+                                        <div
+                                          className={`w-2 h-2 ${liquidityStatusMap.get(asset.symbol)?.color}`}
+                                          title={liquidityStatusMap.get(asset.symbol)?.tooltip}
+                                        />
+                                      )}
+                                    </div>
                                     <span className="text-xs text-muted-foreground">({asset.liquidationCount})</span>
                                   </div>
                                   <Checkbox
