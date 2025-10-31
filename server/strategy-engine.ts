@@ -379,7 +379,7 @@ export class StrategyEngine extends EventEmitter {
     this.activeSessions.set(strategy.id, session);
     this.activeSessions.set(session.id, session);
     console.log(`✅ Strategy registered with session: ${session.id}`);
-    
+
     // Sync cascade detector with strategy's selected assets
     await cascadeDetectorService.syncSymbols();
 
@@ -539,14 +539,23 @@ export class StrategyEngine extends EventEmitter {
         console.log('✅ User data stream started for real-time updates (deployed mode)');
       } catch (error) {
         console.error('⚠️ Failed to start user data stream:', error);
+        console.log('🔄 Falling back to polling mode due to WebSocket failure...');
+        // Fallback to polling if WebSocket fails (e.g., rate limiting)
+        if (secretKey) {
+          this.startPollingMode(strategy, apiKey, secretKey);
+        }
       }
     } else if (apiKey && secretKey && !isDeployed) {
       // Preview mode: Use polling instead of WebSocket (5-second intervals)
       console.log('🔄 Starting polling mode for preview (5-second intervals)');
       console.log('   📱 Deployed version uses WebSocket for real-time updates');
-      
-      // Poll account and positions every 5 seconds
-      this.pollingInterval = setInterval(async () => {
+      this.startPollingMode(strategy, apiKey, secretKey);
+    }
+  }
+
+  private startPollingMode(strategy: any, apiKey: string, secretKey: string) {
+    // Poll account and positions every 5 seconds
+    this.pollingInterval = setInterval(async () => {
         try {
           const timestamp = Date.now();
           
@@ -585,9 +594,8 @@ export class StrategyEngine extends EventEmitter {
           console.error('⚠️ Polling error:', error);
         }
       }, 5000); // 5 seconds
-      
+
       console.log('✅ Polling started for account/position updates (preview mode)');
-    }
   }
 
   // Unregister a strategy
@@ -1777,14 +1785,14 @@ export class StrategyEngine extends EventEmitter {
   private async reconcileStalePositions(sessionId: string, strategy: Strategy): Promise<void> {
     try {
       console.log('🔄 Starting stale position reconciliation...');
-      
+
       // Get live positions from exchange
       const livePositions = await this.getExchangePositions();
       if (!livePositions) {
         console.log('⏭️ Skipping position reconciliation - could not fetch live positions');
         return;
       }
-      
+
       console.log(`📊 Found ${livePositions.length} live positions on exchange`);
       
       // Get open positions from database

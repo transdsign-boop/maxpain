@@ -148,7 +148,16 @@
       "Bash(else)",
       "Bash(NEON_DATABASE_URL=\"$NEON_DATABASE_URL\" node:*)",
       "Bash(npx tsx:*)",
-      "Bash(then echo \"✅ Server ready after $i seconds\")"
+      "Bash(then echo \"✅ Server ready after $i seconds\")",
+      "Bash(/tmp/strategies.json)",
+      "Bash(else echo \"⏳ Server not responding ($i/5)\")",
+      "Bash(time timeout 5 curl:*)",
+      "Bash(then echo \"✅ Server is ready after restart\")",
+      "Bash(do echo -n \"$endpoint: \")",
+      "Bash(timeout 3 curl:*)",
+      "Bash(then echo \"✅ Server is ready and online\")",
+      "Bash(then echo \"✅ Server is ready - changes reverted\")",
+      "Bash(then echo \"✅ Replit dev server is ready and online\")"
     ],
     "deny": [],
     "ask": []
