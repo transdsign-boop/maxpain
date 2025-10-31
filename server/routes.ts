@@ -4700,24 +4700,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let totalDeposits = 0;
 
       try {
-        // Get current wallet balance from exchange API
-        const apiKey = process.env.ASTER_API_KEY;
-        const secretKey = process.env.ASTER_SECRET_KEY;
+        // Get current wallet balance from WebSocket snapshot (more reliable than API call)
+        const wsSnapshot = liveDataOrchestrator.getSnapshot(activeStrategy.id);
+        if (wsSnapshot?.account?.totalWalletBalance) {
+          currentWalletBalance = parseFloat(wsSnapshot.account.totalWalletBalance);
+          console.log(`💰 Current wallet balance (WebSocket): $${currentWalletBalance.toFixed(2)}`);
+        } else {
+          // Fallback to API call if WebSocket data not available
+          const apiKey = process.env.ASTER_API_KEY;
+          const secretKey = process.env.ASTER_SECRET_KEY;
 
-        if (apiKey && secretKey) {
-          const timestamp = Date.now();
-          const params = `timestamp=${timestamp}`;
-          const signature = crypto.createHmac('sha256', secretKey).update(params).digest('hex');
+          if (apiKey && secretKey) {
+            const timestamp = Date.now();
+            const params = `timestamp=${timestamp}`;
+            const signature = crypto.createHmac('sha256', secretKey).update(params).digest('hex');
 
-          const response = await fetch(
-            `https://fapi.asterdex.com/fapi/v2/account?${params}&signature=${signature}`,
-            { headers: { 'X-MBX-APIKEY': apiKey } }
-          );
+            const response = await fetch(
+              `https://fapi.asterdex.com/fapi/v2/account?${params}&signature=${signature}`,
+              { headers: { 'X-MBX-APIKEY': apiKey } }
+            );
 
-          if (response.ok) {
-            const accountData = await response.json();
-            currentWalletBalance = parseFloat(accountData.totalWalletBalance || '0');
-            console.log(`💰 Current wallet balance: $${currentWalletBalance.toFixed(2)}`);
+            if (response.ok) {
+              const accountData = await response.json();
+              currentWalletBalance = parseFloat(accountData.totalWalletBalance || '0');
+              console.log(`💰 Current wallet balance (API fallback): $${currentWalletBalance.toFixed(2)}`);
+            }
           }
         }
 
@@ -4773,15 +4780,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json(responseData);
       }
 
-      // Get ONLY ACTIVE sessions for this strategy (excludes archived)
+      // Get ALL sessions for this strategy (includes archived for accurate cumulative PNL)
       const allSessions = await storage.getSessionsByStrategy(activeStrategy.id);
-      const activeSessions = allSessions.filter(s => s.isActive === true);
-      
-      // Get positions from ACTIVE sessions only
+
+      // Get positions from ALL sessions (active + archived)
       const allPositions: any[] = [];
       const allSessionFills: any[] = [];
-      
-      for (const session of activeSessions) {
+
+      for (const session of allSessions) {
         const sessionPositions = await storage.getPositionsBySession(session.id);
         const sessionFills = await storage.getFillsBySession(session.id);
         allPositions.push(...sessionPositions);
@@ -4853,8 +4859,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Calculate metrics
       const openPositions = allPositions.filter(p => p.isOpen === true);
-      const closedPositions = allPositions.filter(p => p.isOpen === false);
-      
+      let closedPositions = allPositions.filter(p => p.isOpen === false);
+
       // For win/loss statistics, still use position-level P&L
       const closedPnlDollars = closedPositions.map(p => {
         return parseFloat(p.realizedPnl || '0');
@@ -4931,50 +4937,83 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const baseCapital = totalDeposits > 0 ? totalDeposits : parseFloat(activeSession.startingBalance);
       const totalPnlPercent = baseCapital > 0 ? (totalPnl / baseCapital) * 100 : 0;
 
-      // Calculate maximum drawdown from cumulative P&L
+      // Filter out positions with obviously corrupt realizedPnl data
+      // With isolated margin + max 10% position size + 5x leverage + 20% max SL = max 10% loss per position
+      // Being conservative, allow up to 20% of account balance as max reasonable single position P&L
+      const maxReasonablePnl = baseCapital * 0.20; // Max 20% of account on any single position
+      const originalClosedCount = closedPositions.length;
+      closedPositions = closedPositions.filter(p => {
+        const pnl = Math.abs(parseFloat(p.realizedPnl || '0'));
+        return pnl <= maxReasonablePnl;
+      });
+
+      if (closedPositions.length < originalClosedCount) {
+        console.log(`⚠️ Filtered out ${originalClosedCount - closedPositions.length} positions with corrupt P&L data (>${baseCapital.toFixed(2)})`);
+      }
+
+      // Recalculate win/loss statistics after filtering
+      const filteredPnlDollars = closedPositions.map(p => parseFloat(p.realizedPnl || '0'));
+      const filteredWinningTrades = filteredPnlDollars.filter(pnl => pnl > 0);
+      const filteredLosingTrades = filteredPnlDollars.filter(pnl => pnl < 0);
+      const filteredBestTrade = filteredPnlDollars.length > 0 ? Math.max(...filteredPnlDollars) : 0;
+      const filteredWorstTrade = filteredPnlDollars.length > 0 ? Math.min(...filteredPnlDollars) : 0;
+
+      // Calculate maximum drawdown based on total account balance (deposits + cumulative P&L)
+      // Max drawdown = (Peak Balance - Trough Balance) / Peak Balance
       let maxDrawdown = 0;
+      let maxDrawdownPercent = 0;
+
       if (closedPositions.length > 0) {
-        let peakPnl = 0;
+        let peakBalance = baseCapital; // Start with initial deposits as peak
         let cumulativePnl = 0;
-        
+
         for (const p of closedPositions) {
           // CRITICAL: realizedPnl is ALREADY in DOLLARS (not percentage!)
           const pnlDollar = parseFloat(p.realizedPnl || '0');
           cumulativePnl += pnlDollar;
-          
-          // Update peak if we reached a new high
-          if (cumulativePnl > peakPnl) {
-            peakPnl = cumulativePnl;
+
+          // Current total balance = deposits + cumulative P&L
+          const currentBalance = baseCapital + cumulativePnl;
+
+          // Update peak balance if we reached a new high
+          if (currentBalance > peakBalance) {
+            peakBalance = currentBalance;
           }
-          
-          // Calculate drawdown from peak
-          const currentDrawdown = peakPnl - cumulativePnl;
-          if (currentDrawdown > maxDrawdown) {
-            maxDrawdown = currentDrawdown;
+
+          // Calculate drawdown from peak balance (in dollars)
+          const currentDrawdownDollar = peakBalance - currentBalance;
+
+          // Calculate drawdown percentage: (peak - current) / peak * 100
+          const currentDrawdownPercent = peakBalance > 0
+            ? (currentDrawdownDollar / peakBalance) * 100
+            : 0;
+
+          // Track maximum drawdown (both dollars and percentage)
+          if (currentDrawdownDollar > maxDrawdown) {
+            maxDrawdown = currentDrawdownDollar;
+            maxDrawdownPercent = currentDrawdownPercent;
           }
         }
       }
-      
-      // Calculate drawdown as percentage of total deposited capital (not starting balance)
-      // This gives a meaningful percentage that updates with new deposits
-      const maxDrawdownPercent = baseCapital > 0 ? (maxDrawdown / baseCapital) * 100 : 0;
 
       res.json({
         totalTrades: closedPositions.length + livePositions.length, // Consolidated: DB positions + currently open positions
         openTrades: livePositions.length, // Use live positions from exchange, not database
         closedTrades: closedPositions.length, // Use consolidated position count (each position = all DCA layers combined)
-        winningTrades: winningTrades.length,
-        losingTrades: losingTrades.length,
-        winRate,
+        winningTrades: filteredWinningTrades.length,
+        losingTrades: filteredLosingTrades.length,
+        winRate: closedPositions.length > 0 ? (filteredWinningTrades.length / closedPositions.length) * 100 : 0,
         totalRealizedPnl,
         totalUnrealizedPnl,
         totalPnl,
         totalPnlPercent,
-        averageWin,
-        averageLoss,
-        bestTrade,
-        worstTrade,
-        profitFactor,
+        averageWin: filteredWinningTrades.length > 0 ? filteredWinningTrades.reduce((sum, pnl) => sum + pnl, 0) / filteredWinningTrades.length : 0,
+        averageLoss: filteredLosingTrades.length > 0 ? filteredLosingTrades.reduce((sum, pnl) => sum + pnl, 0) / filteredLosingTrades.length : 0,
+        bestTrade: filteredBestTrade,
+        worstTrade: filteredWorstTrade,
+        profitFactor: filteredLosingTrades.length > 0
+          ? Math.abs(filteredWinningTrades.reduce((sum, pnl) => sum + pnl, 0) / filteredLosingTrades.reduce((sum, pnl) => sum + pnl, 0))
+          : filteredWinningTrades.length > 0 ? 999 : 0,
         totalFees,
         fundingCost: totalFundingCost,
         averageTradeTimeMs,
@@ -4998,6 +5037,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!pnlResult.success || !pnlResult.events || pnlResult.events.length === 0) {
         return res.json([]);
       }
+
+      // Fetch all closed positions from database to get the actual position side
+      // This is needed because P&L direction doesn't indicate position side (a loss can be from LONG or SHORT)
+      let allPositions = [];
+      try {
+        allPositions = await db.select({
+          symbol: positions.symbol,
+          side: positions.side,
+          closedAt: positions.closedAt,
+          realizedPnl: positions.realizedPnl,
+        })
+          .from(positions)
+          .where(eq(positions.isOpen, false))
+          .orderBy(positions.closedAt);
+
+        console.log(`📊 Loaded ${allPositions.length} closed positions from database for side matching`);
+      } catch (error) {
+        console.error('❌ Error fetching positions for side matching:', error);
+        // Continue without side matching - will fall back to P&L inference
+      }
+
+      // Create a map of positions by symbol and timestamp for quick lookup
+      // Key: `${symbol}_${closedAtTimestamp}`
+      const positionsBySymbolTime = new Map();
+      for (const pos of allPositions) {
+        if (pos.closedAt) {
+          const timestamp = new Date(pos.closedAt).getTime();
+          const key = `${pos.symbol}_${timestamp}`;
+          positionsBySymbolTime.set(key, pos);
+        }
+      }
+
+      // Debug: Count positions per symbol
+      const symbolCounts = new Map();
+      for (const pos of allPositions) {
+        symbolCounts.set(pos.symbol, (symbolCounts.get(pos.symbol) || 0) + 1);
+      }
+      console.log(`📊 Sample position counts: HEMIUSDT=${symbolCounts.get('HEMIUSDT') || 0}, BNBUSDT=${symbolCounts.get('BNBUSDT') || 0}`)
 
       // Fetch commissions to subtract from P&L (commissions can be matched accurately by tradeId)
       const commissionsResult = await fetchCommissions({ startTime });
@@ -5077,6 +5154,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let cumulativeFundingFees = 0;
       let fundingFeeIndex = 0;
 
+      let matchedCount = 0;
+      let unmatchedCount = 0;
+
       const chartData = consolidatedPositions.map((position, index) => {
         // Calculate net P&L for this position (gross P&L - commissions)
         const netPnlAfterCommissions = position.pnl - position.commission;
@@ -5092,11 +5172,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Funding fees are negative (costs) or positive (received), so we add them directly
         const cumulativePnlAfterAllFees = cumulativeNetPnl + cumulativeFundingFees;
 
+        // Look up actual position side from database instead of inferring from P&L
+        // This fixes the issue where stopped out LONG positions (negative P&L) were labeled as SHORT
+        const lookupKey = `${position.symbol}_${position.timestamp}`;
+        const dbPosition = positionsBySymbolTime.get(lookupKey);
+
+        // If we can't find exact match, try to find by symbol within ±5 minutes (exchange events can be delayed)
+        // Exchange P&L event timestamps may not exactly match our database closedAt times
+        let actualSide = dbPosition?.side;
+        let matchTimeDiff = 0;
+        if (!actualSide) {
+          let closestMatch = null;
+          let closestDiff = Infinity;
+
+          for (const [key, pos] of positionsBySymbolTime) {
+            if (pos.symbol === position.symbol) {
+              const posTimestamp = new Date(pos.closedAt!).getTime();
+              const diff = Math.abs(posTimestamp - position.timestamp);
+              // Match within 5 minutes (300,000 ms) - exchange events can be delayed or grouped
+              if (diff <= 300000 && diff < closestDiff) {
+                closestMatch = pos;
+                closestDiff = diff;
+              }
+            }
+          }
+
+          if (closestMatch) {
+            actualSide = closestMatch.side;
+            matchTimeDiff = closestDiff;
+            matchedCount++;
+          } else {
+            unmatchedCount++;
+          }
+        } else {
+          matchedCount++;
+        }
+
+        // Fallback to P&L inference only if we can't find the position in database
+        const side = actualSide || (netPnlAfterCommissions >= 0 ? 'long' : 'short');
+
         return {
           tradeNumber: index + 1,
           timestamp: position.timestamp,
           symbol: position.symbol,
-          side: netPnlAfterCommissions >= 0 ? 'long' : 'short', // Infer from net P&L direction
+          side: side, // Use actual position side from database, not inferred from P&L
           pnl: netPnlAfterCommissions, // NET P&L after commissions (per-position does not include funding)
           cumulativePnl: cumulativePnlAfterAllFees, // Cumulative NET P&L (after commissions AND funding fees)
           entryPrice: 0, // Not available from P&L events
@@ -5105,6 +5224,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           layersFilled: position.layerCount, // Number of DCA layers in this position
         };
       });
+
+      console.log(`📊 Chart data: ${chartData.length} trades, ${matchedCount} matched with DB, ${unmatchedCount} unmatched (fallback to P&L inference)`);
 
       // CRITICAL: Scale the chart to match ACTUAL wallet-based P&L
       // The chart calculated from trades shows $1,141 but actual profit is only ~$950

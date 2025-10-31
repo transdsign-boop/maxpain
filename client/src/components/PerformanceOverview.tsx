@@ -619,51 +619,70 @@ function PerformanceOverview() {
   }, [activeStrategy?.maxPortfolioRiskPercent]);
 
   // Memoized risk color helper - uses server-backed limit to avoid desynchronization
+  // Lime green → Yellow → Orange → Red gradient with higher sensitivity
   const getRiskColorClass = useMemo(() => {
     const serverRiskLimit = activeStrategy ? parseFloat(activeStrategy.maxPortfolioRiskPercent) : 15;
-    const isOverLimit = filledRiskPercentage > serverRiskLimit;
-    const warningThreshold = serverRiskLimit * 0.8; // 80% of max
+    const riskPercentOfLimit = (filledRiskPercentage / serverRiskLimit) * 100;
 
-    return isOverLimit ? 'text-destructive' :
-      filledRiskPercentage >= warningThreshold ? 'text-orange-500 dark:text-orange-400' :
-      'text-blue-500 dark:text-blue-400';
+    // More sensitive color transitions for better risk awareness
+    if (riskPercentOfLimit >= 100) {
+      return 'text-red-500'; // Critical: Over limit
+    } else if (riskPercentOfLimit >= 85) {
+      return 'text-red-400'; // Severe: 85-100%
+    } else if (riskPercentOfLimit >= 70) {
+      return 'text-orange-500'; // Warning: 70-85%
+    } else if (riskPercentOfLimit >= 50) {
+      return 'text-yellow-500'; // Caution: 50-70%
+    } else {
+      return 'text-[rgb(190,242,100)]'; // Safe: 0-50% - Lime green
+    }
   }, [activeStrategy?.maxPortfolioRiskPercent, filledRiskPercentage]);
 
   // Memoized risk pulsation effect - changes speed and color based on risk level
   const getRiskPulsationClass = useMemo(() => {
     const serverRiskLimit = activeStrategy ? parseFloat(activeStrategy.maxPortfolioRiskPercent) : 15;
-    const isOverLimit = filledRiskPercentage > serverRiskLimit;
-    const warningThreshold = serverRiskLimit * 0.8; // 80% of max
+    const riskPercentOfLimit = (filledRiskPercentage / serverRiskLimit) * 100;
 
-    if (isOverLimit) {
+    // More sensitive pulsation based on risk level
+    if (riskPercentOfLimit >= 85) {
       return 'risk-pulse-critical'; // Fast emergency pulse, red
-    } else if (filledRiskPercentage >= warningThreshold) {
+    } else if (riskPercentOfLimit >= 70) {
       return 'risk-pulse-warning'; // Medium pulse, orange
+    } else if (riskPercentOfLimit >= 50) {
+      return 'risk-pulse-caution'; // Gentle pulse, yellow
     } else {
-      return 'risk-pulse-normal'; // Gentle pulse, blue
+      return 'risk-pulse-safe'; // Very gentle pulse, lime green
     }
   }, [activeStrategy?.maxPortfolioRiskPercent, filledRiskPercentage]);
 
   const getRiskStrokeClass = useMemo(() => {
     const serverRiskLimit = activeStrategy ? parseFloat(activeStrategy.maxPortfolioRiskPercent) : 15;
-    const isOverLimit = filledRiskPercentage > serverRiskLimit;
-    const warningThreshold = serverRiskLimit * 0.8; // 80% of max
+    const riskPercentOfLimit = (filledRiskPercentage / serverRiskLimit) * 100;
 
-    return isOverLimit ? 'text-destructive' :
-      filledRiskPercentage >= warningThreshold ? 'stroke-orange-500 dark:stroke-orange-400' :
-      'stroke-blue-500 dark:stroke-blue-400';
+    // More sensitive stroke color transitions: lime green → yellow → orange → red
+    if (riskPercentOfLimit >= 100) {
+      return 'stroke-red-500'; // Critical: Over limit
+    } else if (riskPercentOfLimit >= 85) {
+      return 'stroke-red-400'; // Severe: 85-100%
+    } else if (riskPercentOfLimit >= 70) {
+      return 'stroke-orange-500'; // Warning: 70-85%
+    } else if (riskPercentOfLimit >= 50) {
+      return 'stroke-yellow-500'; // Caution: 50-70%
+    } else {
+      return 'stroke-[rgb(190,242,100)]'; // Safe: 0-50% - Lime green
+    }
   }, [activeStrategy?.maxPortfolioRiskPercent, filledRiskPercentage]);
 
-  // Margin usage color scale: lime -> blue -> orange -> red
+  // Margin usage color scale: lime -> yellow -> orange -> red (no blue)
   const getMarginColorClass = useMemo(() => {
-    if (marginUsedPercentage >= 75) {
-      return 'stroke-destructive';
+    if (marginUsedPercentage >= 85) {
+      return 'stroke-red-500'; // Critical: 85%+
+    } else if (marginUsedPercentage >= 70) {
+      return 'stroke-orange-500'; // Warning: 70-85%
     } else if (marginUsedPercentage >= 50) {
-      return 'stroke-orange-500 dark:stroke-orange-400';
-    } else if (marginUsedPercentage >= 25) {
-      return 'stroke-blue-500 dark:stroke-blue-400';
+      return 'stroke-yellow-500'; // Caution: 50-70%
     } else {
-      return 'stroke-lime-600 dark:stroke-lime-500';
+      return 'stroke-[rgb(190,242,100)]'; // Safe: 0-50% - Lime green
     }
   }, [marginUsedPercentage]);
 
@@ -817,23 +836,26 @@ function PerformanceOverview() {
       ? sourceChartData[sourceChartData.length - 1].cumulativePnl
       : 0;
 
-    // Interval P&L = difference between end and start
-    const totalRealizedPnl = endCumulativePnl - startCumulativePnl;
+    // Interval P&L = ACTUAL wallet profit (balance - deposits)
+    // This includes both realized gains from closed positions AND unrealized P&L from open positions
+    const totalRealizedPnl = currentTotalBalance > 0 && totalDeposited > 0
+      ? currentTotalBalance - totalDeposited
+      : endCumulativePnl - startCumulativePnl; // Fallback to chart data if wallet balance not loaded
 
-    // Calculate percentage based on current total balance
-    // This shows % return on your current account balance
-    // Use 3900 as fallback if currentTotalBalance is not loaded yet
-    const balanceBase = currentTotalBalance > 0 ? currentTotalBalance : 3900;
+    // Calculate percentage based on total deposited capital (ROI on your investment)
+    // Use totalDeposited or fallback to 3900 if not loaded yet
+    const balanceBase = totalDeposited > 0 ? totalDeposited : 3900;
     const intervalPnlPercent = balanceBase > 0
       ? (totalRealizedPnl / balanceBase) * 100
       : 0;
 
     // Debug logging
     if (totalRealizedPnl !== 0) {
-      console.log('Interval P&L Calculation:', {
-        totalRealizedPnl,
+      console.log('Interval P&L Calculation (ACTUAL WALLET):', {
         currentTotalBalance,
-        balanceBase,
+        totalDeposited,
+        actualWalletPnl: totalRealizedPnl,
+        chartRealizedPnl: endCumulativePnl,
         intervalPnlPercent
       });
     }
@@ -1492,14 +1514,25 @@ function PerformanceOverview() {
 
                 {/* CSS for pulsation animations */}
                 <style>{`
-                  @keyframes pulse-normal {
+                  @keyframes pulse-safe {
                     0%, 100% {
-                      background-color: rgba(59, 130, 246, 0.1);
-                      box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4);
+                      background-color: rgba(190, 242, 100, 0.08);
+                      box-shadow: 0 0 0 0 rgba(190, 242, 100, 0.3);
                     }
                     50% {
-                      background-color: rgba(59, 130, 246, 0.2);
-                      box-shadow: 0 0 20px 10px rgba(59, 130, 246, 0);
+                      background-color: rgba(190, 242, 100, 0.15);
+                      box-shadow: 0 0 15px 8px rgba(190, 242, 100, 0);
+                    }
+                  }
+
+                  @keyframes pulse-caution {
+                    0%, 100% {
+                      background-color: rgba(234, 179, 8, 0.12);
+                      box-shadow: 0 0 0 0 rgba(234, 179, 8, 0.4);
+                    }
+                    50% {
+                      background-color: rgba(234, 179, 8, 0.2);
+                      box-shadow: 0 0 20px 10px rgba(234, 179, 8, 0);
                     }
                   }
 
@@ -1525,8 +1558,12 @@ function PerformanceOverview() {
                     }
                   }
 
-                  .risk-pulse-normal {
-                    animation: pulse-normal 3s ease-in-out infinite;
+                  .risk-pulse-safe {
+                    animation: pulse-safe 4s ease-in-out infinite;
+                  }
+
+                  .risk-pulse-caution {
+                    animation: pulse-caution 2.5s ease-in-out infinite;
                   }
 
                   .risk-pulse-warning {

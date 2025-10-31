@@ -12,6 +12,7 @@ import VWAPStatusDisplay from "@/components/VWAPStatusDisplay";
 import TradingHotspotsAnalytics from "@/components/TradingHotspotsAnalytics";
 import ThemeToggle from "@/components/ThemeToggle";
 import AsterLogo from "@/components/AsterLogo";
+import { InvestorReport } from "@/components/InvestorReport";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -583,8 +584,8 @@ export default function Dashboard() {
             
             {/* Documentation Button */}
             <Link href="/documentation">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 size="icon"
                 data-testid="button-documentation"
                 title="Professional Documentation"
@@ -592,7 +593,10 @@ export default function Dashboard() {
                 <BookOpen className="h-4 w-4" />
               </Button>
             </Link>
-            
+
+            {/* Investor Report Button */}
+            <InvestorReport />
+
             {/* Trade Errors Button */}
             <Button 
               variant="outline" 
@@ -754,24 +758,27 @@ export default function Dashboard() {
         </CollapsibleSection>
 
         {/* Market Sentiment Dashboard */}
-        <CollapsibleSection
-          title="Market Sentiment"
-          isOpen={!collapsedSections.marketSentiment}
-          onToggle={() => toggleSection('marketSentiment')}
-        >
-          <MarketSentiment />
-        </CollapsibleSection>
+        <MarketSentiment />
 
         {/* VWAP Direction Filter Status */}
         {activeStrategy && (
           <CollapsibleSection
-            title="VWAP Direction Filter"
+            title="Assets Traded"
             isOpen={!collapsedSections.vwapStatus}
             onToggle={() => toggleSection('vwapStatus')}
           >
             <VWAPStatusDisplay strategyId={activeStrategy.id} liquidations={liquidations} />
           </CollapsibleSection>
         )}
+
+        {/* Active Positions */}
+        <CollapsibleSection
+          title="Transactions"
+          isOpen={!collapsedSections.activePositions}
+          onToggle={() => toggleSection('activePositions')}
+        >
+          <StrategyStatus />
+        </CollapsibleSection>
 
         {/* Performance Overview */}
         <CollapsibleSection
@@ -792,15 +799,6 @@ export default function Dashboard() {
             <TradingHotspotsAnalytics strategyId={activeStrategy.id} />
           </CollapsibleSection>
         )}
-
-        {/* Active Positions */}
-        <CollapsibleSection
-          title="Active Positions"
-          isOpen={!collapsedSections.activePositions}
-          onToggle={() => toggleSection('activePositions')}
-        >
-          <StrategyStatus />
-        </CollapsibleSection>
       </main>
 
       {/* Trading Strategy Dialog */}
