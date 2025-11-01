@@ -1,5 +1,5 @@
-import { createHmac } from 'crypto';
-import { rateLimiter } from './rate-limiter';
+import { defaultExchangeClient } from './utils/exchange-api-client';
+import { credentials } from './config/credentials';
 
 // Fetch actual fill data from Aster DEX for a specific order
 export async function fetchActualFills(params: {
@@ -20,53 +20,27 @@ export async function fetchActualFills(params: {
 }> {
   try {
     const { symbol, orderId } = params;
-    
-    const apiKey = process.env.ASTER_API_KEY;
-    const secretKey = process.env.ASTER_SECRET_KEY;
-    
-    if (!apiKey || !secretKey) {
+
+    if (!credentials.isConfigured()) {
       return { success: false, error: 'API keys not configured' };
     }
-    
-    // Build request parameters
-    const timestamp = Date.now();
-    const queryParams: Record<string, string | number> = {
+
+    // Fetch actual fills from exchange (with automatic signing and rate limiting)
+    const response = await defaultExchangeClient.get('/fapi/v1/userTrades', {
       symbol,
       orderId,
-      timestamp,
       recvWindow: 30000,
-    };
-    
-    // Create query string (sorted alphabetically)
-    const queryString = Object.entries(queryParams)
-      .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
-      .map(([k, v]) => `${k}=${v}`)
-      .join('&');
-    
-    // Generate signature
-    const signature = createHmac('sha256', secretKey)
-      .update(queryString)
-      .digest('hex');
-    
-    const signedParams = `${queryString}&signature=${signature}`;
-
-    // Fetch actual fills from exchange (with rate limiting)
-    const response = await rateLimiter.fetch(`https://fapi.asterdex.com/fapi/v1/userTrades?${signedParams}`, {
-      method: 'GET',
-      headers: {
-        'X-MBX-APIKEY': apiKey,
-      },
     });
-    
+
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`❌ Failed to fetch fills: ${response.status} ${errorText}`);
       return { success: false, error: `HTTP ${response.status}: ${errorText}` };
     }
-    
+
     const fills = await response.json();
     console.log(`✅ Fetched ${fills.length} actual fill(s) from exchange for order ${orderId}`);
-    
+
     return { success: true, fills };
   } catch (error) {
     console.error('❌ Error fetching actual fills:', error);

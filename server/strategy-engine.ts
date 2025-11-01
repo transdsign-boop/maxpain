@@ -80,7 +80,7 @@ export class StrategyEngine extends EventEmitter {
   private pendingFirstLayerData: Map<string, { takeProfitPrice: number; stopLossPrice: number; entryPrice: number; quantity: number }> = new Map(); // "sessionId-symbol-side" -> first layer TP/SL data
   private pendingDCASchedules: Map<string, { levels: any[]; effectiveGrowthFactor: number; q1: number; totalWeight: number }> = new Map(); // "sessionId-symbol-side" -> complete DCA schedule
   private pendingReservedRisk: Map<string, { dollars: number; percent: number }> = new Map(); // "sessionId-symbol-side" -> reserved risk for full DCA potential
-  private processedLiquidations: Set<string> = new Set(); // Track processed liquidation IDs to prevent duplicates
+  private processedLiquidations: Map<string, number> = new Map(); // Track processed liquidation IDs with timestamp to prevent duplicates (time-bounded to prevent memory leak)
   private inMemoryPositions: Map<string, { positionId: string; side: string; symbol: string; createdAt: number }> = new Map(); // "sessionId-symbol-side" -> in-memory position tracking (before DB commit)
   private lastLiquidationSeen: Map<string, number> = new Map(); // "symbol-side" -> timestamp of last liquidation seen (for 60s deduplication)
   private protectiveOrderRecovery: ProtectiveOrderRecovery;
@@ -691,7 +691,7 @@ export class StrategyEngine extends EventEmitter {
       return;
     }
     // ATOMIC: Mark as processed RIGHT NOW (not 200 lines later) to prevent race
-    this.processedLiquidations.add(liquidation.id);
+    this.processedLiquidations.set(liquidation.id, Date.now());
     console.log(`🔒 ATOMIC RESERVATION: Liquidation ${liquidation.id} marked as processed to prevent concurrent duplicates`);
     
     // LIQUIDATION DEDUPLICATION: Only process one liquidation per symbol+side every 20 seconds
@@ -5405,13 +5405,21 @@ export class StrategyEngine extends EventEmitter {
           console.log(`  ✓ Deleted ${deletedCount} liquidations older than 30 days`);
         }
         
-        // 6. Clean up processed liquidation IDs to prevent memory growth
-        // Keep only last 1000 IDs (prevents duplicates for ~5-10 minutes of trading)
-        if (this.processedLiquidations.size > 1000) {
-          const idsToKeep = Array.from(this.processedLiquidations).slice(-1000);
-          this.processedLiquidations.clear();
-          idsToKeep.forEach(id => this.processedLiquidations.add(id));
-          console.log(`  ✓ Cleaned processed liquidation IDs (kept last 1000)`);
+        // 6. Clean up processed liquidation IDs to prevent memory growth (time-based cleanup)
+        // Remove IDs older than 30 minutes (prevents duplicates while avoiding unbounded memory growth)
+        const THIRTY_MINUTES = 30 * 60 * 1000;
+        const now = Date.now();
+        let cleanedCount = 0;
+
+        for (const [id, timestamp] of this.processedLiquidations) {
+          if (now - timestamp > THIRTY_MINUTES) {
+            this.processedLiquidations.delete(id);
+            cleanedCount++;
+          }
+        }
+
+        if (cleanedCount > 0) {
+          console.log(`  ✓ Cleaned ${cleanedCount} old liquidation IDs (kept ${this.processedLiquidations.size} recent IDs)`);
         }
         
         console.log(`✅ Reconciliation complete: ${orphanedCount} orphaned orders cleaned`);
