@@ -7,6 +7,7 @@
 
 import WebSocket from 'ws';
 import { createHmac } from 'crypto';
+import { rateLimiter } from '../rate-limiter';
 import {
   ExchangeType,
   ExchangeConfig,
@@ -297,7 +298,7 @@ export class AsterWebSocketStream implements IExchangeStream {
   // ============================================================================
 
   private async getListenKey(): Promise<string> {
-    const response = await fetch(`${this.baseURL}/fapi/v1/listenKey`, {
+    const response = await rateLimiter.fetch(`${this.baseURL}/fapi/v1/listenKey`, {
       method: 'POST',
       headers: { 'X-MBX-APIKEY': this.apiKey },
     });
@@ -311,7 +312,7 @@ export class AsterWebSocketStream implements IExchangeStream {
   }
 
   private async keepAliveListenKey(listenKey: string): Promise<void> {
-    const response = await fetch(`${this.baseURL}/fapi/v1/listenKey?listenKey=${listenKey}`, {
+    const response = await rateLimiter.fetch(`${this.baseURL}/fapi/v1/listenKey?listenKey=${listenKey}`, {
       method: 'PUT',
       headers: { 'X-MBX-APIKEY': this.apiKey },
     });
@@ -325,7 +326,7 @@ export class AsterWebSocketStream implements IExchangeStream {
 
   private async deleteListenKey(listenKey: string): Promise<void> {
     try {
-      await fetch(`${this.baseURL}/fapi/v1/listenKey?listenKey=${listenKey}`, {
+      await rateLimiter.fetch(`${this.baseURL}/fapi/v1/listenKey?listenKey=${listenKey}`, {
         method: 'DELETE',
         headers: { 'X-MBX-APIKEY': this.apiKey },
       });

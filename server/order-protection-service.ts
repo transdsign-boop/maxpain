@@ -3,6 +3,7 @@ import { storage } from './storage';
 import type { Position, Strategy } from '@shared/schema';
 import { calculateATRPercent } from './dca-calculator';
 import { getStrategyWithDCA } from './dca-sql';
+import { rateLimiter } from './rate-limiter';
 
 interface ExchangeOrder {
   orderId: string;
@@ -92,7 +93,7 @@ export class OrderProtectionService {
 
     console.log('📡 Fetching exchange info from API...');
     try {
-      const response = await fetch('https://fapi.asterdex.com/fapi/v1/exchangeInfo');
+      const response = await rateLimiter.fetch('https://fapi.asterdex.com/fapi/v1/exchangeInfo');
       console.log('📡 Exchange info response:', response.ok, response.status);
       if (!response.ok) return;
 
@@ -459,8 +460,8 @@ export class OrderProtectionService {
       const signature = createHmac('sha256', secretKey)
         .update(params)
         .digest('hex');
-      
-      const response = await fetch(
+
+      const response = await rateLimiter.fetch(
         `https://fapi.asterdex.com/fapi/v2/positionRisk?${params}&signature=${signature}`,
         {
           headers: {
@@ -626,7 +627,7 @@ export class OrderProtectionService {
       const params: Record<string, string | number> = {
         symbol,
         timestamp,
-        recvWindow: 5000,
+        recvWindow: 30000,
       };
 
       const queryString = Object.entries(params)
@@ -636,7 +637,7 @@ export class OrderProtectionService {
 
       const signature = createHmac('sha256', secretKey).update(queryString).digest('hex');
 
-      const response = await fetch(
+      const response = await rateLimiter.fetch(
         `https://fapi.asterdex.com/fapi/v1/openOrders?${queryString}&signature=${signature}`,
         { headers: { 'X-MBX-APIKEY': apiKey } }
       );
@@ -693,7 +694,7 @@ export class OrderProtectionService {
         symbol,
         orderId,
         timestamp,
-        recvWindow: 5000,
+        recvWindow: 30000,
       };
 
       const queryString = Object.entries(params)
@@ -703,7 +704,7 @@ export class OrderProtectionService {
 
       const signature = createHmac('sha256', secretKey).update(queryString).digest('hex');
 
-      const response = await fetch(
+      const response = await rateLimiter.fetch(
         `https://fapi.asterdex.com/fapi/v1/order?${queryString}&signature=${signature}`,
         { method: 'DELETE', headers: { 'X-MBX-APIKEY': apiKey } }
       );
@@ -747,7 +748,7 @@ export class OrderProtectionService {
         positionSide, // CRITICAL: Must specify position side for hedge mode
         quantity: roundedQty.toString(),
         timestamp,
-        recvWindow: 5000,
+        recvWindow: 30000,
       };
 
       if (type === 'LIMIT') {
@@ -768,7 +769,7 @@ export class OrderProtectionService {
 
       const signature = createHmac('sha256', secretKey).update(queryString).digest('hex');
 
-      const response = await fetch(
+      const response = await rateLimiter.fetch(
         `https://fapi.asterdex.com/fapi/v1/order?${queryString}&signature=${signature}`,
         { method: 'POST', headers: { 'X-MBX-APIKEY': apiKey } }
       );
@@ -1068,7 +1069,7 @@ export class OrderProtectionService {
       const timestamp = Date.now();
       const params: Record<string, string | number> = {
         timestamp,
-        recvWindow: 5000,
+        recvWindow: 30000,
       };
 
       const queryString = Object.entries(params)
@@ -1078,7 +1079,7 @@ export class OrderProtectionService {
 
       const signature = createHmac('sha256', secretKey).update(queryString).digest('hex');
 
-      const response = await fetch(
+      const response = await rateLimiter.fetch(
         `https://fapi.asterdex.com/fapi/v1/openOrders?${queryString}&signature=${signature}`,
         { headers: { 'X-MBX-APIKEY': apiKey } }
       );

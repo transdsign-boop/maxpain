@@ -131,6 +131,10 @@ export const strategies = pgTable("strategies", {
   vwapTimeframeMinutes: integer("vwap_timeframe_minutes").notNull().default(240), // VWAP calculation timeframe (60, 120, 180, 240, 360, 480, 1440 minutes)
   vwapBufferPercentage: decimal("vwap_buffer_percentage", { precision: 6, scale: 4 }).notNull().default("0.0005"), // Buffer zone size (0.0001 = 0.01%, 0.002 = 0.2%)
   vwapEnableBuffer: boolean("vwap_enable_buffer").notNull().default(true), // Enable buffer zone to prevent flip-flopping
+  // Adaptive Position Sizing (Percentile-Based)
+  adaptiveSizingEnabled: boolean("adaptive_sizing_enabled").notNull().default(false), // Enable percentile-based position sizing
+  maxSizeMultiplier: decimal("max_size_multiplier", { precision: 5, scale: 2 }).notNull().default("3.0"), // Maximum size multiplier at 95th+ percentile (1.0-10.0x)
+  scaleAllLayers: boolean("scale_all_layers").notNull().default(false), // Scale all DCA layers (true) or only Layer 1 (false)
 });
 
 // Trading Sessions
@@ -334,6 +338,13 @@ export const frontendStrategySchema = z.object({
     return !isNaN(num) && num >= 0.0001 && num <= 0.01;
   }, "VWAP buffer must be between 0.0001 and 0.01").optional().default("0.0005"),
   vwapEnableBuffer: z.boolean().optional().default(true),
+  // Adaptive Position Sizing (Percentile-Based)
+  adaptiveSizingEnabled: z.boolean().optional().default(false),
+  maxSizeMultiplier: z.string().refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 1.0 && num <= 10.0;
+  }, "Max size multiplier must be between 1.0 and 10.0").optional().default("3.0"),
+  scaleAllLayers: z.boolean().optional().default(false),
 });
 
 // Update schema for partial updates

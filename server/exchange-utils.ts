@@ -1,4 +1,5 @@
 import { createHmac } from 'crypto';
+import { rateLimiter } from './rate-limiter';
 
 // Fetch actual fill data from Aster DEX for a specific order
 export async function fetchActualFills(params: {
@@ -33,7 +34,7 @@ export async function fetchActualFills(params: {
       symbol,
       orderId,
       timestamp,
-      recvWindow: 5000,
+      recvWindow: 30000,
     };
     
     // Create query string (sorted alphabetically)
@@ -48,9 +49,9 @@ export async function fetchActualFills(params: {
       .digest('hex');
     
     const signedParams = `${queryString}&signature=${signature}`;
-    
-    // Fetch actual fills from exchange
-    const response = await fetch(`https://fapi.asterdex.com/fapi/v1/userTrades?${signedParams}`, {
+
+    // Fetch actual fills from exchange (with rate limiting)
+    const response = await rateLimiter.fetch(`https://fapi.asterdex.com/fapi/v1/userTrades?${signedParams}`, {
       method: 'GET',
       headers: {
         'X-MBX-APIKEY': apiKey,
@@ -168,7 +169,7 @@ export async function fetchPositionPnL(params: {
       const timestamp = Date.now();
       
       // Build params - use fromId for pagination
-      let params = `symbol=${symbol}&timestamp=${timestamp}&limit=1000&recvWindow=5000`;
+      let params = `symbol=${symbol}&timestamp=${timestamp}&limit=1000&recvWindow=30000`;
       if (fromId !== null) {
         params += `&fromId=${fromId}`;
       }
@@ -182,8 +183,8 @@ export async function fetchPositionPnL(params: {
         .digest('hex');
       
       const signedParams = `${queryString}&signature=${signature}`;
-      
-      const response = await fetch(`https://fapi.asterdex.com/fapi/v1/userTrades?${signedParams}`, {
+
+      const response = await rateLimiter.fetch(`https://fapi.asterdex.com/fapi/v1/userTrades?${signedParams}`, {
         method: 'GET',
         headers: {
           'X-MBX-APIKEY': apiKey,

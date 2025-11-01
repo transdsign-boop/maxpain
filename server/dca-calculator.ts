@@ -18,6 +18,7 @@ export interface DCAConfig {
   atrPercent: number; // Current volatility as percentage
   minNotional?: number; // Minimum order value required by exchange (price × quantity) in USD
   minQty?: number; // Minimum order quantity required by exchange in base asset (e.g., 0.001 BTC)
+  percentile?: number; // Liquidation percentile rank (0-100) for adaptive sizing
 }
 
 export interface DCAResult {
@@ -236,9 +237,37 @@ export function calculateDCALevels(
   const marginToUse = (currentBalance * marginPercent / 100) * (delta1 / 100); // Start Step % of margin
   const notionalValue = marginToUse * leverage; // Apply leverage for notional
   let q1 = notionalValue / entryPrice; // Convert to quantity
-  
-  console.log(`   💵 Layer 1 sizing: margin=$${marginToUse.toFixed(2)} (${delta1}% of ${marginPercent}% margin), leveraged=$${notionalValue.toFixed(2)}, q1=${q1.toFixed(6)} units`);
-  
+
+  console.log(`   💵 Layer 1 base sizing: margin=$${marginToUse.toFixed(2)} (${delta1}% of ${marginPercent}% margin), leveraged=$${notionalValue.toFixed(2)}, q1=${q1.toFixed(6)} units`);
+
+  // Step 6.1: Apply Percentile-Based Adaptive Sizing (if enabled)
+  // Scales Layer 1 size based on liquidation event magnitude
+  // Linear scaling: 1.0x at threshold → maxMultiplier at 95th+ percentile
+  let sizeMultiplier = 1.0; // Default: no scaling
+
+  if (strategy.adaptiveSizingEnabled && config.percentile !== undefined) {
+    const threshold = strategy.percentileThreshold;
+    const maxMultiplier = parseFloat(strategy.maxSizeMultiplier?.toString() || '3.0');
+    const percentile = config.percentile;
+
+    if (percentile >= threshold) {
+      // Linear interpolation from 1.0x at threshold to maxMultiplier at 95th percentile
+      const percentileRange = 95 - threshold; // e.g., 95 - 40 = 55
+      const percentileProgress = Math.min(percentile - threshold, 95 - threshold); // Clamp to 95th max
+      sizeMultiplier = 1.0 + ((percentileProgress / percentileRange) * (maxMultiplier - 1.0));
+
+      console.log(`   📊 Adaptive sizing: ${percentile.toFixed(1)}th percentile → ${sizeMultiplier.toFixed(2)}x multiplier (${threshold}th = 1.0x, 95th+ = ${maxMultiplier.toFixed(1)}x)`);
+
+      // Apply multiplier to Layer 1
+      const baseQ1 = q1;
+      q1 = q1 * sizeMultiplier;
+
+      console.log(`   📈 Layer 1 scaled: ${baseQ1.toFixed(6)} units → ${q1.toFixed(6)} units ($${(q1 * entryPrice).toFixed(2)} notional)`);
+    } else {
+      console.log(`   📊 Adaptive sizing: ${percentile.toFixed(1)}th percentile < ${threshold}th threshold → no scaling applied`);
+    }
+  }
+
   // Calculate risk metrics (for reporting, not for sizing)
   const lossPerUnit = Math.abs(avgEntryPrice - stopPrice);
   const totalPositionRisk = q1 * totalWeight * lossPerUnit; // Actual risk dollars for this position

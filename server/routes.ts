@@ -15,6 +15,7 @@ import { desc, eq, sql, gte, lte, and, asc } from "drizzle-orm";
 import { fetchRealizedPnlEvents, fetchAllAccountTrades } from "./exchange-sync";
 import { fetchPositionPnL } from "./exchange-utils";
 import { getConsoleLogs } from "./console-logger";
+import { rateLimiter } from "./rate-limiter";
 
 // Fixed liquidation window - always 60 seconds regardless of user input
 const LIQUIDATION_WINDOW_SECONDS = 60;
@@ -114,7 +115,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .update(queryString)
         .digest('hex');
       
-      const response = await fetch(
+      const response = await rateLimiter.fetch(
         `https://fapi.asterdex.com/fapi/v2/positionRisk?${queryString}&signature=${signature}`,
         {
           headers: { 'X-MBX-APIKEY': apiKey }
@@ -743,7 +744,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               : 'technology,finance,earnings';
             
             const avUrl = `https://www.alphavantage.co/query?function=NEWS_SENTIMENT&topics=${topics}&limit=10&apikey=${alphaVantageKey}`;
-            const avResponse = await fetch(avUrl);
+            const avResponse = await rateLimiter.fetch(avUrl);
             
             if (avResponse.ok) {
               const avData = await avResponse.json();
@@ -774,7 +775,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const cryptoNewsKey = process.env.CRYPTO_NEWS_API_KEY;
           if (cryptoNewsKey) {
             const cnUrl = `https://cryptonews-api.com/api/v1?tickers=BTC,ETH,ASTER&items=10&token=${cryptoNewsKey}`;
-            const cnResponse = await fetch(cnUrl);
+            const cnResponse = await rateLimiter.fetch(cnUrl);
             
             if (cnResponse.ok) {
               const cnData = await cnResponse.json();
@@ -805,7 +806,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const truthSocialKey = process.env.TRUTH_SOCIAL_API_KEY;
           if (truthSocialKey) {
             const tsUrl = `https://api.scrapecreators.com/v1/truthsocial/profile?handle=realDonaldTrump`;
-            const tsResponse = await fetch(tsUrl, {
+            const tsResponse = await rateLimiter.fetch(tsUrl, {
               headers: { 'x-api-key': truthSocialKey }
             });
             
@@ -919,7 +920,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Fetch order book data for top symbols (in parallel with limit)
       const orderBookPromises = topSymbols.slice(0, 5).map(async (symbol) => {
         try {
-          const response = await fetch(
+          const response = await rateLimiter.fetch(
             `https://fapi.asterdex.com/fapi/v1/depth?symbol=${symbol}&limit=100`,
             {
               headers: {
@@ -1102,7 +1103,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('🧪 Testing Aster DEX API connection...');
       
       // Make request to Aster DEX API (futures endpoint)
-      const response = await fetch(`https://fapi.asterdex.com/fapi/v2/account?${signedParams}`, {
+      const response = await rateLimiter.fetch(`https://fapi.asterdex.com/fapi/v2/account?${signedParams}`, {
         method: 'GET',
         headers: {
           'X-MBX-APIKEY': apiKey,
@@ -1357,7 +1358,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Fetch order book data from Aster DEX
-      const orderBookResponse = await fetch(`https://fapi.asterdex.com/fapi/v1/depth?symbol=${symbol}&limit=100`, {
+      const orderBookResponse = await rateLimiter.fetch(`https://fapi.asterdex.com/fapi/v1/depth?symbol=${symbol}&limit=100`, {
         headers: {
           'X-MBX-APIKEY': process.env.ASTER_API_KEY || ''
         }
@@ -1586,7 +1587,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Fetch funding rate data from Aster DEX
-      const fundingResponse = await fetch(`https://fapi.asterdex.com/fapi/v1/fundingRate?symbol=${symbol}&limit=24`, {
+      const fundingResponse = await rateLimiter.fetch(`https://fapi.asterdex.com/fapi/v1/fundingRate?symbol=${symbol}&limit=24`, {
         headers: {
           'X-MBX-APIKEY': process.env.ASTER_API_KEY || ''
         }
@@ -1745,7 +1746,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const startTime = endTime - (hours * 60 * 60 * 1000);
       
       // Fetch klines data from Aster DEX
-      const klinesResponse = await fetch(`https://fapi.asterdex.com/fapi/v1/klines?symbol=${symbol}&interval=${interval}&startTime=${startTime}&endTime=${endTime}&limit=1000`, {
+      const klinesResponse = await rateLimiter.fetch(`https://fapi.asterdex.com/fapi/v1/klines?symbol=${symbol}&interval=${interval}&startTime=${startTime}&endTime=${endTime}&limit=1000`, {
         headers: {
           'X-MBX-APIKEY': process.env.ASTER_API_KEY || ''
         }
@@ -1855,7 +1856,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Aster DEX symbols API
   app.get("/api/symbols", async (req, res) => {
     try {
-      const response = await fetch('https://fapi.asterdex.com/fapi/v1/exchangeInfo');
+      const response = await rateLimiter.fetch('https://fapi.asterdex.com/fapi/v1/exchangeInfo');
       if (!response.ok) {
         throw new Error(`Failed to fetch from Aster DEX: ${response.status}`);
       }
@@ -2358,7 +2359,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Aster DEX API key not configured" });
       }
 
-      const response = await fetch(
+      const response = await rateLimiter.fetch(
         'https://fapi.asterdex.com/fapi/v1/listenKey',
         {
           method: 'POST',
@@ -2391,7 +2392,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Aster DEX API key not configured" });
       }
 
-      const response = await fetch(
+      const response = await rateLimiter.fetch(
         'https://fapi.asterdex.com/fapi/v1/listenKey',
         {
           method: 'PUT',
@@ -2424,7 +2425,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Aster DEX API key not configured" });
       }
 
-      const response = await fetch(
+      const response = await rateLimiter.fetch(
         'https://fapi.asterdex.com/fapi/v1/listenKey',
         {
           method: 'DELETE',
@@ -2490,7 +2491,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .update(params)
         .digest('hex');
 
-      const response = await fetch(
+      const response = await rateLimiter.fetch(
         `https://fapi.asterdex.com/fapi/v2/positionRisk?${params}&signature=${signature}`,
         {
           headers: {
@@ -2582,7 +2583,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .update(params)
         .digest('hex');
 
-      const response = await fetch(
+      const response = await rateLimiter.fetch(
         `https://fapi.asterdex.com/fapi/v1/openOrders?${params}&signature=${signature}`,
         {
           headers: {
@@ -2623,13 +2624,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Fetch all open orders from exchange
       const timestamp = Date.now();
-      const params = `timestamp=${timestamp}&recvWindow=5000`;
+      const params = `timestamp=${timestamp}&recvWindow=30000`;
       const signature = crypto
         .createHmac('sha256', secretKey)
         .update(params)
         .digest('hex');
 
-      const response = await fetch(
+      const response = await rateLimiter.fetch(
         `https://fapi.asterdex.com/fapi/v1/openOrders?${params}&signature=${signature}`,
         {
           headers: {
@@ -2663,13 +2664,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       for (const order of tpslOrders) {
         try {
           const cancelTimestamp = Date.now();
-          const cancelParams = `symbol=${order.symbol}&orderId=${order.orderId}&timestamp=${cancelTimestamp}&recvWindow=5000`;
+          const cancelParams = `symbol=${order.symbol}&orderId=${order.orderId}&timestamp=${cancelTimestamp}&recvWindow=30000`;
           const cancelSignature = crypto
             .createHmac('sha256', secretKey)
             .update(cancelParams)
             .digest('hex');
 
-          const cancelResponse = await fetch(
+          const cancelResponse = await rateLimiter.fetch(
             `https://fapi.asterdex.com/fapi/v1/order?${cancelParams}&signature=${cancelSignature}`,
             {
               method: 'DELETE',
@@ -2744,7 +2745,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`📊 Found ${openPositions.length} open positions to check`);
 
       // Fetch exchange precision info once for all symbols
-      const precisionResponse = await fetch('https://fapi.asterdex.com/fapi/v1/exchangeInfo');
+      const precisionResponse = await rateLimiter.fetch('https://fapi.asterdex.com/fapi/v1/exchangeInfo');
       const precisionData = await precisionResponse.json();
       const symbolPrecisionMap = new Map();
       
@@ -2772,13 +2773,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         try {
           // Fetch existing orders for this symbol
           const timestamp = Date.now();
-          const params = `symbol=${position.symbol}&timestamp=${timestamp}&recvWindow=5000`;
+          const params = `symbol=${position.symbol}&timestamp=${timestamp}&recvWindow=30000`;
           const signature = crypto
             .createHmac('sha256', secretKey)
             .update(params)
             .digest('hex');
 
-          const response = await fetch(
+          const response = await rateLimiter.fetch(
             `https://fapi.asterdex.com/fapi/v1/openOrders?${params}&signature=${signature}`,
             {
               headers: {
@@ -2860,7 +2861,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               price: tpPrice.toFixed(pricePrecision),
               timeInForce: 'GTC',
               timestamp: tpTimestamp,
-              recvWindow: 5000,
+              recvWindow: 30000,
             };
             
             const tpQueryString = Object.entries(tpParams)
@@ -2873,7 +2874,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               .update(tpQueryString)
               .digest('hex');
             
-            const tpResponse = await fetch(
+            const tpResponse = await rateLimiter.fetch(
               `https://fapi.asterdex.com/fapi/v1/order?${tpQueryString}&signature=${tpSignature}`,
               {
                 method: 'POST',
@@ -2907,7 +2908,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               quantity: quantity.toFixed(qtyPrecision),
               stopPrice: slPrice.toFixed(pricePrecision),
               timestamp: slTimestamp,
-              recvWindow: 5000,
+              recvWindow: 30000,
             };
             
             const slQueryString = Object.entries(slParams)
@@ -2920,7 +2921,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               .update(slQueryString)
               .digest('hex');
             
-            const slResponse = await fetch(
+            const slResponse = await rateLimiter.fetch(
               `https://fapi.asterdex.com/fapi/v1/order?${slQueryString}&signature=${slSignature}`,
               {
                 method: 'POST',
@@ -3005,7 +3006,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .update(params)
         .digest('hex');
 
-      const response = await fetch(
+      const response = await rateLimiter.fetch(
         `https://fapi.asterdex.com/fapi/v1/userTrades?${params}&signature=${signature}`,
         {
           headers: {
@@ -3046,7 +3047,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .update(queryParams)
         .digest('hex');
 
-      const response = await fetch(
+      const response = await rateLimiter.fetch(
         `https://fapi.asterdex.com/fapi/v1/income?${queryParams}&signature=${signature}`,
         {
           headers: { 'X-MBX-APIKEY': apiKey },
@@ -3113,7 +3114,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .digest('hex');
         params.append('signature', signature);
 
-        const response = await fetch(
+        const response = await rateLimiter.fetch(
           `https://fapi.asterdex.com/fapi/v1/income?${params}`,
           { headers: { 'X-MBX-APIKEY': apiKey } }
         );
@@ -3242,7 +3243,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const signature = crypto.createHmac('sha256', secretKey).update(params.toString()).digest('hex');
         params.append('signature', signature);
 
-        const response = await fetch(`https://fapi.asterdex.com/fapi/v1/income?${params}`, {
+        const response = await rateLimiter.fetch(`https://fapi.asterdex.com/fapi/v1/income?${params}`, {
           headers: { 'X-MBX-APIKEY': apiKey },
         });
 
@@ -3347,7 +3348,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const signature = crypto.createHmac('sha256', secretKey).update(params.toString()).digest('hex');
       params.append('signature', signature);
 
-      const response = await fetch(`https://fapi.asterdex.com/fapi/v2/account?${params}`, {
+      const response = await rateLimiter.fetch(`https://fapi.asterdex.com/fapi/v2/account?${params}`, {
         headers: { 'X-MBX-APIKEY': apiKey },
       });
 
@@ -3404,7 +3405,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const signature = crypto.createHmac('sha256', secretKey).update(params.toString()).digest('hex');
           params.append('signature', signature);
 
-          const response = await fetch(`https://fapi.asterdex.com/fapi/v2/account?${params}`, {
+          const response = await rateLimiter.fetch(`https://fapi.asterdex.com/fapi/v2/account?${params}`, {
             headers: { 'X-MBX-APIKEY': apiKey },
           });
 
@@ -3482,7 +3483,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const signature = crypto.createHmac('sha256', secretKey).update(params.toString()).digest('hex');
           params.append('signature', signature);
 
-          const response = await fetch(`https://fapi.asterdex.com/fapi/v2/account?${params}`, {
+          const response = await rateLimiter.fetch(`https://fapi.asterdex.com/fapi/v2/account?${params}`, {
             headers: { 'X-MBX-APIKEY': apiKey },
           });
 
@@ -3782,7 +3783,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const signature = crypto.createHmac('sha256', secretKey).update(params.toString()).digest('hex');
       params.append('signature', signature);
 
-      const response = await fetch(`https://fapi.asterdex.com/fapi/v2/account?${params}`, {
+      const response = await rateLimiter.fetch(`https://fapi.asterdex.com/fapi/v2/account?${params}`, {
         headers: { 'X-MBX-APIKEY': apiKey },
       });
 
@@ -4292,7 +4293,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Generate report (reuse logic from main endpoint - this could be refactored into a function)
-      const reportResponse = await fetch(`http://localhost:${process.env.PORT || 5000}/api/account/investor-report`);
+      const reportResponse = await rateLimiter.fetch(`http://localhost:${process.env.PORT || 5000}/api/account/investor-report`);
       if (!reportResponse.ok) {
         throw new Error('Failed to fetch report data');
       }
@@ -4411,7 +4412,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const signature = crypto.createHmac('sha256', secretKey).update(params.toString()).digest('hex');
       params.append('signature', signature);
 
-      const response = await fetch(`https://fapi.asterdex.com/fapi/v2/account?${params}`, {
+      const response = await rateLimiter.fetch(`https://fapi.asterdex.com/fapi/v2/account?${params}`, {
         headers: { 'X-MBX-APIKEY': apiKey },
       });
 
@@ -4588,7 +4589,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .digest('hex');
       params.append('signature', signature);
       
-      const response = await fetch(`https://fapi.asterdex.com/fapi/v1/income?${params}`, {
+      const response = await rateLimiter.fetch(`https://fapi.asterdex.com/fapi/v1/income?${params}`, {
         headers: { 'X-MBX-APIKEY': apiKey },
       });
       
@@ -4715,7 +4716,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const params = `timestamp=${timestamp}`;
             const signature = crypto.createHmac('sha256', secretKey).update(params).digest('hex');
 
-            const response = await fetch(
+            const response = await rateLimiter.fetch(
               `https://fapi.asterdex.com/fapi/v2/account?${params}&signature=${signature}`,
               { headers: { 'X-MBX-APIKEY': apiKey } }
             );
@@ -4811,7 +4812,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             .update(params)
             .digest('hex');
 
-          const response = await fetch(
+          const response = await rateLimiter.fetch(
             `https://fapi.asterdex.com/fapi/v2/positionRisk?${params}&signature=${signature}`,
             {
               headers: { 'X-MBX-APIKEY': apiKey },
@@ -5248,7 +5249,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const params = `timestamp=${timestamp}`;
             const signature = crypto.createHmac('sha256', secretKey).update(params).digest('hex');
 
-            const response = await fetch(
+            const response = await rateLimiter.fetch(
               `https://fapi.asterdex.com/fapi/v2/account?${params}&signature=${signature}`,
               { headers: { 'X-MBX-APIKEY': apiKey } }
             );
@@ -5271,20 +5272,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
               // Actual realized P&L = wallet - deposits
               const actualRealizedPnl = currentWalletBalance - totalDeposits;
 
-              // Calculate scaling factor
-              const scalingFactor = actualRealizedPnl / chartCalculatedPnl;
+              // Calculate adjustment offset (not a multiplier - prevents chart inversion)
+              const adjustmentOffset = actualRealizedPnl - chartCalculatedPnl;
 
               console.log(`📊 Chart P&L (from trades): $${chartCalculatedPnl.toFixed(2)}`);
               console.log(`💰 Actual P&L (wallet - deposits): $${actualRealizedPnl.toFixed(2)}`);
-              console.log(`📏 Scaling factor: ${scalingFactor.toFixed(4)}`);
+              console.log(`📏 Adjustment offset: $${adjustmentOffset.toFixed(2)}`);
 
-              // Scale all cumulative P&L values to match reality
-              scaledChartData = chartData.map(point => ({
-                ...point,
-                cumulativePnl: point.cumulativePnl * scalingFactor,
-              }));
+              // Adjust all cumulative P&L values by adding the offset
+              // This preserves the shape of the chart while matching the final value
+              scaledChartData = chartData.map((point, index) => {
+                // Proportionally distribute the adjustment across the chart
+                const progress = index / (chartData.length - 1 || 1);
+                const proportionalAdjustment = adjustmentOffset * progress;
 
-              console.log(`✅ Chart scaled to match actual wallet balance`);
+                return {
+                  ...point,
+                  cumulativePnl: point.cumulativePnl + proportionalAdjustment,
+                };
+              });
+
+              console.log(`✅ Chart adjusted to match actual wallet balance`);
             }
           }
         } catch (error) {
@@ -5457,7 +5465,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   const crypto = require('crypto');
                   const signature = crypto.createHmac('sha256', secretKey).update(queryString).digest('hex');
                   
-                  const balanceResponse = await fetch(
+                  const balanceResponse = await rateLimiter.fetch(
                     `https://fapi.asterdex.com/fapi/v2/account?${queryString}&signature=${signature}`,
                     { headers: { 'X-MBX-APIKEY': apiKey } }
                   );
@@ -5552,7 +5560,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         adaptiveSlEnabled: strategy.adaptive_sl_enabled,
         slAtrMultiplier: strategy.sl_atr_multiplier,
         minSlPercent: strategy.min_sl_percent,
-        maxSlPercent: strategy.max_sl_percent
+        maxSlPercent: strategy.max_sl_percent,
+        adaptiveSizingEnabled: strategy.adaptive_sizing_enabled,
+        maxSizeMultiplier: strategy.max_size_multiplier,
+        scaleAllLayers: strategy.scale_all_layers
       });
     } catch (error) {
       console.error('Error fetching DCA settings:', error);
@@ -5761,8 +5772,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const num = parseFloat(val);
           return !isNaN(num) && num >= 1.0 && num <= 100;
         }, "Must be between 1.0 and 100").nullable().optional(),
+        adaptiveSizingEnabled: z.union([z.boolean(), z.string()]).transform((val) => {
+          if (typeof val === 'boolean') return val;
+          return val === 'true';
+        }).nullable().optional(),
+        maxSizeMultiplier: z.string().refine((val) => {
+          const num = parseFloat(val);
+          return !isNaN(num) && num >= 1.0 && num <= 10.0;
+        }, "Must be between 1.0 and 10.0").nullable().optional(),
+        scaleAllLayers: z.union([z.boolean(), z.string()]).transform((val) => {
+          if (typeof val === 'boolean') return val;
+          return val === 'true';
+        }).nullable().optional(),
       });
-      
       const validatedData = dcaUpdateSchema.parse(req.body);
       
       // Filter out null and undefined values
@@ -5860,7 +5882,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           for (const symbol of strategy.selectedAssets) {
             try {
-              const response = await fetch(
+              const response = await rateLimiter.fetch(
                 `https://fapi.asterdex.com/fapi/v1/ticker/24hr?symbol=${symbol}`,
                 {
                   headers: {
@@ -6250,7 +6272,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           let currentPrice: number | null = null;
           try {
             const asterApiUrl = `https://fapi.asterdex.com/fapi/v1/ticker/price?symbol=${position.symbol}`;
-            const priceResponse = await fetch(asterApiUrl);
+            const priceResponse = await rateLimiter.fetch(asterApiUrl);
             
             if (priceResponse.ok) {
               const priceData = await priceResponse.json();
@@ -6555,7 +6577,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       .digest('hex');
 
     try {
-      const response = await fetch(
+      const response = await rateLimiter.fetch(
         `https://fapi.asterdex.com/fapi/v1/userTrades?${params}&signature=${signature}`,
         {
           headers: { 'X-MBX-APIKEY': apiKey },
@@ -6654,7 +6676,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const queryString = `timestamp=${timestamp}`;
         const signature = crypto.createHmac('sha256', secretKey!).update(queryString).digest('hex');
 
-        const accountResponse = await fetch(
+        const accountResponse = await rateLimiter.fetch(
           `https://fapi.asterdex.com/fapi/v2/account?${queryString}&signature=${signature}`,
           { headers: { 'X-MBX-APIKEY': apiKey! } }
         );
@@ -6771,7 +6793,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .update(posCheckParams)
           .digest('hex');
 
-        const posCheckResponse = await fetch(
+        const posCheckResponse = await rateLimiter.fetch(
           `https://fapi.asterdex.com/fapi/v2/positionRisk?${posCheckParams}&signature=${posCheckSignature}`,
           {
             headers: { 'X-MBX-APIKEY': apiKey },
@@ -6838,7 +6860,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   } else {
                     // No exit fills found, fetch current price to estimate P&L
                     try {
-                      const priceResponse = await fetch(`https://fapi.asterdex.com/fapi/v1/ticker/price?symbol=${dbPos.symbol}`);
+                      const priceResponse = await rateLimiter.fetch(`https://fapi.asterdex.com/fapi/v1/ticker/price?symbol=${dbPos.symbol}`);
                       if (priceResponse.ok) {
                         const priceData = await priceResponse.json();
                         const currentPrice = parseFloat(priceData.price);
@@ -6949,7 +6971,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .update(accountParams)
           .digest('hex');
 
-        const accountResponse = await fetch(
+        const accountResponse = await rateLimiter.fetch(
           `https://fapi.asterdex.com/fapi/v2/account?${accountParams}&signature=${accountSignature}`,
           {
             headers: { 'X-MBX-APIKEY': apiKey },
@@ -6993,7 +7015,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .update(posParams)
           .digest('hex');
 
-        const posResponse = await fetch(
+        const posResponse = await rateLimiter.fetch(
           `https://fapi.asterdex.com/fapi/v2/positionRisk?${posParams}&signature=${posSignature}`,
           {
             headers: { 'X-MBX-APIKEY': apiKey },
@@ -7019,7 +7041,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         let allExchangeFills: any[] = [];
         try {
-          const fillsResponse = await fetch(
+          const fillsResponse = await rateLimiter.fetch(
             `https://fapi.asterdex.com/fapi/v1/userTrades?${fillsParams}&signature=${fillsSignature}`,
             {
               headers: { 'X-MBX-APIKEY': apiKey },
@@ -7463,7 +7485,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .update(params)
         .digest('hex');
 
-      const response = await fetch(
+      const response = await rateLimiter.fetch(
         `https://fapi.asterdex.com/fapi/v1/openOrders?${params}&signature=${signature}`,
         {
           headers: { 'X-MBX-APIKEY': apiKey },
@@ -7635,7 +7657,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .update(params)
         .digest('hex');
 
-      const accountResponse = await fetch(
+      const accountResponse = await rateLimiter.fetch(
         `https://fapi.asterdex.com/fapi/v2/account?${params}&signature=${signature}`,
         {
           headers: { 'X-MBX-APIKEY': apiKey },
@@ -7675,7 +7697,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .update(params)
         .digest('hex');
 
-      const tradesResponse = await fetch(
+      const tradesResponse = await rateLimiter.fetch(
         `https://fapi.asterdex.com/fapi/v1/userTrades?${params}&signature=${signature}`,
         {
           headers: { 'X-MBX-APIKEY': apiKey },
@@ -7771,7 +7793,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .digest('hex');
 
         try {
-          const response = await fetch(
+          const response = await rateLimiter.fetch(
             `https://fapi.asterdex.com/fapi/v1/userTrades?${params}&signature=${signature}`,
             {
               headers: { 'X-MBX-APIKEY': apiKey },
@@ -7819,7 +7841,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             .update(posParams)
             .digest('hex');
 
-          const posResponse = await fetch(
+          const posResponse = await rateLimiter.fetch(
             `https://fapi.asterdex.com/fapi/v2/positionRisk?${posParams}&signature=${posSignature}`,
             {
               headers: { 'X-MBX-APIKEY': apiKey },
@@ -8007,7 +8029,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .update(posParams)
           .digest('hex');
 
-        const posResponse = await fetch(
+        const posResponse = await rateLimiter.fetch(
           `https://fapi.asterdex.com/fapi/v2/positionRisk?${posParams}&signature=${posSignature}`,
           {
             headers: { 'X-MBX-APIKEY': apiKey },
@@ -8045,7 +8067,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .update(orderParams)
           .digest('hex');
 
-        const orderResponse = await fetch(
+        const orderResponse = await rateLimiter.fetch(
           `https://fapi.asterdex.com/fapi/v1/order?${orderParams}&signature=${orderSignature}`,
           {
             method: 'POST',
@@ -8094,7 +8116,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let currentPrice: number | null = null;
       try {
         const asterApiUrl = `https://fapi.asterdex.com/fapi/v1/ticker/price?symbol=${position.symbol}`;
-        const priceResponse = await fetch(asterApiUrl);
+        const priceResponse = await rateLimiter.fetch(asterApiUrl);
         
         if (priceResponse.ok) {
           const priceData = await priceResponse.json();
@@ -9345,7 +9367,7 @@ async function getOrCreateListenKey(): Promise<string | null> {
 
   try {
     console.log('🔑 Creating new User Data Stream listen key...');
-    const response = await fetch('https://fapi.asterdex.com/fapi/v1/listenKey', {
+    const response = await rateLimiter.fetch('https://fapi.asterdex.com/fapi/v1/listenKey', {
       method: 'POST',
       headers: {
         'X-MBX-APIKEY': apiKey,
@@ -9380,7 +9402,7 @@ async function sendKeepalive(): Promise<boolean> {
 
   try {
     console.log('💓 Sending User Data Stream keepalive...');
-    const response = await fetch('https://fapi.asterdex.com/fapi/v1/listenKey', {
+    const response = await rateLimiter.fetch('https://fapi.asterdex.com/fapi/v1/listenKey', {
       method: 'PUT',
       headers: {
         'X-MBX-APIKEY': apiKey,

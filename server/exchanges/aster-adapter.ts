@@ -6,6 +6,7 @@
  */
 
 import { createHmac } from 'crypto';
+import { rateLimiter } from '../rate-limiter';
 import {
   ExchangeType,
   ExchangeConfig,
@@ -63,7 +64,7 @@ export class AsterExchangeAdapter implements IExchangeAdapter {
 
   private createSignedRequest(params: Record<string, any>): { queryString: string; signature: string } {
     const timestamp = Date.now();
-    const allParams = { ...params, timestamp, recvWindow: 5000 };
+    const allParams = { ...params, timestamp, recvWindow: 30000 };
     
     const queryString = Object.entries(allParams)
       .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
@@ -82,7 +83,7 @@ export class AsterExchangeAdapter implements IExchangeAdapter {
   async getAccountInfo(): Promise<NormalizedAccountInfo> {
     const { queryString, signature } = this.createSignedRequest({});
     
-    const response = await fetch(
+    const response = await rateLimiter.fetch(
       `${this.baseURL}/fapi/v2/account?${queryString}&signature=${signature}`,
       { headers: { 'X-MBX-APIKEY': this.apiKey } }
     );
@@ -118,7 +119,7 @@ export class AsterExchangeAdapter implements IExchangeAdapter {
   async getPositions(): Promise<NormalizedPosition[]> {
     const { queryString, signature } = this.createSignedRequest({});
     
-    const response = await fetch(
+    const response = await rateLimiter.fetch(
       `${this.baseURL}/fapi/v2/positionRisk?${queryString}&signature=${signature}`,
       { headers: { 'X-MBX-APIKEY': this.apiKey } }
     );
@@ -166,7 +167,7 @@ export class AsterExchangeAdapter implements IExchangeAdapter {
       leverage: cappedLeverage,
     });
 
-    const response = await fetch(
+    const response = await rateLimiter.fetch(
       `${this.baseURL}/fapi/v1/leverage?${queryString}&signature=${signature}`,
       {
         method: 'POST',
@@ -186,7 +187,7 @@ export class AsterExchangeAdapter implements IExchangeAdapter {
       marginType,
     });
 
-    const response = await fetch(
+    const response = await rateLimiter.fetch(
       `${this.baseURL}/fapi/v1/marginType?${queryString}&signature=${signature}`,
       {
         method: 'POST',
@@ -212,7 +213,7 @@ export class AsterExchangeAdapter implements IExchangeAdapter {
       dualSidePosition: enabled ? 'true' : 'false',
     });
 
-    const response = await fetch(
+    const response = await rateLimiter.fetch(
       `${this.baseURL}/fapi/v1/positionSide/dual?${queryString}&signature=${signature}`,
       {
         method: 'POST',
@@ -266,7 +267,7 @@ export class AsterExchangeAdapter implements IExchangeAdapter {
 
     const { queryString, signature } = this.createSignedRequest(orderParams);
 
-    const response = await fetch(
+    const response = await rateLimiter.fetch(
       `${this.baseURL}/fapi/v1/order?${queryString}&signature=${signature}`,
       {
         method: 'POST',
@@ -345,7 +346,7 @@ export class AsterExchangeAdapter implements IExchangeAdapter {
     const queryParams: Record<string, any> = {
       batchOrders: batchListParam,
       timestamp,
-      recvWindow: 5000,
+      recvWindow: 30000,
     };
 
     const queryString = Object.entries(queryParams)
@@ -355,7 +356,7 @@ export class AsterExchangeAdapter implements IExchangeAdapter {
 
     const signature = this.generateSignature(queryString, timestamp);
 
-    const response = await fetch(
+    const response = await rateLimiter.fetch(
       `${this.baseURL}/fapi/v1/batchOrders?${queryString}&signature=${signature}`,
       {
         method: 'POST',
@@ -407,7 +408,7 @@ export class AsterExchangeAdapter implements IExchangeAdapter {
       orderId,
     });
 
-    const response = await fetch(
+    const response = await rateLimiter.fetch(
       `${this.baseURL}/fapi/v1/order?${queryString}&signature=${signature}`,
       {
         method: 'DELETE',
@@ -424,7 +425,7 @@ export class AsterExchangeAdapter implements IExchangeAdapter {
   async cancelAllOrders(symbol: string): Promise<void> {
     const { queryString, signature } = this.createSignedRequest({ symbol });
 
-    const response = await fetch(
+    const response = await rateLimiter.fetch(
       `${this.baseURL}/fapi/v1/allOpenOrders?${queryString}&signature=${signature}`,
       {
         method: 'DELETE',
@@ -444,7 +445,7 @@ export class AsterExchangeAdapter implements IExchangeAdapter {
       orderId,
     });
 
-    const response = await fetch(
+    const response = await rateLimiter.fetch(
       `${this.baseURL}/fapi/v1/order?${queryString}&signature=${signature}`,
       { headers: { 'X-MBX-APIKEY': this.apiKey } }
     );
@@ -480,7 +481,7 @@ export class AsterExchangeAdapter implements IExchangeAdapter {
 
     const { queryString, signature } = this.createSignedRequest(params);
 
-    const response = await fetch(
+    const response = await rateLimiter.fetch(
       `${this.baseURL}/fapi/v1/openOrders?${queryString}&signature=${signature}`,
       { headers: { 'X-MBX-APIKEY': this.apiKey } }
     );
@@ -513,7 +514,7 @@ export class AsterExchangeAdapter implements IExchangeAdapter {
   // ============================================================================
 
   async getTicker(symbol: string): Promise<NormalizedTicker> {
-    const response = await fetch(
+    const response = await rateLimiter.fetch(
       `${this.baseURL}/fapi/v1/ticker/price?symbol=${symbol}`
     );
 
@@ -533,7 +534,7 @@ export class AsterExchangeAdapter implements IExchangeAdapter {
   }
 
   async getKlines(symbol: string, interval: string, limit: number = 500): Promise<NormalizedKline[]> {
-    const response = await fetch(
+    const response = await rateLimiter.fetch(
       `${this.baseURL}/fapi/v1/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`
     );
 
@@ -555,7 +556,7 @@ export class AsterExchangeAdapter implements IExchangeAdapter {
   }
 
   async getExchangeInfo(): Promise<NormalizedExchangeInfo> {
-    const response = await fetch(`${this.baseURL}/fapi/v1/exchangeInfo`);
+    const response = await rateLimiter.fetch(`${this.baseURL}/fapi/v1/exchangeInfo`);
 
     if (!response.ok) {
       throw new Error(`Failed to fetch exchange info: ${response.statusText}`);
@@ -606,7 +607,7 @@ export class AsterExchangeAdapter implements IExchangeAdapter {
 
     const { queryString, signature } = this.createSignedRequest(queryParams);
 
-    const response = await fetch(
+    const response = await rateLimiter.fetch(
       `${this.baseURL}/fapi/v1/userTrades?${queryString}&signature=${signature}`,
       { headers: { 'X-MBX-APIKEY': this.apiKey } }
     );
@@ -660,7 +661,7 @@ export class AsterExchangeAdapter implements IExchangeAdapter {
 
     const { queryString, signature } = this.createSignedRequest(queryParams);
 
-    const response = await fetch(
+    const response = await rateLimiter.fetch(
       `${this.baseURL}/fapi/v1/income?${queryString}&signature=${signature}`,
       { headers: { 'X-MBX-APIKEY': this.apiKey } }
     );

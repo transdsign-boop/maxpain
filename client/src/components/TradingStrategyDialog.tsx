@@ -114,6 +114,9 @@ interface DCASettings {
   slAtrMultiplier: string;
   minSlPercent: string;
   maxSlPercent: string;
+  adaptiveSizingEnabled: boolean;
+  maxSizeMultiplier: string;
+  scaleAllLayers: boolean;
 }
 
 // VWAP Settings Types
@@ -684,6 +687,80 @@ function DCASettingsSection({ strategyId, isStrategyRunning, saveTrigger }: { st
                     Formula: <code className="bg-background/50 px-1 py-0.5 rounded">SL = clamp(ATR × Multiplier, Min%, Max%)</code>
                     <br />
                     <span className="text-muted-foreground text-xs mt-1 block">Calm markets = tighter SL (closer to Min). Volatile markets = wider SL (closer to Max).</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Adaptive Position Sizing Section */}
+            <Separator className="my-4" />
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4" />
+                  Adaptive Position Sizing (Percentile-Based)
+                </Label>
+                <Switch
+                  id="adaptiveSizingEnabled"
+                  data-testid="switch-adaptive-sizing"
+                  checked={formValues.adaptiveSizingEnabled || false}
+                  onCheckedChange={(checked) => handleInputChange('adaptiveSizingEnabled', checked)}
+                />
+              </div>
+
+              {formValues.adaptiveSizingEnabled && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-muted/30 rounded-md">
+                  <div className="space-y-2">
+                    <Label htmlFor="maxSizeMultiplier" data-testid="label-max-size-multiplier">
+                      Max Size Multiplier
+                    </Label>
+                    <Input
+                      id="maxSizeMultiplier"
+                      data-testid="input-max-size-multiplier"
+                      type="number"
+                      step="0.1"
+                      min="1.0"
+                      max="10.0"
+                      value={formValues.maxSizeMultiplier || ''}
+                      onChange={(e) => handleInputChange('maxSizeMultiplier', e.target.value)}
+                      placeholder="3.0"
+                    />
+                    <div className="text-xs text-muted-foreground">
+                      Maximum position size multiplier at 95th+ percentile (1.0x - 10.0x).
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="scaleAllLayers" className="flex items-center gap-2">
+                      Scale All Layers
+                    </Label>
+                    <div className="flex items-center space-x-2">
+                      <Switch
+                        id="scaleAllLayers"
+                        data-testid="switch-scale-all-layers"
+                        checked={formValues.scaleAllLayers || false}
+                        onCheckedChange={(checked) => handleInputChange('scaleAllLayers', checked)}
+                      />
+                      <Label htmlFor="scaleAllLayers" className="text-sm font-normal text-muted-foreground">
+                        {formValues.scaleAllLayers ? 'All DCA layers scaled' : 'Only Layer 1 scaled'}
+                      </Label>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Scale only initial entry or all DCA layers by percentile.
+                    </div>
+                  </div>
+
+                  <div className="col-span-full text-sm bg-primary/10 border border-primary/20 p-3 rounded-md">
+                    <strong>📊 Percentile-Based Sizing:</strong> System scales Layer 1 position size based on liquidation magnitude.
+                    Formula: <code className="bg-background/50 px-1 py-0.5 rounded">Size = BaseSize × (1.0 + (percentile - threshold) / (95 - threshold) × (MaxMultiplier - 1.0))</code>
+                    <br />
+                    <span className="text-muted-foreground text-xs mt-1 block">
+                      Threshold percentile = 1.0x base size. 95th+ percentile = Max Multiplier. Linear scaling between.
+                    </span>
+                    <br />
+                    <span className="text-muted-foreground text-xs mt-1 block">
+                      <strong>Example with 3.0x max:</strong> 60th percentile → 1.0x ($55), 75th → 1.6x ($88), 90th → 2.3x ($127), 95th+ → 3.0x ($165)
+                    </span>
                   </div>
                 </div>
               )}

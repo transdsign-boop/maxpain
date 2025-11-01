@@ -159,7 +159,19 @@
       "Bash(then echo \"✅ Server is ready - changes reverted\")",
       "Bash(then echo \"✅ Replit dev server is ready and online\")",
       "Bash(then echo 'Port 5000 still in use, killing...')",
-      "Bash(then echo \"✅ Server is online and ready after $i seconds\")"
+      "Bash(then echo \"✅ Server is online and ready after $i seconds\")",
+      "Bash(timeout 10 node:*)",
+      "Bash(then echo \"✅ Server ready with all rate limiting fixes\")",
+      "Bash(then echo \"✅ Server ready - all rate limiting fixed\")",
+      "Bash(then echo \"✅ Server ready with function export fix\")",
+      "Bash(then echo \"✅ Server ready with built-in rate limiter\")",
+      "Bash(ASTER_API_KEY=\"$ASTER_API_KEY\" ASTER_SECRET_KEY=\"$ASTER_SECRET_KEY\" node:*)",
+      "Bash(ASTER_API_KEY=\"$ASTER_API_KEY\" ASTER_SECRET_KEY=\"$ASTER_SECRET_KEY\" timeout 10 node:*)",
+      "Bash(PGPASSWORD=\"\" psql:*)",
+      "Bash(timeout 5 node:*)",
+      "Bash(then echo \"Port 5000 in use, killing...\")",
+      "Bash(else echo '✅ Port 5000 is free')",
+      "Bash(then echo \"✅ Server restarted and ready after $i seconds\")"
     ],
     "deny": [],
     "ask": []

@@ -21,6 +21,7 @@ import { ProtectiveOrderRecovery } from './protective-order-recovery';
 import { wsBroadcaster } from './websocket-broadcaster';
 import { telegramService } from './telegram-service';
 import { vwapFilterManager } from './vwap-direction-filter';
+import { rateLimiter } from './rate-limiter';
 
 // Aster DEX fee schedule
 const ASTER_MAKER_FEE_PERCENT = 0.01;  // 0.01% for limit orders (adds liquidity) 
@@ -136,7 +137,7 @@ export class StrategyEngine extends EventEmitter {
     
     // Cache miss - fetch from exchange
     try {
-      const response = await fetch('https://fapi.asterdex.com/fapi/v1/exchangeInfo');
+      const response = await rateLimiter.fetch('https://fapi.asterdex.com/fapi/v1/exchangeInfo');
       if (!response.ok) {
         console.error('❌ Failed to fetch exchange info:', response.statusText);
         return;
@@ -232,7 +233,10 @@ export class StrategyEngine extends EventEmitter {
     
     // Fetch and cache the exchange's position mode setting
     this.exchangePositionMode = await this.fetchExchangePositionMode();
-    
+
+    // Initialize leverage cache from existing positions to avoid redundant API calls
+    await this.initializeLeverageCache();
+
     // Load active strategies and sessions
     await this.loadActiveStrategies();
     
@@ -287,8 +291,8 @@ export class StrategyEngine extends EventEmitter {
     // Fallback: fetch from exchange ticker API
     try {
       const tickerUrl = `https://fapi.asterdex.com/fapi/v1/ticker/price?symbol=${symbol}`;
-      const response = await fetch(tickerUrl);
-      
+      const response = await this.rateLimitedFetch(tickerUrl);
+
       if (!response.ok) {
         console.log(`⚠️ Failed to fetch ticker for ${symbol}: ${response.status}`);
         return undefined;
@@ -565,7 +569,7 @@ export class StrategyEngine extends EventEmitter {
             .update(accountParams)
             .digest('hex');
           
-          const accountResponse = await fetch(
+          const accountResponse = await this.rateLimitedFetch(
             `https://fapi.asterdex.com/fapi/v2/account?${accountParams}&signature=${accountSignature}`,
             { headers: { 'X-MBX-APIKEY': apiKey } }
           );
@@ -581,7 +585,7 @@ export class StrategyEngine extends EventEmitter {
             .update(positionParams)
             .digest('hex');
           
-          const positionResponse = await fetch(
+          const positionResponse = await this.rateLimitedFetch(
             `https://fapi.asterdex.com/fapi/v2/positionRisk?${positionParams}&signature=${positionSignature}`,
             { headers: { 'X-MBX-APIKEY': apiKey } }
           );
@@ -845,15 +849,12 @@ export class StrategyEngine extends EventEmitter {
 
       if (!directionAllowed) {
         const vwapStatus = vwapFilter.getStatus();
-        const blockReason = `VWAP filter blocks ${positionSide.toUpperCase()} trades (Direction: ${vwapStatus.direction}, Price: $${price.toFixed(2)}, VWAP: $${vwapStatus.currentVWAP.toFixed(2)})`;
+        const blockReason = `VWAP filter blocks ${positionSide.toUpperCase()} trades for ${liquidation.symbol} (Direction: ${vwapStatus.direction}, Price: $${price.toFixed(2)}, VWAP: $${vwapStatus.currentVWAP.toFixed(2)})`;
         console.log(`🚫 VWAP DIRECTION BLOCK: ${blockReason}`);
 
-        // Broadcast block status to frontend
-        wsBroadcaster.broadcastTradeBlock({
-          blocked: true,
-          reason: blockReason,
-          type: 'vwap_direction_block'
-        });
+        // NOTE: No global trade block broadcast - VWAP filtering is per-symbol, not system-wide
+        // Each symbol has its own VWAP calculation and allowed direction
+        // Global broadcast would incorrectly show all trades as blocked
 
         // Log error to database for audit trail
         await this.logTradeEntryError({
@@ -1244,7 +1245,28 @@ export class StrategyEngine extends EventEmitter {
       const minNotional = symbolPrecision.minNotional;
       const minQty = symbolPrecision.minQty;
 
-      // Calculate DCA levels (position sized by Start Step %, not max risk)
+      // Calculate percentile for adaptive position sizing (needed for accurate risk check)
+      const currentLiquidationValue = parseFloat(liquidation.value);
+      const percentileSymbolHistory = await storage.getLiquidationsBySymbol([liquidation.symbol], 10000);
+      let percentileForRiskCheck = 50; // Default fallback
+
+      if (percentileSymbolHistory && percentileSymbolHistory.length > 0) {
+        const historicalValues = percentileSymbolHistory.map(liq => parseFloat(liq.value)).sort((a, b) => a - b);
+        let left = 0, right = historicalValues.length;
+        while (left < right) {
+          const mid = Math.floor((left + right) / 2);
+          if (historicalValues[mid] <= currentLiquidationValue) {
+            left = mid + 1;
+          } else {
+            right = mid;
+          }
+        }
+        percentileForRiskCheck = historicalValues.length > 1
+          ? Math.round((left / historicalValues.length) * 100)
+          : 100;
+      }
+
+      // Calculate DCA levels (position sized by Start Step %, scaled by percentile if enabled)
       const dcaResult = calculateDCALevels(fullStrategy, {
         entryPrice: price,
         side: positionSide as 'long' | 'short',
@@ -1253,6 +1275,7 @@ export class StrategyEngine extends EventEmitter {
         atrPercent,
         minNotional,
         minQty,
+        percentile: percentileForRiskCheck, // Pass percentile for adaptive sizing
       });
       
       // Calculate LAYER 1 ONLY risk (not all 5 layers) for new position
@@ -1696,7 +1719,7 @@ export class StrategyEngine extends EventEmitter {
         .update(params)
         .digest('hex');
 
-      const response = await fetch(
+      const response = await this.rateLimitedFetch(
         `https://fapi.asterdex.com/fapi/v1/account?${params}&signature=${signature}`,
         {
           headers: { 'X-MBX-APIKEY': apiKey },
@@ -1765,7 +1788,7 @@ export class StrategyEngine extends EventEmitter {
         .update(params)
         .digest('hex');
 
-      const response = await fetch(
+      const response = await this.rateLimitedFetch(
         `https://fapi.asterdex.com/fapi/v2/account?${params}&signature=${signature}`,
         { headers: { 'X-MBX-APIKEY': apiKey } }
       );
@@ -2350,6 +2373,33 @@ export class StrategyEngine extends EventEmitter {
       const minNotional = symbolPrecision.minNotional;
       const minQty = symbolPrecision.minQty;
 
+      // Calculate percentile for adaptive position sizing
+      // Query historical liquidations for this symbol to determine percentile rank
+      const currentLiquidationValue = parseFloat(liquidation.value);
+      const symbolHistory = await storage.getLiquidationsBySymbol([liquidation.symbol], 10000);
+      let currentPercentile = 50; // Default fallback if no history
+
+      if (symbolHistory && symbolHistory.length > 0) {
+        const allHistoricalValues = symbolHistory.map(liq => parseFloat(liq.value)).sort((a, b) => a - b);
+
+        // Binary search to find percentile rank
+        let left = 0, right = allHistoricalValues.length;
+        while (left < right) {
+          const mid = Math.floor((left + right) / 2);
+          if (allHistoricalValues[mid] <= currentLiquidationValue) {
+            left = mid + 1;
+          } else {
+            right = mid;
+          }
+        }
+        const belowCount = left;
+        currentPercentile = allHistoricalValues.length > 1
+          ? Math.round((belowCount / allHistoricalValues.length) * 100)
+          : 100;
+
+        console.log(`📊 Adaptive sizing: $${currentLiquidationValue.toFixed(2)} liquidation is at ${currentPercentile}th percentile`);
+      }
+
       // Calculate all DCA levels - we'll use Level 1 for initial entry
       const dcaResult = calculateDCALevels(fullStrategy, {
         entryPrice: price,
@@ -2359,6 +2409,7 @@ export class StrategyEngine extends EventEmitter {
         atrPercent,
         minNotional,
         minQty,
+        percentile: currentPercentile, // Pass percentile for adaptive sizing
       });
       
       const firstLevel = dcaResult.levels[0];
@@ -2725,8 +2776,8 @@ export class StrategyEngine extends EventEmitter {
         let currentPrice = targetPrice; // fallback to target price
         try {
           const asterApiUrl = `https://fapi.asterdex.com/fapi/v1/ticker/price?symbol=${symbol}`;
-          const priceResponse = await fetch(asterApiUrl);
-          
+          const priceResponse = await this.rateLimitedFetch(asterApiUrl);
+
           if (priceResponse.ok) {
             const priceData = await priceResponse.json();
             currentPrice = parseFloat(priceData.price);
@@ -2923,7 +2974,7 @@ export class StrategyEngine extends EventEmitter {
       // Build params object without the batchOrders first
       const params: Record<string, string | number> = {
         timestamp,
-        recvWindow: 5000,
+        recvWindow: 30000,
       };
       
       // Create query string for signature
@@ -2955,7 +3006,7 @@ export class StrategyEngine extends EventEmitter {
       let responseText = '';
       
       while (retryAttempt <= maxRetries) {
-        response = await fetch('https://fapi.asterdex.com/fapi/v1/batchOrders', {
+        response = await this.rateLimitedFetch('https://fapi.asterdex.com/fapi/v1/batchOrders', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
@@ -3121,7 +3172,7 @@ export class StrategyEngine extends EventEmitter {
         type: orderType.toUpperCase(),
         quantity: roundedQuantity,
         timestamp,
-        recvWindow: 5000, // 5 second receive window for clock sync tolerance
+        recvWindow: 30000, // 5 second receive window for clock sync tolerance
       };
       
       // Add positionSide ONLY if the exchange is in dual position mode
@@ -3182,7 +3233,7 @@ export class StrategyEngine extends EventEmitter {
       let responseText = '';
       
       while (retryAttempt <= maxRetries) {
-        response = await fetch('https://fapi.asterdex.com/fapi/v1/order', {
+        response = await this.rateLimitedFetch('https://fapi.asterdex.com/fapi/v1/order', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
@@ -3250,15 +3301,15 @@ export class StrategyEngine extends EventEmitter {
       }
       
       const timestamp = Date.now();
-      const queryString = `timestamp=${timestamp}&recvWindow=5000`;
+      const queryString = `timestamp=${timestamp}&recvWindow=30000`;
       
       const signature = createHmac('sha256', secretKey)
         .update(queryString)
         .digest('hex');
       
       const signedParams = `${queryString}&signature=${signature}`;
-      
-      const response = await fetch(`https://fapi.asterdex.com/fapi/v1/positionSide/dual?${signedParams}`, {
+
+      const response = await this.rateLimitedFetch(`https://fapi.asterdex.com/fapi/v1/positionSide/dual?${signedParams}`, {
         method: 'GET',
         headers: {
           'X-MBX-APIKEY': apiKey,
@@ -3294,7 +3345,7 @@ export class StrategyEngine extends EventEmitter {
       }
       
       const timestamp = Date.now();
-      const queryString = `timestamp=${timestamp}&recvWindow=5000`;
+      const queryString = `timestamp=${timestamp}&recvWindow=30000`;
       
       const signature = createHmac('sha256', secretKey)
         .update(queryString)
@@ -3308,13 +3359,13 @@ export class StrategyEngine extends EventEmitter {
       let response: Response | null = null;
       
       while (retryAttempt <= maxRetries) {
-        response = await fetch(`https://fapi.asterdex.com/fapi/v2/positionRisk?${signedParams}`, {
+        response = await this.rateLimitedFetch(`https://fapi.asterdex.com/fapi/v2/positionRisk?${signedParams}`, {
           method: 'GET',
           headers: {
             'X-MBX-APIKEY': apiKey,
           },
         });
-        
+
         // Check for rate limiting
         if (response.status === 429) {
           retryAttempt++;
@@ -3346,6 +3397,80 @@ export class StrategyEngine extends EventEmitter {
     }
   }
 
+  // Built-in rate limiter state
+  private lastFetchTime = 0;
+  private fetchQueue: Array<() => Promise<void>> = [];
+  private processingQueue = false;
+
+  // Rate-limited fetch wrapper for ALL exchange API calls
+  // Prevents HTTP 429 errors by queuing and throttling requests
+  private async rateLimitedFetch(url: string, options?: RequestInit): Promise<Response> {
+    // Simple queue-based rate limiting: min 350ms between requests
+    return new Promise((resolve, reject) => {
+      this.fetchQueue.push(async () => {
+        try {
+          const now = Date.now();
+          const timeSinceLastFetch = now - this.lastFetchTime;
+          const minDelay = 350; // 350ms = ~3 requests/second
+
+          if (timeSinceLastFetch < minDelay) {
+            await new Promise(r => setTimeout(r, minDelay - timeSinceLastFetch));
+          }
+
+          this.lastFetchTime = Date.now();
+          const response = await rateLimiter.fetch(url, options);
+          resolve(response);
+        } catch (error) {
+          reject(error);
+        }
+      });
+
+      // Start processing queue if not already processing
+      if (!this.processingQueue) {
+        this.processQueue();
+      }
+    });
+  }
+
+  private async processQueue(): Promise<void> {
+    if (this.processingQueue || this.fetchQueue.length === 0) return;
+
+    this.processingQueue = true;
+    while (this.fetchQueue.length > 0) {
+      const task = this.fetchQueue.shift();
+      if (task) await task();
+    }
+    this.processingQueue = false;
+  }
+
+  // Initialize leverage cache from existing positions on exchange
+  // This prevents redundant leverage API calls when positions already have correct leverage
+  private async initializeLeverageCache(): Promise<void> {
+    try {
+      const positions = await this.getExchangePositions();
+
+      if (!positions || positions.length === 0) {
+        console.log('📊 No existing positions found, leverage cache will be populated on first trades');
+        return;
+      }
+
+      // Extract leverage from positions with open quantity
+      let cacheCount = 0;
+      for (const pos of positions) {
+        if (pos.symbol && pos.leverage) {
+          const leverage = parseInt(pos.leverage);
+          this.leverageSetForSymbols.set(pos.symbol, leverage);
+          cacheCount++;
+        }
+      }
+
+      console.log(`✅ Initialized leverage cache with ${cacheCount} symbols from existing positions`);
+    } catch (error) {
+      console.error('⚠️ Failed to initialize leverage cache:', error);
+      console.log('   Will set leverage on first trade for each symbol');
+    }
+  }
+
   // Cancel an order on Aster DEX
   private async cancelExchangeOrder(symbol: string, orderId: string): Promise<{ success: boolean; error?: string }> {
     try {
@@ -3362,7 +3487,7 @@ export class StrategyEngine extends EventEmitter {
         symbol,
         orderId,
         timestamp,
-        recvWindow: 5000,
+        recvWindow: 30000,
       };
       
       const queryString = Object.entries(orderParams)
@@ -3375,8 +3500,8 @@ export class StrategyEngine extends EventEmitter {
         .digest('hex');
       
       const signedParams = `${queryString}&signature=${signature}`;
-      
-      const response = await fetch(`https://fapi.asterdex.com/fapi/v1/order?${signedParams}`, {
+
+      const response = await this.rateLimitedFetch(`https://fapi.asterdex.com/fapi/v1/order?${signedParams}`, {
         method: 'DELETE',
         headers: {
           'X-MBX-APIKEY': apiKey,
@@ -3409,15 +3534,15 @@ export class StrategyEngine extends EventEmitter {
       }
       
       const timestamp = Date.now();
-      const queryString = `timestamp=${timestamp}&recvWindow=5000`;
+      const queryString = `timestamp=${timestamp}&recvWindow=30000`;
       
       const signature = createHmac('sha256', secretKey)
         .update(queryString)
         .digest('hex');
       
       const signedParams = `${queryString}&signature=${signature}`;
-      
-      const response = await fetch(`https://fapi.asterdex.com/fapi/v1/openOrders?${signedParams}`, {
+
+      const response = await this.rateLimitedFetch(`https://fapi.asterdex.com/fapi/v1/openOrders?${signedParams}`, {
         method: 'GET',
         headers: {
           'X-MBX-APIKEY': apiKey,
@@ -3504,7 +3629,7 @@ export class StrategyEngine extends EventEmitter {
         symbol,
         leverage,
         timestamp,
-        recvWindow: 5000,
+        recvWindow: 30000,
       };
       
       const queryString = Object.entries(leverageParams)
@@ -3517,21 +3642,25 @@ export class StrategyEngine extends EventEmitter {
         .digest('hex');
       
       const signedParams = `${queryString}&signature=${signature}`;
-      
-      const response = await fetch(`https://fapi.asterdex.com/fapi/v1/leverage?${signedParams}`, {
-        method: 'POST',
-        headers: {
-          'X-MBX-APIKEY': apiKey,
-        },
-      });
-      
+
+      // Use rate limiter to prevent HTTP 429 errors
+      const response = await this.rateLimitedFetch(
+        `https://fapi.asterdex.com/fapi/v1/leverage?${signedParams}`,
+        {
+          method: 'POST',
+          headers: {
+            'X-MBX-APIKEY': apiKey,
+          },
+        }
+      );
+
       if (!response.ok) {
         const errorText = await response.text();
         const error = `HTTP ${response.status}: ${errorText}`;
         console.error(`❌ Failed to set leverage for ${symbol}: ${error}`);
         return { success: false, error };
       }
-      
+
       const result = await response.json();
       console.log(`✅ Set ${symbol} leverage to ${leverage}x:`, result);
       return { success: true };
@@ -3561,7 +3690,7 @@ export class StrategyEngine extends EventEmitter {
         symbol,
         marginType,
         timestamp,
-        recvWindow: 5000,
+        recvWindow: 30000,
       };
       
       const queryString = Object.entries(marginParams)
@@ -3574,27 +3703,31 @@ export class StrategyEngine extends EventEmitter {
         .digest('hex');
       
       const signedParams = `${queryString}&signature=${signature}`;
-      
-      const response = await fetch(`https://fapi.asterdex.com/fapi/v1/marginType?${signedParams}`, {
-        method: 'POST',
-        headers: {
-          'X-MBX-APIKEY': apiKey,
-        },
-      });
-      
+
+      // Use rate limiter to prevent HTTP 429 errors
+      const response = await this.rateLimitedFetch(
+        `https://fapi.asterdex.com/fapi/v1/marginType?${signedParams}`,
+        {
+          method: 'POST',
+          headers: {
+            'X-MBX-APIKEY': apiKey,
+          },
+        }
+      );
+
       if (!response.ok) {
         const errorText = await response.text();
-        
+
         // If margin type is already set to the requested value, that's fine (error code -4046)
         if (errorText.includes('-4046') || errorText.includes('No need to change margin type')) {
           console.log(`✅ ${symbol} margin already set to ${marginType}`);
           return true;
         }
-        
+
         console.error(`❌ Failed to set margin type for ${symbol}: ${response.status} ${errorText}`);
         return false;
       }
-      
+
       const result = await response.json();
       console.log(`✅ Set ${symbol} margin to ${marginType}:`, result);
       return true;
@@ -3620,7 +3753,7 @@ export class StrategyEngine extends EventEmitter {
         symbol,
         orderId,
         timestamp,
-        recvWindow: 5000,
+        recvWindow: 30000,
       };
       
       const queryString = Object.entries(orderParams)
@@ -3633,8 +3766,8 @@ export class StrategyEngine extends EventEmitter {
         .digest('hex');
       
       const signedParams = `${queryString}&signature=${signature}`;
-      
-      const response = await fetch(`https://fapi.asterdex.com/fapi/v1/order?${signedParams}`, {
+
+      const response = await this.rateLimitedFetch(`https://fapi.asterdex.com/fapi/v1/order?${signedParams}`, {
         method: 'DELETE',
         headers: {
           'X-MBX-APIKEY': apiKey,
@@ -4702,7 +4835,7 @@ export class StrategyEngine extends EventEmitter {
   // Fetch current market price from exchange API
   private async fetchCurrentMarketPrice(symbol: string): Promise<number | null> {
     try {
-      const response = await fetch(`https://fapi.asterdex.com/fapi/v1/ticker/price?symbol=${symbol}`);
+      const response = await this.rateLimitedFetch(`https://fapi.asterdex.com/fapi/v1/ticker/price?symbol=${symbol}`);
       if (!response.ok) {
         return null;
       }
@@ -4719,8 +4852,8 @@ export class StrategyEngine extends EventEmitter {
     let currentPrice: number | null = null;
     try {
       const asterApiUrl = `https://fapi.asterdex.com/fapi/v1/ticker/price?symbol=${position.symbol}`;
-      const priceResponse = await fetch(asterApiUrl);
-      
+      const priceResponse = await this.rateLimitedFetch(asterApiUrl);
+
       if (priceResponse.ok) {
         const priceData = await priceResponse.json();
         currentPrice = parseFloat(priceData.price);
@@ -5015,7 +5148,7 @@ export class StrategyEngine extends EventEmitter {
       const params: Record<string, string | number> = {
         symbol,
         timestamp,
-        recvWindow: 5000,
+        recvWindow: 30000,
       };
       
       const queryString = Object.entries(params)
@@ -5028,8 +5161,8 @@ export class StrategyEngine extends EventEmitter {
         .digest('hex');
       
       const signedParams = `${queryString}&signature=${signature}`;
-      
-      const response = await fetch(`https://fapi.asterdex.com/fapi/v1/openOrders?${signedParams}`, {
+
+      const response = await this.rateLimitedFetch(`https://fapi.asterdex.com/fapi/v1/openOrders?${signedParams}`, {
         headers: {
           'X-MBX-APIKEY': apiKey,
         },
@@ -5068,7 +5201,7 @@ export class StrategyEngine extends EventEmitter {
       const params: Record<string, string | number> = {
         symbol,
         timestamp,
-        recvWindow: 5000,
+        recvWindow: 30000,
       };
       
       const queryString = Object.entries(params)
@@ -5081,8 +5214,8 @@ export class StrategyEngine extends EventEmitter {
         .digest('hex');
       
       const signedParams = `${queryString}&signature=${signature}`;
-      
-      const response = await fetch(`https://fapi.asterdex.com/fapi/v1/openOrders?${signedParams}`, {
+
+      const response = await this.rateLimitedFetch(`https://fapi.asterdex.com/fapi/v1/openOrders?${signedParams}`, {
         headers: {
           'X-MBX-APIKEY': apiKey,
         },

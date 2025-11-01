@@ -24,10 +24,11 @@ class RateLimiter {
   private queue: QueuedRequest[] = [];
   private processing = false;
   private lastRequestTime = 0;
-  private minDelay = 350; // 350ms between requests = max ~3 requests/second (reduced to prevent 418)
+  private minDelay = 500; // 500ms between requests = max 2 requests/second (conservative to prevent 429)
   private cache = new Map<string, CacheEntry>();
   private cacheTTL = 30000; // 30 seconds
   private backoffUntil = 0; // Timestamp when we can resume requests
+  private consecutiveErrors = 0; // Track consecutive rate limit errors
 
   /**
    * Add a request to the queue with caching support
@@ -76,16 +77,19 @@ class RateLimiter {
 
             return result;
           } catch (error: any) {
-            // Handle 418 rate limit error
-            if (error.message?.includes('418') || error.message?.includes('rate limit')) {
-              console.error('⚠️ Rate limit detected - entering backoff period');
-              // Back off for 60 seconds
-              this.backoffUntil = Date.now() + 60000;
+            // Handle 418/429 rate limit errors
+            if (error.message?.includes('418') || error.message?.includes('429') || error.message?.includes('rate limit')) {
+              this.consecutiveErrors++;
+              const backoffSeconds = Math.min(60, 10 * this.consecutiveErrors); // Exponential backoff, max 60s
+              this.backoffUntil = Date.now() + (backoffSeconds * 1000);
+
+              console.error(`⚠️ Rate limit detected (${this.consecutiveErrors} consecutive) - entering ${backoffSeconds}s backoff`);
 
               // Broadcast rate limit error to connected clients
-              wsBroadcaster.broadcastApiError('Rate limit detected - entering 60s backoff', {
+              wsBroadcaster.broadcastApiError(`Rate limit detected - entering ${backoffSeconds}s backoff`, {
                 backoffUntil: this.backoffUntil,
-                error: error.message
+                error: error.message,
+                consecutiveErrors: this.consecutiveErrors
               });
             }
             throw error;
@@ -127,13 +131,14 @@ class RateLimiter {
 
       try {
         const result = await request.execute();
+        this.consecutiveErrors = 0; // Reset on success
         request.resolve(result);
       } catch (error) {
         request.reject(error);
       }
 
       // Small additional delay for safety
-      await this.sleep(50);
+      await this.sleep(100);
     }
 
     this.processing = false;
@@ -160,7 +165,34 @@ class RateLimiter {
       entries: Array.from(this.cache.keys()),
     };
   }
+
+  /**
+   * Rate-limited fetch wrapper
+   * Note: Response objects are NOT cached because their bodies can only be read once.
+   * This method only provides rate limiting/throttling.
+   */
+  async fetch(url: string, options?: RequestInit): Promise<Response> {
+    return this.enqueue(
+      null, // Don't cache Response objects - they can't be reused
+      async () => {
+        const response = await fetch(url, options);
+
+        // Check for rate limit errors
+        if (response.status === 429 || response.status === 418) {
+          const errorText = await response.text();
+          throw new Error(`${response.status} rate limit: ${errorText}`);
+        }
+
+        return response;
+      }
+    );
+  }
 }
 
 // Singleton instance
 export const rateLimiter = new RateLimiter();
+
+// Export a standalone function for easier dynamic importing
+export async function rateLimitedFetch(url: string, options?: RequestInit): Promise<Response> {
+  return rateLimiter.fetch(url, options);
+}

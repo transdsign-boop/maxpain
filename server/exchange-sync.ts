@@ -5,6 +5,7 @@ import { db } from './db';
 import { positions, transfers } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import { calculateDCALevels, calculateATRPercent } from './dca-calculator';
+import { rateLimiter } from './rate-limiter';
 
 /**
  * Shared helper to validate orphan positions against DCA Layer 1 sizing limits.
@@ -44,7 +45,7 @@ export async function validateOrphanPosition(
       .update(balanceParams)
       .digest('hex');
 
-    const balanceResponse = await fetch(
+    const balanceResponse = await rateLimiter.fetch(
       `https://fapi.asterdex.com/fapi/v2/balance?${balanceParams}&signature=${balanceSignature}`,
       {
         headers: {
@@ -186,8 +187,8 @@ export async function fetchAccountTrades(params: {
     
     const signedParams = `${queryString}&signature=${signature}`;
     
-    // Fetch account trades from exchange
-    const response = await fetch(`https://fapi.asterdex.com/fapi/v1/userTrades?${signedParams}`, {
+    // Fetch account trades from exchange (with rate limiting)
+    const response = await rateLimiter.fetch(`https://fapi.asterdex.com/fapi/v1/userTrades?${signedParams}`, {
       method: 'GET',
       headers: {
         'X-MBX-APIKEY': apiKey,
@@ -291,8 +292,8 @@ export async function fetchAllAccountTrades(params: {
           .digest('hex');
         
         const signedParams = `${queryString}&signature=${signature}`;
-        
-        const response = await fetch(`https://fapi.asterdex.com/fapi/v1/userTrades?${signedParams}`, {
+
+        const response = await rateLimiter.fetch(`https://fapi.asterdex.com/fapi/v1/userTrades?${signedParams}`, {
           method: 'GET',
           headers: {
             'X-MBX-APIKEY': apiKey,
@@ -684,7 +685,7 @@ export async function syncTransfers(userId: string): Promise<{
       .update(queryParams)
       .digest('hex');
 
-    const response = await fetch(
+    const response = await rateLimiter.fetch(
       `https://fapi.asterdex.com/fapi/v1/income?${queryParams}&signature=${signature}`,
       {
         headers: {
@@ -757,7 +758,7 @@ export async function fetchTransfers(params: {
         .update(queryParams)
         .digest('hex');
 
-      const response = await fetch(
+      const response = await rateLimiter.fetch(
         `https://fapi.asterdex.com/fapi/v1/income?${queryParams}&signature=${signature}`,
         {
           headers: {
@@ -840,7 +841,7 @@ export async function fetchCommissions(params: {
         .update(queryParams)
         .digest('hex');
 
-      const response = await fetch(
+      const response = await rateLimiter.fetch(
         `https://fapi.asterdex.com/fapi/v1/income?${queryParams}&signature=${signature}`,
         {
           headers: {
@@ -999,7 +1000,7 @@ export async function fetchFundingFees(params: {
         .update(queryParams)
         .digest('hex');
 
-      const response = await fetch(
+      const response = await rateLimiter.fetch(
         `https://fapi.asterdex.com/fapi/v1/income?${queryParams}&signature=${signature}`,
         {
           headers: {
@@ -1092,7 +1093,7 @@ export async function fetchRealizedPnl(params: {
         .update(queryParams)
         .digest('hex');
 
-      const response = await fetch(
+      const response = await rateLimiter.fetch(
         `https://fapi.asterdex.com/fapi/v1/income?${queryParams}&signature=${signature}`,
         {
           headers: {
@@ -1307,7 +1308,7 @@ export async function syncOpenPositions(sessionId: string): Promise<{
       .update(queryParams)
       .digest('hex');
 
-    const response = await fetch(
+    const response = await rateLimiter.fetch(
       `https://fapi.asterdex.com/fapi/v2/positionRisk?${queryParams}&signature=${signature}`,
       {
         headers: {

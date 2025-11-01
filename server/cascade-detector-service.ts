@@ -1,6 +1,7 @@
 import { WebSocket } from 'ws';
 import { CascadeDetector } from './cascade-detector';
 import { storage } from './storage';
+import { rateLimiter } from './rate-limiter';
 
 /**
  * ⚠️ CRITICAL WARNING - DO NOT MODIFY POLLING ARCHITECTURE ⚠️
@@ -145,8 +146,8 @@ class CascadeDetectorService {
     }
     
     try {
-      // Single API call gets ALL prices
-      const response = await fetch('https://fapi.asterdex.com/fapi/v1/ticker/price');
+      // Single API call gets ALL prices (with rate limiting)
+      const response = await rateLimiter.fetch('https://fapi.asterdex.com/fapi/v1/ticker/price');
       if (!response.ok) {
         throw new Error(`Price fetch failed: ${response.status}`);
       }
@@ -207,10 +208,10 @@ class CascadeDetectorService {
     // Fetch OI for the N oldest symbols
     const toFetch = symbolsByAge.slice(0, this.config.oiSymbolsPerTick);
     
-    // Fetch in parallel (but only N symbols, not all)
+    // Fetch in parallel (but only N symbols, not all) with rate limiting
     const oiPromises = toFetch.map(async ({ symbol }) => {
       try {
-        const response = await fetch(`https://fapi.asterdex.com/fapi/v1/openInterest?symbol=${symbol}`);
+        const response = await rateLimiter.fetch(`https://fapi.asterdex.com/fapi/v1/openInterest?symbol=${symbol}`);
 
         if (response.ok) {
           const data = await response.json();
