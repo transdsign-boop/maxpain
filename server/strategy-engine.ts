@@ -444,9 +444,10 @@ export class StrategyEngine extends EventEmitter {
               }
 
               // CAPTURE ALL FILLS: Check if this fill was from a bot order or manual trade
-              // Bot orders use clientOrderId starting with 'bot-' or 'layer-', manual trades don't
+              // Bot orders use clientOrderId starting with 'bot-', 'tpsl-', 'layer-', etc. Manual trades don't.
               const isBotOrder = order.clientOrderId &&
                 (order.clientOrderId.startsWith('bot-') ||
+                 order.clientOrderId.startsWith('tpsl-') ||
                  order.clientOrderId.startsWith('layer-') ||
                  order.clientOrderId.startsWith('orphan-') ||
                  order.clientOrderId.startsWith('exit-') ||
@@ -3172,12 +3173,15 @@ export class StrategyEngine extends EventEmitter {
       
       // Prepare order parameters for Aster DEX API (Binance-style)
       const timestamp = Date.now();
+      // Generate unique clientOrderId with "bot-" prefix to identify bot orders in WebSocket stream
+      const clientOrderId = `bot-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       const orderParams: Record<string, string | number> = {
         symbol,
         side: side.toUpperCase(),
         type: orderType.toUpperCase(),
         quantity: roundedQuantity,
         timestamp,
+        newClientOrderId: clientOrderId, // Identifies this as a bot order
         recvWindow: 5000, // 5 second receive window for clock sync tolerance
       };
       

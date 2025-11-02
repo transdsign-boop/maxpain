@@ -740,6 +740,8 @@ export class OrderProtectionService {
       const roundedPrice = this.roundPrice(symbol, price);
 
       const timestamp = Date.now();
+      // Generate unique clientOrderId with "tpsl-" prefix to identify TP/SL orders
+      const clientOrderId = `tpsl-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       const params: Record<string, string | number> = {
         symbol,
         side,
@@ -747,6 +749,7 @@ export class OrderProtectionService {
         positionSide, // CRITICAL: Must specify position side for hedge mode
         quantity: roundedQty.toString(),
         timestamp,
+        newClientOrderId: clientOrderId, // Identifies this as a TP/SL order
         recvWindow: 5000,
       };
 

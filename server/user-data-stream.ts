@@ -104,12 +104,12 @@ class UserDataStreamManager {
         this.reconnectAttempts = 0;
         
         // Fetch initial account and position data to populate cache
-        // Add 3-second initial delay to allow Express server to start
+        // Add 10-second initial delay to allow Express server to fully start in deployment
         setTimeout(() => {
           this.fetchInitialData().catch(err => {
             console.error('Failed to fetch initial data:', err);
           });
-        }, 3000);
+        }, 10000);
         
         resolve();
       });
@@ -140,18 +140,17 @@ class UserDataStreamManager {
     });
   }
 
-  private async fetchInitialData(retries = 7, delayMs = 1500): Promise<void> {
+  private async fetchInitialData(retries = 10, delayMs = 3000): Promise<void> {
     if (!this.config) return;
 
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
         console.log(`🔄 Fetching initial account/position data via backend (attempt ${attempt}/${retries})...`);
-        
+
         // Construct base URL for server-to-server communication
-        // Use environment variable or default to localhost for development
-        const baseUrl = process.env.REPLIT_DEPLOYMENT_URL 
-          ? `https://${process.env.REPLIT_DEPLOYMENT_URL}`
-          : 'http://localhost:5000';
+        // Always use localhost since we're calling our own server
+        const port = process.env.PORT || '5000';
+        const baseUrl = `http://localhost:${port}`;
         
         // Fetch account balance via backend
         const accountResponse = await fetch(`${baseUrl}/api/live/account`);
@@ -224,8 +223,9 @@ class UserDataStreamManager {
         const isLastAttempt = attempt === retries;
         if (isLastAttempt) {
           console.error(`❌ Failed to fetch initial data after ${retries} attempts:`, error?.message || error);
+          console.error(`   This may indicate the Express server hasn't fully started yet or API endpoints are unavailable`);
         } else {
-          console.log(`⚠️ Attempt ${attempt} failed, retrying in ${delayMs}ms...`);
+          console.log(`⚠️ Attempt ${attempt} failed (${error?.message}), retrying in ${delayMs}ms...`);
           await new Promise(resolve => setTimeout(resolve, delayMs));
         }
       }

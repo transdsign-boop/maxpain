@@ -175,7 +175,15 @@
       "Bash(then cat /home/runner/.replit_process_info)",
       "Bash(else echo \"No Replit process info found\")",
       "Bash([ -n \"$ASTER_API_KEY\" ])",
-      "Bash(npm --version:*)"
+      "Bash(npm --version:*)",
+      "Bash(env)",
+      "Bash(if [ -z \"$REPLIT_DEPLOYMENT_URL\" ])",
+      "Bash(then echo \"❌ REPLIT_DEPLOYMENT_URL is NOT set\")",
+      "Bash(else echo \"✅ REPLIT_DEPLOYMENT_URL = $REPLIT_DEPLOYMENT_URL\")",
+      "Bash(then echo \"⏳ ($i/10)\")",
+      "Bash(then echo \"❌ Port still in use\")",
+      "Bash(else echo \"✅ Port 5000 is free - starting server...\")",
+      "Bash(then echo \"✅ Server is online and ready after $i attempts\")"
     ],
     "deny": [],
     "ask": []
