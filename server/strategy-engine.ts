@@ -1217,34 +1217,62 @@ export class StrategyEngine extends EventEmitter {
       console.log(`💰 Risk Budget: filled=${portfolioRisk.filledRiskPercentage.toFixed(1)}%, max=${maxRiskPercent}%, remaining=${remainingRiskPercent.toFixed(1)}%, effective=${effectiveMaxRisk.toFixed(1)}% (${effectiveMaxRisk < strategyMaxRisk ? 'SCALED DOWN' : 'normal'})`);
       
       // Get symbol precision (includes exchange-specific minimum notional)
-      const symbolPrecision = this.symbolPrecisionCache.get(liquidation.symbol);
-      if (!symbolPrecision?.minNotional) {
-        console.error(`❌ Missing MIN_NOTIONAL for ${liquidation.symbol} - cannot trade without exchange limits`);
-        console.error(`   ⚠️  ABORTING TRADE - Exchange limits are required for safe position sizing`);
-        
-        wsBroadcaster.broadcastTradeBlock({
-          blocked: true,
-          reason: `Missing exchange limits for ${liquidation.symbol}`,
-          type: 'safety_validation'
-        });
-        
-        await this.logTradeEntryError({
-          strategy,
-          symbol: liquidation.symbol,
-          side: positionSide,
-          attemptType: 'entry',
-          reason: 'missing_exchange_limits',
-          errorDetails: `MIN_NOTIONAL not available for ${liquidation.symbol}`,
-          liquidationValue: parseFloat(liquidation.value),
-        });
-        
-        return false;
+      let symbolPrecision = this.symbolPrecisionCache.get(liquidation.symbol);
+
+      // If symbol not in cache, try to refetch exchange info
+      if (!symbolPrecision) {
+        console.warn(`⚠️ Symbol ${liquidation.symbol} not in precision cache - attempting to refetch exchange info`);
+        await this.fetchExchangeInfo();
+        symbolPrecision = this.symbolPrecisionCache.get(liquidation.symbol);
       }
-      
+
+      // Use fallback if still not available
+      if (!symbolPrecision || !symbolPrecision.minNotional) {
+        const fallbackMinNotional = 5.0; // Standard Aster DEX minimum
+        const fallbackMinQty = 0.001;
+
+        console.warn(`⚠️ Using fallback exchange limits for ${liquidation.symbol}:`, {
+          minNotional: fallbackMinNotional,
+          minQty: fallbackMinQty,
+          reason: !symbolPrecision ? 'symbol_not_in_cache' : 'minNotional_missing'
+        });
+
+        // Use fallback values instead of blocking trade
+        symbolPrecision = {
+          minNotional: fallbackMinNotional,
+          minQty: fallbackMinQty,
+          quantityPrecision: 8,
+          pricePrecision: 8,
+          stepSize: '0.001',
+          tickSize: '0.01'
+        };
+      }
+
       const minNotional = symbolPrecision.minNotional;
       const minQty = symbolPrecision.minQty;
 
-      // Calculate DCA levels (position sized by Start Step %, not max risk)
+      // Calculate percentile for adaptive position sizing (needed for accurate risk check)
+      const currentLiquidationValue = parseFloat(liquidation.value);
+      const percentileSymbolHistory = await storage.getLiquidationsBySymbol([liquidation.symbol], 10000);
+      let percentileForRiskCheck = 50; // Default fallback
+
+      if (percentileSymbolHistory && percentileSymbolHistory.length > 0) {
+        const historicalValues = percentileSymbolHistory.map(liq => parseFloat(liq.value)).sort((a, b) => a - b);
+        let left = 0, right = historicalValues.length;
+        while (left < right) {
+          const mid = Math.floor((left + right) / 2);
+          if (historicalValues[mid] <= currentLiquidationValue) {
+            left = mid + 1;
+          } else {
+            right = mid;
+          }
+        }
+        percentileForRiskCheck = historicalValues.length > 1
+          ? Math.round((left / historicalValues.length) * 100)
+          : 100;
+      }
+
+      // Calculate DCA levels (position sized by Start Step %, scaled by percentile if enabled)
       const dcaResult = calculateDCALevels(fullStrategy, {
         entryPrice: price,
         side: positionSide as 'long' | 'short',
@@ -1253,6 +1281,7 @@ export class StrategyEngine extends EventEmitter {
         atrPercent,
         minNotional,
         minQty,
+        percentile: percentileForRiskCheck, // Pass percentile for adaptive sizing
       });
       
       // Calculate LAYER 1 ONLY risk (not all 5 layers) for new position
@@ -2350,6 +2379,33 @@ export class StrategyEngine extends EventEmitter {
       const minNotional = symbolPrecision.minNotional;
       const minQty = symbolPrecision.minQty;
 
+      // Calculate percentile for adaptive position sizing
+      // Query historical liquidations for this symbol to determine percentile rank
+      const currentLiquidationValue = parseFloat(liquidation.value);
+      const symbolHistory = await storage.getLiquidationsBySymbol([liquidation.symbol], 10000);
+      let currentPercentile = 50; // Default fallback if no history
+
+      if (symbolHistory && symbolHistory.length > 0) {
+        const allHistoricalValues = symbolHistory.map(liq => parseFloat(liq.value)).sort((a, b) => a - b);
+
+        // Binary search to find percentile rank
+        let left = 0, right = allHistoricalValues.length;
+        while (left < right) {
+          const mid = Math.floor((left + right) / 2);
+          if (allHistoricalValues[mid] <= currentLiquidationValue) {
+            left = mid + 1;
+          } else {
+            right = mid;
+          }
+        }
+        const belowCount = left;
+        currentPercentile = allHistoricalValues.length > 1
+          ? Math.round((belowCount / allHistoricalValues.length) * 100)
+          : 100;
+
+        console.log(`📊 Adaptive sizing: $${currentLiquidationValue.toFixed(2)} liquidation is at ${currentPercentile}th percentile`);
+      }
+
       // Calculate all DCA levels - we'll use Level 1 for initial entry
       const dcaResult = calculateDCALevels(fullStrategy, {
         entryPrice: price,
@@ -2359,6 +2415,7 @@ export class StrategyEngine extends EventEmitter {
         atrPercent,
         minNotional,
         minQty,
+        percentile: currentPercentile, // Pass percentile for adaptive sizing
       });
       
       const firstLevel = dcaResult.levels[0];

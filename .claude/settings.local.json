@@ -159,7 +159,17 @@
       "Bash(then echo \"✅ Server is ready - changes reverted\")",
       "Bash(then echo \"✅ Replit dev server is ready and online\")",
       "Bash(then echo 'Port 5000 still in use, killing...')",
-      "Bash(then echo \"✅ Server is online and ready after $i seconds\")"
+      "Bash(then echo \"✅ Server is online and ready after $i seconds\")",
+      "Bash(/tmp/chart_data.json)",
+      "Bash(timeout 30 npx tsx:*)",
+      "Bash(/tmp/perf_test.json)",
+      "Bash(/tmp/perf_check.json)",
+      "Bash(do if timeout 3 curl -s -f http://localhost:5000/api/strategies)",
+      "Bash(/tmp/perf_new.json)",
+      "Bash(else echo \"⏳ Waiting... ($i/10)\")",
+      "Bash(timeout 3 journalctl:*)",
+      "Bash(if timeout 3 curl -s http://localhost:5000/api/performance/overview)",
+      "Bash(then echo \"✅ Server ready with fix applied\")"
     ],
     "deny": [],
     "ask": []

@@ -15,6 +15,7 @@
 import WebSocket from 'ws';
 import { vwapFilterManager } from './vwap-direction-filter';
 import { wsBroadcaster } from './websocket-broadcaster';
+import { rateLimiter } from './rate-limiter';
 
 interface KlineData {
   symbol: string;
@@ -120,7 +121,7 @@ export class VWAPPriceFeed {
    * Uses sequential fetching with rate limiter to avoid 418 errors
    */
   private async initializeHistoricalKlines(): Promise<void> {
-    console.log(`📥 Fetching historical klines for ${this.symbols.length} symbols (with 250ms delays to avoid burst limit)...`);
+    console.log(`📥 Fetching historical klines for ${this.symbols.length} symbols (rate-limited + cached)...`);
 
     let successCount = 0;
     let errorCount = 0;
@@ -134,17 +135,20 @@ export class VWAPPriceFeed {
         // Calculate period start time
         const periodStartTime = this.getAlignedPeriodStart(Date.now(), config.timeframeMinutes);
 
-        // Fetch historical klines for the current period
+        // Fetch historical klines for the current period through rate limiter
         // Using 1-minute candles with limit=1000 (max allowed)
-        const response = await fetch(
-          `https://fapi.asterdex.com/fapi/v1/klines?symbol=${symbol}&interval=1m&startTime=${periodStartTime}&limit=1000`
-        );
+        const url = `https://fapi.asterdex.com/fapi/v1/klines?symbol=${symbol}&interval=1m&startTime=${periodStartTime}&limit=1000`;
+        const cacheKey = `klines:${symbol}:1m:${periodStartTime}`;
 
-        if (!response.ok) {
-          throw new Error(`Failed to fetch klines for ${symbol}: ${response.status}`);
-        }
+        const klines = await rateLimiter.enqueue(cacheKey, async () => {
+          const response = await fetch(url);
 
-        const klines = await response.json();
+          if (!response.ok) {
+            throw new Error(`Failed to fetch klines for ${symbol}: ${response.status}`);
+          }
+
+          return await response.json();
+        });
 
         // Store klines and calculate initial VWAP
         this.periodKlines.set(symbol, klines || []);
@@ -154,9 +158,7 @@ export class VWAPPriceFeed {
           successCount++;
         }
 
-        // Add 250ms delay between requests to avoid burst rate limit
-        // 24 symbols × 250ms = 6 seconds (well below burst threshold)
-        await new Promise(resolve => setTimeout(resolve, 250));
+        // Rate limiter handles throttling automatically (350ms between requests)
       } catch (error: any) {
         errorCount++;
         // Initialize with empty klines on error

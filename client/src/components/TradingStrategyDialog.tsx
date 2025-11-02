@@ -54,6 +54,9 @@ interface Strategy {
   vwapTimeframeMinutes?: number;
   vwapBufferPercentage?: string;
   vwapEnableBuffer?: boolean;
+  adaptiveSizingEnabled?: boolean;
+  maxSizeMultiplier?: string;
+  scaleAllLayers?: boolean;
 }
 
 // Form validation schema
@@ -122,6 +125,12 @@ interface VWAPSettings {
   vwapTimeframeMinutes: number;
   vwapBufferPercentage: number;
   vwapEnableBuffer: boolean;
+}
+
+// Adaptive Position Sizing Settings Types
+interface AdaptiveSizingSettings {
+  adaptiveSizingEnabled: boolean;
+  maxSizeMultiplier: number;
 }
 
 // DCA Preview Response Type
@@ -1004,6 +1013,207 @@ function VWAPSettingsSection({ strategyId, isStrategyRunning }: { strategyId: st
               className="w-full"
             >
               {updateVWAPMutation.isPending ? "Updating..." : "Update VWAP Configuration"}
+            </Button>
+
+            <p className="text-xs text-muted-foreground text-center">
+              Changes take effect immediately, even while the strategy is running
+            </p>
+          </div>
+        </CollapsibleContent>
+      </div>
+    </Collapsible>
+  );
+}
+
+function AdaptiveSizingSettingsSection({ strategyId, isStrategyRunning }: { strategyId: string; isStrategyRunning: boolean }) {
+  const { toast } = useToast();
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  // Fetch current strategy to get adaptive sizing settings
+  const { data: strategy } = useQuery<Strategy>({
+    queryKey: [`/api/strategies`],
+    select: (data: any) => {
+      const strategies = Array.isArray(data) ? data : [data];
+      return strategies.find((s: Strategy) => s.id === strategyId);
+    },
+    enabled: !!strategyId,
+  });
+
+  // Update adaptive sizing settings mutation
+  const updateAdaptiveSizingMutation = useMutation({
+    mutationFn: async (data: Partial<AdaptiveSizingSettings>) => {
+      const response = await apiRequest('PATCH', `/api/strategies/${strategyId}/adaptive-sizing/config`, data);
+      return await response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Adaptive Sizing Updated",
+        description: "Your percentile-based position sizing has been configured successfully.",
+      });
+      queryClient.invalidateQueries({ queryKey: [`/api/strategies`] });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to update adaptive sizing settings. Please try again.",
+        variant: "destructive",
+      });
+    }
+  });
+
+  const [formValues, setFormValues] = useState<Partial<AdaptiveSizingSettings>>({
+    adaptiveSizingEnabled: false,
+    maxSizeMultiplier: 3.0,
+  });
+
+  // Initialize form when strategy loads
+  useEffect(() => {
+    if (strategy) {
+      setFormValues({
+        adaptiveSizingEnabled: strategy.adaptiveSizingEnabled ?? false,
+        maxSizeMultiplier: strategy.maxSizeMultiplier ? parseFloat(strategy.maxSizeMultiplier) : 3.0,
+      });
+    }
+  }, [strategy]);
+
+  const handleInputChange = (field: keyof AdaptiveSizingSettings, value: number | boolean) => {
+    setFormValues(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleSubmit = () => {
+    updateAdaptiveSizingMutation.mutate(formValues);
+  };
+
+  // Calculate current percentile threshold from strategy
+  const percentileThreshold = strategy?.percentileThreshold ?? 40;
+
+  return (
+    <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
+      <div className="space-y-4">
+        <CollapsibleTrigger className="w-full" data-testid="button-toggle-adaptive-sizing">
+          <div className="flex items-center justify-between cursor-pointer hover-elevate p-3 rounded-md">
+            <Label className="text-base font-medium flex items-center gap-2 cursor-pointer">
+              <TrendingUp className="h-4 w-4" />
+              Adaptive Position Sizing
+              <ChevronDown className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+            </Label>
+            {formValues.adaptiveSizingEnabled && (
+              <Badge variant="default" className="text-xs">
+                Enabled ({formValues.maxSizeMultiplier?.toFixed(1)}x max)
+              </Badge>
+            )}
+          </div>
+        </CollapsibleTrigger>
+
+        <CollapsibleContent>
+          <div className="space-y-4">
+            <div className="text-sm text-muted-foreground bg-muted/30 p-3 rounded-md">
+              Scale Layer 1 position size based on liquidation percentile rank. Larger liquidations (higher percentiles) get larger positions through linear interpolation.
+            </div>
+
+            {/* Enable/Disable Switch */}
+            <div className="flex items-center justify-between p-3 border rounded-md">
+              <div className="space-y-0.5">
+                <Label htmlFor="adaptiveSizingEnabled" className="text-base">
+                  Enable Adaptive Sizing
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  Scale position size based on liquidation magnitude (can be toggled while running)
+                </p>
+              </div>
+              <Switch
+                id="adaptiveSizingEnabled"
+                checked={formValues.adaptiveSizingEnabled ?? false}
+                onCheckedChange={(checked) => {
+                  handleInputChange('adaptiveSizingEnabled', checked);
+                  // Auto-save when toggling enable/disable
+                  updateAdaptiveSizingMutation.mutate({ ...formValues, adaptiveSizingEnabled: checked });
+                }}
+              />
+            </div>
+
+            {/* Max Size Multiplier Slider */}
+            <div className="space-y-2">
+              <Label htmlFor="maxSizeMultiplier">
+                Max Size Multiplier: {formValues.maxSizeMultiplier?.toFixed(1)}x
+              </Label>
+              <Slider
+                id="maxSizeMultiplier"
+                min={1.0}
+                max={10.0}
+                step={0.1}
+                value={[formValues.maxSizeMultiplier ?? 3.0]}
+                onValueChange={(value) => handleInputChange('maxSizeMultiplier', value[0])}
+                className="w-full"
+              />
+              <p className="text-xs text-muted-foreground">
+                Position size at 95th+ percentile. Range: 1.0x (no scaling) to 10.0x (maximum)
+              </p>
+            </div>
+
+            {/* Scaling Visualization */}
+            <div className="space-y-2 p-3 border rounded-md bg-muted/20">
+              <Label className="text-sm font-medium">Scaling Formula</Label>
+              <div className="text-xs space-y-1 font-mono">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">At {percentileThreshold}th percentile (threshold):</span>
+                  <span className="font-semibold">1.0x (base size)</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">At 95th percentile:</span>
+                  <span className="font-semibold text-lime-500">{formValues.maxSizeMultiplier?.toFixed(1)}x</span>
+                </div>
+                <div className="mt-2 text-muted-foreground">
+                  Linear interpolation between threshold and 95th percentile
+                </div>
+              </div>
+            </div>
+
+            {/* Example Calculation */}
+            <div className="space-y-2 p-3 border rounded-md bg-blue-500/5">
+              <Label className="text-sm font-medium text-blue-500">Example</Label>
+              <div className="text-xs space-y-1">
+                <p className="text-muted-foreground">
+                  If Layer 1 base size = $100 and max multiplier = {formValues.maxSizeMultiplier?.toFixed(1)}x:
+                </p>
+                <div className="font-mono space-y-0.5 mt-2">
+                  <div>• {percentileThreshold}th percentile → $100 (1.0x)</div>
+                  <div>• {Math.round((percentileThreshold + 95) / 2)}th percentile → ${(100 * (1.0 + (formValues.maxSizeMultiplier! - 1.0) / 2)).toFixed(0)} ({(1.0 + (formValues.maxSizeMultiplier! - 1.0) / 2).toFixed(1)}x)</div>
+                  <div className="text-lime-500">• 95th percentile → ${(100 * formValues.maxSizeMultiplier!).toFixed(0)} ({formValues.maxSizeMultiplier?.toFixed(1)}x)</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Info Box */}
+            <div className="text-xs bg-blue-500/10 border border-blue-500/20 p-3 rounded-md space-y-2">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
+                <div className="space-y-1">
+                  <p className="font-medium text-blue-500">How Adaptive Position Sizing Works:</p>
+                  <p className="text-muted-foreground">
+                    • <strong>Percentile Calculation:</strong> Current liquidation is ranked against 10,000 recent liquidations for the symbol
+                  </p>
+                  <p className="text-muted-foreground">
+                    • <strong>Scaling Logic:</strong> Size = Base × (1.0 + ((percentile - threshold) / (95 - threshold)) × (maxMultiplier - 1.0))
+                  </p>
+                  <p className="text-muted-foreground">
+                    • <strong>Only Layer 1:</strong> Currently scales only the first DCA layer (subsequent layers use standard sizing)
+                  </p>
+                  <p className="text-muted-foreground mt-2">
+                    This allows you to take larger positions on exceptional liquidation events while maintaining conservative sizing on smaller liquidations.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Save Button */}
+            <Button
+              type="button"
+              onClick={handleSubmit}
+              disabled={updateAdaptiveSizingMutation.isPending}
+              className="w-full"
+            >
+              {updateAdaptiveSizingMutation.isPending ? "Updating..." : "Update Adaptive Sizing Configuration"}
             </Button>
 
             <p className="text-xs text-muted-foreground text-center">
@@ -2540,6 +2750,16 @@ export default function TradingStrategyDialog({ open, onOpenChange }: TradingStr
               {/* VWAP Direction Filter */}
               {activeStrategy && (
                 <VWAPSettingsSection
+                  strategyId={activeStrategy.id}
+                  isStrategyRunning={isStrategyRunning}
+                />
+              )}
+
+              <Separator />
+
+              {/* Adaptive Position Sizing */}
+              {activeStrategy && (
+                <AdaptiveSizingSettingsSection
                   strategyId={activeStrategy.id}
                   isStrategyRunning={isStrategyRunning}
                 />

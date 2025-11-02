@@ -643,7 +643,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Liquidation API routes
   app.get("/api/liquidations", async (req, res) => {
     try {
-      const limit = parseInt(req.query.limit as string) || 100;
+      const limit = parseInt(req.query.limit as string) || 50; // Default to last 50 for activity feed
       const liquidations = await storage.getLiquidations(limit);
       res.json(liquidations);
     } catch (error) {
@@ -5019,6 +5019,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         averageTradeTimeMs,
         maxDrawdown,
         maxDrawdownPercent,
+        actualWalletPnl: currentWalletBalance - totalDeposits, // Actual P&L: total wallet balance - deposits
+        totalWalletBalance: currentWalletBalance, // Current total wallet balance (including unrealized)
+        totalDeposits, // Total deposits made
       });
     } catch (error) {
       console.error('Error fetching performance overview:', error);
@@ -5227,72 +5230,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log(`📊 Chart data: ${chartData.length} trades, ${matchedCount} matched with DB, ${unmatchedCount} unmatched (fallback to P&L inference)`);
 
-      // CRITICAL: Scale the chart to match ACTUAL wallet-based P&L
-      // The chart calculated from trades shows $1,141 but actual profit is only ~$950
-      // This is because insurance fund fees, liquidation penalties, and other hidden fees aren't in the trade data
-      // Solution: Calculate scaling factor and adjust entire chart to match reality
+      // Chart shows raw P&L from exchange API (commissions and funding already subtracted)
+      // Note: May not include all hidden costs, so final value may differ from actual wallet balance
 
-      let scaledChartData = chartData;
-
+      console.log(`📊 Chart data generated: ${chartData.length} trades`);
       if (chartData.length > 0) {
-        const chartCalculatedPnl = chartData[chartData.length - 1].cumulativePnl;
-
-        // Get ACTUAL realized P&L from wallet balance
-        try {
-          const apiKey = process.env.ASTER_API_KEY;
-          const secretKey = process.env.ASTER_SECRET_KEY;
-
-          if (apiKey && secretKey) {
-            // Fetch current wallet balance
-            const timestamp = Date.now();
-            const params = `timestamp=${timestamp}`;
-            const signature = crypto.createHmac('sha256', secretKey).update(params).digest('hex');
-
-            const response = await fetch(
-              `https://fapi.asterdex.com/fapi/v2/account?${params}&signature=${signature}`,
-              { headers: { 'X-MBX-APIKEY': apiKey } }
-            );
-
-            if (response.ok) {
-              const accountData = await response.json();
-              const currentWalletBalance = parseFloat(accountData.totalWalletBalance || '0');
-
-              // Get deposits from account ledger
-              const ledger = await db.select().from(accountLedger).where(eq(accountLedger.userId, DEFAULT_USER_ID));
-              const totalDeposits = ledger.reduce((sum: number, entry: any) => {
-                if (entry.type === 'deposit' || entry.type === 'manual_add') {
-                  return sum + parseFloat(entry.amount || '0');
-                } else if (entry.type === 'withdrawal') {
-                  return sum - parseFloat(entry.amount || '0');
-                }
-                return sum;
-              }, 0);
-
-              // Actual realized P&L = wallet - deposits
-              const actualRealizedPnl = currentWalletBalance - totalDeposits;
-
-              // Calculate scaling factor
-              const scalingFactor = actualRealizedPnl / chartCalculatedPnl;
-
-              console.log(`📊 Chart P&L (from trades): $${chartCalculatedPnl.toFixed(2)}`);
-              console.log(`💰 Actual P&L (wallet - deposits): $${actualRealizedPnl.toFixed(2)}`);
-              console.log(`📏 Scaling factor: ${scalingFactor.toFixed(4)}`);
-
-              // Scale all cumulative P&L values to match reality
-              scaledChartData = chartData.map(point => ({
-                ...point,
-                cumulativePnl: point.cumulativePnl * scalingFactor,
-              }));
-
-              console.log(`✅ Chart scaled to match actual wallet balance`);
-            }
-          }
-        } catch (error) {
-          console.error('⚠️ Failed to scale chart, using unscaled data:', error);
-        }
+        const finalPnl = chartData[chartData.length - 1].cumulativePnl;
+        console.log(`📊 Final cumulative P&L from chart: $${finalPnl.toFixed(2)}`);
       }
 
-      res.json(scaledChartData);
+      res.json(chartData);
     } catch (error) {
       console.error('Error fetching performance chart data:', error);
       res.status(500).json({ error: "Failed to fetch performance chart data" });
@@ -6102,6 +6049,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       console.error('❌ Unknown error:', error instanceof Error ? error.message : String(error));
       res.status(500).json({ error: "Failed to update VWAP configuration" });
+    }
+  });
+
+  // Update Adaptive Sizing configuration
+  app.patch("/api/strategies/:id/adaptive-sizing/config", async (req, res) => {
+    try {
+      const strategyId = req.params.id;
+      console.log(`🔄 Adaptive Sizing config update request for strategy ${strategyId}:`, JSON.stringify(req.body, null, 2));
+
+      // Verify strategy exists
+      const strategy = await storage.getStrategy(strategyId);
+      if (!strategy) {
+        return res.status(404).json({ error: "Strategy not found" });
+      }
+
+      // Validate Adaptive Sizing configuration
+      const adaptiveSizingConfigSchema = z.object({
+        adaptiveSizingEnabled: z.boolean().optional(),
+        maxSizeMultiplier: z.number().min(1.0).max(10.0).optional(), // 1.0x to 10.0x
+      });
+
+      const validated = adaptiveSizingConfigSchema.parse(req.body);
+      console.log(`✅ Adaptive Sizing config validated:`, JSON.stringify(validated, null, 2));
+
+      // Update strategy in database
+      const updates: Record<string, any> = {};
+      if (validated.adaptiveSizingEnabled !== undefined) {
+        updates.adaptiveSizingEnabled = validated.adaptiveSizingEnabled;
+      }
+      if (validated.maxSizeMultiplier !== undefined) {
+        updates.maxSizeMultiplier = validated.maxSizeMultiplier.toString();
+      }
+
+      // Update in storage
+      const updatedStrategy = await storage.updateStrategy(strategyId, updates);
+
+      if (!updatedStrategy) {
+        console.error(`❌ Failed to update adaptive sizing configuration in database for strategy ${strategyId}`);
+        return res.status(500).json({ error: "Failed to update adaptive sizing configuration in database" });
+      }
+
+      console.log(`✅ Adaptive Sizing configuration updated for strategy ${strategyId}`);
+      res.status(200).json({
+        adaptiveSizingEnabled: updatedStrategy.adaptiveSizingEnabled,
+        maxSizeMultiplier: parseFloat(updatedStrategy.maxSizeMultiplier || '3.0'),
+      });
+    } catch (error) {
+      console.error('❌ Error updating Adaptive Sizing configuration:', error);
+      if (error instanceof z.ZodError) {
+        console.error('❌ Zod validation error:', JSON.stringify(error.errors, null, 2));
+        return res.status(400).json({ error: "Invalid Adaptive Sizing parameters", details: error.errors });
+      }
+      console.error('❌ Unknown error:', error instanceof Error ? error.message : String(error));
+      res.status(500).json({ error: "Failed to update Adaptive Sizing configuration" });
     }
   });
 

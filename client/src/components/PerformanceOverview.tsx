@@ -44,6 +44,9 @@ interface PerformanceMetrics {
   sortinoRatio: number;
   calmarRatio: number;
   expectancy: number;
+  actualWalletPnl?: number; // Actual wallet P&L (balance - deposits) from backend
+  totalWalletBalance?: number; // Total wallet balance from backend
+  totalDeposits?: number; // Total deposits from backend
 }
 
 interface TradeDataPoint {
@@ -1426,6 +1429,19 @@ function PerformanceOverview() {
                     : 'All time'}
               </div>
             </div>
+
+            {/* Actual Wallet P&L - Wallet Balance - Deposits (Backend-calculated) */}
+            {performance?.actualWalletPnl !== undefined && (
+              <div className="mb-3 pb-3 lg:mb-4 lg:pb-4 border-b">
+                <div className="text-xs lg:text-sm text-muted-foreground uppercase tracking-wider">Actual Wallet P&L</div>
+                <div className={`text-2xl lg:text-3xl font-mono font-bold mt-1 lg:mt-2 ${performance.actualWalletPnl >= 0 ? 'text-[rgb(190,242,100)]' : 'text-[rgb(251,146,60)]'}`}>
+                  {performance.actualWalletPnl >= 0 ? '+' : ''}${performance.actualWalletPnl.toFixed(2)}
+                </div>
+                <div className="text-xs lg:text-sm text-muted-foreground mt-1">
+                  Total balance ${performance.totalWalletBalance?.toFixed(2)} - Deposits ${performance.totalDeposits?.toFixed(2)}
+                </div>
+              </div>
+            )}
 
             <div className="text-xs lg:text-sm text-muted-foreground uppercase tracking-wider">Total Balance</div>
             <div className="text-2xl lg:text-4xl font-mono font-bold" data-testid="text-wallet-balance">

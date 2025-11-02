@@ -189,7 +189,7 @@ export class DatabaseStorage implements IStorage {
     return result[0];
   }
 
-  async getLiquidations(limit: number = 100): Promise<Liquidation[]> {
+  async getLiquidations(limit: number = 50): Promise<Liquidation[]> {
     return await db.select().from(liquidations).orderBy(desc(liquidations.timestamp)).limit(limit);
   }
 
