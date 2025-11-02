@@ -183,7 +183,8 @@
       "Bash(then echo \"⏳ ($i/10)\")",
       "Bash(then echo \"❌ Port still in use\")",
       "Bash(else echo \"✅ Port 5000 is free - starting server...\")",
-      "Bash(then echo \"✅ Server is online and ready after $i attempts\")"
+      "Bash(then echo \"✅ Server is online and ready after $i attempts\")",
+      "Bash(do curl -s \"http://localhost:5000/api/positions/$posId/fills\")"
     ],
     "deny": [],
     "ask": []

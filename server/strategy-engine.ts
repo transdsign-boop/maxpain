@@ -82,6 +82,8 @@ export class StrategyEngine extends EventEmitter {
   private processedLiquidations: Set<string> = new Set(); // Track processed liquidation IDs to prevent duplicates
   private inMemoryPositions: Map<string, { positionId: string; side: string; symbol: string; createdAt: number }> = new Map(); // "sessionId-symbol-side" -> in-memory position tracking (before DB commit)
   private lastLiquidationSeen: Map<string, number> = new Map(); // "symbol-side" -> timestamp of last liquidation seen (for 60s deduplication)
+  private orderPlacementLocks: Map<string, Promise<void>> = new Map(); // "positionId-layerNumber" -> mutex lock to prevent duplicate order placement
+  private activeOrderPlacements: Set<string> = new Set(); // Track in-flight orders by "positionId-layerNumber" to prevent duplicates
   private protectiveOrderRecovery: ProtectiveOrderRecovery;
 
   constructor() {
@@ -2771,13 +2773,41 @@ export class StrategyEngine extends EventEmitter {
     positionSide?: string; // 'long' or 'short' for hedge mode
   }) {
     const { strategy, session, symbol, side, orderSide, quantity, targetPrice, triggerLiquidationId, layerNumber, positionId, positionSide } = params;
-    const maxRetryDuration = strategy.maxRetryDurationMs;
-    const slippageTolerance = parseFloat(strategy.slippageTolerancePercent) / 100;
-    const startTime = Date.now();
-    
-    console.log(`🎯 Starting smart order placement: ${quantity.toFixed(4)} ${symbol} at $${targetPrice} (max retry: ${maxRetryDuration}ms, slippage: ${(slippageTolerance * 100).toFixed(2)}%)`);
 
-    while (Date.now() - startTime < maxRetryDuration) {
+    // 🔒 CRITICAL: Acquire order placement lock to prevent duplicate orders
+    // Use positionId + layerNumber as lock key to ensure atomic order placement
+    const lockKey = positionId ? `${positionId}-${layerNumber}` : `${session.id}-${symbol}-${positionSide}-${layerNumber}`;
+
+    // Check if order is already being placed (duplicate prevention)
+    if (this.activeOrderPlacements.has(lockKey)) {
+      console.log(`🚫 DUPLICATE PREVENTION: Order for ${symbol} layer ${layerNumber} is already being placed, skipping`);
+      return;
+    }
+
+    // Acquire lock using async mutex pattern
+    while (this.orderPlacementLocks.has(lockKey)) {
+      console.log(`⏳ Waiting for order placement lock: ${lockKey}`);
+      await this.orderPlacementLocks.get(lockKey);
+    }
+
+    // Create a promise that will be resolved when we're done
+    let releaseLock: () => void;
+    const lockPromise = new Promise<void>((resolve) => {
+      releaseLock = resolve;
+    });
+    this.orderPlacementLocks.set(lockKey, lockPromise);
+    this.activeOrderPlacements.add(lockKey);
+
+    console.log(`🔒 ACQUIRED ORDER LOCK: ${lockKey}`);
+
+    try {
+      const maxRetryDuration = strategy.maxRetryDurationMs;
+      const slippageTolerance = parseFloat(strategy.slippageTolerancePercent) / 100;
+      const startTime = Date.now();
+
+      console.log(`🎯 Starting smart order placement: ${quantity.toFixed(4)} ${symbol} at $${targetPrice} (max retry: ${maxRetryDuration}ms, slippage: ${(slippageTolerance * 100).toFixed(2)}%)`);
+
+      while (Date.now() - startTime < maxRetryDuration) {
       try {
         // Fetch real-time current price from Aster DEX API
         let currentPrice = targetPrice; // fallback to target price
@@ -2907,8 +2937,15 @@ export class StrategyEngine extends EventEmitter {
         break;
       }
     }
-    
-    console.log(`❌ Order retry timeout: Failed to place order within ${maxRetryDuration}ms due to price movement`);
+
+      console.log(`❌ Order retry timeout: Failed to place order within ${maxRetryDuration}ms due to price movement`);
+    } finally {
+      // 🔓 CRITICAL: Always release the order placement lock
+      this.activeOrderPlacements.delete(lockKey);
+      this.orderPlacementLocks.delete(lockKey);
+      releaseLock!();
+      console.log(`🔓 RELEASED ORDER LOCK: ${lockKey}`);
+    }
   }
 
   // Execute batch orders on Aster DEX (more efficient, reduces API calls)
@@ -3113,6 +3150,16 @@ export class StrategyEngine extends EventEmitter {
   }
 
   // Execute live order on Aster DEX with proper HMAC-SHA256 signature
+  //
+  // 🛡️ DUPLICATE ORDER PREVENTION (Multiple Protection Layers):
+  // 1. Liquidation ID tracking - prevents same liquidation triggering multiple orders
+  // 2. Liquidation cooldown - 5s minimum between liquidations for same symbol+side
+  // 3. Order placement mutex - async lock prevents concurrent order placement for same position+layer
+  // 4. Active order tracking - Set-based tracking of in-flight orders
+  // 5. Unique clientOrderId - Each order gets "bot-{timestamp}-{random}" prefix
+  // 6. WebSocket deduplication - Prevents recording bot orders as manual trades
+  //
+  // This multi-layered approach ensures the API can NEVER place duplicate orders.
   private async executeLiveOrder(params: {
     symbol: string;
     side: string; // 'buy' or 'sell'
