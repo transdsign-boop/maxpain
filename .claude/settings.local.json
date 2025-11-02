@@ -169,7 +169,13 @@
       "Bash(else echo \"⏳ Waiting... ($i/10)\")",
       "Bash(timeout 3 journalctl:*)",
       "Bash(if timeout 3 curl -s http://localhost:5000/api/performance/overview)",
-      "Bash(then echo \"✅ Server ready with fix applied\")"
+      "Bash(then echo \"✅ Server ready with fix applied\")",
+      "Bash(ps:*)",
+      "Bash(if [ -f /home/runner/.replit_process_info ])",
+      "Bash(then cat /home/runner/.replit_process_info)",
+      "Bash(else echo \"No Replit process info found\")",
+      "Bash([ -n \"$ASTER_API_KEY\" ])",
+      "Bash(npm --version:*)"
     ],
     "deny": [],
     "ask": []

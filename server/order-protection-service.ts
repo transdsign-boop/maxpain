@@ -773,12 +773,22 @@ export class OrderProtectionService {
         { method: 'POST', headers: { 'X-MBX-APIKEY': apiKey } }
       );
 
-      const data = await response.json();
-
+      // Check response status BEFORE parsing JSON to avoid "Unexpected end of JSON input"
       if (!response.ok) {
-        return { success: false, error: data.msg || 'Order placement failed' };
+        // Try to parse error message, but handle empty responses gracefully
+        let errorMsg = 'Order placement failed';
+        try {
+          const errorData = await response.json();
+          errorMsg = errorData.msg || errorMsg;
+        } catch {
+          // Empty or malformed response (common with rate limits)
+          errorMsg = `HTTP ${response.status}: ${response.statusText || 'Rate limited or server error'}`;
+        }
+        return { success: false, error: errorMsg };
       }
 
+      // Parse successful response
+      const data = await response.json();
       return { success: true, orderId: data.orderId?.toString() };
     } catch (error: any) {
       return { success: false, error: error.message };

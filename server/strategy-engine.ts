@@ -5274,16 +5274,16 @@ export class StrategyEngine extends EventEmitter {
 
   // Start periodic cleanup and auto-repair monitoring
   private startCleanupMonitoring() {
-    // Run reconciliation every 1 minute
+    // Run reconciliation every 30 seconds
     this.cleanupInterval = setInterval(async () => {
       if (!this.isRunning) return;
-      
+
       // Prevent overlapping cleanup runs
       if (this.cleanupInProgress) {
         console.log('⏭️ Skipping reconciliation - previous run still in progress');
         return;
       }
-      
+
       this.cleanupInProgress = true;
       
       try {
@@ -5344,9 +5344,9 @@ export class StrategyEngine extends EventEmitter {
       } finally {
         this.cleanupInProgress = false;
       }
-    }, 10 * 1000); // 10 seconds (aggressive protective order safety - always ensure TP/SL exist)
-    
-    console.log('🔄 Order reconciliation started: Orphan cleanup + Position verification (10s intervals)');
+    }, 30 * 1000); // 30 seconds - balanced between order safety and rate limiting
+
+    console.log('🔄 Order reconciliation started: Orphan cleanup + Position verification (30s intervals)');
   }
 
   // Manual cleanup trigger - run all cleanup tasks immediately

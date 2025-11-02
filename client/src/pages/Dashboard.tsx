@@ -385,7 +385,19 @@ export default function Dashboard() {
             } else if (message.type === 'trade_block' && message.data) {
               // Handle trade block status (pause/resume)
               console.log('🔴 Dashboard received trade_block:', message.data);
-              setTradeBlockStatus(message.data.blocked ? message.data : null);
+
+              // IMPORTANT: Only set global trade block for non-symbol-specific blocks
+              // Per-symbol cascade blocks (cascade_auto_block_symbol) should NOT affect the global trade light
+              const isPerSymbolBlock = message.data.type === 'cascade_auto_block_symbol';
+
+              if (isPerSymbolBlock) {
+                console.log(`🟡 Per-symbol cascade block for ${message.data.symbol} - NOT blocking all trades`);
+                // Don't set global trade block status for per-symbol cascade blocks
+                // The cascade risk indicator will show orange/red for this specific symbol
+              } else {
+                // Global blocks (pause, global cascade, etc.) affect all trades
+                setTradeBlockStatus(message.data.blocked ? message.data : null);
+              }
             }
           } catch (error) {
             console.error('Failed to parse WebSocket message:', error);

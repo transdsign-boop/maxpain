@@ -5682,8 +5682,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }).nullable().optional(),
         tpAtrMultiplier: z.string().refine((val) => {
           const num = parseFloat(val);
-          return !isNaN(num) && num >= 0.5 && num <= 5.0;
-        }, "Must be between 0.5 and 5.0").nullable().optional(),
+          return !isNaN(num) && num >= 0.5 && num <= 10.0;
+        }, "Must be between 0.5 and 10.0").nullable().optional(),
         minTpPercent: z.string().refine((val) => {
           const num = parseFloat(val);
           return !isNaN(num) && num >= 0.1 && num <= 10.0;
@@ -5698,8 +5698,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }).nullable().optional(),
         slAtrMultiplier: z.string().refine((val) => {
           const num = parseFloat(val);
-          return !isNaN(num) && num >= 0.5 && num <= 5.0;
-        }, "Must be between 0.5 and 5.0").nullable().optional(),
+          return !isNaN(num) && num >= 0.5 && num <= 10.0;
+        }, "Must be between 0.5 and 10.0").nullable().optional(),
         minSlPercent: z.string().refine((val) => {
           const num = parseFloat(val);
           return !isNaN(num) && num >= 0.5 && num <= 100;

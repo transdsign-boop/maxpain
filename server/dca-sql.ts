@@ -159,10 +159,7 @@ export async function updateStrategyDCAParams(
   if (setClauses.length === 0) {
     return null;
   }
-  
-  // Add updated_at
-  setClauses.push(`"updated_at" = NOW()`);
-  
+
   // Build complete SQL query with embedded values (escape quotes)
   const escapedId = strategyId.replace(/'/g, "''");
   const setClauseStr = setClauses.map((clause, i) => {
@@ -170,10 +167,13 @@ export async function updateStrategyDCAParams(
     const escapedValue = typeof value === 'string' ? value.replace(/'/g, "''") : value;
     return clause.replace(`$${i + 1}`, `'${escapedValue}'`);
   }).join(', ');
-  
+
+  // Add updated_at (after building setClauseStr to avoid undefined value)
+  const finalSetClause = `${setClauseStr}, "updated_at" = NOW()`;
+
   const queryString = `
     UPDATE "strategies"
-    SET ${setClauseStr}
+    SET ${finalSetClause}
     WHERE "id" = '${escapedId}'
     RETURNING *
   `;

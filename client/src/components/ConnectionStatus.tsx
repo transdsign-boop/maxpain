@@ -178,13 +178,18 @@ export default function ConnectionStatus({ isConnected, tradeBlockStatus }: Conn
   // Prioritize tradeBlockStatus prop from Dashboard (real-time pause status from main WebSocket)
   // Fall back to local tradeBlock state from ConnectionStatus WebSocket
   const effectiveTradeBlock = tradeBlockStatus || tradeBlock;
-  
-  // Use aggregate status from WebSocket (all-or-none blocking) OR trade block events
-  const tradesAllowed = effectiveTradeBlock?.blocked ? false : (aggregateStatus ? !aggregateStatus.blockAll : false);
+
+  // Filter out per-symbol cascade blocks from global trade status
+  // Per-symbol blocks (cascade_auto_block_symbol) should NOT turn the global trade light red
+  const isPerSymbolBlock = effectiveTradeBlock && (effectiveTradeBlock as any).type === 'cascade_auto_block_symbol';
+  const globallyBlocked = effectiveTradeBlock?.blocked && !isPerSymbolBlock;
+
+  // Use aggregate status from WebSocket (all-or-none blocking) OR global trade block events
+  const tradesAllowed = globallyBlocked ? false : (aggregateStatus ? !aggregateStatus.blockAll : false);
   const autoEnabled = aggregateStatus?.autoEnabled ?? true;
-  
-  // Determine block reason - prioritize real-time trade blocks over cascade status
-  const blockReason = effectiveTradeBlock?.blocked ? effectiveTradeBlock.reason : (aggregateStatus?.blockAll ? aggregateStatus.reason : null);
+
+  // Determine block reason - prioritize real-time global trade blocks over cascade status
+  const blockReason = globallyBlocked ? effectiveTradeBlock.reason : (aggregateStatus?.blockAll ? aggregateStatus.reason : null);
   
   const getTradeStatusTitle = () => {
     if (!aggregateStatus) {

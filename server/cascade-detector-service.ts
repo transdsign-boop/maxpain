@@ -1,6 +1,7 @@
 import { WebSocket } from 'ws';
 import { CascadeDetector } from './cascade-detector';
 import { storage } from './storage';
+import { rateLimiter } from './rate-limiter';
 
 /**
  * ⚠️ CRITICAL WARNING - DO NOT MODIFY POLLING ARCHITECTURE ⚠️
@@ -139,18 +140,23 @@ class CascadeDetectorService {
    */
   private async batchFetchPrices(): Promise<void> {
     const symbols = Array.from(this.detectors.keys());
-    
+
     if (symbols.length === 0) {
       return;
     }
-    
+
     try {
-      // Single API call gets ALL prices
-      const response = await fetch('https://fapi.asterdex.com/fapi/v1/ticker/price');
-      if (!response.ok) {
-        throw new Error(`Price fetch failed: ${response.status}`);
-      }
-      const allPrices = await response.json();
+      // Single API call gets ALL prices - wrapped in rate limiter with caching
+      const allPrices = await rateLimiter.enqueue(
+        'all_ticker_prices',
+        async () => {
+          const response = await fetch('https://fapi.asterdex.com/fapi/v1/ticker/price');
+          if (!response.ok) {
+            throw new Error(`Price fetch failed: ${response.status}`);
+          }
+          return await response.json();
+        }
+      );
 
       const priceMap = new Map<string, number>();
       
@@ -207,17 +213,22 @@ class CascadeDetectorService {
     // Fetch OI for the N oldest symbols
     const toFetch = symbolsByAge.slice(0, this.config.oiSymbolsPerTick);
     
-    // Fetch in parallel (but only N symbols, not all)
+    // Fetch in parallel (but only N symbols, not all) - wrapped in rate limiter
     const oiPromises = toFetch.map(async ({ symbol }) => {
       try {
-        const response = await fetch(`https://fapi.asterdex.com/fapi/v1/openInterest?symbol=${symbol}`);
-
-        if (response.ok) {
-          const data = await response.json();
-          return { symbol, oi: parseFloat(data.openInterest), timestamp: now };
-        }
+        const data = await rateLimiter.enqueue(
+          `oi_${symbol}`,
+          async () => {
+            const response = await fetch(`https://fapi.asterdex.com/fapi/v1/openInterest?symbol=${symbol}`);
+            if (!response.ok) {
+              throw new Error(`OI fetch failed for ${symbol}: ${response.status}`);
+            }
+            return await response.json();
+          }
+        );
+        return { symbol, oi: parseFloat(data.openInterest), timestamp: now };
       } catch (error) {
-        // Silently fail for individual symbol
+        // Silently fail for individual symbol (rate limit or API error)
       }
       return null;
     });
