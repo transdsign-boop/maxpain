@@ -1490,54 +1490,17 @@ export class StrategyEngine extends EventEmitter {
       return false;
     }
 
-    // CRITICAL FIX: Check global portfolio risk BEFORE allowing DCA layer
-    // Even if position has reserved budget, block layer if portfolio already exceeds risk limit
-    const session = await storage.getTradeSession(position.sessionId);
-    if (!session) {
-      console.error('❌ Session not found for DCA layer risk check');
-      return false;
-    }
-
-    const portfolioRisk = await this.calculatePortfolioRisk(strategy, session);
-    const maxRiskPercent = parseFloat(strategy.maxPortfolioRiskPercent);
-
-    console.log(`\n📊 Portfolio Risk Check (DCA LAYER)`);
-    console.log(`   Open Positions: ${portfolioRisk.openPositionCount}`);
-    console.log(`   💰 Filled Risk: ${portfolioRisk.filledRiskPercentage.toFixed(1)}% (current loss exposure)`);
-    console.log(`   🎯 Max Risk Allowed: ${maxRiskPercent}%`);
-
-    if (portfolioRisk.filledRiskPercentage > maxRiskPercent) {
-      console.log(`🚫 PORTFOLIO RISK LIMIT (DCA LAYER): Filled risk exceeds max (${portfolioRisk.filledRiskPercentage.toFixed(1)}% > ${maxRiskPercent}%)`);
-      console.log(`   🛑 BLOCKING layer ${layersPlaced + 1} for ${position.symbol} ${position.side} - portfolio risk limit exceeded`);
-
-      wsBroadcaster.broadcastTradeBlock({
-        blocked: true,
-        reason: `Risk limit: ${portfolioRisk.filledRiskPercentage.toFixed(1)}% > ${maxRiskPercent}%`,
-        type: 'risk_limit'
-      });
-
-      // Log error to database for audit trail
-      await this.logTradeEntryError({
-        strategy,
-        symbol: liquidation.symbol,
-        side: position.side,
-        attemptType: 'layer',
-        reason: 'portfolio_risk_exceeded',
-        errorDetails: `DCA layer blocked: Filled risk ${portfolioRisk.filledRiskPercentage.toFixed(1)}% exceeds max ${maxRiskPercent}%`,
-        liquidationValue: parseFloat(liquidation.value),
-      });
-
-      return false;
-    }
-
-    console.log(`✅ Portfolio risk check passed for DCA layer: ${portfolioRisk.filledRiskPercentage.toFixed(1)}% ≤ ${maxRiskPercent}%`);
-
     // RESERVED RISK CHECK: Verify layer fits within position's reserved budget
-    // Note: Global portfolio risk already checked above
+    // NOTE: Reserved risk is allocated upfront when position opens (includes all DCA layers)
+    // DCA layers should execute within this pre-allocated budget, regardless of global portfolio risk
+    // Global portfolio risk check only applies to NEW positions (Layer 1)
     let layerRiskCheckPassed = false;
     try {
-      // Session already fetched above for portfolio risk check
-      
+      const session = await storage.getTradeSession(position.sessionId);
+      if (!session) {
+        throw new Error('Session not found for risk check');
+      }
+
       // Get current balance
       let currentBalance = parseFloat(session.currentBalance);
       const exchangeBalance = await this.getExchangeAvailableBalance(strategy);
