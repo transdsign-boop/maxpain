@@ -77,9 +77,9 @@ class LiveDataOrchestrator {
   private async refreshAllBalances(): Promise<void> {
     try {
       const { createHmac } = await import('crypto');
-      const apiKey = process.env.ASTER_DEX_API_KEY;
-      const secretKey = process.env.ASTER_DEX_SECRET_KEY;
-      
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+
       if (!apiKey || !secretKey) return;
 
       const timestamp = Date.now();
@@ -127,9 +127,9 @@ class LiveDataOrchestrator {
   async initializeUsdtBalance(strategyId: string): Promise<void> {
     try {
       const { createHmac } = await import('crypto');
-      const apiKey = process.env.ASTER_DEX_API_KEY;
-      const secretKey = process.env.ASTER_DEX_SECRET_KEY;
-      
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+
       if (!apiKey || !secretKey) return;
 
       const timestamp = Date.now();

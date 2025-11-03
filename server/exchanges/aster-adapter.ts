@@ -102,12 +102,25 @@ export class AsterExchangeAdapter implements IExchangeAdapter {
       isolatedMargin: asset.marginBalance || '0',
     }));
 
+    // Calculate total balance by summing all USD-based assets (USDF, USDT, USDC, etc.)
+    const usdAssets = ['USDF', 'USDT', 'USDC', 'CUSDT', 'VUSDT', 'BUSD'];
+    const totalBalance = assets
+      .filter(a => usdAssets.includes(a.asset))
+      .reduce((sum, a) => sum + parseFloat(a.walletBalance || '0'), 0)
+      .toString();
+
+    // Calculate available balance by summing all USD-based assets
+    const availableBalance = assets
+      .filter(a => usdAssets.includes(a.asset))
+      .reduce((sum, a) => sum + parseFloat(a.availableBalance || '0'), 0)
+      .toString();
+
     // Fetch positions separately
     const positions = await this.getPositions();
 
     return {
-      totalBalance: data.totalWalletBalance || '0',
-      availableBalance: data.availableBalance || '0',
+      totalBalance,
+      availableBalance,
       totalMarginUsed: data.totalMarginBalance || '0',
       totalUnrealizedPnl: data.totalUnrealizedProfit || '0',
       assets,
