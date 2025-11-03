@@ -187,7 +187,9 @@
       "Bash(do curl -s \"http://localhost:5000/api/positions/$posId/fills\")",
       "Bash(then echo \"✅ Server ready with both fixes applied\")",
       "Bash(/tmp/positions.json)",
-      "Bash(/tmp/account.json)"
+      "Bash(/tmp/account.json)",
+      "Bash(then echo \"✅ Server ready with unrealized P&L fix\")",
+      "Bash(/tmp/account_check.json)"
     ],
     "deny": [],
     "ask": []

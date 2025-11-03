@@ -379,39 +379,66 @@ class LiveDataOrchestrator {
    */
   private handleNormalizedAccountUpdate(strategyId: string, update: NormalizedAccountUpdate): void {
     const snapshot = this.getSnapshot(strategyId);
-    
-    // Find USDF balance
-    const usdtBalance = update.balances.find(b => b.asset === 'USDF');
-    
-    if (usdtBalance) {
-      const walletBalance = usdtBalance.walletBalance || '0';
-      const availableBalance = usdtBalance.availableBalance || '0';
-      
+
+    // Find both USDF and USDT balances
+    const usdfBalance = update.balances.find(b => b.asset === 'USDF');
+    const usdtBalance = update.balances.find(b => b.asset === 'USDT');
+
+    if (usdfBalance || usdtBalance) {
+      // Sum wallet balances from both assets
+      const usdfWallet = parseFloat(usdfBalance?.walletBalance || '0');
+      const usdtWallet = parseFloat(usdtBalance?.walletBalance || '0');
+      const totalWalletBalance = (usdfWallet + usdtWallet).toString();
+
+      // Sum unrealized P&L from both assets
+      const usdfUnrealized = parseFloat(usdfBalance?.unrealizedProfit || '0');
+      const usdtUnrealized = parseFloat(usdtBalance?.unrealizedProfit || '0');
+      const totalUnrealizedProfit = (usdfUnrealized + usdtUnrealized).toString();
+
+      // Sum available balances
+      const usdfAvailable = parseFloat(usdfBalance?.availableBalance || '0');
+      const usdtAvailable = parseFloat(usdtBalance?.availableBalance || '0');
+      const totalAvailable = (usdfAvailable + usdtAvailable).toString();
+
+      // Build assets array
+      const assets = [];
+      if (usdfBalance) {
+        assets.push({
+          a: 'USDF',
+          wb: usdfBalance.walletBalance,
+          cw: usdfBalance.availableBalance,
+          bc: '0'
+        });
+      }
+      if (usdtBalance) {
+        assets.push({
+          a: 'USDT',
+          wb: usdtBalance.walletBalance,
+          cw: usdtBalance.availableBalance,
+          bc: '0'
+        });
+      }
+
       snapshot.account = {
         feeTier: 0,
         canTrade: true,
         canDeposit: true,
         canWithdraw: true,
         updateTime: Date.now(),
-        totalWalletBalance: walletBalance,
-        totalUnrealizedProfit: '0', // Calculated from positions
-        totalMarginBalance: walletBalance,
+        totalWalletBalance,
+        totalUnrealizedProfit, // ✅ Now includes unrealized P&L from both assets
+        totalMarginBalance: (usdfWallet + usdtWallet + usdfUnrealized + usdtUnrealized).toString(),
         totalInitialMargin: '0',
-        availableBalance,
-        usdcBalance: walletBalance,
-        usdtBalance: walletBalance,
-        assets: [{
-          a: 'USDF',
-          wb: walletBalance,
-          cw: availableBalance,
-          bc: '0'
-        }]
+        availableBalance: totalAvailable,
+        usdcBalance: totalWalletBalance,
+        usdtBalance: totalWalletBalance,
+        assets
       };
       
       snapshot.timestamp = Date.now();
-      
+
       if (Date.now() - this.lastAccountLogTime > 30000) {
-        console.log(`✅ Account updated from ${this.exchangeStreams.get(strategyId)?.exchangeType} stream (balance: $${parseFloat(walletBalance).toFixed(2)})`);
+        console.log(`✅ Account updated from ${this.exchangeStreams.get(strategyId)?.exchangeType} stream (balance: $${parseFloat(totalWalletBalance).toFixed(2)}, unrealized: $${parseFloat(totalUnrealizedProfit).toFixed(2)})`);
         this.lastAccountLogTime = Date.now();
       }
       
