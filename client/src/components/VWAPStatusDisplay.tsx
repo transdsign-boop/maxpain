@@ -353,8 +353,9 @@ export default function VWAPStatusDisplay({ strategyId, liquidations }: VWAPStat
     );
   }
 
-  if (!vwapStatus || !vwapStatus.enabled) {
-    return null; // Don't show if VWAP filter is disabled
+  // Always show VWAP status for monitoring, even when filter is disabled
+  if (!vwapStatus) {
+    return null; // Only hide if no data at all
   }
 
   // Check if VWAP data is initialized (all values are zero means no data yet)
@@ -395,6 +396,11 @@ export default function VWAPStatusDisplay({ strategyId, liquidations }: VWAPStat
             <CardTitle className="text-sm font-medium flex items-center gap-2">
               <TrendingUp className="h-4 w-4" />
               VWAP Direction Filter and live liquidations
+              {!vwapStatus.enabled && (
+                <Badge variant="outline" className="text-xs font-normal text-muted-foreground">
+                  Monitoring Only
+                </Badge>
+              )}
             </CardTitle>
             <CardDescription className="text-xs mt-1 flex items-center gap-3">
               <span>{vwapStatus.timeframeMinutes / 60}h • {(vwapStatus.bufferPercentage * 100).toFixed(2)}% buffer</span>
