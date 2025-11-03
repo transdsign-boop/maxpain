@@ -198,7 +198,9 @@
       "Bash(if [ -n \"$REPLIT_DEV_DOMAIN\" ])",
       "Bash(then echo \"Dev URL: https://$REPLIT_DEV_DOMAIN\")",
       "Bash(if [ -n \"$REPLIT_DEPLOYMENT_URL\" ])",
-      "Bash(then echo \"Production URL: $REPLIT_DEPLOYMENT_URL\")"
+      "Bash(then echo \"Production URL: $REPLIT_DEPLOYMENT_URL\")",
+      "Bash(npm run build:*)",
+      "Bash(git reset:*)"
     ],
     "deny": [],
     "ask": []
