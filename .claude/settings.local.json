@@ -189,7 +189,10 @@
       "Bash(/tmp/positions.json)",
       "Bash(/tmp/account.json)",
       "Bash(then echo \"✅ Server ready with unrealized P&L fix\")",
-      "Bash(/tmp/account_check.json)"
+      "Bash(/tmp/account_check.json)",
+      "Bash(then echo \"✅ Server ready with initial state fetching\")",
+      "Bash(/tmp/account_test.json)",
+      "Bash(/tmp/positions_test.json)"
     ],
     "deny": [],
     "ask": []

@@ -135,12 +135,12 @@ class LiveDataOrchestrator {
       const timestamp = Date.now();
       const params = `timestamp=${timestamp}`;
       const signature = createHmac('sha256', secretKey).update(params).digest('hex');
-      
+
       const response = await fetch(
         `https://fapi.asterdex.com/fapi/v2/account?${params}&signature=${signature}`,
         { headers: { 'X-MBX-APIKEY': apiKey } }
       );
-      
+
       if (response.ok) {
         const data = await response.json();
 
@@ -167,6 +167,68 @@ class LiveDataOrchestrator {
       }
     } catch (error) {
       console.error('Failed to initialize balances:', error);
+    }
+  }
+
+  /**
+   * Fetch initial account state and positions from REST API
+   * Called when WebSocket connects to provide immediate data
+   */
+  async fetchInitialState(strategyId: string): Promise<void> {
+    try {
+      const { createHmac } = await import('crypto');
+      const apiKey = process.env.ASTER_API_KEY;
+      const secretKey = process.env.ASTER_SECRET_KEY;
+
+      if (!apiKey || !secretKey) {
+        console.log('⚠️ Cannot fetch initial state - API keys not configured');
+        return;
+      }
+
+      console.log('🔄 Fetching initial account state and positions from REST API...');
+
+      // Fetch account data
+      const timestamp = Date.now();
+      const accountParams = `timestamp=${timestamp}`;
+      const accountSignature = createHmac('sha256', secretKey).update(accountParams).digest('hex');
+
+      const accountResponse = await fetch(
+        `https://fapi.asterdex.com/fapi/v2/account?${accountParams}&signature=${accountSignature}`,
+        { headers: { 'X-MBX-APIKEY': apiKey } }
+      );
+
+      if (accountResponse.ok) {
+        const accountData = await accountResponse.json();
+
+        // Populate account data using the same logic as WebSocket updates
+        this.updateAccountFromWebSocket(strategyId, accountData.assets || []);
+
+        console.log('✅ Initial account state loaded from REST API');
+      }
+
+      // Fetch positions data
+      const positionsTimestamp = Date.now();
+      const positionsParams = `timestamp=${positionsTimestamp}`;
+      const positionsSignature = createHmac('sha256', secretKey).update(positionsParams).digest('hex');
+
+      const positionsResponse = await fetch(
+        `https://fapi.asterdex.com/fapi/v2/positionRisk?${positionsParams}&signature=${positionsSignature}`,
+        { headers: { 'X-MBX-APIKEY': apiKey } }
+      );
+
+      if (positionsResponse.ok) {
+        const positionsData = await positionsResponse.json();
+
+        // Filter to open positions only
+        const openPositions = positionsData.filter((p: any) => parseFloat(p.positionAmt || '0') !== 0);
+
+        // Update positions cache
+        this.updatePositionsFromWebSocket(strategyId, openPositions);
+
+        console.log(`✅ Initial positions loaded from REST API (${openPositions.length} open positions)`);
+      }
+    } catch (error) {
+      console.error('❌ Failed to fetch initial state:', error);
     }
   }
 
@@ -206,13 +268,18 @@ class LiveDataOrchestrator {
       console.log(`🔌 Exchange stream disconnected for strategy ${strategyId}`);
     });
 
-    stream.onReconnect(() => {
+    stream.onReconnect(async () => {
       console.log(`🔄 Exchange stream reconnected for strategy ${strategyId}`);
+      // Fetch fresh state after reconnection
+      await this.fetchInitialState(strategyId);
     });
 
     // Connect the stream
     await stream.connect();
     console.log(`✅ Exchange stream connected for strategy ${strategyId}`);
+
+    // Fetch initial state from REST API (so data is available immediately)
+    await this.fetchInitialState(strategyId);
   }
 
   /**
