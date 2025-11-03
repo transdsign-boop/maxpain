@@ -6005,8 +6005,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
         }
 
-        // Start or stop price feed based on whether VWAP is enabled
-        if (updatedStrategy.vwapFilterEnabled && updatedStrategy.selectedAssets.length > 0) {
+        // Always keep price feed running when assets are selected (for monitoring)
+        // VWAP data is useful for monitoring even when filter is disabled
+        if (updatedStrategy.selectedAssets.length > 0) {
           vwapPriceFeed.start(updatedStrategy.selectedAssets);
 
           // Force immediate refresh to fetch fresh data with new settings
@@ -6027,10 +6028,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
             });
           }
 
-          console.log(`📊 VWAP Price Feed started for ${updatedStrategy.selectedAssets.length} symbols`);
+          const statusMsg = updatedStrategy.vwapFilterEnabled ? '(ACTIVE - blocking trades)' : '(MONITORING ONLY - not blocking)';
+          console.log(`📊 VWAP Price Feed running for ${updatedStrategy.selectedAssets.length} symbols ${statusMsg}`);
         } else {
           vwapPriceFeed.stop();
-          console.log('📊 VWAP Price Feed stopped (filter disabled)');
+          console.log('📊 VWAP Price Feed stopped (no assets selected)');
         }
       }
 

@@ -385,8 +385,10 @@ export class StrategyEngine extends EventEmitter {
     // Sync cascade detector with strategy's selected assets
     await cascadeDetectorService.syncSymbols();
 
-    // Initialize VWAP filters and start price feed if VWAP filter is enabled
-    if (strategy.vwapFilterEnabled && strategy.selectedAssets.length > 0) {
+    // Initialize VWAP filters and start price feed for monitoring
+    // CRITICAL: Always start VWAP data feed when assets are selected, regardless of filter enabled state
+    // This allows users to monitor VWAP direction even when filter is not actively blocking trades
+    if (strategy.selectedAssets.length > 0) {
       const { vwapFilterManager } = await import('./vwap-direction-filter');
       const { vwapPriceFeed } = await import('./vwap-price-feed');
 
@@ -403,7 +405,8 @@ export class StrategyEngine extends EventEmitter {
         vwapFilterManager.getFilter(symbol, vwapConfig);
       }
 
-      console.log(`📊 Initialized ${strategy.selectedAssets.length} VWAP filters with strategy config`);
+      const filterStatusMsg = strategy.vwapFilterEnabled ? 'ACTIVE (blocking trades)' : 'MONITORING ONLY (not blocking)';
+      console.log(`📊 Initialized ${strategy.selectedAssets.length} VWAP filters with strategy config [${filterStatusMsg}]`);
 
       // Start WebSocket kline stream for real-time VWAP updates (1-minute candles)
       // This provides live price data and automatic period resets without API polling
@@ -1472,7 +1475,7 @@ export class StrategyEngine extends EventEmitter {
     
     if (layersPlaced >= strategy.maxLayers) {
       console.log(`🚫 Max layers reached: ${layersPlaced} layers placed >= ${strategy.maxLayers} max`);
-      
+
       // Log error to database for audit trail
       await this.logTradeEntryError({
         strategy,
@@ -1483,18 +1486,57 @@ export class StrategyEngine extends EventEmitter {
         errorDetails: `Position already has ${layersPlaced} layers placed >= ${strategy.maxLayers} max (layersFilled: ${position.layersFilled || 0})`,
         liquidationValue: parseFloat(liquidation.value),
       });
-      
+
       return false;
     }
 
+    // CRITICAL FIX: Check global portfolio risk BEFORE allowing DCA layer
+    // Even if position has reserved budget, block layer if portfolio already exceeds risk limit
+    const session = await storage.getTradeSession(position.sessionId);
+    if (!session) {
+      console.error('❌ Session not found for DCA layer risk check');
+      return false;
+    }
+
+    const portfolioRisk = await this.calculatePortfolioRisk(strategy, session);
+    const maxRiskPercent = parseFloat(strategy.maxPortfolioRiskPercent);
+
+    console.log(`\n📊 Portfolio Risk Check (DCA LAYER)`);
+    console.log(`   Open Positions: ${portfolioRisk.openPositionCount}`);
+    console.log(`   💰 Filled Risk: ${portfolioRisk.filledRiskPercentage.toFixed(1)}% (current loss exposure)`);
+    console.log(`   🎯 Max Risk Allowed: ${maxRiskPercent}%`);
+
+    if (portfolioRisk.filledRiskPercentage > maxRiskPercent) {
+      console.log(`🚫 PORTFOLIO RISK LIMIT (DCA LAYER): Filled risk exceeds max (${portfolioRisk.filledRiskPercentage.toFixed(1)}% > ${maxRiskPercent}%)`);
+      console.log(`   🛑 BLOCKING layer ${layersPlaced + 1} for ${position.symbol} ${position.side} - portfolio risk limit exceeded`);
+
+      wsBroadcaster.broadcastTradeBlock({
+        blocked: true,
+        reason: `Risk limit: ${portfolioRisk.filledRiskPercentage.toFixed(1)}% > ${maxRiskPercent}%`,
+        type: 'risk_limit'
+      });
+
+      // Log error to database for audit trail
+      await this.logTradeEntryError({
+        strategy,
+        symbol: liquidation.symbol,
+        side: position.side,
+        attemptType: 'layer',
+        reason: 'portfolio_risk_exceeded',
+        errorDetails: `DCA layer blocked: Filled risk ${portfolioRisk.filledRiskPercentage.toFixed(1)}% exceeds max ${maxRiskPercent}%`,
+        liquidationValue: parseFloat(liquidation.value),
+      });
+
+      return false;
+    }
+
+    console.log(`✅ Portfolio risk check passed for DCA layer: ${portfolioRisk.filledRiskPercentage.toFixed(1)}% ≤ ${maxRiskPercent}%`);
+
     // RESERVED RISK CHECK: Verify layer fits within position's reserved budget
-    // NO global portfolio risk check - position already has reserved risk allocated
+    // Note: Global portfolio risk already checked above
     let layerRiskCheckPassed = false;
     try {
-      const session = await storage.getTradeSession(position.sessionId);
-      if (!session) {
-        throw new Error('Session not found for risk check');
-      }
+      // Session already fetched above for portfolio risk check
       
       // Get current balance
       let currentBalance = parseFloat(session.currentBalance);
