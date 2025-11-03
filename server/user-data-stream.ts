@@ -162,21 +162,47 @@ class UserDataStreamManager {
         const accountData = await accountResponse.json();
         
         if (accountData && accountData.totalWalletBalance !== undefined) {
-          // Convert to balance format expected by orchestrator - include ALL fields
-          const balance = parseFloat(accountData.totalWalletBalance);
-          const available = parseFloat(accountData.availableBalance);
-          const unrealized = parseFloat(accountData.totalUnrealizedProfit || '0');
-          const marginBalance = parseFloat(accountData.totalMarginBalance || '0');
-          const initialMargin = parseFloat(accountData.totalInitialMargin || '0');
-          
-          const balances = [{
-            asset: 'USDF',
-            walletBalance: balance.toString(),
-            crossWalletBalance: available.toString(),
-            unrealizedProfit: unrealized.toString(),
-            marginBalance: marginBalance.toString(),
-            initialMargin: initialMargin.toString(),
-          }];
+          // Convert to balance format expected by orchestrator - include ALL assets
+          const totalBalance = parseFloat(accountData.totalWalletBalance);
+          const totalAvailable = parseFloat(accountData.availableBalance);
+          const totalUnrealized = parseFloat(accountData.totalUnrealizedProfit || '0');
+          const totalMarginBalance = parseFloat(accountData.totalMarginBalance || '0');
+          const totalInitialMargin = parseFloat(accountData.totalInitialMargin || '0');
+
+          // Extract individual asset balances from the account data
+          const balances = [];
+
+          if (accountData.assets && Array.isArray(accountData.assets)) {
+            // Use actual asset balances from the API response
+            for (const asset of accountData.assets) {
+              const assetName = asset.a || asset.asset;
+              const walletBalance = asset.wb || asset.walletBalance || '0';
+
+              // Only include USD-based assets with non-zero balances
+              if (['USDF', 'USDT', 'USDC', 'CUSDT', 'VUSDT'].includes(assetName) && parseFloat(walletBalance) > 0) {
+                balances.push({
+                  asset: assetName,
+                  walletBalance: walletBalance,
+                  crossWalletBalance: asset.cw || asset.availableBalance || '0',
+                  unrealizedProfit: '0', // Will be calculated from positions
+                  marginBalance: walletBalance,
+                  initialMargin: '0',
+                });
+              }
+            }
+          }
+
+          // Fallback if no assets array: create synthetic USDF balance
+          if (balances.length === 0) {
+            balances.push({
+              asset: 'USDF',
+              walletBalance: totalBalance.toString(),
+              crossWalletBalance: totalAvailable.toString(),
+              unrealizedProfit: totalUnrealized.toString(),
+              marginBalance: totalMarginBalance.toString(),
+              initialMargin: totalInitialMargin.toString(),
+            });
+          }
           
           const { db } = await import('./db');
           const { strategies } = await import('@shared/schema');
@@ -188,7 +214,7 @@ class UserDataStreamManager {
             // Initialize USDT balance cache from REST API
             await liveDataOrchestrator.initializeUsdtBalance(activeStrategy.id);
             liveDataOrchestrator.updateAccountFromWebSocket(activeStrategy.id, balances);
-            console.log(`✅ Initial account data loaded ($${balance.toFixed(2)})`);
+            console.log(`✅ Initial account data loaded (wallet: $${totalBalance.toFixed(2)}, unrealized: $${totalUnrealized.toFixed(2)}, ${balances.length} asset(s))`);
           }
         }
 

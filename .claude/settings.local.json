@@ -192,7 +192,9 @@
       "Bash(/tmp/account_check.json)",
       "Bash(then echo \"✅ Server ready with initial state fetching\")",
       "Bash(/tmp/account_test.json)",
-      "Bash(/tmp/positions_test.json)"
+      "Bash(/tmp/positions_test.json)",
+      "Bash(/tmp/account_final.json)",
+      "Bash(/tmp/positions_final.json)"
     ],
     "deny": [],
     "ask": []
