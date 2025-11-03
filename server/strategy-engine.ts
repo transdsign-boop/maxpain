@@ -1463,16 +1463,38 @@ export class StrategyEngine extends EventEmitter {
 
   // Determine if we should add a layer to existing position
   private async shouldAddLayer(
-    strategy: Strategy, 
-    position: Position, 
+    strategy: Strategy,
+    position: Position,
     liquidation: Liquidation
   ): Promise<boolean> {
+    // CRITICAL SAFEGUARD: Block layers on positions with incomplete DCA metadata
+    // This prevents runaway layer additions when positions are reconciled from exchange
+    // or when metadata updates fail to persist to database
+    if (!position.reservedRiskDollars || !position.dcaSchedule) {
+      console.log(`🚫 INCOMPLETE METADATA: Position ${position.symbol} ${position.side} missing DCA metadata - blocking all layers`);
+      console.log(`   reservedRisk=${position.reservedRiskDollars}, dcaSchedule=${position.dcaSchedule ? 'exists' : 'null'}`);
+      console.log(`   This position was likely reconciled from exchange or created before metadata updates`);
+      console.log(`   ⚠️ To add layers: close position manually and let bot create new one with full metadata`);
+
+      await this.logTradeEntryError({
+        strategy,
+        symbol: liquidation.symbol,
+        side: position.side,
+        attemptType: 'layer',
+        reason: 'incomplete_metadata',
+        errorDetails: `Position missing DCA metadata (reservedRisk=${position.reservedRiskDollars}, dcaSchedule=${position.dcaSchedule ? 'exists' : 'null'}) - likely reconciled from exchange`,
+        liquidationValue: parseFloat(liquidation.value),
+      });
+
+      return false;
+    }
+
     // Check if we haven't exceeded max layers
     // CRITICAL: Use layersPlaced (not layersFilled) to prevent exceeding maxLayers
     // layersPlaced increments IMMEDIATELY when order is placed (line 2386)
     // layersFilled only updates AFTER fill confirmation (slower, can lag behind)
     const layersPlaced = position.layersPlaced || position.layersFilled || 0;
-    
+
     if (layersPlaced >= strategy.maxLayers) {
       console.log(`🚫 Max layers reached: ${layersPlaced} layers placed >= ${strategy.maxLayers} max`);
 
